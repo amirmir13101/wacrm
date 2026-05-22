@@ -154,7 +154,10 @@ export function TemplateManager() {
         category: form.category,
         language: form.language.trim() || 'en_US',
         body_text: form.body_text.trim(),
-        header_type: form.header_type || null,
+        header_type:
+          form.header_type && form.header_type !== 'none'
+            ? form.header_type
+            : null,
         footer_text: form.footer_text.trim() || null,
         status: 'Draft' as const,
       };
