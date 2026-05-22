@@ -36,6 +36,7 @@ import {
   Pause,
   Play,
   Ban,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -163,9 +164,12 @@ export default function BroadcastDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [controlAction, setControlAction] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (options?: { silent?: boolean }) => {
     try {
+      if (options?.silent) setRefreshing(true);
       const supabase = createClient();
 
       const { data: bc, error: bcError } = await supabase
@@ -185,11 +189,13 @@ export default function BroadcastDetailPage() {
 
       if (recsError) throw recsError;
       setRecipients(recs ?? []);
+      setLastUpdatedAt(new Date());
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load broadcast');
     } finally {
       setLoading(false);
+      if (options?.silent) setRefreshing(false);
     }
   }, [broadcastId]);
 
@@ -204,6 +210,49 @@ export default function BroadcastDetailPage() {
         : recipients.filter((r) => r.status === statusFilter),
     [recipients, statusFilter],
   );
+  const pendingCount = recipients.filter((r) => r.status === 'pending').length;
+  const sendingCount = recipients.filter((r) => r.status === 'sending').length;
+  const isFinalStatus =
+    !!broadcast &&
+    ['completed', 'failed', 'cancelled', 'sent'].includes(broadcast.status);
+  const hasActiveRecipients = recipients.some((r) =>
+    ['pending', 'sending'].includes(r.status),
+  );
+  const liveUpdatesOn =
+    !!broadcast &&
+    (['queued', 'sending', 'paused'].includes(broadcast.status) ||
+      (!isFinalStatus && hasActiveRecipients));
+  const lastUpdatedLabel = lastUpdatedAt
+    ? lastUpdatedAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : 'Not yet';
+
+  useEffect(() => {
+    if (!broadcast) return;
+
+    const intervalMs = liveUpdatesOn ? 4000 : 30000;
+    let stopped = false;
+    let inFlight = false;
+
+    const tick = async () => {
+      if (stopped || inFlight) return;
+      inFlight = true;
+      await fetchData({ silent: true });
+      inFlight = false;
+    };
+
+    const interval = window.setInterval(() => {
+      void tick();
+    }, intervalMs);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+    };
+  }, [broadcast, fetchData, liveUpdatesOn]);
 
   function handleExport() {
     if (!broadcast) return;
@@ -332,8 +381,6 @@ export default function BroadcastDetailPage() {
   }
 
   const status = getBroadcastStatus(broadcast.status);
-  const pendingCount = recipients.filter((r) => r.status === 'pending').length;
-  const sendingCount = recipients.filter((r) => r.status === 'sending').length;
   const skippedCount =
     broadcast.skipped_count ?? recipients.filter((r) => r.status === 'skipped').length;
   const canPause = ['queued', 'sending'].includes(broadcast.status);
@@ -406,6 +453,30 @@ export default function BroadcastDetailPage() {
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-400">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  liveUpdatesOn ? 'bg-emerald-400' : 'bg-slate-500'
+                }`}
+              />
+              <span>{liveUpdatesOn ? 'Live updates on' : 'Live updates slow'}</span>
+              <span className="hidden text-slate-600 sm:inline">|</span>
+              <span className="hidden sm:inline">
+                Last updated: {lastUpdatedLabel}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={refreshing}
+                onClick={() => fetchData({ silent: true })}
+                title="Refresh broadcast status"
+                className="ml-1 text-slate-300 hover:bg-slate-800 hover:text-white"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}
+                />
+              </Button>
+            </div>
             {canPause && (
               <Button
                 variant="outline"
