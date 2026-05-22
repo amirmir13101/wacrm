@@ -17,6 +17,7 @@ interface Profile {
   email: string;
   avatar_url: string | null;
   role: string | null;
+  approval_status: string | null;
 }
 
 interface AuthContextValue {
@@ -50,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, email, avatar_url, role")
+        .select("id, full_name, email, avatar_url, role, approval_status")
         .eq("user_id", userId)
         .maybeSingle();
 

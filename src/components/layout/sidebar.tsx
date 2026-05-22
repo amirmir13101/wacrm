@@ -14,6 +14,7 @@ import {
   Radio,
   Zap,
   Settings,
+  ShieldCheck,
   LogOut,
   User,
   X,
@@ -54,6 +55,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
   const totalUnread = useTotalUnread();
+  const isAdmin =
+    profile?.role === "admin" && profile?.approval_status === "approved";
+  const visibleBottomNavItems = isAdmin
+    ? [
+        { href: "/admin/users", label: "Admin users", icon: ShieldCheck },
+        ...bottomNavItems,
+      ]
+    : bottomNavItems;
 
   // Close the drawer when route changes — users opened it to navigate,
   // so once they pick a destination the drawer should get out of the way.
@@ -171,7 +180,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           <div className="my-4 border-t border-slate-800" />
 
           <ul className="flex flex-col gap-1">
-            {bottomNavItems.map((item) => {
+            {visibleBottomNavItems.map((item) => {
               const isActive = pathname.startsWith(item.href);
               return (
                 <li key={item.href}>

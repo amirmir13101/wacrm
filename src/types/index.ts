@@ -4,7 +4,10 @@ export interface Profile {
   full_name: string;
   email: string;
   avatar_url?: string;
-  role: string;
+  role: 'admin' | 'user' | string;
+  approval_status?: 'pending' | 'approved' | 'rejected' | 'suspended' | string;
+  approved_at?: string | null;
+  approved_by?: string | null;
   created_at: string;
 }
 

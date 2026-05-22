@@ -70,12 +70,17 @@ export default function SignupPage() {
               <CheckCircle className="h-6 w-6 text-violet-500" />
             </div>
             <CardTitle className="text-xl text-white">
-              Check your email
+              Account pending approval
             </CardTitle>
             <CardDescription className="text-slate-400">
-              We&apos;ve sent a confirmation link to{" "}
-              <span className="text-white">{email}</span>. Please check your
-              inbox and click the link to verify your account.
+              Your account has been created and is pending admin approval.
+              {email ? (
+                <>
+                  {" "}
+                  We&apos;ve also sent any required confirmation email to{" "}
+                  <span className="text-white">{email}</span>.
+                </>
+              ) : null}
             </CardDescription>
           </CardHeader>
           <CardContent>
