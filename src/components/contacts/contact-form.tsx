@@ -17,6 +17,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Loader2 } from 'lucide-react';
+import {
+  isDuplicatePhoneError,
+  normalizePhoneForComparison,
+  normalizeWhatsAppPhone,
+} from '@/lib/whatsapp/phone-utils';
 
 interface ContactFormProps {
   open: boolean;
@@ -93,32 +98,60 @@ export function ContactForm({
       if (!user) throw new Error('Not authenticated');
 
       let contactId = contact?.id;
+      const normalizedPhone = normalizeWhatsAppPhone(phone).phone;
+
+      const { data: existingContacts, error: duplicateLookupError } = await supabase
+        .from('contacts')
+        .select('id, phone')
+        .eq('user_id', user.id);
+
+      if (duplicateLookupError) throw duplicateLookupError;
+
+      const duplicate = existingContacts?.find(
+        (existing) =>
+          existing.id !== contactId &&
+          normalizePhoneForComparison(existing.phone) === normalizedPhone,
+      );
+
+      if (duplicate) {
+        throw new Error('A contact with this phone number already exists.');
+      }
 
       if (isEdit && contactId) {
         const { error } = await supabase
           .from('contacts')
           .update({
             name: name.trim() || null,
-            phone: phone.trim(),
+            phone: normalizedPhone,
             email: email.trim() || null,
             company: company.trim() || null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', contactId);
-        if (error) throw error;
+        if (error) {
+          if (isDuplicatePhoneError(error)) {
+            throw new Error('A contact with this phone number already exists.');
+          }
+          throw error;
+        }
       } else {
         const { data, error } = await supabase
           .from('contacts')
           .insert({
             user_id: user.id,
             name: name.trim() || null,
-            phone: phone.trim(),
+            phone: normalizedPhone,
             email: email.trim() || null,
             company: company.trim() || null,
           })
           .select('id')
           .single();
-        if (error) throw error;
+        if (error) {
+          if (isDuplicatePhoneError(error)) {
+            throw new Error('A contact with this phone number already exists.');
+          }
+          throw error;
+        }
         contactId = data.id;
       }
 

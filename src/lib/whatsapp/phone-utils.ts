@@ -1,7 +1,15 @@
+import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js/min'
+
+export const DEFAULT_PHONE_COUNTRY: CountryCode = 'PK'
+
+export interface NormalizedPhoneResult {
+  phone: string
+  country?: CountryCode
+}
+
 /**
  * Sanitize phone number for Meta WhatsApp API.
- * Meta requires digits only — no + prefix, no spaces, no dashes.
- * e.g. "+370 63949836" → "37063949836"
+ * Meta requires digits only: no plus prefix, spaces, or dashes.
  */
 export function sanitizePhoneForMeta(phone: string): string {
   if (!phone) return ''
@@ -15,6 +23,87 @@ export function sanitizePhoneForMeta(phone: string): string {
 export function normalizePhone(phone: string): string {
   if (!phone) return ''
   return phone.replace(/\D/g, '')
+}
+
+function hasInternationalPrefix(input: string): boolean {
+  return /^\s*\+/.test(input) || /^\s*00/.test(input)
+}
+
+function parsePossiblePhone(input: string, defaultCountry: CountryCode) {
+  const trimmed = input.trim()
+  const digits = normalizePhone(trimmed)
+
+  const candidates: string[] = []
+  if (hasInternationalPrefix(trimmed)) {
+    candidates.push(trimmed.startsWith('00') ? `+${digits.replace(/^00/, '')}` : trimmed)
+  } else if (/^[1-9]\d{6,14}$/.test(digits)) {
+    candidates.push(`+${digits}`)
+    candidates.push(trimmed)
+  } else {
+    candidates.push(trimmed)
+  }
+
+  for (const candidate of candidates) {
+    const parsed = candidate.startsWith('+')
+      ? parsePhoneNumberFromString(candidate)
+      : parsePhoneNumberFromString(candidate, defaultCountry)
+    if (parsed?.isPossible()) return parsed
+  }
+
+  return undefined
+}
+
+/**
+ * Normalize a human-entered contact number into the WhatsApp/Meta storage
+ * format used by this app: international digits only, with country code.
+ *
+ * Local/national numbers are interpreted with DEFAULT_PHONE_COUNTRY. Change
+ * that constant when the CRM gets a tenant-level country setting.
+ */
+export function normalizeWhatsAppPhone(
+  input: string,
+  defaultCountry: CountryCode = DEFAULT_PHONE_COUNTRY,
+): NormalizedPhoneResult {
+  if (!input.trim()) {
+    throw new Error('Phone number is required')
+  }
+
+  const parsed = parsePossiblePhone(input, defaultCountry)
+  if (!parsed) {
+    throw new Error(
+      `Enter a valid phone number with country code, or a valid ${defaultCountry} local number.`,
+    )
+  }
+
+  const phone = normalizePhone(parsed.number)
+  if (!isValidE164(phone)) {
+    throw new Error('Phone number must include a valid country code and contain 7 to 15 digits.')
+  }
+
+  return {
+    phone,
+    country: parsed.country,
+  }
+}
+
+export function normalizePhoneForComparison(
+  input: string,
+  defaultCountry: CountryCode = DEFAULT_PHONE_COUNTRY,
+): string {
+  try {
+    return normalizeWhatsAppPhone(input, defaultCountry).phone
+  } catch {
+    return normalizePhone(input)
+  }
+}
+
+export function isDuplicatePhoneError(error: { code?: string; message?: string } | null): boolean {
+  return Boolean(
+    error?.code === '23505' ||
+      /contacts_user_phone_unique|idx_contacts_user_phone_unique|duplicate key/i.test(
+        error?.message ?? '',
+      ),
+  )
 }
 
 /**
@@ -34,32 +123,15 @@ export function phonesMatch(phone1: string, phone2: string): boolean {
 
 /**
  * Validate phone number is E.164-like format (7-15 digits starting with non-zero).
- * Accepts with or without + prefix.
+ * Accepts with or without plus prefix.
  */
 export function isValidE164(phone: string): boolean {
   return /^\+?[1-9]\d{6,14}$/.test(phone)
 }
 
 /**
- * Generate plausible phone number variants for retry when Meta's
- * sandbox rejects a number with error #131030 ("not in allowed list").
- *
- * Many countries use a "trunk prefix" 0 for domestic dialing that is
- * meant to be dropped in international format (e.g. Lithuanian
- * "+370 063 949 836" domestically → "+370 63 949 836" international).
- * But some sandboxes register the number with the trunk 0 included,
- * causing sends to the correct international format to fail.
- *
- * This helper yields up to 3 variants:
- *   1. The original sanitized number (first attempt)
- *   2. With a trunk 0 inserted after the country code
- *   3. With a trunk 0 removed after the country code
- *
- * Country-code lengths of 1, 2, and 3 digits are tried because we
- * don't know the user's country ahead of time.
- *
- * @param sanitized - digits-only phone number (from sanitizePhoneForMeta)
- * @returns deduplicated list of variants, original first
+ * Generate plausible phone number variants for retry when Meta's sandbox rejects
+ * a number with error #131030 ("not in allowed list").
  */
 export function phoneVariants(sanitized: string): string[] {
   if (!sanitized) return []
@@ -68,10 +140,8 @@ export function phoneVariants(sanitized: string): string[] {
     if (v && !seen.has(v)) seen.add(v)
   }
 
-  // 1. Original
   push(sanitized)
 
-  // 2. Insert a 0 after each plausible country-code length
   for (const ccLen of [1, 2, 3]) {
     if (sanitized.length <= ccLen) continue
     const cc = sanitized.slice(0, ccLen)
@@ -81,7 +151,6 @@ export function phoneVariants(sanitized: string): string[] {
     }
   }
 
-  // 3. Remove a leading 0 after each plausible country-code length
   for (const ccLen of [1, 2, 3]) {
     if (sanitized.length <= ccLen + 1) continue
     const cc = sanitized.slice(0, ccLen)
@@ -95,9 +164,8 @@ export function phoneVariants(sanitized: string): string[] {
 }
 
 /**
- * Returns true when the Meta API error indicates the recipient
- * phone number isn't in the allowed list (sandbox restriction).
- * Detected via error code 131030 or the standard error text.
+ * Returns true when the Meta API error indicates the recipient phone number
+ * is not in the allowed list (sandbox restriction).
  */
 export function isRecipientNotAllowedError(message: string): boolean {
   return /131030|not in allowed list|not in the allowed list/i.test(message)

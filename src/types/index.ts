@@ -16,6 +16,11 @@ export interface Contact {
   email?: string;
   company?: string;
   avatar_url?: string;
+  opted_in?: boolean;
+  opted_out?: boolean;
+  is_opted_in?: boolean;
+  is_opted_out?: boolean;
+  unsubscribed?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -174,8 +179,30 @@ export interface Deal {
   assignee?: Profile;
 }
 
-export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
-export type RecipientStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed';
+export type BroadcastStatus =
+  | 'draft'
+  | 'scheduled'
+  | 'queued'
+  | 'sending'
+  | 'paused'
+  | 'completed'
+  | 'sent'
+  | 'failed'
+  | 'cancelled';
+export type RecipientStatus =
+  | 'pending'
+  | 'sending'
+  | 'sent'
+  | 'delivered'
+  | 'read'
+  | 'replied'
+  | 'failed'
+  | 'skipped';
+export type BroadcastFailureType = 'temporary' | 'permanent' | 'unknown';
+export type VariableMapping =
+  | { type: 'static'; value: string }
+  | { type: 'field'; value: string }
+  | { type: 'custom_field'; value: string };
 
 export interface Broadcast {
   id: string;
@@ -193,6 +220,12 @@ export interface Broadcast {
   read_count: number;
   replied_count: number;
   failed_count: number;
+  skipped_count?: number;
+  started_at?: string;
+  paused_at?: string;
+  completed_at?: string;
+  cancelled_at?: string;
+  queue_error?: string;
   created_at: string;
 }
 
@@ -211,6 +244,16 @@ export interface BroadcastRecipient {
   read_at?: string;
   replied_at?: string;
   error_message?: string;
+  retry_count?: number;
+  last_retry_at?: string;
+  last_error_message?: string;
+  failure_type?: BroadcastFailureType;
+  processing_started_at?: string;
+  locked_at?: string;
+  locked_by?: string;
+  attempt_count?: number;
+  next_retry_at?: string;
+  skipped_reason?: string;
   /**
    * Meta's message id, persisted when the broadcast send succeeds so
    * the webhook can mirror status updates back onto the recipient row.

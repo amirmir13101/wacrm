@@ -31,6 +31,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
         const { data, error: fetchError } = await supabase
           .from('message_templates')
           .select('*')
+          .eq('status', 'Approved')
           .order('created_at', { ascending: false });
 
         if (fetchError) throw fetchError;
@@ -73,8 +74,10 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
       {templates.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900/50">
           <FileText className="mb-2 h-8 w-8 text-slate-600" />
-          <p className="text-sm text-slate-400">No templates available.</p>
-          <p className="mt-1 text-xs text-slate-500">Create a template in Settings first.</p>
+          <p className="text-sm text-slate-400">No approved templates available.</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Approve a template in Meta WhatsApp Manager, then sync it from Settings.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

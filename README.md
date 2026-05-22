@@ -88,6 +88,40 @@ Key pages:
 - **Data** — Supabase (Postgres + Auth + Storage + RLS).
 - **WhatsApp** — Meta Cloud API (official WhatsApp Business API).
 
+## Production broadcast worker
+
+Bulk broadcasts are queued in Supabase and sent by a server-side worker.
+This is required for production because sending must continue even if the
+browser closes.
+
+Required environment variable:
+
+```bash
+AUTOMATION_CRON_SECRET=<long-random-secret>
+```
+
+Worker endpoint:
+
+```text
+POST /api/whatsapp/broadcast/worker
+x-cron-secret: <AUTOMATION_CRON_SECRET>
+```
+
+Local test example:
+
+```bash
+curl -X POST http://localhost:3000/api/whatsapp/broadcast/worker \
+  -H "x-cron-secret: <AUTOMATION_CRON_SECRET>"
+```
+
+VPS cron example, every minute:
+
+```cron
+* * * * * curl -fsS -X POST https://crm.example.com/api/whatsapp/broadcast/worker -H "x-cron-secret: <AUTOMATION_CRON_SECRET>" >/dev/null 2>&1
+```
+
+Use your real domain on the VPS. Never commit the real secret to Git.
+
 ## Contributing
 
 This is a template, not a collaborative product — the expected flow is

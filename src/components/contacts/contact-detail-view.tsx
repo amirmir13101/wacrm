@@ -32,6 +32,11 @@ import {
   X,
   DollarSign,
 } from 'lucide-react';
+import {
+  isDuplicatePhoneError,
+  normalizePhoneForComparison,
+  normalizeWhatsAppPhone,
+} from '@/lib/whatsapp/phone-utils';
 
 interface ContactDetailViewProps {
   open: boolean;
@@ -187,25 +192,57 @@ export function ContactDetailView({
     }
 
     setSavingDetails(true);
-    const { error } = await supabase
-      .from('contacts')
-      .update({
-        name: editName.trim() || null,
-        phone: editPhone.trim(),
-        email: editEmail.trim() || null,
-        company: editCompany.trim() || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', contactId);
+    try {
+      const normalizedPhone = normalizeWhatsAppPhone(editPhone).phone;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = contact?.user_id ?? session?.user?.id;
+      if (!userId) throw new Error('Not authenticated');
 
-    if (error) {
-      toast.error('Failed to update contact');
-    } else {
+      const { data: existingContacts, error: duplicateLookupError } = await supabase
+        .from('contacts')
+        .select('id, phone')
+        .eq('user_id', userId);
+
+      if (duplicateLookupError) throw duplicateLookupError;
+
+      const duplicate = existingContacts?.find(
+        (existing) =>
+          existing.id !== contactId &&
+          normalizePhoneForComparison(existing.phone) === normalizedPhone,
+      );
+
+      if (duplicate) {
+        throw new Error('A contact with this phone number already exists.');
+      }
+
+      const { error } = await supabase
+        .from('contacts')
+        .update({
+          name: editName.trim() || null,
+          phone: normalizedPhone,
+          email: editEmail.trim() || null,
+          company: editCompany.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', contactId);
+
+      if (error) {
+        if (isDuplicatePhoneError(error)) {
+          throw new Error('A contact with this phone number already exists.');
+        }
+        throw error;
+      }
+
       toast.success('Contact updated');
       fetchContact();
       onUpdated();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update contact');
+    } finally {
+      setSavingDetails(false);
     }
-    setSavingDetails(false);
   }
 
   async function toggleTag(tagId: string) {

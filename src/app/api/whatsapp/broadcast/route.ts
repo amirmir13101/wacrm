@@ -1,53 +1,103 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
-  isRecipientNotAllowedError,
+  normalizePhoneForComparison,
+  normalizeWhatsAppPhone,
 } from '@/lib/whatsapp/phone-utils'
+import { getBroadcastContactEligibility } from '@/lib/broadcast-queue'
 import {
   checkRateLimit,
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit'
+import type { Contact, VariableMapping } from '@/types'
 
-interface BroadcastResult {
+interface IncomingRecipient {
   phone: string
-  status: 'sent' | 'failed'
-  whatsapp_message_id?: string
-  error?: string
+  params?: string[]
+  name?: string
+}
+
+export function sameParams(a: string[], b: string[]) {
+  return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+export function sharedStaticVariables(
+  recipients: IncomingRecipient[],
+): Record<string, VariableMapping> {
+  const first = recipients[0]?.params ?? []
+  const hasPerRecipientParams = recipients.some(
+    (recipient) => !sameParams(recipient.params ?? [], first),
+  )
+
+  if (hasPerRecipientParams) {
+    throw new Error(
+      'Queued broadcasts do not support different raw template_params per phone number. Use the Broadcasts UI with contact fields/custom fields for personalization.',
+    )
+  }
+
+  return first.reduce<Record<string, VariableMapping>>((acc, value, index) => {
+    acc[String(index + 1)] = { type: 'static', value }
+    return acc
+  }, {})
+}
+
+async function findOrCreateContacts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  recipients: IncomingRecipient[],
+): Promise<Contact[]> {
+  const normalizedByPhone = new Map<string, IncomingRecipient>()
+  for (const recipient of recipients) {
+    const normalized = normalizeWhatsAppPhone(recipient.phone).phone
+    normalizedByPhone.set(normalized, { ...recipient, phone: normalized })
+  }
+
+  const { data: existing, error: lookupError } = await supabase
+    .from('contacts')
+    .select('*')
+    .eq('user_id', userId)
+
+  if (lookupError) throw new Error(`Failed to look up contacts: ${lookupError.message}`)
+
+  const byPhone = new Map<string, Contact>()
+  for (const contact of (existing ?? []) as Contact[]) {
+    if (contact.phone) byPhone.set(normalizePhoneForComparison(contact.phone), contact)
+  }
+
+  const missing = [...normalizedByPhone.entries()]
+    .filter(([phone]) => !byPhone.has(phone))
+    .map(([phone, recipient]) => ({
+      user_id: userId,
+      phone,
+      name: recipient.name?.trim() || null,
+    }))
+
+  for (let i = 0; i < missing.length; i += 200) {
+    const { data: inserted, error: insertError } = await supabase
+      .from('contacts')
+      .insert(missing.slice(i, i + 200))
+      .select('*')
+
+    if (insertError) throw new Error(`Failed to create contacts: ${insertError.message}`)
+    for (const contact of (inserted ?? []) as Contact[]) {
+      if (contact.phone) byPhone.set(normalizePhoneForComparison(contact.phone), contact)
+    }
+  }
+
+  return [...normalizedByPhone.keys()]
+    .map((phone) => byPhone.get(phone))
+    .filter((contact): contact is Contact => Boolean(contact))
 }
 
 /**
- * Two input shapes are accepted:
+ * Compatibility endpoint for older callers.
  *
- *   NEW (preferred — supports per-recipient variable substitution):
- *     {
- *       recipients: Array<{ phone: string; params: string[] }>,
- *       template_name, template_language
- *     }
- *
- *   LEGACY (all phones receive the same params — kept so existing
- *   callers don't break):
- *     {
- *       phone_numbers: string[],
- *       template_params: string[],
- *       template_name, template_language
- *     }
- *
- * Previous implementation only supported the legacy shape, and the
- * sending hook was forced to ship every batch with `templateParams[0]`
- * — meaning every recipient got contact-0's personalization. The new
- * shape is what actually fixes that.
+ * This route used to send every WhatsApp broadcast message immediately from
+ * the API request. Production bulk sending must go through the server-side
+ * queue, so this endpoint now creates the broadcast + pending recipient rows
+ * and lets /api/whatsapp/broadcast/worker perform delivery.
  */
-interface NewRecipient {
-  phone: string
-  params?: string[]
-}
-
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -61,9 +111,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Per-user broadcast budget. Note: this limits how often a user
-    // can *start* a campaign, not how many messages go out inside
-    // one — the fan-out loop below runs without additional gating.
     const limit = checkRateLimit(`broadcast:${user.id}`, RATE_LIMITS.broadcast)
     if (!limit.success) {
       return rateLimitResponse(limit)
@@ -76,136 +123,148 @@ export async function POST(request: Request) {
       template_name,
       template_language,
       template_params,
+      name,
     } = body
 
-    // Normalize to a list of {phone, params} regardless of shape.
-    let recipients: NewRecipient[]
+    let recipients: IncomingRecipient[]
     if (Array.isArray(newRecipients) && newRecipients.length > 0) {
       recipients = newRecipients
     } else if (Array.isArray(phone_numbers) && phone_numbers.length > 0) {
-      const shared: string[] = Array.isArray(template_params)
-        ? template_params
-        : []
-      recipients = phone_numbers.map((phone: string) => ({
-        phone,
-        params: shared,
-      }))
+      const shared: string[] = Array.isArray(template_params) ? template_params : []
+      recipients = phone_numbers.map((phone: string) => ({ phone, params: shared }))
     } else {
       return NextResponse.json(
         {
           error:
-            'Provide either `recipients` (preferred) or `phone_numbers` — must be a non-empty array',
+            'Provide either `recipients` or `phone_numbers`; it must be a non-empty array.',
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
     if (!template_name) {
+      return NextResponse.json({ error: 'template_name is required' }, { status: 400 })
+    }
+
+    const language = template_language || 'en_US'
+    const { data: approvedTemplate, error: templateError } = await supabase
+      .from('message_templates')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('name', template_name)
+      .eq('language', language)
+      .eq('status', 'Approved')
+      .maybeSingle()
+
+    if (templateError) {
+      console.error('Error checking broadcast template approval:', templateError)
       return NextResponse.json(
-        { error: 'template_name is required' },
-        { status: 400 }
+        { error: 'Failed to verify template approval status' },
+        { status: 500 },
+      )
+    }
+
+    if (!approvedTemplate) {
+      return NextResponse.json(
+        {
+          error:
+            'Only approved Meta templates can be used for broadcasts. Sync approved templates from Settings and try again.',
+        },
+        { status: 400 },
       )
     }
 
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
-      .select('*')
+      .select('id, status')
       .eq('user_id', user.id)
       .single()
 
-    if (configError || !config) {
+    if (configError || !config || config.status !== 'connected') {
       return NextResponse.json(
         {
           error:
             'WhatsApp not configured. Please set up your WhatsApp integration first.',
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    let variables: Record<string, VariableMapping>
+    try {
+      variables = sharedStaticVariables(recipients)
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Invalid template parameters' },
+        { status: 400 },
+      )
+    }
 
-    const results: BroadcastResult[] = []
-    let sentCount = 0
-    let failedCount = 0
+    const contacts = (await findOrCreateContacts(supabase, user.id, recipients)).filter(
+      (contact) => getBroadcastContactEligibility(contact).eligible,
+    )
+    if (contacts.length === 0) {
+      return NextResponse.json({ error: 'No valid recipients found.' }, { status: 400 })
+    }
 
-    for (const recipient of recipients) {
-      const sanitized = sanitizePhoneForMeta(recipient.phone)
+    const { data: broadcast, error: broadcastError } = await supabase
+      .from('broadcasts')
+      .insert({
+        user_id: user.id,
+        name: name?.trim() || `Queued broadcast - ${new Date().toLocaleString()}`,
+        template_name,
+        template_language: language,
+        template_variables: variables,
+        audience_filter: { type: 'api' },
+        status: 'queued',
+        total_recipients: contacts.length,
+        sent_count: 0,
+        delivered_count: 0,
+        read_count: 0,
+        replied_count: 0,
+        failed_count: 0,
+        skipped_count: 0,
+      })
+      .select('id')
+      .single()
 
-      if (!isValidE164(sanitized)) {
-        results.push({
-          phone: recipient.phone,
-          status: 'failed',
-          error: 'Invalid phone number format',
-        })
-        failedCount++
-        continue
-      }
+    if (broadcastError || !broadcast) {
+      throw new Error(`Failed to create broadcast: ${broadcastError?.message ?? 'unknown error'}`)
+    }
 
-      // Retry with phone variants on "not in allowed list" so numbers
-      // that differ only in a trunk-prefix 0 still reach recipients.
-      const variants = phoneVariants(sanitized)
-      let sentMessageId: string | null = null
-      let lastError: string | null = null
-
-      for (const variant of variants) {
-        try {
-          const result = await sendTemplateMessage({
-            phoneNumberId: config.phone_number_id,
-            accessToken,
-            to: variant,
-            templateName: template_name,
-            language: template_language || 'en_US',
-            params: recipient.params ?? [],
-          })
-          sentMessageId = result.messageId
-          lastError = null
-          break
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : 'Unknown error'
-          if (!isRecipientNotAllowedError(errorMessage)) {
-            lastError = errorMessage
-            break
-          }
-          lastError = errorMessage
-          // retry with next variant
-        }
-      }
-
-      if (sentMessageId) {
-        results.push({
-          phone: recipient.phone,
-          status: 'sent',
-          whatsapp_message_id: sentMessageId,
-        })
-        sentCount++
-      } else {
-        console.error(
-          `Failed to send broadcast to ${recipient.phone}:`,
-          lastError
+    for (let i = 0; i < contacts.length; i += 200) {
+      const { error: recipientsError } = await supabase
+        .from('broadcast_recipients')
+        .insert(
+          contacts.slice(i, i + 200).map((contact) => ({
+            broadcast_id: broadcast.id,
+            contact_id: contact.id,
+            status: 'pending',
+          })),
         )
-        results.push({
-          phone: recipient.phone,
-          status: 'failed',
-          error: lastError || 'Unknown error',
-        })
-        failedCount++
+
+      if (recipientsError) {
+        await supabase
+          .from('broadcasts')
+          .update({ status: 'failed', queue_error: recipientsError.message })
+          .eq('id', broadcast.id)
+        throw new Error(`Failed to queue recipients: ${recipientsError.message}`)
       }
     }
 
     return NextResponse.json({
       success: true,
-      total: recipients.length,
-      sent: sentCount,
-      failed: failedCount,
-      results,
+      queued: true,
+      broadcast_id: broadcast.id,
+      total: contacts.length,
+      message:
+        'Broadcast queued. Delivery will be handled by the server-side broadcast worker.',
     })
   } catch (error) {
-    console.error('Error in WhatsApp broadcast POST:', error)
+    console.error('Error queueing WhatsApp broadcast:', error)
     return NextResponse.json(
-      { error: 'Failed to process broadcast' },
-      { status: 500 }
+      { error: error instanceof Error ? error.message : 'Failed to queue broadcast' },
+      { status: 500 },
     )
   }
 }

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   isRecipientNotAllowedError,
   isValidE164,
+  normalizePhoneForComparison,
   normalizePhone,
+  normalizeWhatsAppPhone,
   phoneVariants,
   phonesMatch,
   sanitizePhoneForMeta,
@@ -33,6 +35,34 @@ describe("normalizePhone", () => {
     for (const s of samples) {
       expect(normalizePhone(s)).toBe(sanitizePhoneForMeta(s));
     }
+  });
+});
+
+describe("normalizeWhatsAppPhone", () => {
+  it("stores international numbers as digits only", () => {
+    expect(normalizeWhatsAppPhone("+92 300 1234567").phone).toBe("923001234567");
+    expect(normalizeWhatsAppPhone("+1 555 123 4567").phone).toBe("15551234567");
+    expect(normalizeWhatsAppPhone("+44 7700 900123").phone).toBe("447700900123");
+    expect(normalizeWhatsAppPhone("+971 50 123 4567").phone).toBe("971501234567");
+  });
+
+  it("uses PK as the current default country for local numbers", () => {
+    expect(normalizeWhatsAppPhone("0300 1234567").phone).toBe("923001234567");
+  });
+
+  it("rejects empty and unparseable numbers", () => {
+    expect(() => normalizeWhatsAppPhone("")).toThrow("Phone number is required");
+    expect(() => normalizeWhatsAppPhone("not a phone")).toThrow("Enter a valid phone number");
+  });
+});
+
+describe("normalizePhoneForComparison", () => {
+  it("returns the normalized number when parsing succeeds", () => {
+    expect(normalizePhoneForComparison("+92 300 1234567")).toBe("923001234567");
+  });
+
+  it("falls back to digit cleanup for legacy invalid stored values", () => {
+    expect(normalizePhoneForComparison("abc123")).toBe("123");
   });
 });
 

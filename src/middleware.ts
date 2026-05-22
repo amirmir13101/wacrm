@@ -13,7 +13,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -44,9 +44,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // API routes that need auth (not webhooks)
+  // API routes that need auth (except webhooks and cron-protected worker routes)
+  const isCronProtectedBroadcastWorker =
+    request.nextUrl.pathname === '/api/whatsapp/broadcast/worker' &&
+    Boolean(process.env.AUTOMATION_CRON_SECRET) &&
+    request.headers.get('x-cron-secret') === process.env.AUTOMATION_CRON_SECRET
+
   if (!user && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
-      !request.nextUrl.pathname.includes('/webhook')) {
+      !request.nextUrl.pathname.includes('/webhook') &&
+      !isCronProtectedBroadcastWorker) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

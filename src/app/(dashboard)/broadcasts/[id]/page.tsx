@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Broadcast, BroadcastRecipient, RecipientStatus } from '@/types';
@@ -32,6 +32,10 @@ import {
   Download,
   ChevronDown,
   Trash2,
+  RotateCcw,
+  Pause,
+  Play,
+  Ban,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -113,11 +117,13 @@ function FunnelChart({ steps }: { steps: FunnelStep[] }) {
 
 const RECIPIENT_STATUSES: readonly RecipientStatus[] = [
   'pending',
+  'sending',
   'sent',
   'delivered',
   'read',
   'replied',
   'failed',
+  'skipped',
 ];
 
 /**
@@ -155,38 +161,41 @@ export default function BroadcastDetailPage() {
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [controlAction, setControlAction] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const supabase = createClient();
+
+      const { data: bc, error: bcError } = await supabase
+        .from('broadcasts')
+        .select('*')
+        .eq('id', broadcastId)
+        .single();
+
+      if (bcError) throw bcError;
+      setBroadcast(bc);
+
+      const { data: recs, error: recsError } = await supabase
+        .from('broadcast_recipients')
+        .select('*, contact:contacts(*)')
+        .eq('broadcast_id', broadcastId)
+        .order('created_at', { ascending: false });
+
+      if (recsError) throw recsError;
+      setRecipients(recs ?? []);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load broadcast');
+    } finally {
+      setLoading(false);
+    }
+  }, [broadcastId]);
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const supabase = createClient();
-
-        const { data: bc, error: bcError } = await supabase
-          .from('broadcasts')
-          .select('*')
-          .eq('id', broadcastId)
-          .single();
-
-        if (bcError) throw bcError;
-        setBroadcast(bc);
-
-        const { data: recs, error: recsError } = await supabase
-          .from('broadcast_recipients')
-          .select('*, contact:contacts(*)')
-          .eq('broadcast_id', broadcastId)
-          .order('created_at', { ascending: false });
-
-        if (recsError) throw recsError;
-        setRecipients(recs ?? []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load broadcast');
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchData();
-  }, [broadcastId]);
+  }, [fetchData]);
 
   const filteredRecipients = useMemo(
     () =>
@@ -207,6 +216,10 @@ export default function BroadcastDetailPage() {
       'Read At',
       'Replied At',
       'Error',
+      'Skip Reason',
+      'Retry Count',
+      'Last Retry At',
+      'Failure Type',
     ];
     const rows = recipients.map((r) => [
       r.contact?.name ?? '',
@@ -217,6 +230,10 @@ export default function BroadcastDetailPage() {
       r.read_at ?? '',
       r.replied_at ?? '',
       r.error_message ?? '',
+      r.skipped_reason ?? '',
+      String(r.retry_count ?? 0),
+      r.last_retry_at ?? '',
+      r.failure_type ?? '',
     ]);
     const csv = toCsv([header, ...rows]);
     const safeName = broadcast.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
@@ -243,6 +260,58 @@ export default function BroadcastDetailPage() {
     router.push('/broadcasts');
   }
 
+  async function handleRetryFailed() {
+    if (!broadcast || broadcast.failed_count === 0) return;
+
+    setRetrying(true);
+    try {
+      const res = await fetch(`/api/whatsapp/broadcast/${broadcastId}/retry`, {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to retry failed recipients');
+      }
+
+      toast.success(
+        `Retry complete: ${data.success_count ?? 0} sent, ${
+          data.failed_again_count ?? 0
+        } failed again, ${data.skipped_count ?? 0} skipped.`,
+      );
+      if ((data.skipped_count ?? 0) > 0 && Array.isArray(data.skipped)) {
+        const firstReason = data.skipped[0]?.reason;
+        if (firstReason) toast.warning(`Skipped: ${firstReason}`);
+      }
+      await fetchData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Retry failed');
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  async function handleControl(action: 'pause' | 'resume' | 'cancel') {
+    if (!broadcast) return;
+
+    setControlAction(action);
+    try {
+      const res = await fetch(`/api/whatsapp/broadcast/${broadcastId}/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Failed to ${action} broadcast`);
+      toast.success(`Broadcast ${data.status}`);
+      await fetchData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Failed to ${action} broadcast`);
+    } finally {
+      setControlAction(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -263,6 +332,13 @@ export default function BroadcastDetailPage() {
   }
 
   const status = getBroadcastStatus(broadcast.status);
+  const pendingCount = recipients.filter((r) => r.status === 'pending').length;
+  const sendingCount = recipients.filter((r) => r.status === 'sending').length;
+  const skippedCount =
+    broadcast.skipped_count ?? recipients.filter((r) => r.status === 'skipped').length;
+  const canPause = ['queued', 'sending'].includes(broadcast.status);
+  const canResume = broadcast.status === 'paused';
+  const canCancel = ['queued', 'sending', 'paused'].includes(broadcast.status);
 
   const funnelSteps: FunnelStep[] = [
     { label: 'Sent', value: broadcast.sent_count, color: 'bg-violet-500' },
@@ -329,32 +405,119 @@ export default function BroadcastDetailPage() {
             </Button>
           </div>
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={broadcast.status === 'sending'}
-            onClick={() => setConfirmDelete(true)}
-            title={
-              broadcast.status === 'sending'
-                ? 'Cannot delete while a broadcast is actively sending'
+          <div className="flex flex-wrap items-center gap-2">
+            {canPause && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!!controlAction}
+                onClick={() => handleControl('pause')}
+                className="border-orange-500/30 bg-transparent text-orange-300 hover:bg-orange-500/10 disabled:opacity-40"
+              >
+                {controlAction === 'pause' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Pause className="h-3.5 w-3.5" />
+                )}
+                Pause
+              </Button>
+            )}
+            {canResume && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!!controlAction}
+                onClick={() => handleControl('resume')}
+                className="border-emerald-500/30 bg-transparent text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40"
+              >
+                {controlAction === 'resume' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="h-3.5 w-3.5" />
+                )}
+                Resume
+              </Button>
+            )}
+            {canCancel && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!!controlAction}
+                onClick={() => handleControl('cancel')}
+                className="border-red-500/30 bg-transparent text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+              >
+                {controlAction === 'cancel' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Ban className="h-3.5 w-3.5" />
+                )}
+                Cancel
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                retrying ||
+                broadcast.status === 'sending' ||
+                broadcast.failed_count === 0
+              }
+              onClick={handleRetryFailed}
+              title={
+                broadcast.failed_count === 0
+                  ? 'No failed recipients to retry'
+                  : 'Retry only recipients that currently failed'
+              }
+              className="border-amber-500/30 bg-transparent text-amber-300 hover:bg-amber-500/10 disabled:opacity-40"
+            >
+              {retrying ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RotateCcw className="h-3.5 w-3.5" />
+              )}
+              Retry Failed Recipients
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+            disabled={['queued', 'sending'].includes(broadcast.status)}
+              onClick={() => setConfirmDelete(true)}
+              title={
+              ['queued', 'sending'].includes(broadcast.status)
+                ? 'Cannot delete while a broadcast is queued or actively sending'
                 : 'Delete this broadcast'
-            }
-            className="border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10 disabled:opacity-40"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Delete
-          </Button>
+              }
+              className="border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10 disabled:opacity-40"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </Button>
+          </div>
         )}
       </div>
 
-      {/* Stats — 6 cards: Total / Sent / Delivered / Read / Replied / Failed */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {/* Queue and delivery stats */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-9">
         <StatCard
           label="Total Recipients"
           value={broadcast.total_recipients}
           total={broadcast.total_recipients}
           icon={<Users className="h-4 w-4" />}
           color="bg-slate-800 text-slate-300"
+        />
+        <StatCard
+          label="Pending"
+          value={pendingCount}
+          total={broadcast.total_recipients}
+          icon={<Loader2 className="h-4 w-4" />}
+          color="bg-slate-500/10 text-slate-400"
+        />
+        <StatCard
+          label="Sending"
+          value={sendingCount}
+          total={broadcast.total_recipients}
+          icon={<Send className="h-4 w-4" />}
+          color="bg-yellow-500/10 text-yellow-400"
         />
         <StatCard
           label="Sent"
@@ -383,6 +546,13 @@ export default function BroadcastDetailPage() {
           total={broadcast.total_recipients}
           icon={<MessageCircle className="h-4 w-4" />}
           color="bg-indigo-500/10 text-indigo-400"
+        />
+        <StatCard
+          label="Skipped"
+          value={skippedCount}
+          total={broadcast.total_recipients}
+          icon={<Ban className="h-4 w-4" />}
+          color="bg-amber-500/10 text-amber-400"
         />
         <StatCard
           label="Failed"
@@ -476,6 +646,8 @@ export default function BroadcastDetailPage() {
                   <TableHead className="text-slate-400">Sent</TableHead>
                   <TableHead className="text-slate-400">Delivered</TableHead>
                   <TableHead className="text-slate-400">Read</TableHead>
+                  <TableHead className="text-slate-400">Retries</TableHead>
+                  <TableHead className="text-slate-400">Skip Reason</TableHead>
                   <TableHead className="text-slate-400">Error</TableHead>
                 </TableRow>
               </TableHeader>
@@ -512,8 +684,16 @@ export default function BroadcastDetailPage() {
                           ? new Date(recipient.read_at).toLocaleString()
                           : '-'}
                       </TableCell>
+                      <TableCell className="text-slate-400">
+                        {recipient.retry_count ?? 0}
+                      </TableCell>
+                      <TableCell className="max-w-xs truncate text-xs text-amber-300">
+                        {recipient.skipped_reason ?? '-'}
+                      </TableCell>
                       <TableCell className="max-w-xs truncate text-xs text-red-400">
-                        {recipient.error_message ?? '-'}
+                        {recipient.error_message ??
+                          recipient.last_error_message ??
+                          '-'}
                       </TableCell>
                     </TableRow>
                   );

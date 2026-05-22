@@ -13,6 +13,11 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Upload, FileText, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import {
+  isDuplicatePhoneError,
+  normalizePhoneForComparison,
+  normalizeWhatsAppPhone,
+} from '@/lib/whatsapp/phone-utils';
 
 interface ImportModalProps {
   open: boolean;
@@ -25,6 +30,15 @@ interface ParsedRow {
   name?: string;
   email?: string;
   company?: string;
+}
+
+interface ImportResult {
+  imported: number;
+  failed: number;
+  skippedDuplicates: number;
+  invalidPhones: number;
+  duplicateDetails: string[];
+  invalidDetails: string[];
 }
 
 function parseCSV(text: string): ParsedRow[] {
@@ -84,7 +98,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
   const [file, setFile] = useState<File | null>(null);
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ imported: number; failed: number } | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
 
   function reset() {
     setFile(null);
@@ -130,11 +144,48 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
 
       let imported = 0;
       let failed = 0;
+      let skippedDuplicates = 0;
+      let invalidPhones = 0;
+      const duplicateDetails: string[] = [];
+      const invalidDetails: string[] = [];
+
+      const { data: existingContacts, error: lookupError } = await supabase
+        .from('contacts')
+        .select('id, phone')
+        .eq('user_id', user.id);
+
+      if (lookupError) throw lookupError;
+
+      const seenPhones = new Set(
+        (existingContacts ?? []).map((contact) => normalizePhoneForComparison(contact.phone)),
+      );
+
+      const rowsToImport: ParsedRow[] = [];
+      parsedRows.forEach((row, index) => {
+        try {
+          const normalizedPhone = normalizeWhatsAppPhone(row.phone).phone;
+          if (seenPhones.has(normalizedPhone)) {
+            skippedDuplicates++;
+            duplicateDetails.push(`Row ${index + 2}: ${row.phone}`);
+            return;
+          }
+
+          seenPhones.add(normalizedPhone);
+          rowsToImport.push({
+            ...row,
+            phone: normalizedPhone,
+          });
+        } catch (err) {
+          invalidPhones++;
+          const reason = err instanceof Error ? err.message : 'Invalid phone number';
+          invalidDetails.push(`Row ${index + 2}: ${row.phone} (${reason})`);
+        }
+      });
 
       // Batch insert in chunks of 50
       const chunkSize = 50;
-      for (let i = 0; i < parsedRows.length; i += chunkSize) {
-        const chunk = parsedRows.slice(i, i + chunkSize);
+      for (let i = 0; i < rowsToImport.length; i += chunkSize) {
+        const chunk = rowsToImport.slice(i, i + chunkSize);
         const rows = chunk.map((row) => ({
           user_id: user.id,
           phone: row.phone,
@@ -153,7 +204,12 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
           for (const row of rows) {
             const { error: singleErr } = await supabase.from('contacts').insert(row);
             if (singleErr) {
-              failed++;
+              if (isDuplicatePhoneError(singleErr)) {
+                skippedDuplicates++;
+                duplicateDetails.push(`Phone ${row.phone}`);
+              } else {
+                failed++;
+              }
             } else {
               imported++;
             }
@@ -163,10 +219,23 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
         }
       }
 
-      setResult({ imported, failed });
+      setResult({
+        imported,
+        failed,
+        skippedDuplicates,
+        invalidPhones,
+        duplicateDetails,
+        invalidDetails,
+      });
       if (imported > 0) {
         toast.success(`${imported} contact${imported !== 1 ? 's' : ''} imported`);
         onImported();
+      }
+      if (skippedDuplicates > 0) {
+        toast.info(`${skippedDuplicates} duplicate row${skippedDuplicates !== 1 ? 's' : ''} skipped`);
+      }
+      if (invalidPhones > 0) {
+        toast.error(`${invalidPhones} row${invalidPhones !== 1 ? 's have' : ' has'} invalid phone numbers`);
       }
       if (failed > 0) {
         toast.error(`${failed} contact${failed !== 1 ? 's' : ''} failed to import`);
@@ -280,7 +349,31 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
                     {result.failed} failed
                   </div>
                 )}
+                {result.skippedDuplicates > 0 && (
+                  <div className="flex items-center gap-1.5 text-amber-400 text-sm">
+                    <XCircle className="size-4" />
+                    {result.skippedDuplicates} duplicates skipped
+                  </div>
+                )}
+                {result.invalidPhones > 0 && (
+                  <div className="flex items-center gap-1.5 text-red-400 text-sm">
+                    <XCircle className="size-4" />
+                    {result.invalidPhones} invalid phones
+                  </div>
+                )}
               </div>
+              {result.duplicateDetails.length > 0 && (
+                <div className="text-xs text-slate-400">
+                  <p className="font-medium text-slate-300">Duplicate rows</p>
+                  <p>{result.duplicateDetails.slice(0, 5).join(', ')}</p>
+                </div>
+              )}
+              {result.invalidDetails.length > 0 && (
+                <div className="text-xs text-slate-400">
+                  <p className="font-medium text-slate-300">Invalid phone rows</p>
+                  <p>{result.invalidDetails.slice(0, 5).join(', ')}</p>
+                </div>
+              )}
             </div>
           )}
         </div>
