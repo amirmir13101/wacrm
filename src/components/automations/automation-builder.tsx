@@ -53,6 +53,11 @@ import {
   type AutomationTagOption,
   type AutomationTemplateOption,
 } from "@/lib/automations/builder-options"
+import {
+  extractTemplateVariableNumbers,
+  normalizeKeywordConfig,
+  type TemplateVariableMapping,
+} from "@/lib/automations/template-variables"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -268,7 +273,10 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         name: state.name || "Untitled automation",
         description: state.description || null,
         trigger_type: state.trigger_type,
-        trigger_config: state.trigger_config,
+        trigger_config:
+          state.trigger_type === "keyword_match"
+            ? normalizeKeywordConfig(state.trigger_config)
+            : state.trigger_config,
         is_active: state.is_active,
         steps: toApiSteps(state.steps),
       }
@@ -425,7 +433,13 @@ function TriggerCard({
               </label>
               <select
                 value={type}
-                onChange={(e) => onTypeChange(e.target.value as AutomationTriggerType)}
+                onChange={(e) => {
+                  const next = e.target.value as AutomationTriggerType
+                  onTypeChange(next)
+                  if (next === "keyword_match") {
+                    onConfigChange({ keywords: [], match_type: "contains" })
+                  }
+                }}
                 className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white focus:border-violet-500 focus:outline-none"
               >
                 {TRIGGER_OPTIONS.map((o) => (
@@ -500,6 +514,7 @@ function KeywordMatchConfig({
                 .split(",")
                 .map((s) => s.trim())
                 .filter(Boolean),
+              match_type: config?.match_type ?? "contains",
             })
           }
           className="bg-slate-800 text-white"
@@ -789,6 +804,16 @@ function StepEditor({
   const cfg = step.step_config
   const set = (patch: Record<string, unknown>) =>
     onChange({ ...step, step_config: { ...cfg, ...patch } })
+  const setTemplateVariable = (variable: string, patch: Partial<TemplateVariableMapping>) => {
+    const current = ((cfg.variables as Record<string, TemplateVariableMapping> | undefined) ??
+      {})[variable] ?? { type: "contact_field", value: "name" }
+    set({
+      variables: {
+        ...((cfg.variables as Record<string, TemplateVariableMapping> | undefined) ?? {}),
+        [variable]: { ...current, ...patch },
+      },
+    })
+  }
 
   switch (step.step_type) {
     case "send_message":
@@ -802,13 +827,37 @@ function StepEditor({
           />
         </FieldBlock>
       )
-    case "send_template":
+    case "send_template": {
+      const selectedTemplate = options.templates.find(
+        (template) =>
+          template.name === cfg.template_name &&
+          (template.language || "en_US") === ((cfg.language as string) || "en_US"),
+      )
+      const requiredVariables =
+        (cfg.required_variables as string[] | undefined) ??
+        extractTemplateVariableNumbers(selectedTemplate?.body_text)
       return (
         <>
           <FieldBlock label="Template name">
             <select
               value={templateSelectValue(cfg.template_name, cfg.language)}
-              onChange={(e) => set(selectTemplateConfig(e.target.value))}
+              onChange={(e) => {
+                const next = selectTemplateConfig(e.target.value)
+                const template = options.templates.find(
+                  (t) => t.name === next.template_name && t.language === next.language,
+                )
+                const required = extractTemplateVariableNumbers(template?.body_text)
+                set({
+                  ...next,
+                  required_variables: required,
+                  variables: Object.fromEntries(
+                    required.map((variable) => [
+                      variable,
+                      { type: "contact_field", value: "name" },
+                    ]),
+                  ),
+                })
+              }}
               className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
             >
               <option value="">Choose an approved template</option>
@@ -831,8 +880,69 @@ function StepEditor({
               </p>
             )}
           </FieldBlock>
+          {requiredVariables.length > 0 && (
+            <div className="space-y-3 rounded-md border border-slate-700 bg-slate-950/60 p-3">
+              <div>
+                <p className="text-xs font-medium text-white">Template variables</p>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Map every variable before activating this automation.
+                </p>
+              </div>
+              {requiredVariables.map((variable) => {
+                const mapping =
+                  ((cfg.variables as Record<string, TemplateVariableMapping> | undefined) ??
+                    {})[variable] ?? { type: "contact_field", value: "name" }
+                return (
+                  <div key={variable} className="grid grid-cols-[48px_1fr] gap-2">
+                    <div className="pt-2 text-xs font-mono text-violet-300">
+                      {`{{${variable}}}`}
+                    </div>
+                    <div className="space-y-2">
+                      <select
+                        value={mapping.type}
+                        onChange={(e) =>
+                          setTemplateVariable(variable, {
+                            type: e.target.value as TemplateVariableMapping["type"],
+                            value: e.target.value === "static" ? "" : "name",
+                          })
+                        }
+                        className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
+                      >
+                        <option value="contact_field">Contact field</option>
+                        <option value="static">Static custom text</option>
+                      </select>
+                      {mapping.type === "contact_field" ? (
+                        <select
+                          value={mapping.value}
+                          onChange={(e) =>
+                            setTemplateVariable(variable, { value: e.target.value })
+                          }
+                          className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
+                        >
+                          <option value="name">contact.name</option>
+                          <option value="phone">contact.phone</option>
+                          <option value="email">contact.email</option>
+                          <option value="company">contact.company</option>
+                        </select>
+                      ) : (
+                        <Input
+                          value={mapping.value}
+                          onChange={(e) =>
+                            setTemplateVariable(variable, { value: e.target.value })
+                          }
+                          placeholder={`Value for {{${variable}}}`}
+                          className="bg-slate-800 text-white"
+                        />
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </>
       )
+    }
     case "add_tag":
     case "remove_tag":
       return (

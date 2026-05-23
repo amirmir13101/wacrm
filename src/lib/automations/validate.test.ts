@@ -42,6 +42,25 @@ describe("validateStepsForActivation", () => {
     ]);
   });
 
+  it("blocks activation when required template variables are not mapped", () => {
+    const issues = validateStepsForActivation([
+      {
+        step_type: "send_template",
+        step_config: {
+          template_name: "amir_new_testing",
+          required_variables: ["1"],
+          variables: {},
+        },
+      },
+    ]);
+    expect(issues).toEqual([
+      {
+        path: "steps[0].variables.1",
+        message: "Template variable {{1}} is missing.",
+      },
+    ]);
+  });
+
   it("checks wait amount and unit boundaries", () => {
     const issues = validateStepsForActivation([
       { step_type: "wait", step_config: { amount: 0, unit: "minutes" } },
@@ -194,14 +213,21 @@ describe("validateTriggerForActivation", () => {
     expect(issues.map((i) => i.path)).toContain("trigger.keywords");
   });
 
-  it("rejects keyword_match with whitespace-only entries", () => {
+  it("normalizes keyword_match and ignores whitespace-only entries", () => {
     const issues = validateTriggerForActivation("keyword_match", {
       keywords: ["hi", "   "],
       match_type: "contains",
     });
-    expect(issues.map((i) => i.message)).toContain(
-      "keywords cannot be empty strings",
-    );
+    expect(issues).toEqual([]);
+  });
+
+  it("accepts comma-separated keyword strings", () => {
+    expect(
+      validateTriggerForActivation("keyword_match", {
+        keywords: "price, pricing, cost",
+        match_type: "contains",
+      }),
+    ).toEqual([]);
   });
 
   it("rejects keyword_match with an unknown match_type", () => {

@@ -7,6 +7,7 @@ import {
   validateStepsForActivation,
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
+import { normalizeKeywordConfig } from '@/lib/automations/template-variables'
 
 export async function GET() {
   const supabase = await createClient()
@@ -57,6 +58,9 @@ export async function POST(request: Request) {
       { error: 'name and trigger_type are required' },
       { status: 400 },
     )
+  }
+  if (effectiveTriggerType === 'keyword_match') {
+    effectiveTriggerConfig = normalizeKeywordConfig(effectiveTriggerConfig)
   }
 
   // Block activation of a clearly broken automation up-front instead of

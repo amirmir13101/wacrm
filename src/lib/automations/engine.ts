@@ -20,6 +20,12 @@ import {
   engineSendText,
   engineSendTemplate,
 } from './meta-send'
+import {
+  extractTemplateVariableNumbers,
+  normalizeKeywordConfig,
+  resolveTemplateParams,
+  type TemplateVariableMappings,
+} from './template-variables'
 
 // ------------------------------------------------------------
 // Public API
@@ -333,24 +339,37 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('send_template needs a contact')
       if (!cfg.template_name) throw new Error('send_template needs template_name')
       const conversationId = await resolveConversationId(args)
-      // Meta templates use positional {{1}}, {{2}}, … placeholders, so
-      // we MUST emit params in strict numeric order. Lexicographic sort
-      // of "1", "2", …, "10" yields "1", "10", "2", … which silently
-      // scrambles every template with ≥10 variables.
-      const params = cfg.variables
-        ? Object.keys(cfg.variables)
-            .sort((a, b) => {
-              const na = Number(a)
-              const nb = Number(b)
-              const aNum = Number.isFinite(na)
-              const bNum = Number.isFinite(nb)
-              if (aNum && bNum) return na - nb
-              if (aNum) return -1
-              if (bNum) return 1
-              return a.localeCompare(b)
-            })
-            .map((k) => String(cfg.variables![k]))
-        : []
+      const { data: template } = await db
+        .from('message_templates')
+        .select('body_text')
+        .eq('user_id', args.automation.user_id)
+        .eq('name', cfg.template_name)
+        .eq('language', cfg.language || 'en_US')
+        .eq('status', 'Approved')
+        .maybeSingle()
+      const templateVariables = extractTemplateVariableNumbers(template?.body_text)
+      const requiredVariables =
+        templateVariables.length > 0 ? templateVariables : (cfg.required_variables ?? []).map(String)
+      const { data: contact, error: contactErr } = await db
+        .from('contacts')
+        .select('name, phone, email, company')
+        .eq('id', args.contactId)
+        .eq('user_id', args.automation.user_id)
+        .maybeSingle()
+      if (contactErr || !contact) throw new Error('contact not found for template variables')
+      const params = resolveTemplateParams({
+        requiredVariables,
+        mappings: cfg.variables as TemplateVariableMappings | undefined,
+        contact,
+      })
+      const missing = requiredVariables.filter((_, index) => !params[index]?.trim())
+      if (missing.length > 0) {
+        throw new Error(
+          `Template expects ${requiredVariables.length} variables but automation provided ${
+            requiredVariables.length - missing.length
+          }. Configure template variables.`,
+        )
+      }
       const { whatsapp_message_id } = await engineSendTemplate({
         userId: args.automation.user_id,
         conversationId,
@@ -361,7 +380,6 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       })
       return `template sent via Meta (${whatsapp_message_id})`
     }
-
     case 'add_tag': {
       const cfg = step.step_config as TagStepConfig
       if (!args.contactId || !cfg.tag_id) throw new Error('add_tag needs contact + tag_id')
@@ -491,9 +509,13 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
 
 function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
   if (automation.trigger_type !== 'keyword_match') return true
-  const cfg = automation.trigger_config as KeywordMatchTriggerConfig
-  if (!cfg?.keywords || cfg.keywords.length === 0) return false
-  const text = (ctx?.message_text ?? '').toString()
+  return keywordTriggerMatches(automation.trigger_config as KeywordMatchTriggerConfig, ctx?.message_text)
+}
+
+export function keywordTriggerMatches(config: unknown, messageText: unknown): boolean {
+  const cfg = normalizeKeywordConfig(config)
+  if (!cfg.keywords || cfg.keywords.length === 0) return false
+  const text = (messageText ?? '').toString()
   if (!text) return false
   const haystack = cfg.case_sensitive ? text : text.toLowerCase()
   return cfg.keywords.some((raw) => {

@@ -10,6 +10,7 @@ import {
   validateStepsForActivation,
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
+import { normalizeKeywordConfig } from '@/lib/automations/template-variables'
 
 async function requireUser() {
   const supabase = await createClient()
@@ -75,6 +76,9 @@ export async function PATCH(
     'is_active',
   ] as const) {
     if (k in body) update[k] = body[k]
+  }
+  if ((update.trigger_type ?? existing.trigger_type) === 'keyword_match') {
+    update.trigger_config = normalizeKeywordConfig(update.trigger_config ?? existing.trigger_config)
   }
 
   // If this PATCH leaves the automation active (either explicitly

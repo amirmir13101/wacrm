@@ -325,7 +325,15 @@ export interface SendMessageStepConfig {
 export interface SendTemplateStepConfig {
   template_name: string;
   language?: string;
-  variables?: Record<string, string>;
+  required_variables?: string[];
+  variables?: Record<
+    string,
+    | string
+    | {
+        type: 'contact_field' | 'static';
+        value: string;
+      }
+  >;
 }
 
 export interface TagStepConfig {

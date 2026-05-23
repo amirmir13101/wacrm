@@ -1,4 +1,5 @@
 import type { AutomationTriggerType } from '@/types'
+import { missingTemplateVariables, normalizeKeywordConfig } from './template-variables'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -61,6 +62,18 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
     case 'send_template':
       if (!nonEmpty(c.template_name)) {
         issues.push({ path: `${path}.template_name`, message: 'template name is required' })
+      }
+      if (Array.isArray(c.required_variables)) {
+        const missing = missingTemplateVariables(
+          c.required_variables.map(String),
+          c.variables as Parameters<typeof missingTemplateVariables>[1],
+        )
+        for (const variable of missing) {
+          issues.push({
+            path: `${path}.variables.${variable}`,
+            message: `Template variable {{${variable}}} is missing.`,
+          })
+        }
       }
       break
     case 'add_tag':
@@ -148,13 +161,11 @@ export function validateTriggerForActivation(
   const cfg = (triggerConfig ?? {}) as Record<string, unknown>
 
   if (triggerType === 'keyword_match') {
-    const k = cfg.keywords
-    if (!Array.isArray(k) || k.length === 0) {
-      issues.push({ path: 'trigger.keywords', message: 'at least one keyword is required' })
-    } else if (k.some((v) => typeof v !== 'string' || v.trim() === '')) {
-      issues.push({ path: 'trigger.keywords', message: 'keywords cannot be empty strings' })
+    const normalized = normalizeKeywordConfig(cfg)
+    if (normalized.keywords.length === 0) {
+      issues.push({ path: 'trigger.keywords', message: 'Please enter at least one keyword.' })
     }
-    if (cfg.match_type !== 'exact' && cfg.match_type !== 'contains') {
+    if (cfg.match_type !== undefined && cfg.match_type !== 'exact' && cfg.match_type !== 'contains') {
       issues.push({
         path: 'trigger.match_type',
         message: 'match type must be "exact" or "contains"',
