@@ -30,9 +30,15 @@ export function normalizeKeywordConfig(config: unknown): {
     : typeof cfg.keywords === 'string'
       ? cfg.keywords.split(',')
       : []
+  const seen = new Set<string>()
   const keywords = raw
-    .map((v) => String(v).trim())
+    .map((v) => String(v).trim().toLowerCase())
     .filter(Boolean)
+    .filter((keyword) => {
+      if (seen.has(keyword)) return false
+      seen.add(keyword)
+      return true
+    })
 
   return {
     keywords,

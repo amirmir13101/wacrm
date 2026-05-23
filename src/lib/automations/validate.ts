@@ -163,7 +163,7 @@ export function validateTriggerForActivation(
   if (triggerType === 'keyword_match') {
     const normalized = normalizeKeywordConfig(cfg)
     if (normalized.keywords.length === 0) {
-      issues.push({ path: 'trigger.keywords', message: 'Please enter at least one keyword.' })
+      issues.push({ path: 'trigger.keywords', message: 'Please add at least one keyword.' })
     }
     if (cfg.match_type !== undefined && cfg.match_type !== 'exact' && cfg.match_type !== 'contains') {
       issues.push({

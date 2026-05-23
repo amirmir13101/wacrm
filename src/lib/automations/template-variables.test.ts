@@ -59,11 +59,23 @@ describe('template variable helpers', () => {
   it('normalizes comma-separated keyword strings', () => {
     expect(
       normalizeKeywordConfig({
-        keywords: 'price, pricing, cost, , rate',
+        keywords: 'Price, pricing, cost, , rate, PRICE',
         match_type: 'contains',
       }),
     ).toEqual({
       keywords: ['price', 'pricing', 'cost', 'rate'],
+      match_type: 'contains',
+    })
+  })
+
+  it('normalizes old array keyword configs', () => {
+    expect(
+      normalizeKeywordConfig({
+        keywords: [' Price ', '', 'pricing', 'PRICE', 'Cost'],
+        match_type: 'contains',
+      }),
+    ).toEqual({
+      keywords: ['price', 'pricing', 'cost'],
       match_type: 'contains',
     })
   })

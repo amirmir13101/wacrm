@@ -498,27 +498,77 @@ function KeywordMatchConfig({
   config: KeywordMatchTriggerConfig
   onChange: (c: Record<string, unknown>) => void
 }) {
-  const keywords = config?.keywords ?? []
+  const keywords = normalizeKeywordConfig(config).keywords
+  const [draft, setDraft] = useState("")
+  const updateKeywords = (nextKeywords: string[]) => {
+    onChange({
+      ...config,
+      keywords: normalizeKeywordConfig({ keywords: nextKeywords }).keywords,
+      match_type: config?.match_type ?? "contains",
+    })
+  }
+  const addKeywords = (value: string) => {
+    const next = value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (next.length === 0) return
+    updateKeywords([...keywords, ...next])
+    setDraft("")
+  }
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-400">
-          Keywords (comma-separated)
+          Keywords
         </label>
         <Input
-          value={keywords.join(", ")}
-          onChange={(e) =>
-            onChange({
-              ...config,
-              keywords: e.target.value
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean),
-              match_type: config?.match_type ?? "contains",
-            })
-          }
+          value={draft}
+          placeholder="Type a keyword and press Enter, or separate with commas"
+          onChange={(e) => {
+            const value = e.target.value
+            if (value.includes(",")) {
+              addKeywords(value)
+              return
+            }
+            setDraft(value)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              addKeywords(draft)
+            }
+          }}
+          onBlur={() => addKeywords(draft)}
           className="bg-slate-800 text-white"
         />
+        <p className="mt-1 text-[11px] text-slate-500">
+          Example: price, pricing, cost, rate
+        </p>
+        {keywords.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {keywords.map((keyword) => (
+              <span
+                key={keyword}
+                className="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs text-violet-200"
+              >
+                {keyword}
+                <button
+                  type="button"
+                  aria-label={`Remove ${keyword}`}
+                  onClick={() => updateKeywords(keywords.filter((k) => k !== keyword))}
+                  className="rounded-full px-1 text-violet-200 hover:bg-violet-500/20 hover:text-white"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-amber-300">
+            Please add at least one keyword.
+          </p>
+        )}
       </div>
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-400">
