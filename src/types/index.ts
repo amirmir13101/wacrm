@@ -239,6 +239,28 @@ export interface Broadcast {
   created_at: string;
 }
 
+export interface WhatsAppPricingRate {
+  id: string;
+  user_id: string;
+  country_name: string;
+  iso_country_code: string;
+  phone_country_code: string;
+  currency: string;
+  marketing_rate?: string | number | null;
+  utility_rate?: string | number | null;
+  authentication_rate?: string | number | null;
+  service_rate?: string | number | null;
+  source_url?: string | null;
+  source_note?: string | null;
+  official_rate_source_url?: string | null;
+  last_verified_at?: string | null;
+  verified_by_admin?: boolean | null;
+  notes?: string | null;
+  effective_from?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface BroadcastRecipient {
   id: string;
   broadcast_id: string;
