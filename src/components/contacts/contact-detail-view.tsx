@@ -37,12 +37,38 @@ import {
   normalizePhoneForComparison,
   normalizeWhatsAppPhone,
 } from '@/lib/whatsapp/phone-utils';
+import {
+  buildManualConsentUpdate,
+  getContactConsentStatus,
+  OPT_IN_SOURCES,
+  OPT_OUT_REASONS,
+} from '@/lib/contacts/consent';
 
 interface ContactDetailViewProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contactId: string | null;
   onUpdated: () => void;
+}
+
+function ConsentBadge({ contact }: { contact: Contact }) {
+  const status = getContactConsentStatus(contact);
+  const styles = {
+    opted_in: 'border-violet-500/30 bg-violet-500/10 text-violet-300',
+    opted_out: 'border-red-500/30 bg-red-500/10 text-red-300',
+    not_opted_in: 'border-slate-700 bg-slate-800 text-slate-400',
+  }[status];
+  const label = {
+    opted_in: 'Opted in',
+    opted_out: 'Opted out',
+    not_opted_in: 'Not opted in',
+  }[status];
+
+  return (
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${styles}`}>
+      {label}
+    </span>
+  );
 }
 
 export function ContactDetailView({
@@ -62,6 +88,10 @@ export function ContactDetailView({
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editCompany, setEditCompany] = useState('');
+  const [editWhatsappOptIn, setEditWhatsappOptIn] = useState(false);
+  const [editOptInSource, setEditOptInSource] = useState('Manual');
+  const [editOptedOut, setEditOptedOut] = useState(false);
+  const [editOptOutReason, setEditOptOutReason] = useState('Admin action');
   const [savingDetails, setSavingDetails] = useState(false);
 
   // Tags tab
@@ -101,6 +131,10 @@ export function ContactDetailView({
       setEditPhone(data.phone);
       setEditEmail(data.email ?? '');
       setEditCompany(data.company ?? '');
+      setEditWhatsappOptIn(data.whatsapp_opt_in === true);
+      setEditOptInSource(data.opt_in_source ?? 'Manual');
+      setEditOptedOut(Boolean(data.opted_out_at));
+      setEditOptOutReason(data.opt_out_reason ?? 'Admin action');
     }
     setLoading(false);
   }, [contactId, supabase]);
@@ -217,6 +251,15 @@ export function ContactDetailView({
         throw new Error('A contact with this phone number already exists.');
       }
 
+      const consentUpdate = buildManualConsentUpdate({
+        whatsappOptIn: editWhatsappOptIn,
+        optInSource: editOptInSource,
+        optedOut: editOptedOut,
+        optOutReason: editOptOutReason,
+        previousOptedInAt: contact?.opted_in_at,
+        previousOptedOutAt: contact?.opted_out_at,
+      });
+
       const { error } = await supabase
         .from('contacts')
         .update({
@@ -224,6 +267,7 @@ export function ContactDetailView({
           phone: normalizedPhone,
           email: editEmail.trim() || null,
           company: editCompany.trim() || null,
+          ...consentUpdate,
           updated_at: new Date().toISOString(),
         })
         .eq('id', contactId);
@@ -387,6 +431,9 @@ export function ContactDetailView({
                   <SheetDescription className="text-slate-400 text-xs mt-0.5">
                     Contact details
                   </SheetDescription>
+                  <div className="mt-1">
+                    <ConsentBadge contact={contact} />
+                  </div>
                   <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-slate-400">
                     <button
                       onClick={copyPhone}
@@ -488,6 +535,84 @@ export function ContactDetailView({
                       onChange={(e) => setEditCompany(e.target.value)}
                       className="bg-slate-800 border-slate-700 text-white h-8 text-sm"
                     />
+                  </div>
+                  <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                    <div className="flex items-start gap-2">
+                      <input
+                        id="detail-whatsapp-opt-in"
+                        type="checkbox"
+                        checked={editWhatsappOptIn}
+                        onChange={(e) => {
+                          setEditWhatsappOptIn(e.target.checked);
+                          if (e.target.checked) setEditOptedOut(false);
+                        }}
+                        className="mt-1 size-4 rounded border-slate-700 bg-slate-800 accent-violet-600"
+                      />
+                      <div>
+                        <Label htmlFor="detail-whatsapp-opt-in" className="text-sm text-slate-200">
+                          This contact has agreed to receive WhatsApp messages
+                        </Label>
+                        <p className="text-xs text-slate-500">
+                          Required for broadcasts and marketing-style automated follow-ups.
+                        </p>
+                      </div>
+                    </div>
+
+                    {editWhatsappOptIn && !editOptedOut && (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="detail-opt-in-source" className="text-xs text-slate-400">
+                          Opt-in source
+                        </Label>
+                        <select
+                          id="detail-opt-in-source"
+                          value={editOptInSource}
+                          onChange={(e) => setEditOptInSource(e.target.value)}
+                          className="h-9 w-full rounded-md border border-slate-700 bg-slate-800 px-3 text-sm text-white outline-none focus:border-violet-500"
+                        >
+                          {OPT_IN_SOURCES.map((source) => (
+                            <option key={source} value={source}>
+                              {source}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="flex items-start gap-2">
+                      <input
+                        id="detail-opted-out"
+                        type="checkbox"
+                        checked={editOptedOut}
+                        onChange={(e) => {
+                          setEditOptedOut(e.target.checked);
+                          if (e.target.checked) setEditWhatsappOptIn(false);
+                        }}
+                        className="mt-1 size-4 rounded border-slate-700 bg-slate-800 accent-red-600"
+                      />
+                      <Label htmlFor="detail-opted-out" className="text-sm text-slate-200">
+                        Mark contact as opted out
+                      </Label>
+                    </div>
+
+                    {editOptedOut && (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="detail-opt-out-reason" className="text-xs text-slate-400">
+                          Opt-out reason
+                        </Label>
+                        <select
+                          id="detail-opt-out-reason"
+                          value={editOptOutReason}
+                          onChange={(e) => setEditOptOutReason(e.target.value)}
+                          className="h-9 w-full rounded-md border border-slate-700 bg-slate-800 px-3 text-sm text-white outline-none focus:border-violet-500"
+                        >
+                          {OPT_OUT_REASONS.map((reason) => (
+                            <option key={reason} value={reason}>
+                              {reason}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                   <Button
                     onClick={saveDetails}

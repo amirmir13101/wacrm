@@ -1,11 +1,26 @@
 import type { Contact, RecipientStatus, VariableMapping } from '@/types'
+import { getBroadcastConsentEligibility } from '@/lib/contacts/consent'
 
 export type BroadcastFailureType = 'temporary' | 'permanent' | 'unknown'
 
 export interface RetryCandidate {
   id: string
   status: RecipientStatus
-  contact?: Pick<Contact, 'id' | 'name' | 'phone' | 'email' | 'company'> | null
+  contact?: Pick<
+    Contact,
+    | 'id'
+    | 'name'
+    | 'phone'
+    | 'email'
+    | 'company'
+    | 'whatsapp_opt_in'
+    | 'opted_out_at'
+    | 'opted_in'
+    | 'opted_out'
+    | 'is_opted_in'
+    | 'is_opted_out'
+    | 'unsubscribed'
+  > | null
 }
 
 export interface RetrySkip {
@@ -56,11 +71,9 @@ export function getRetryableRecipients<T extends RetryCandidate>(
       continue
     }
 
-    if (!recipient.contact.phone) {
-      skipped.push({
-        recipientId: recipient.id,
-        reason: 'Contact has no phone number.',
-      })
+    const eligibility = getBroadcastConsentEligibility(recipient.contact)
+    if (!eligibility.eligible) {
+      skipped.push({ recipientId: recipient.id, reason: eligibility.reason ?? 'Contact is not eligible.' })
       continue
     }
 

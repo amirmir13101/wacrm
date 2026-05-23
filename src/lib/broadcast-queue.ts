@@ -11,6 +11,7 @@ import {
   type BroadcastFailureType,
 } from '@/lib/broadcast-retry'
 import type { Broadcast, Contact, VariableMapping } from '@/types'
+import { getBroadcastConsentEligibility } from '@/lib/contacts/consent'
 
 export const BROADCAST_QUEUE_BATCH_SIZE = 10
 export const BROADCAST_QUEUE_DELAY_MS = 1000
@@ -29,35 +30,8 @@ export interface QueueSendResult {
   next_retry_at?: string | null
 }
 
-function contactFlag(contact: Contact, keys: string[]): boolean | undefined {
-  const raw = contact as unknown as Record<string, unknown>
-  for (const key of keys) {
-    if (typeof raw[key] === 'boolean') return raw[key]
-  }
-  return undefined
-}
-
 export function getBroadcastContactEligibility(contact: Contact | null): QueueEligibilityResult {
-  if (!contact) return { eligible: false, reason: 'Contact no longer exists.' }
-  if (!contact.phone) return { eligible: false, reason: 'Contact has no phone number.' }
-
-  const optedOut = contactFlag(contact, [
-    'opted_out',
-    'is_opted_out',
-    'unsubscribed',
-    'whatsapp_opted_out',
-  ])
-  if (optedOut) return { eligible: false, reason: 'Contact is opted out.' }
-
-  const optedIn = contactFlag(contact, [
-    'opted_in',
-    'is_opted_in',
-    'whatsapp_opted_in',
-    'marketing_opted_in',
-  ])
-  if (optedIn === false) return { eligible: false, reason: 'Contact is not opted in.' }
-
-  return { eligible: true }
+  return getBroadcastConsentEligibility(contact)
 }
 
 export function getRetryDelayMs(message: string, attemptCount: number): number | null {

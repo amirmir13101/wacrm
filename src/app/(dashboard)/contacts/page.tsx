@@ -44,11 +44,32 @@ import {
 import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
+import { getContactConsentStatus } from '@/lib/contacts/consent';
 
 const PAGE_SIZE = 25;
 
 interface ContactWithTags extends Contact {
   tags?: Tag[];
+}
+
+function ConsentBadge({ contact }: { contact: Contact }) {
+  const status = getContactConsentStatus(contact);
+  const styles = {
+    opted_in: 'border-violet-500/30 bg-violet-500/10 text-violet-300',
+    opted_out: 'border-red-500/30 bg-red-500/10 text-red-300',
+    not_opted_in: 'border-slate-700 bg-slate-800 text-slate-400',
+  }[status];
+  const label = {
+    opted_in: 'Opted in',
+    opted_out: 'Opted out',
+    not_opted_in: 'Not opted in',
+  }[status];
+
+  return (
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${styles}`}>
+      {label}
+    </span>
+  );
 }
 
 export default function ContactsPage() {
@@ -259,6 +280,7 @@ export default function ContactsPage() {
               <TableHead className="text-slate-400">Phone</TableHead>
               <TableHead className="text-slate-400 hidden md:table-cell">Email</TableHead>
               <TableHead className="text-slate-400 hidden lg:table-cell">Company</TableHead>
+              <TableHead className="text-slate-400 hidden md:table-cell">Consent</TableHead>
               <TableHead className="text-slate-400 hidden md:table-cell">Tags</TableHead>
               <TableHead className="text-slate-400 hidden lg:table-cell">Created</TableHead>
               <TableHead className="text-slate-400 w-12" />
@@ -267,7 +289,7 @@ export default function ContactsPage() {
           <TableBody>
             {loading ? (
               <TableRow className="border-slate-800">
-                <TableCell colSpan={7} className="text-center py-12">
+                <TableCell colSpan={8} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="size-6 animate-spin text-violet-500" />
                     <p className="text-sm text-slate-500">Loading contacts...</p>
@@ -276,7 +298,7 @@ export default function ContactsPage() {
               </TableRow>
             ) : contacts.length === 0 ? (
               <TableRow className="border-slate-800">
-                <TableCell colSpan={7} className="text-center py-12">
+                <TableCell colSpan={8} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Users className="size-8 text-slate-600" />
                     <p className="text-sm text-slate-500">
@@ -314,6 +336,9 @@ export default function ContactsPage() {
                   </TableCell>
                   <TableCell className="text-slate-400 hidden lg:table-cell text-sm">
                     {contact.company || <span className="text-slate-600">-</span>}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <ConsentBadge contact={contact} />
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <div className="flex flex-wrap gap-1">

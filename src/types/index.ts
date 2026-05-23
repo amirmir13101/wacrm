@@ -24,6 +24,13 @@ export interface Contact {
   is_opted_in?: boolean;
   is_opted_out?: boolean;
   unsubscribed?: boolean;
+  whatsapp_opt_in?: boolean;
+  opt_in_source?: string | null;
+  opted_in_at?: string | null;
+  opted_out_at?: string | null;
+  opt_out_reason?: string | null;
+  last_consent_updated_at?: string | null;
+  consent_notes?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -5,6 +5,7 @@ import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { inboundConsentUpdate } from '@/lib/contacts/consent'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -565,6 +566,19 @@ async function processMessage(
   // Fire-and-forget: a slow or failing automation must not block the
   // webhook's 200 OK response to Meta.
   const inboundText = contentText ?? message.text?.body ?? ''
+  const consentUpdate = inboundConsentUpdate(inboundText)
+  if (consentUpdate) {
+    const { error: consentError } = await supabaseAdmin()
+      .from('contacts')
+      .update(consentUpdate)
+      .eq('id', contactRecord.id)
+      .eq('user_id', userId)
+
+    if (consentError) {
+      console.error('[webhook] failed to update inbound consent:', consentError.message)
+    }
+  }
+
   const automationTriggers: (
     | 'new_contact_created'
     | 'first_inbound_message'
@@ -758,6 +772,7 @@ async function findOrCreateContact(
       user_id: userId,
       phone,
       name: name || phone,
+      whatsapp_opt_in: false,
     })
     .select()
     .single()

@@ -39,32 +39,6 @@ interface UseBroadcastSendingReturn {
 
 const INSERT_BATCH_SIZE = 200;
 
-function contactFlag(contact: Contact, keys: string[]): boolean | undefined {
-  const raw = contact as unknown as Record<string, unknown>;
-  for (const key of keys) {
-    if (typeof raw[key] === 'boolean') return raw[key];
-  }
-  return undefined;
-}
-
-function isEligibleForQueuedBroadcast(contact: Contact): boolean {
-  const optedOut = contactFlag(contact, [
-    'opted_out',
-    'is_opted_out',
-    'unsubscribed',
-    'whatsapp_opted_out',
-  ]);
-  if (optedOut) return false;
-
-  const optedIn = contactFlag(contact, [
-    'opted_in',
-    'is_opted_in',
-    'whatsapp_opted_in',
-    'marketing_opted_in',
-  ]);
-  return optedIn !== false;
-}
-
 export function useBroadcastSending(): UseBroadcastSendingReturn {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -153,6 +127,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         user_id: user.id,
         phone,
         name: uniqueByPhone.get(phone)?.name ?? null,
+        whatsapp_opt_in: false,
       }));
 
     for (let i = 0; i < missing.length; i += INSERT_BATCH_SIZE) {
@@ -207,7 +182,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       if (!user) throw new Error('You are not signed in.');
 
       setProgress(10);
-      const contacts = (await resolveAudience(payload.audience)).filter(isEligibleForQueuedBroadcast);
+      const contacts = await resolveAudience(payload.audience);
       if (contacts.length === 0) throw new Error('No contacts found for this audience.');
 
       setProgress(30);

@@ -81,7 +81,9 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error('contact not found for this user')
   }
 
-  const skipReason = automationSendSkipReason(contact)
+  const skipReason = automationSendSkipReason(contact, {
+    requireOptIn: input.kind === 'template',
+  })
   if (skipReason) {
     throw new AutomationSendSkippedError(skipReason)
   }

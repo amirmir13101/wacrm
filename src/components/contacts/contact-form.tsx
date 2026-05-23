@@ -22,6 +22,7 @@ import {
   normalizePhoneForComparison,
   normalizeWhatsAppPhone,
 } from '@/lib/whatsapp/phone-utils';
+import { buildManualConsentUpdate, OPT_IN_SOURCES, OPT_OUT_REASONS } from '@/lib/contacts/consent';
 
 interface ContactFormProps {
   open: boolean;
@@ -45,6 +46,10 @@ export function ContactForm({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [company, setCompany] = useState('');
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
+  const [optInSource, setOptInSource] = useState<string>('Manual');
+  const [optedOut, setOptedOut] = useState(false);
+  const [optOutReason, setOptOutReason] = useState<string>('Admin action');
   const [saving, setSaving] = useState(false);
 
   const [tags, setTags] = useState<Tag[]>([]);
@@ -57,6 +62,10 @@ export function ContactForm({
       setPhone(contact?.phone ?? '');
       setEmail(contact?.email ?? '');
       setCompany(contact?.company ?? '');
+      setWhatsappOptIn(contact?.whatsapp_opt_in === true);
+      setOptInSource(contact?.opt_in_source ?? 'Manual');
+      setOptedOut(Boolean(contact?.opted_out_at));
+      setOptOutReason(contact?.opt_out_reason ?? 'Admin action');
       setSelectedTagIds(contactTags.map((ct) => ct.tag_id));
       fetchTags();
     }
@@ -99,6 +108,14 @@ export function ContactForm({
 
       let contactId = contact?.id;
       const normalizedPhone = normalizeWhatsAppPhone(phone).phone;
+      const consentUpdate = buildManualConsentUpdate({
+        whatsappOptIn,
+        optInSource,
+        optedOut,
+        optOutReason,
+        previousOptedInAt: contact?.opted_in_at,
+        previousOptedOutAt: contact?.opted_out_at,
+      });
 
       const { data: existingContacts, error: duplicateLookupError } = await supabase
         .from('contacts')
@@ -125,6 +142,7 @@ export function ContactForm({
             phone: normalizedPhone,
             email: email.trim() || null,
             company: company.trim() || null,
+            ...consentUpdate,
             updated_at: new Date().toISOString(),
           })
           .eq('id', contactId);
@@ -143,6 +161,7 @@ export function ContactForm({
             phone: normalizedPhone,
             email: email.trim() || null,
             company: company.trim() || null,
+            ...consentUpdate,
           })
           .select('id')
           .single();
@@ -291,6 +310,85 @@ export function ContactForm({
                     </button>
                   );
                 })}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+            <div className="flex items-start gap-2">
+              <input
+                id="cf-whatsapp-opt-in"
+                type="checkbox"
+                checked={whatsappOptIn}
+                onChange={(e) => {
+                  setWhatsappOptIn(e.target.checked);
+                  if (e.target.checked) setOptedOut(false);
+                }}
+                className="mt-1 size-4 rounded border-slate-700 bg-slate-800 accent-violet-600"
+              />
+              <div>
+                <Label htmlFor="cf-whatsapp-opt-in" className="text-sm text-slate-200">
+                  This contact has agreed to receive WhatsApp messages
+                </Label>
+                <p className="text-xs text-slate-500">
+                  Required for broadcasts and marketing-style automated follow-ups.
+                </p>
+              </div>
+            </div>
+
+            {whatsappOptIn && !optedOut && (
+              <div className="space-y-1.5">
+                <Label htmlFor="cf-opt-in-source" className="text-xs text-slate-400">
+                  Opt-in source
+                </Label>
+                <select
+                  id="cf-opt-in-source"
+                  value={optInSource}
+                  onChange={(e) => setOptInSource(e.target.value)}
+                  className="h-9 w-full rounded-md border border-slate-700 bg-slate-800 px-3 text-sm text-white outline-none focus:border-violet-500"
+                >
+                  {OPT_IN_SOURCES.map((source) => (
+                    <option key={source} value={source}>
+                      {source}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="flex items-start gap-2">
+              <input
+                id="cf-opted-out"
+                type="checkbox"
+                checked={optedOut}
+                onChange={(e) => {
+                  setOptedOut(e.target.checked);
+                  if (e.target.checked) setWhatsappOptIn(false);
+                }}
+                className="mt-1 size-4 rounded border-slate-700 bg-slate-800 accent-red-600"
+              />
+              <Label htmlFor="cf-opted-out" className="text-sm text-slate-200">
+                Mark contact as opted out
+              </Label>
+            </div>
+
+            {optedOut && (
+              <div className="space-y-1.5">
+                <Label htmlFor="cf-opt-out-reason" className="text-xs text-slate-400">
+                  Opt-out reason
+                </Label>
+                <select
+                  id="cf-opt-out-reason"
+                  value={optOutReason}
+                  onChange={(e) => setOptOutReason(e.target.value)}
+                  className="h-9 w-full rounded-md border border-slate-700 bg-slate-800 px-3 text-sm text-white outline-none focus:border-violet-500"
+                >
+                  {OPT_OUT_REASONS.map((reason) => (
+                    <option key={reason} value={reason}>
+                      {reason}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
           </div>

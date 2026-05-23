@@ -12,6 +12,7 @@ describe('getRetryableRecipients', () => {
     phone: '923001234567',
     email: 'ada@example.com',
     company: 'Acme',
+    whatsapp_opt_in: true,
   }
 
   it('only retries failed recipients', () => {
@@ -49,6 +50,27 @@ describe('getRetryableRecipients', () => {
     expect(result.skipped.map((s) => s.reason)).toEqual([
       'Contact no longer exists.',
       'Contact has no phone number.',
+    ])
+  })
+
+  it('skips failed recipients that are not opted in or are opted out', () => {
+    const result = getRetryableRecipients([
+      {
+        id: 'not-opted-in',
+        status: 'failed' as const,
+        contact: { ...contact, whatsapp_opt_in: false },
+      },
+      {
+        id: 'opted-out',
+        status: 'failed' as const,
+        contact: { ...contact, opted_out_at: '2026-05-01T00:00:00.000Z' },
+      },
+    ])
+
+    expect(result.retryable).toHaveLength(0)
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      'Contact is not opted in.',
+      'Contact is opted out.',
     ])
   })
 })

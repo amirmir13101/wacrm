@@ -15,24 +15,25 @@ const baseContact: Contact = {
   user_id: 'u1',
   phone: '923001234567',
   name: 'Ada',
+  whatsapp_opt_in: true,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 }
 
 describe('getBroadcastContactEligibility', () => {
-  it('allows normal contacts', () => {
+  it('allows opted-in contacts', () => {
     expect(getBroadcastContactEligibility(baseContact)).toEqual({ eligible: true })
   })
 
   it('skips opted-out contacts when opt-out fields exist', () => {
     expect(
-      getBroadcastContactEligibility({ ...baseContact, opted_out: true }),
+      getBroadcastContactEligibility({ ...baseContact, opted_out_at: new Date().toISOString() }),
     ).toEqual({ eligible: false, reason: 'Contact is opted out.' })
   })
 
-  it('skips contacts explicitly marked not opted in', () => {
+  it('skips contacts not opted in', () => {
     expect(
-      getBroadcastContactEligibility({ ...baseContact, opted_in: false }),
+      getBroadcastContactEligibility({ ...baseContact, whatsapp_opt_in: false }),
     ).toEqual({ eligible: false, reason: 'Contact is not opted in.' })
   })
 

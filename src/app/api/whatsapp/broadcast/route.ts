@@ -4,7 +4,6 @@ import {
   normalizePhoneForComparison,
   normalizeWhatsAppPhone,
 } from '@/lib/whatsapp/phone-utils'
-import { getBroadcastContactEligibility } from '@/lib/broadcast-queue'
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -71,6 +70,7 @@ async function findOrCreateContacts(
       user_id: userId,
       phone,
       name: recipient.name?.trim() || null,
+      whatsapp_opt_in: false,
     }))
 
   for (let i = 0; i < missing.length; i += 200) {
@@ -200,9 +200,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const contacts = (await findOrCreateContacts(supabase, user.id, recipients)).filter(
-      (contact) => getBroadcastContactEligibility(contact).eligible,
-    )
+    const contacts = await findOrCreateContacts(supabase, user.id, recipients)
     if (contacts.length === 0) {
       return NextResponse.json({ error: 'No valid recipients found.' }, { status: 400 })
     }

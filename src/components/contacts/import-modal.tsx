@@ -18,6 +18,7 @@ import {
   normalizePhoneForComparison,
   normalizeWhatsAppPhone,
 } from '@/lib/whatsapp/phone-utils';
+import { parseCsvConsent } from '@/lib/contacts/consent';
 
 interface ImportModalProps {
   open: boolean;
@@ -30,6 +31,14 @@ interface ParsedRow {
   name?: string;
   email?: string;
   company?: string;
+  whatsapp_opt_in?: string;
+  opt_in?: string;
+  subscribed?: string;
+  consent?: string;
+  opt_in_source?: string;
+  opted_out?: string;
+  unsubscribed?: string;
+  opt_out_reason?: string;
 }
 
 interface ImportResult {
@@ -37,6 +46,9 @@ interface ImportResult {
   failed: number;
   skippedDuplicates: number;
   invalidPhones: number;
+  optedIn: number;
+  notOptedIn: number;
+  optedOut: number;
   duplicateDetails: string[];
   invalidDetails: string[];
 }
@@ -54,6 +66,19 @@ function parseCSV(text: string): ParsedRow[] {
   const nameIdx = headers.indexOf('name');
   const emailIdx = headers.indexOf('email');
   const companyIdx = headers.indexOf('company');
+  const optionalHeaders = [
+    'whatsapp_opt_in',
+    'opt_in',
+    'subscribed',
+    'consent',
+    'opt_in_source',
+    'opted_out',
+    'unsubscribed',
+    'opt_out_reason',
+  ] as const;
+  const optionalIndexes = Object.fromEntries(
+    optionalHeaders.map((header) => [header, headers.indexOf(header)]),
+  ) as Record<(typeof optionalHeaders)[number], number>;
 
   const rows: ParsedRow[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -79,13 +104,20 @@ function parseCSV(text: string): ParsedRow[] {
     const phone = values[phoneIdx]?.replace(/["']/g, '').trim();
     if (!phone) continue;
 
-    rows.push({
+    const parsed: ParsedRow = {
       phone,
       name: nameIdx >= 0 ? values[nameIdx]?.replace(/["']/g, '').trim() || undefined : undefined,
       email: emailIdx >= 0 ? values[emailIdx]?.replace(/["']/g, '').trim() || undefined : undefined,
       company:
         companyIdx >= 0 ? values[companyIdx]?.replace(/["']/g, '').trim() || undefined : undefined,
+    };
+
+    optionalHeaders.forEach((header) => {
+      const idx = optionalIndexes[header];
+      if (idx >= 0) parsed[header] = values[idx]?.replace(/["']/g, '').trim() || undefined;
     });
+
+    rows.push(parsed);
   }
 
   return rows;
@@ -146,6 +178,9 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
       let failed = 0;
       let skippedDuplicates = 0;
       let invalidPhones = 0;
+      let optedIn = 0;
+      let notOptedIn = 0;
+      let optedOut = 0;
       const duplicateDetails: string[] = [];
       const invalidDetails: string[] = [];
 
@@ -175,6 +210,11 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
             ...row,
             phone: normalizedPhone,
           });
+
+          const consent = parseCsvConsent(row);
+          if (consent.opted_out_at) optedOut++;
+          else if (consent.whatsapp_opt_in) optedIn++;
+          else notOptedIn++;
         } catch (err) {
           invalidPhones++;
           const reason = err instanceof Error ? err.message : 'Invalid phone number';
@@ -187,6 +227,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
       for (let i = 0; i < rowsToImport.length; i += chunkSize) {
         const chunk = rowsToImport.slice(i, i + chunkSize);
         const rows = chunk.map((row) => ({
+          ...parseCsvConsent(row),
           user_id: user.id,
           phone: row.phone,
           name: row.name || null,
@@ -224,6 +265,9 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
         failed,
         skippedDuplicates,
         invalidPhones,
+        optedIn,
+        notOptedIn,
+        optedOut,
         duplicateDetails,
         invalidDetails,
       });
@@ -257,7 +301,8 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
           <DialogTitle className="text-white">Import Contacts</DialogTitle>
           <DialogDescription className="text-slate-400">
             Upload a CSV file with a &quot;phone&quot; column (required). Optional columns:
-            name, email, company.
+            name, email, company, whatsapp_opt_in, opt_in_source, opted_out,
+            opt_out_reason.
           </DialogDescription>
         </DialogHeader>
 
@@ -361,6 +406,15 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
                     {result.invalidPhones} invalid phones
                   </div>
                 )}
+                <div className="flex items-center gap-1.5 text-slate-300 text-sm">
+                  {result.optedIn} opted in
+                </div>
+                <div className="flex items-center gap-1.5 text-slate-300 text-sm">
+                  {result.notOptedIn} not opted in
+                </div>
+                <div className="flex items-center gap-1.5 text-slate-300 text-sm">
+                  {result.optedOut} opted out
+                </div>
               </div>
               {result.duplicateDetails.length > 0 && (
                 <div className="text-xs text-slate-400">
