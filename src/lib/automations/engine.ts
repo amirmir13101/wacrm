@@ -15,7 +15,11 @@ import type {
   AssignConversationStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
-import { engineSendText, engineSendTemplate } from './meta-send'
+import {
+  AutomationSendSkippedError,
+  engineSendText,
+  engineSendTemplate,
+} from './meta-send'
 
 // ------------------------------------------------------------
 // Public API
@@ -274,6 +278,17 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      if (err instanceof AutomationSendSkippedError) {
+        results.push({
+          step_id: step.id,
+          step_type: step.step_type,
+          status: 'skipped',
+          detail: msg,
+        })
+        status = 'partial'
+        errorMessage = msg
+        break
+      }
       results.push({
         step_id: step.id,
         step_type: step.step_type,

@@ -11,7 +11,6 @@ import {
   ChevronRight,
 } from "lucide-react"
 
-import { createClient } from "@/lib/supabase/client"
 import type {
   Automation,
   AutomationLog,
@@ -20,6 +19,15 @@ import type {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/automations/trigger-meta"
+
+interface PendingExecution {
+  id: string
+  contact_id: string | null
+  log_id: string | null
+  status: "pending" | "running"
+  run_at: string
+  created_at: string
+}
 
 export default function AutomationLogsPage({
   params,
@@ -31,30 +39,19 @@ export default function AutomationLogsPage({
 
   const [automation, setAutomation] = useState<Automation | null>(null)
   const [logs, setLogs] = useState<AutomationLog[] | null>(null)
+  const [pendingExecutions, setPendingExecutions] = useState<PendingExecution[]>([])
   const [error, setError] = useState<string | null>(null)
   const [openLogId, setOpenLogId] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
       try {
-        const supabase = createClient()
-        const [autRes, logRes] = await Promise.all([
-          supabase
-            .from("automations")
-            .select("*")
-            .eq("id", id)
-            .maybeSingle(),
-          supabase
-            .from("automation_logs")
-            .select("*, contact:contacts(id, name, phone)")
-            .eq("automation_id", id)
-            .order("created_at", { ascending: false })
-            .limit(100),
-        ])
-        if (autRes.error) throw autRes.error
-        if (logRes.error) throw logRes.error
-        setAutomation(autRes.data as Automation | null)
-        setLogs((logRes.data ?? []) as AutomationLog[])
+        const res = await fetch(`/api/automations/${id}/logs`)
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(body?.error ?? "Failed to load logs")
+        setAutomation(body.automation as Automation)
+        setLogs((body.logs ?? []) as AutomationLog[])
+        setPendingExecutions((body.pendingExecutions ?? []) as PendingExecution[])
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load logs")
       }
@@ -107,6 +104,18 @@ export default function AutomationLogsPage({
         </div>
       ) : (
         <ul className="space-y-2">
+          {pendingExecutions.length > 0 && (
+            <li className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <div className="text-sm font-medium text-amber-200">
+                {pendingExecutions.length} wait step
+                {pendingExecutions.length === 1 ? "" : "s"} pending
+              </div>
+              <p className="mt-1 text-xs text-amber-100/80">
+                Next due {new Date(pendingExecutions[0].run_at).toLocaleString()}.
+                Automation cron must run to continue delayed steps.
+              </p>
+            </li>
+          )}
           {logs.map((log) => {
             const isOpen = openLogId === log.id
             return (
@@ -185,16 +194,21 @@ function StatusBadge({ status }: { status: AutomationLog["status"] }) {
 
 function StepRow({ result }: { result: AutomationLogStepResult }) {
   const ok = result.status === "success"
+  const skipped = result.status === "skipped"
   return (
     <li className="flex items-start gap-2 text-xs">
       <span
         className={cn(
           "mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full",
-          ok ? "bg-violet-500/20 text-violet-400" : "bg-red-500/20 text-red-400",
+          ok
+            ? "bg-violet-500/20 text-violet-400"
+            : skipped
+              ? "bg-amber-500/20 text-amber-400"
+              : "bg-red-500/20 text-red-400",
         )}
         aria-hidden
       >
-        {ok ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+        {ok ? <Check className="h-3 w-3" /> : skipped ? "!" : <X className="h-3 w-3" />}
       </span>
       <span className="text-slate-300">{result.step_type}</span>
       {result.detail && (

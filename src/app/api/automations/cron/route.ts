@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { resumePendingExecution } from '@/lib/automations/engine'
+import { isAutomationCronSecretValid } from '@/lib/automations/cron-auth'
 import type { AutomationContext } from '@/lib/automations/engine'
 
 /**
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'cron not configured' }, { status: 503 })
   }
   const supplied = request.headers.get('x-cron-secret')
-  if (supplied !== expected) {
+  if (!isAutomationCronSecretValid(expected, supplied)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

@@ -122,6 +122,44 @@ VPS cron example, every minute:
 
 Use your real domain on the VPS. Never commit the real secret to Git.
 
+## Production automation cron
+
+Automation wait/delay steps are resumed by a separate cron endpoint. If this
+cron is missing, automations can still start from WhatsApp events, but any
+step after a Wait block will remain pending.
+
+Endpoint:
+
+```text
+GET /api/automations/cron
+x-cron-secret: <AUTOMATION_CRON_SECRET>
+```
+
+Local test example:
+
+```bash
+curl -X GET http://localhost:3000/api/automations/cron \
+  -H "x-cron-secret: <AUTOMATION_CRON_SECRET>"
+```
+
+VPS cron example, every minute:
+
+```cron
+* * * * * curl -fsS -X GET https://crm.example.com/api/automations/cron -H "x-cron-secret: <AUTOMATION_CRON_SECRET>" >/dev/null 2>&1
+```
+
+Optional VPS script pattern:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+curl -fsS -X GET https://crm.example.com/api/automations/cron \
+  -H "x-cron-secret: ${AUTOMATION_CRON_SECRET}" >/dev/null
+```
+
+Use the same `AUTOMATION_CRON_SECRET` as the broadcast worker. Never print the
+real secret in logs or commit it to Git.
+
 ## Contributing
 
 This is a template, not a collaborative product — the expected flow is

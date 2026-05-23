@@ -7,6 +7,7 @@ import {
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
+import { automationSendSkipReason } from './send-safety'
 
 // ------------------------------------------------------------
 // Automation-side Meta sender.
@@ -45,6 +46,13 @@ export async function engineSendTemplate(
   return sendViaMeta({ ...args, kind: 'template' })
 }
 
+export class AutomationSendSkippedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AutomationSendSkippedError'
+  }
+}
+
 type SendInput =
   | (SendTextArgs & { kind: 'text' })
   | (SendTemplateArgs & { kind: 'template' })
@@ -62,12 +70,17 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // cheap defense-in-depth.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, opted_in, opted_out, is_opted_in, is_opted_out, unsubscribed')
     .eq('id', input.contactId)
     .eq('user_id', input.userId)
     .maybeSingle()
   if (contactErr || !contact?.phone) {
     throw new Error('contact not found for this user')
+  }
+
+  const skipReason = automationSendSkipReason(contact)
+  if (skipReason) {
+    throw new AutomationSendSkippedError(skipReason)
   }
 
   const sanitized = sanitizePhoneForMeta(contact.phone)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -42,6 +42,17 @@ import type {
   KeywordMatchTriggerConfig,
 } from "@/types"
 import { cn } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
+import {
+  approvedTemplateOptions,
+  selectTemplateConfig,
+  stagesForPipeline,
+  templateSelectValue,
+  type AutomationPipelineOption,
+  type AutomationStageOption,
+  type AutomationTagOption,
+  type AutomationTemplateOption,
+} from "@/lib/automations/builder-options"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -63,6 +74,20 @@ export interface BuilderInitial {
   trigger_config: Record<string, unknown>
   is_active: boolean
   steps: BuilderStep[]
+}
+
+interface BuilderOptions {
+  templates: AutomationTemplateOption[]
+  tags: AutomationTagOption[]
+  pipelines: AutomationPipelineOption[]
+  stages: AutomationStageOption[]
+}
+
+const EMPTY_OPTIONS: BuilderOptions = {
+  templates: [],
+  tags: [],
+  pipelines: [],
+  stages: [],
 }
 
 // ------------------------------------------------------------
@@ -165,6 +190,47 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   const [state, setState] = useState<BuilderInitial>(initial)
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [options, setOptions] = useState<BuilderOptions>(EMPTY_OPTIONS)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadOptions() {
+      const supabase = createClient()
+      const [templatesRes, tagsRes, pipelinesRes, stagesRes] = await Promise.all([
+        supabase
+          .from("message_templates")
+          .select("id, name, language, body_text, status")
+          .eq("status", "Approved")
+          .order("name", { ascending: true }),
+        supabase.from("tags").select("id, name").order("name", { ascending: true }),
+        supabase.from("pipelines").select("id, name").order("created_at", { ascending: true }),
+        supabase
+          .from("pipeline_stages")
+          .select("id, pipeline_id, name")
+          .order("position", { ascending: true }),
+      ])
+
+      if (cancelled) return
+      setOptions({
+        templates: approvedTemplateOptions(
+          (templatesRes.data ?? []) as AutomationTemplateOption[],
+        ),
+        tags: (tagsRes.data ?? []) as AutomationTagOption[],
+        pipelines: (pipelinesRes.data ?? []) as AutomationPipelineOption[],
+        stages: (stagesRes.data ?? []) as AutomationStageOption[],
+      })
+
+      const firstError =
+        templatesRes.error ?? tagsRes.error ?? pipelinesRes.error ?? stagesRes.error
+      if (firstError) {
+        toast.error("Some automation picker options could not load")
+      }
+    }
+    void loadOptions()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function patchTop<K extends keyof BuilderInitial>(key: K, value: BuilderInitial[K]) {
     setState((s) => ({ ...s, [key]: value }))
@@ -291,9 +357,11 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
             config={state.trigger_config}
             onTypeChange={(t) => patchTop("trigger_type", t)}
             onConfigChange={(c) => patchTop("trigger_config", c)}
+            options={options}
           />
           <StepList
             steps={state.steps}
+            options={options}
             parentPath={[]}
             expandedId={expandedId}
             setExpandedId={setExpandedId}
@@ -317,11 +385,13 @@ function TriggerCard({
   config,
   onTypeChange,
   onConfigChange,
+  options,
 }: {
   type: AutomationTriggerType
   config: Record<string, unknown>
   onTypeChange: (t: AutomationTriggerType) => void
   onConfigChange: (c: Record<string, unknown>) => void
+  options: BuilderOptions
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -375,14 +445,20 @@ function TriggerCard({
               />
             )}
             {type === "tag_added" && (
-              <Input
-                placeholder="Tag id"
+              <select
                 value={(config.tag_id as string) ?? ""}
                 onChange={(e) =>
                   onConfigChange({ ...config, tag_id: e.target.value })
                 }
-                className="bg-slate-800 text-white"
-              />
+                className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white focus:outline-none"
+              >
+                <option value="">Choose a tag</option>
+                {options.tags.map((tag) => (
+                  <option key={tag.id} value={tag.id}>
+                    {tag.name}
+                  </option>
+                ))}
+              </select>
             )}
             {type === "time_based" && (
               <Input
@@ -461,6 +537,7 @@ type StepPath = (
 
 interface StepListProps {
   steps: BuilderStep[]
+  options: BuilderOptions
   parentPath: StepPath
   expandedId: string | null
   setExpandedId: (id: string | null) => void
@@ -563,6 +640,7 @@ function StepRenderer({
             <div className="border-t border-slate-800 px-4 py-3">
               <StepEditor
                 step={step}
+                options={props.options}
                 onChange={(next) => props.updateStep(path, () => next)}
               />
               <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-800 pt-3">
@@ -701,9 +779,11 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
 
 function StepEditor({
   step,
+  options,
   onChange,
 }: {
   step: BuilderStep
+  options: BuilderOptions
   onChange: (s: BuilderStep) => void
 }) {
   const cfg = step.step_config
@@ -726,30 +806,49 @@ function StepEditor({
       return (
         <>
           <FieldBlock label="Template name">
-            <Input
-              value={(cfg.template_name as string) ?? ""}
-              onChange={(e) => set({ template_name: e.target.value })}
-              className="bg-slate-800 text-white"
-            />
-          </FieldBlock>
-          <FieldBlock label="Language">
-            <Input
-              value={(cfg.language as string) ?? ""}
-              onChange={(e) => set({ language: e.target.value })}
-              className="bg-slate-800 text-white"
-            />
+            <select
+              value={templateSelectValue(cfg.template_name, cfg.language)}
+              onChange={(e) => set(selectTemplateConfig(e.target.value))}
+              className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
+            >
+              <option value="">Choose an approved template</option>
+              {options.templates.map((template) => (
+                <option
+                  key={`${template.name}:${template.language}`}
+                  value={`${template.name}|${template.language}`}
+                >
+                  {template.name} ({template.language})
+                </option>
+              ))}
+            </select>
+            {options.templates.length === 0 ? (
+              <p className="mt-1 text-[11px] text-amber-300">
+                No approved templates found. Sync approved Meta templates in Settings first.
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px] text-slate-500">
+                Use templates for automation messages outside WhatsApp&apos;s 24-hour window.
+              </p>
+            )}
           </FieldBlock>
         </>
       )
     case "add_tag":
     case "remove_tag":
       return (
-        <FieldBlock label="Tag id">
-          <Input
+        <FieldBlock label="Tag">
+          <select
             value={(cfg.tag_id as string) ?? ""}
             onChange={(e) => set({ tag_id: e.target.value })}
-            className="bg-slate-800 text-white"
-          />
+            className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
+          >
+            <option value="">Choose a tag</option>
+            {options.tags.map((tag) => (
+              <option key={tag.id} value={tag.id}>
+                {tag.name}
+              </option>
+            ))}
+          </select>
         </FieldBlock>
       )
     case "assign_conversation":
@@ -799,22 +898,41 @@ function StepEditor({
           </FieldBlock>
         </>
       )
-    case "create_deal":
+    case "create_deal": {
+      const pipelineId = (cfg.pipeline_id as string) ?? ""
+      const availableStages = stagesForPipeline(options.stages, pipelineId)
       return (
         <>
-          <FieldBlock label="Pipeline id">
-            <Input
-              value={(cfg.pipeline_id as string) ?? ""}
-              onChange={(e) => set({ pipeline_id: e.target.value })}
-              className="bg-slate-800 text-white"
-            />
+          <FieldBlock label="Pipeline">
+            <select
+              value={pipelineId}
+              onChange={(e) => set({ pipeline_id: e.target.value, stage_id: "" })}
+              className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
+            >
+              <option value="">Choose a pipeline</option>
+              {options.pipelines.map((pipeline) => (
+                <option key={pipeline.id} value={pipeline.id}>
+                  {pipeline.name}
+                </option>
+              ))}
+            </select>
           </FieldBlock>
-          <FieldBlock label="Stage id">
-            <Input
+          <FieldBlock label="Stage">
+            <select
               value={(cfg.stage_id as string) ?? ""}
               onChange={(e) => set({ stage_id: e.target.value })}
-              className="bg-slate-800 text-white"
-            />
+              disabled={!pipelineId}
+              className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white disabled:opacity-60"
+            >
+              <option value="">
+                {pipelineId ? "Choose a stage" : "Choose a pipeline first"}
+              </option>
+              {availableStages.map((stage) => (
+                <option key={stage.id} value={stage.id}>
+                  {stage.name}
+                </option>
+              ))}
+            </select>
           </FieldBlock>
           <FieldBlock label="Title">
             <Input
@@ -833,6 +951,7 @@ function StepEditor({
           </FieldBlock>
         </>
       )
+    }
     case "wait":
       return (
         <div className="grid grid-cols-2 gap-2">
