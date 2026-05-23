@@ -70,7 +70,10 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // cheap defense-in-depth.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone, opted_in, opted_out, is_opted_in, is_opted_out, unsubscribed')
+    // Use "*" here because opt-in/opt-out columns are optional across
+    // deployments. Selecting a missing optional column makes Supabase
+    // return an error, which looks like "contact not found" to users.
+    .select('*')
     .eq('id', input.contactId)
     .eq('user_id', input.userId)
     .maybeSingle()
