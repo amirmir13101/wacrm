@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Calculator, Edit2, ExternalLink, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Calculator, Edit2, ExternalLink, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -93,6 +93,7 @@ export function WhatsAppPricingManager() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<PricingForm>(EMPTY_FORM);
+  const [rateSearch, setRateSearch] = useState('');
 
   const [calculatorRateId, setCalculatorRateId] = useState('');
   const [calculatorCategory, setCalculatorCategory] = useState<WhatsAppPricingCategory>('marketing');
@@ -223,6 +224,17 @@ export function WhatsAppPricingManager() {
   }
 
   const calculatorRate = rates.find((rate) => rate.id === calculatorRateId) ?? null;
+  const filteredRates = useMemo(() => {
+    const query = rateSearch.trim().toLowerCase();
+    if (!query) return rates;
+
+    return rates.filter((rate) =>
+      [rate.country_name, rate.iso_country_code, rate.phone_country_code, rate.currency]
+        .join(' ')
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [rateSearch, rates]);
   const estimate = useMemo(
     () =>
       calculatePricingEstimate({
@@ -241,6 +253,10 @@ export function WhatsAppPricingManager() {
           <p className="mt-1 max-w-3xl text-sm text-slate-400">
             Store manually verified Meta pricing rates and estimate campaign cost before sending.
             Estimate only. Actual Meta billing may differ.
+          </p>
+          <p className="mt-2 max-w-3xl text-xs text-amber-200">
+            Rates were imported from official WhatsApp pricing source when verified. Please re-check
+            regularly because Meta pricing can change.
           </p>
           <a
             href={OFFICIAL_WHATSAPP_PRICING_URL}
@@ -337,7 +353,17 @@ export function WhatsAppPricingManager() {
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="rounded-lg border border-slate-800 overflow-hidden">
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+            <Input
+              value={rateSearch}
+              onChange={(event) => setRateSearch(event.target.value)}
+              placeholder="Search country, ISO code, phone code, or currency"
+              className="border-slate-700 bg-slate-900 pl-9 text-white"
+            />
+          </div>
+          <div className="overflow-hidden rounded-lg border border-slate-800">
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-400">
               <tr>
@@ -355,8 +381,10 @@ export function WhatsAppPricingManager() {
                 <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">Loading pricing rates...</td></tr>
               ) : rates.length === 0 ? (
                 <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">No pricing rates configured.</td></tr>
+              ) : filteredRates.length === 0 ? (
+                <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">No pricing rates match your search.</td></tr>
               ) : (
-                rates.map((rate) => (
+                filteredRates.map((rate) => (
                   <tr key={rate.id} className="border-t border-slate-800 text-slate-300">
                     <td className="px-3 py-2 text-white">{rate.country_name}</td>
                     <td className="px-3 py-2">+{rate.phone_country_code}</td>
@@ -381,6 +409,7 @@ export function WhatsAppPricingManager() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
         <Card className="border-slate-800 bg-slate-900/70">
@@ -429,7 +458,7 @@ export function WhatsAppPricingManager() {
                 </div>
               )}
               <p className="mt-3 text-xs text-slate-500">
-                Estimate only. Actual Meta billing may differ. Verify against Meta’s official calculator before real campaigns.
+                Estimate only. Actual Meta billing may differ. Verify against Meta&apos;s official calculator before real campaigns.
               </p>
             </div>
           </CardContent>
@@ -447,4 +476,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   );
 }
-
