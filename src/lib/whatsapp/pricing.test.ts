@@ -174,6 +174,24 @@ describe('WhatsApp pricing helpers', () => {
     expect(converted.display).toBe('USD 10.00')
   })
 
+  it('converts Mozambique MZN estimates to INR and PKR for display', () => {
+    const mznToInr = convertMicrosCurrency({
+      amountMicros: BigInt(1_440_000_000),
+      fromCurrency: 'MZN',
+      toCurrency: 'INR',
+    })
+    const mznToPkr = convertMicrosCurrency({
+      amountMicros: BigInt(1_440_000_000),
+      fromCurrency: 'MZN',
+      toCurrency: 'PKR',
+    })
+
+    expect(mznToInr.status).toBe('ok')
+    expect(mznToInr.display).toBe('INR 1867.50')
+    expect(mznToPkr.status).toBe('ok')
+    expect(mznToPkr.display).toBe('PKR 6266.25')
+  })
+
   it('converts USD estimates to PKR for display', () => {
     const converted = convertMicrosCurrency({
       amountMicros: BigInt(25_000_000),
@@ -201,6 +219,36 @@ describe('WhatsApp pricing helpers', () => {
     expect(gbp.display).toBe('PKR 5.68')
     expect(tryResult.status).toBe('ok')
     expect(tryResult.display).toBe('PKR 2506.50')
+  })
+
+  it('converts TRY and XOF totals into selected display currencies', () => {
+    const tryToInr = convertMicrosCurrency({
+      amountMicros: BigInt(292_500_000),
+      fromCurrency: 'TRY',
+      toCurrency: 'INR',
+    })
+    const xofToPkr = convertMicrosCurrency({
+      amountMicros: BigInt(600_000_000),
+      fromCurrency: 'XOF',
+      toCurrency: 'PKR',
+    })
+
+    expect(tryToInr.status).toBe('ok')
+    expect(tryToInr.display).toBe('INR 747.00')
+    expect(xofToPkr.status).toBe('ok')
+    expect(xofToPkr.display).toBe('PKR 278.50')
+  })
+
+  it('returns the same amount when converting within the same currency', () => {
+    const converted = convertMicrosCurrency({
+      amountMicros: BigInt(1_440_000_000),
+      fromCurrency: 'MZN',
+      toCurrency: 'MZN',
+    })
+
+    expect(converted.status).toBe('ok')
+    expect(converted.display).toBe('MZN 1440.00')
+    expect(converted.warnings).toEqual([])
   })
 
   it('warns when a currency conversion rate is missing', () => {

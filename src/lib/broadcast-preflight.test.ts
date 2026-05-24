@@ -124,6 +124,44 @@ describe('broadcast preflight', () => {
     ])
   })
 
+  it('converts preflight totals with non-common local currencies', () => {
+    const pricing = buildBroadcastPricingSummary({
+      eligibleRecipients: [
+        { contact: baseContact, normalizedPhone: '923001234567' },
+        { contact: { ...baseContact, id: 'c2', phone: '258841234567' }, normalizedPhone: '258841234567' },
+      ],
+      rates: [
+        ...rates,
+        {
+          id: 'r3',
+          user_id: 'u1',
+          country_name: 'Mozambique',
+          iso_country_code: 'MZ',
+          phone_country_code: '258',
+          currency: 'MZN',
+          marketing_rate: '1.440000',
+          utility_rate: '0.300000',
+          authentication_rate: '0.300000',
+          service_rate: '0.000000',
+          verified_by_admin: true,
+          last_verified_at: '2026-05-24T00:00:00.000Z',
+          created_at: '2026-05-24T00:00:00.000Z',
+          updated_at: '2026-05-24T00:00:00.000Z',
+        },
+      ],
+      category: 'marketing',
+    })
+
+    const converted = convertCurrencyTotalsToCurrency(pricing.currencyTotals, 'INR')
+
+    expect(converted.status).toBe('ok')
+    expect(converted.display).toBe('INR 5.79')
+    expect(pricing.pricingBreakdown.map((row) => row.estimatedTotalDisplay)).toEqual([
+      'PKR 13.17',
+      'MZN 1.44',
+    ])
+  })
+
   it('shows missing pricing warnings', () => {
     const pricing = buildBroadcastPricingSummary({
       eligibleRecipients: [{ contact: baseContact, normalizedPhone: '905551112233' }],
