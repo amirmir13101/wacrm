@@ -175,20 +175,14 @@ export function ContactForm({
 
       // Sync tags
       if (contactId) {
-        await supabase
-          .from('contact_tags')
-          .delete()
-          .eq('contact_id', contactId);
-
-        if (selectedTagIds.length > 0) {
-          const tagRows = selectedTagIds.map((tag_id) => ({
-            contact_id: contactId!,
-            tag_id,
-          }));
-          const { error: tagError } = await supabase
-            .from('contact_tags')
-            .insert(tagRows);
-          if (tagError) throw tagError;
+        const tagResponse = await fetch(`/api/contacts/${contactId}/tags`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ tag_ids: selectedTagIds }),
+        });
+        const tagBody = await tagResponse.json().catch(() => null);
+        if (!tagResponse.ok) {
+          throw new Error(tagBody?.error ?? 'Failed to save contact tags');
         }
       }
 

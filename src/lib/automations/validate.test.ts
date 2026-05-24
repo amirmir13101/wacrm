@@ -247,6 +247,35 @@ describe("validateTriggerForActivation", () => {
     ).toEqual([]);
   });
 
+  it("rejects invalid time_based schedules", () => {
+    expect(
+      validateTriggerForActivation("time_based", { schedule: "sometime later" }),
+    ).toEqual([
+      {
+        path: "trigger.schedule",
+        message:
+          'schedule must be like "every 15 minutes", "hourly", "09:00", "daily 09:00", or "0 9 * * *"',
+      },
+    ]);
+  });
+
+  it("blocks contact-required steps for contactless time_based automations", () => {
+    const issues = validateStepsForActivation(
+      [
+        { step_type: "send_message", step_config: { text: "hello" } },
+        { step_type: "send_webhook", step_config: { url: "https://example.com/hook" } },
+      ],
+      { triggerType: "time_based" },
+    );
+    expect(issues).toEqual([
+      {
+        path: "steps[0]",
+        message:
+          "send_message needs a contact and cannot run from a time-based trigger",
+      },
+    ]);
+  });
+
   it("requires tag_id on tag_added triggers", () => {
     expect(validateTriggerForActivation("tag_added", {})).toEqual([
       { path: "trigger.tag_id", message: "tag is required" },

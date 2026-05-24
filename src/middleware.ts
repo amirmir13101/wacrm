@@ -111,6 +111,7 @@ export async function middleware(request: NextRequest) {
     (request.nextUrl.pathname.startsWith('/api/automations') &&
       !isCronProtectedAutomation) ||
     request.nextUrl.pathname.startsWith('/api/team') ||
+    request.nextUrl.pathname.startsWith('/api/contacts') ||
     request.nextUrl.pathname.startsWith('/api/pricing') ||
     request.nextUrl.pathname.startsWith('/api/admin')
 

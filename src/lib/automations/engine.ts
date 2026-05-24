@@ -41,12 +41,17 @@ export interface AutomationContext {
   vars?: Record<string, unknown>
   /** The tag id that was added, for tag_added trigger. */
   tag_id?: string
+  /** Human-readable tag name for logs/context. */
+  tag_name?: string
+  /** Workspace attached to the event, when available. */
+  workspace_id?: string
   /** Agent the conversation was assigned to, for conversation_assigned. */
   agent_id?: string
 }
 
 export interface DispatchInput {
   userId: string
+  automationId?: string
   triggerType: AutomationTriggerType
   contactId?: string | null
   context?: AutomationContext
@@ -62,12 +67,17 @@ export interface DispatchInput {
 export async function runAutomationsForTrigger(input: DispatchInput): Promise<void> {
   try {
     const db = supabaseAdmin()
-    const { data: automations, error } = await db
+    let query = db
       .from('automations')
       .select('*')
       .eq('user_id', input.userId)
       .eq('trigger_type', input.triggerType)
       .eq('is_active', true)
+    if (input.automationId) {
+      query = query.eq('id', input.automationId)
+    }
+
+    const { data: automations, error } = await query
 
     if (error) {
       console.error('[automations] fetch failed:', error)
@@ -525,8 +535,16 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
 }
 
 function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
+  if (automation.trigger_type === 'tag_added') {
+    return tagTriggerMatches(automation.trigger_config, ctx?.tag_id)
+  }
   if (automation.trigger_type !== 'keyword_match') return true
   return keywordTriggerMatches(automation.trigger_config as KeywordMatchTriggerConfig, ctx?.message_text)
+}
+
+export function tagTriggerMatches(config: unknown, addedTagId: unknown): boolean {
+  const cfg = (config ?? {}) as { tag_id?: unknown }
+  return typeof cfg.tag_id === 'string' && cfg.tag_id === addedTagId
 }
 
 async function resolveRoundRobinAgent(automation: Automation): Promise<string | null> {

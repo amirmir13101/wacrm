@@ -462,6 +462,9 @@ export interface Automation {
   is_active: boolean;
   execution_count: number;
   last_executed_at?: string | null;
+  last_scheduled_run_at?: string | null;
+  next_scheduled_run_at?: string | null;
+  schedule_timezone?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,5 +1,6 @@
 import type { AutomationTriggerType } from '@/types'
 import { missingTemplateVariables, normalizeKeywordConfig } from './template-variables'
+import { isValidTimeBasedSchedule } from './schedule'
 
 // ------------------------------------------------------------
 // Pre-flight config validation for automations about to be activated.
@@ -27,7 +28,10 @@ interface StepLike {
   branches?: { yes?: StepLike[]; no?: StepLike[] }
 }
 
-export function validateStepsForActivation(steps: StepLike[]): ValidationIssue[] {
+export function validateStepsForActivation(
+  steps: StepLike[],
+  options: { triggerType?: AutomationTriggerType | string } = {},
+): ValidationIssue[] {
   const issues: ValidationIssue[] = []
   if (!Array.isArray(steps) || steps.length === 0) {
     issues.push({
@@ -36,23 +40,42 @@ export function validateStepsForActivation(steps: StepLike[]): ValidationIssue[]
     })
     return issues
   }
-  walk(steps, '', issues)
+  walk(steps, '', issues, options)
   return issues
 }
 
-function walk(steps: StepLike[], prefix: string, issues: ValidationIssue[]): void {
+function walk(
+  steps: StepLike[],
+  prefix: string,
+  issues: ValidationIssue[],
+  options: { triggerType?: AutomationTriggerType | string },
+): void {
   steps.forEach((s, i) => {
     const path = `${prefix}steps[${i}]`
-    validateOne(s, path, issues)
+    validateOne(s, path, issues, options)
     if (s.step_type === 'condition' && s.branches) {
-      if (s.branches.yes) walk(s.branches.yes, `${path}.yes.`, issues)
-      if (s.branches.no) walk(s.branches.no, `${path}.no.`, issues)
+      if (s.branches.yes) walk(s.branches.yes, `${path}.yes.`, issues, options)
+      if (s.branches.no) walk(s.branches.no, `${path}.no.`, issues, options)
     }
   })
 }
 
-function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): void {
+function validateOne(
+  step: StepLike,
+  path: string,
+  issues: ValidationIssue[],
+  options: { triggerType?: AutomationTriggerType | string },
+): void {
   const c = step.step_config ?? {}
+  if (
+    options.triggerType === 'time_based' &&
+    CONTACT_REQUIRED_STEPS.has(step.step_type)
+  ) {
+    issues.push({
+      path,
+      message: `${step.step_type} needs a contact and cannot run from a time-based trigger`,
+    })
+  }
   switch (step.step_type) {
     case 'send_message':
       if (!nonEmpty(c.text)) {
@@ -174,6 +197,12 @@ export function validateTriggerForActivation(
   } else if (triggerType === 'time_based') {
     if (!nonEmpty(cfg.schedule)) {
       issues.push({ path: 'trigger.schedule', message: 'schedule is required' })
+    } else if (!isValidTimeBasedSchedule(cfg.schedule)) {
+      issues.push({
+        path: 'trigger.schedule',
+        message:
+          'schedule must be like "every 15 minutes", "hourly", "09:00", "daily 09:00", or "0 9 * * *"',
+      })
     }
   } else if (triggerType === 'tag_added') {
     if (!nonEmpty(cfg.tag_id)) {
@@ -183,6 +212,16 @@ export function validateTriggerForActivation(
 
   return issues
 }
+
+const CONTACT_REQUIRED_STEPS = new Set([
+  'send_message',
+  'send_template',
+  'add_tag',
+  'remove_tag',
+  'assign_conversation',
+  'update_contact_field',
+  'close_conversation',
+])
 
 function nonEmpty(v: unknown): boolean {
   return typeof v === 'string' && v.trim().length > 0
