@@ -82,6 +82,10 @@ export function formatRateMicros(micros: bigint, currency: string) {
   return `${currency} ${whole}.${fraction}`
 }
 
+export function isConvertedCurrencyEstimate(rate: Pick<WhatsAppPricingRate, 'notes'>) {
+  return /converted from usd estimate/i.test(rate.notes ?? '')
+}
+
 export function pricingWarnings(rate: WhatsAppPricingRate, now = new Date()) {
   const warnings: string[] = []
   if (!rate.last_verified_at) {
@@ -93,7 +97,10 @@ export function pricingWarnings(rate: WhatsAppPricingRate, now = new Date()) {
       warnings.push('Rate may be outdated.')
     }
   }
-  if (!rate.verified_by_admin) warnings.push('Rate should be verified against Meta’s official calculator.')
+  if (!rate.verified_by_admin) warnings.push('Rate should be verified against Meta official calculator.')
+  if (isConvertedCurrencyEstimate(rate)) {
+    warnings.push('Converted estimate. Actual Meta billing currency/rate may differ.')
+  }
   return warnings
 }
 

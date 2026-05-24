@@ -9,11 +9,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import type { WhatsAppPricingRate as DbPricingRate } from '@/types';
 import {
   calculatePricingEstimate,
   categoryRateField,
   EXAMPLE_PRICING_RATES,
+  isConvertedCurrencyEstimate,
   OFFICIAL_WHATSAPP_PRICING_URL,
   type WhatsAppPricingCategory,
 } from '@/lib/whatsapp/pricing';
@@ -255,8 +257,8 @@ export function WhatsAppPricingManager() {
             Estimate only. Actual Meta billing may differ.
           </p>
           <p className="mt-2 max-w-3xl text-xs text-amber-200">
-            Rates were imported from official WhatsApp pricing source when verified. Please re-check
-            regularly because Meta pricing can change.
+            Actual Meta billing may differ. Verify important campaigns with the official WhatsApp
+            calculator.
           </p>
           <a
             href={OFFICIAL_WHATSAPP_PRICING_URL}
@@ -392,7 +394,20 @@ export function WhatsAppPricingManager() {
                     <td className="px-3 py-2">{rate.marketing_rate ?? '-'}</td>
                     <td className="px-3 py-2">{rate.utility_rate ?? '-'}</td>
                     <td className="px-3 py-2">
-                      {rate.last_verified_at ? new Date(rate.last_verified_at).toLocaleDateString() : 'Not verified'}
+                      <div className="space-y-1">
+                        <Badge
+                          variant={rate.verified_by_admin ? 'secondary' : 'outline'}
+                          className={rate.verified_by_admin ? 'bg-emerald-500/15 text-emerald-200' : 'text-amber-200'}
+                        >
+                          {rate.verified_by_admin ? 'Verified' : 'Needs review'}
+                        </Badge>
+                        <p className="text-xs text-slate-500">
+                          {rate.last_verified_at ? new Date(rate.last_verified_at).toLocaleDateString() : 'No date'}
+                        </p>
+                        {isConvertedCurrencyEstimate(rate) && (
+                          <p className="text-xs text-amber-200">Converted from USD</p>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1">
@@ -450,6 +465,9 @@ export function WhatsAppPricingManager() {
                   <p>Category field: {categoryRateField(calculatorCategory)}</p>
                   <p>Source: {calculatorRate.official_rate_source_url || calculatorRate.source_url || OFFICIAL_WHATSAPP_PRICING_URL}</p>
                   <p>Last verified: {calculatorRate.last_verified_at ? new Date(calculatorRate.last_verified_at).toLocaleDateString() : 'Not verified'}</p>
+                  {isConvertedCurrencyEstimate(calculatorRate) && (
+                    <p className="text-amber-200">Converted estimate. Actual Meta billing currency/rate may differ.</p>
+                  )}
                 </div>
               )}
               {estimate.warnings.length > 0 && (

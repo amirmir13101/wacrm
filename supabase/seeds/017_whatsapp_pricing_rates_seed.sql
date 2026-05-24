@@ -19,7 +19,7 @@ DECLARE
 BEGIN
   SELECT id INTO target_user_id
   FROM auth.users
-  WHERE email = 'gorrylia356@gmail.com'
+  WHERE email = 'YOUR_ADMIN_EMAIL@example.com'
   LIMIT 1;
 
   IF target_user_id IS NULL THEN
@@ -201,3 +201,4 @@ BEGIN
     effective_from = EXCLUDED.effective_from,
     updated_at = NOW();
 END $$;
+
