@@ -110,6 +110,7 @@ export async function middleware(request: NextRequest) {
       !isCronProtectedBroadcastWorker) ||
     (request.nextUrl.pathname.startsWith('/api/automations') &&
       !isCronProtectedAutomation) ||
+    request.nextUrl.pathname.startsWith('/api/pricing') ||
     request.nextUrl.pathname.startsWith('/api/admin')
 
   if (!user && approvalProtectedApi) {

@@ -99,7 +99,7 @@ describe('broadcast preflight', () => {
       ['Pakistan', 'PKR'],
       ['United States', 'USD'],
     ])
-    expect(pricing.pricingBreakdown[0].estimatedTotalDisplay).toBe('PKR 13.17')
+    expect(pricing.pricingBreakdown[0].estimatedTotalDisplay).toBe('PKR 13.17 total')
     expect(pricing.currencyTotals.map((row) => row.currency).sort()).toEqual(['PKR', 'USD'])
     expect(pricing.currencyTotals.every((row) => row.totalMicros)).toBe(true)
   })
@@ -117,10 +117,10 @@ describe('broadcast preflight', () => {
     const converted = convertCurrencyTotalsToCurrency(pricing.currencyTotals, 'PKR')
 
     expect(converted.status).toBe('ok')
-    expect(converted.display).toBe('PKR 20.14')
+    expect(converted.display).toBe('PKR 20.14 total')
     expect(pricing.pricingBreakdown.map((row) => row.estimatedTotalDisplay)).toEqual([
-      'PKR 13.17',
-      'USD 0.03',
+      'PKR 13.17 total',
+      'USD 0.03 total',
     ])
   })
 
@@ -155,10 +155,10 @@ describe('broadcast preflight', () => {
     const converted = convertCurrencyTotalsToCurrency(pricing.currencyTotals, 'INR')
 
     expect(converted.status).toBe('ok')
-    expect(converted.display).toBe('INR 5.79')
+    expect(converted.display).toBe('INR 5.79 total')
     expect(pricing.pricingBreakdown.map((row) => row.estimatedTotalDisplay)).toEqual([
-      'PKR 13.17',
-      'MZN 1.44',
+      'PKR 13.17 total',
+      'MZN 1.44 total',
     ])
   })
 

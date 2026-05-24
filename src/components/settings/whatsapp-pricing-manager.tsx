@@ -13,14 +13,13 @@ import { Badge } from '@/components/ui/badge';
 import type { WhatsAppPricingRate as DbPricingRate } from '@/types';
 import {
   calculatePricingEstimate,
-  categoryRateField,
   COMMON_VIEW_CURRENCIES,
   convertMicrosCurrency,
-  EXCHANGE_RATE_LAST_UPDATED_AT,
-  EXCHANGE_RATE_SOURCE_NOTE,
   EXAMPLE_PRICING_RATES,
+  formatRateMicros,
   isConvertedCurrencyEstimate,
   OFFICIAL_WHATSAPP_PRICING_URL,
+  parseRateToMicros,
   type WhatsAppPricingCategory,
 } from '@/lib/whatsapp/pricing';
 
@@ -89,6 +88,11 @@ function cleanRate(value: string) {
   return trimmed ? trimmed : null;
 }
 
+function rateCell(rate: DbPricingRate, key: 'marketing_rate' | 'utility_rate') {
+  const micros = parseRateToMicros(rate[key]);
+  return micros === null ? '-' : `${formatRateMicros(micros, rate.currency)} / message`;
+}
+
 export function WhatsAppPricingManager() {
   const supabase = createClient();
   const { user, profile, loading: authLoading } = useAuth();
@@ -119,17 +123,15 @@ export function WhatsAppPricingManager() {
   async function fetchRates() {
     if (!user) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from('whatsapp_pricing_rates')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('country_name');
-
-    if (error) {
-      toast.error('Failed to load WhatsApp pricing rates');
-    } else {
-      setRates((data ?? []) as DbPricingRate[]);
-      if (!calculatorRateId && data?.[0]) setCalculatorRateId(data[0].id);
+    try {
+      const response = await fetch('/api/pricing/rates');
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to load WhatsApp pricing rates');
+      const loadedRates = (payload.rates ?? []) as DbPricingRate[];
+      setRates(loadedRates);
+      if (!calculatorRateId && loadedRates[0]) setCalculatorRateId(loadedRates[0].id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load WhatsApp pricing rates');
     }
     setLoading(false);
   }
@@ -266,12 +268,7 @@ export function WhatsAppPricingManager() {
         <div>
           <h2 className="text-lg font-semibold text-white">WhatsApp Pricing</h2>
           <p className="mt-1 max-w-3xl text-sm text-slate-400">
-            Store manually verified Meta pricing rates and estimate campaign cost before sending.
-            Estimate only. Actual Meta billing may differ.
-          </p>
-          <p className="mt-2 max-w-3xl text-xs text-amber-200">
-            Actual Meta billing may differ. Verify important campaigns with the official WhatsApp
-            calculator.
+            Estimate campaign costs with admin-managed WhatsApp rates. Estimate only. Actual Meta billing and FX rates may differ.
           </p>
           <a
             href={OFFICIAL_WHATSAPP_PRICING_URL}
@@ -282,24 +279,27 @@ export function WhatsAppPricingManager() {
             Official WhatsApp pricing page <ExternalLink className="size-3" />
           </a>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={addExampleRates}
-          disabled={!isAdmin || saving}
-          className="border-slate-700 text-slate-300 hover:bg-slate-800"
-        >
-          <Plus className="size-4" />
-          Add Example Countries
-        </Button>
+        {isAdmin && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={addExampleRates}
+            disabled={saving}
+            className="border-slate-700 text-slate-300 hover:bg-slate-800"
+          >
+            <Plus className="size-4" />
+            Add Example Countries
+          </Button>
+        )}
       </div>
 
       {!isAdmin && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-          Pricing is admin-managed. You can view estimates, but only admins can change rates.
+        <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 text-sm text-slate-300">
+          Pricing is admin-managed. You can view rates and calculate estimates.
         </div>
       )}
 
+      {isAdmin && (
       <Card className="border-slate-800 bg-slate-900/70">
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-4">
@@ -366,6 +366,7 @@ export function WhatsAppPricingManager() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-3">
@@ -388,24 +389,24 @@ export function WhatsAppPricingManager() {
                 <th className="px-3 py-2 text-left">Marketing</th>
                 <th className="px-3 py-2 text-left">Utility</th>
                 <th className="px-3 py-2 text-left">Verified</th>
-                <th className="px-3 py-2 text-right">Actions</th>
+                {isAdmin && <th className="px-3 py-2 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">Loading pricing rates...</td></tr>
+                <tr><td colSpan={isAdmin ? 7 : 6} className="px-3 py-8 text-center text-slate-500">Loading pricing rates...</td></tr>
               ) : rates.length === 0 ? (
-                <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">No pricing rates configured.</td></tr>
+                <tr><td colSpan={isAdmin ? 7 : 6} className="px-3 py-8 text-center text-slate-500">No pricing rates configured.</td></tr>
               ) : filteredRates.length === 0 ? (
-                <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">No pricing rates match your search.</td></tr>
+                <tr><td colSpan={isAdmin ? 7 : 6} className="px-3 py-8 text-center text-slate-500">No pricing rates match your search.</td></tr>
               ) : (
                 filteredRates.map((rate) => (
                   <tr key={rate.id} className="border-t border-slate-800 text-slate-300">
                     <td className="px-3 py-2 text-white">{rate.country_name}</td>
                     <td className="px-3 py-2">+{rate.phone_country_code}</td>
                     <td className="px-3 py-2">{rate.currency}</td>
-                    <td className="px-3 py-2">{rate.marketing_rate ?? '-'}</td>
-                    <td className="px-3 py-2">{rate.utility_rate ?? '-'}</td>
+                    <td className="px-3 py-2">{rateCell(rate, 'marketing_rate')}</td>
+                    <td className="px-3 py-2">{rateCell(rate, 'utility_rate')}</td>
                     <td className="px-3 py-2">
                       <div className="space-y-1">
                         <Badge
@@ -418,11 +419,11 @@ export function WhatsAppPricingManager() {
                           {rate.last_verified_at ? new Date(rate.last_verified_at).toLocaleDateString() : 'No date'}
                         </p>
                         {isConvertedCurrencyEstimate(rate) && (
-                          <p className="text-xs text-amber-200">Converted from USD</p>
+                          <Badge className="bg-violet-500/15 text-violet-200">FX estimate</Badge>
                         )}
                       </div>
                     </td>
-                    <td className="px-3 py-2">
+                    {isAdmin && <td className="px-3 py-2">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon-sm" onClick={() => edit(rate)} className="text-slate-300">
                           <Edit2 className="size-4" />
@@ -431,7 +432,7 @@ export function WhatsAppPricingManager() {
                           <Trash2 className="size-4" />
                         </Button>
                       </div>
-                    </td>
+                    </td>}
                   </tr>
                 ))
               )}
@@ -492,42 +493,29 @@ export function WhatsAppPricingManager() {
                   <p className="text-xs text-violet-200">Converted estimate</p>
                   <p className="mt-1 text-xl font-semibold text-white">{convertedEstimate.display}</p>
                   {convertedEstimate.status === 'missing_rate' ? (
-                    <p className="mt-1 text-xs text-amber-200">Conversion rate not configured.</p>
+                    <Badge className="mt-2 bg-amber-500/15 text-amber-200">FX rate missing</Badge>
                   ) : (
-                    <div className="mt-1 space-y-1 text-xs text-slate-400">
-                      <p>
-                        Uses {EXCHANGE_RATE_SOURCE_NOTE.toLowerCase()} updated{' '}
-                        {new Date(EXCHANGE_RATE_LAST_UPDATED_AT).toLocaleDateString()}.
-                      </p>
-                      {convertedEstimate.warnings.map((warning) => (
-                        <p key={warning} className="text-amber-200">
-                          {warning}
-                        </p>
-                      ))}
-                    </div>
+                    <Badge className="mt-2 bg-violet-500/15 text-violet-200">FX estimate</Badge>
                   )}
                 </div>
               )}
               {calculatorRate && (
                 <div className="mt-3 space-y-1 text-xs text-slate-400">
-                  <p>Category field: {categoryRateField(calculatorCategory)}</p>
                   <p>Source: {calculatorRate.official_rate_source_url || calculatorRate.source_url || OFFICIAL_WHATSAPP_PRICING_URL}</p>
                   <p>Last verified: {calculatorRate.last_verified_at ? new Date(calculatorRate.last_verified_at).toLocaleDateString() : 'Not verified'}</p>
-                  {isConvertedCurrencyEstimate(calculatorRate) && (
-                    <p className="text-amber-200">Converted estimate. Actual Meta billing currency/rate may differ.</p>
-                  )}
                 </div>
               )}
               {estimate.warnings.length > 0 && (
-                <div className="mt-3 space-y-1 text-xs text-amber-200">
-                  {estimate.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {estimate.warnings.map((warning) => (
+                    <Badge key={warning} className="bg-amber-500/15 text-amber-200">
+                      {warning}
+                    </Badge>
+                  ))}
                 </div>
               )}
               <p className="mt-3 text-xs text-slate-500">
-                Estimate only. Actual Meta billing may differ. Verify against Meta&apos;s official calculator before real campaigns.
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Totals are rounded for display. Internal calculation keeps full precision. Converted totals use admin-maintained exchange rates.
+                Totals are rounded for display. Converted with admin-maintained FX rates.
               </p>
             </div>
           </CardContent>

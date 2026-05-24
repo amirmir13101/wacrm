@@ -12,8 +12,6 @@ import type { BroadcastPreflightSummary } from '@/lib/broadcast-preflight';
 import {
   COMMON_VIEW_CURRENCIES,
   convertCurrencyTotalsToCurrency,
-  EXCHANGE_RATE_LAST_UPDATED_AT,
-  EXCHANGE_RATE_SOURCE_NOTE,
 } from '@/lib/whatsapp/pricing';
 
 interface Step4ReviewPreflightProps {
@@ -180,7 +178,7 @@ export function Step4ReviewPreflight({
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-sm font-medium text-white">Pricing</h3>
-            <p className="mt-1 text-xs text-slate-500">Original country currency breakdown stays unchanged.</p>
+            <p className="mt-1 text-xs text-slate-500">Estimate only. Actual Meta billing and FX rates may differ.</p>
           </div>
           <StatusBadge state={summary.pricingMissingCount > 0 ? 'warning' : 'passed'} />
         </div>
@@ -205,7 +203,11 @@ export function Step4ReviewPreflight({
                     <td className="px-3 py-2">{row.recipientCount}</td>
                     <td className="px-3 py-2">{row.rateDisplay}</td>
                     <td className="px-3 py-2 text-white">{row.estimatedTotalDisplay}</td>
-                    <td className="px-3 py-2">{row.verified ? 'Yes' : 'Review'}</td>
+                    <td className="px-3 py-2">
+                      <Badge className={row.verified ? 'bg-emerald-500/15 text-emerald-200' : 'bg-amber-500/15 text-amber-200'}>
+                        {row.verified ? 'Verified' : 'Needs review'}
+                      </Badge>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -246,24 +248,14 @@ export function Step4ReviewPreflight({
                 <p className="text-xs text-violet-200">Converted grand total</p>
                 <p className="mt-1 text-xl font-semibold text-white">{convertedGrandTotal.display}</p>
                 {convertedGrandTotal.status === 'missing_rate' ? (
-                  <p className="mt-1 text-xs text-amber-200">Conversion rate not configured.</p>
+                  <Badge className="mt-2 bg-amber-500/15 text-amber-200">FX rate missing</Badge>
                 ) : (
-                  <div className="mt-1 space-y-1 text-xs text-slate-400">
-                    <p>
-                      Uses {EXCHANGE_RATE_SOURCE_NOTE.toLowerCase()} updated{' '}
-                      {new Date(EXCHANGE_RATE_LAST_UPDATED_AT).toLocaleDateString()}.
-                    </p>
-                    {convertedGrandTotal.warnings.map((warning) => (
-                      <p key={warning} className="text-amber-200">
-                        {warning}
-                      </p>
-                    ))}
-                  </div>
+                  <Badge className="mt-2 bg-violet-500/15 text-violet-200">FX estimate</Badge>
                 )}
               </div>
             )}
             <p className="text-xs text-slate-500">
-              Totals are rounded for display. Internal calculation keeps full precision.
+              Totals are rounded for display. Converted with admin-maintained FX rates.
             </p>
           </div>
         )}
@@ -273,16 +265,6 @@ export function Step4ReviewPreflight({
           </div>
         )}
       </section>
-
-      <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-100">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Billing estimate</AlertTitle>
-        <AlertDescription>
-          This is an estimate only. Actual Meta billing may differ. Meta charges based on delivered
-          messages, recipient country, message category, and current official Meta pricing.
-          Converted totals use admin-maintained exchange rates.
-        </AlertDescription>
-      </Alert>
 
       <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4">
         <label className="flex items-start gap-2 text-sm text-slate-200">

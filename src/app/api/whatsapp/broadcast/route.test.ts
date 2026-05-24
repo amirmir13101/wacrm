@@ -23,6 +23,14 @@ describe('/api/whatsapp/broadcast compatibility route', () => {
     expect(source).toContain('evaluateBroadcastRecipients')
   })
 
+  it('loads shared admin-managed pricing rates for preflight estimates', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
+
+    expect(source).toContain('supabaseAdmin()')
+    expect(source).toContain('dedupeSharedPricingRates')
+    expect(source).toContain('fetchPricingRates()')
+  })
+
   it('converts shared raw params into queued static template variables', () => {
     expect(
       sharedStaticVariables([

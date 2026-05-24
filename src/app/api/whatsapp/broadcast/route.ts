@@ -13,6 +13,8 @@ import {
   buildBroadcastPreflightSummary,
   evaluateBroadcastRecipients,
 } from '@/lib/broadcast-preflight'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { dedupeSharedPricingRates } from '@/lib/whatsapp/pricing-rates'
 import type { Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
 
 interface IncomingRecipient {
@@ -98,17 +100,13 @@ async function fetchWhatsAppConnected(args: {
   return data?.status === 'connected'
 }
 
-async function fetchPricingRates(args: {
-  supabase: Awaited<ReturnType<typeof createClient>>
-  userId: string
-}) {
-  const { data, error } = await args.supabase
+async function fetchPricingRates() {
+  const { data, error } = await supabaseAdmin()
     .from('whatsapp_pricing_rates')
     .select('*')
-    .eq('user_id', args.userId)
 
   if (error) throw new Error(`Failed to load pricing rates: ${error.message}`)
-  return (data ?? []) as WhatsAppPricingRate[]
+  return dedupeSharedPricingRates((data ?? []) as WhatsAppPricingRate[])
 }
 
 async function upsertCsvContactsForQueue(args: {
@@ -322,7 +320,7 @@ export async function POST(request: Request) {
 
     const [whatsappConnected, rates, contacts] = await Promise.all([
       fetchWhatsAppConnected({ supabase, userId: user.id }),
-      fetchPricingRates({ supabase, userId: user.id }),
+      fetchPricingRates(),
       resolveAudience({
         supabase,
         userId: user.id,

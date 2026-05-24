@@ -217,9 +217,7 @@ export function formatMicros(micros: bigint, currency: string, fractionDigits = 
 }
 
 export function formatRateMicros(micros: bigint, currency: string) {
-  const whole = micros / BigInt(1_000_000)
-  const fraction = (micros % BigInt(1_000_000)).toString().padStart(6, '0')
-  return `${currency} ${whole}.${fraction}`
+  return formatMicros(micros, currency, 4)
 }
 
 export function convertMicrosCurrency(args: {
@@ -244,7 +242,7 @@ export function convertMicrosCurrency(args: {
       status: 'missing_rate',
       convertedMicros: BigInt(0),
       display: 'Conversion rate not configured',
-      warnings: [`Conversion rate not configured for ${fromCurrency} to ${toCurrency}.`],
+      warnings: ['FX rate missing'],
     }
   }
 
@@ -253,14 +251,11 @@ export function convertMicrosCurrency(args: {
     ...base,
     status: 'ok',
     convertedMicros,
-    display: formatMicros(convertedMicros, toCurrency, 2),
+    display: `${formatMicros(convertedMicros, toCurrency, 2)} total`,
     warnings:
       fromCurrency === toCurrency
         ? []
-        : [
-            'Converted estimate uses admin-maintained exchange rates.',
-            'Actual Meta billing and FX conversion may differ.',
-          ],
+        : ['FX estimate'],
   }
 }
 
@@ -294,7 +289,7 @@ export function convertCurrencyTotalsToCurrency(
     fromCurrency: totals.length === 1 ? totals[0].currency.toUpperCase() : 'MULTIPLE',
     toCurrency: target,
     convertedMicros: grandTotal,
-    display: formatMicros(grandTotal, target, 2),
+    display: `${formatMicros(grandTotal, target, 2)} total`,
     warnings: [...warnings],
     lastUpdatedAt: EXCHANGE_RATE_LAST_UPDATED_AT,
     sourceNote: EXCHANGE_RATE_SOURCE_NOTE,
@@ -308,17 +303,17 @@ export function isConvertedCurrencyEstimate(rate: Pick<WhatsAppPricingRate, 'not
 export function pricingWarnings(rate: WhatsAppPricingRate, now = new Date()) {
   const warnings: string[] = []
   if (!rate.last_verified_at) {
-    warnings.push('Rate not verified.')
+    warnings.push('Not verified')
   } else {
     const verifiedAt = new Date(rate.last_verified_at)
     const ageMs = now.getTime() - verifiedAt.getTime()
     if (Number.isFinite(ageMs) && ageMs > 30 * 24 * 60 * 60 * 1000) {
-      warnings.push('Rate may be outdated.')
+      warnings.push('Outdated')
     }
   }
-  if (!rate.verified_by_admin) warnings.push('Rate should be verified against Meta official calculator.')
+  if (!rate.verified_by_admin) warnings.push('Needs review')
   if (isConvertedCurrencyEstimate(rate)) {
-    warnings.push('Converted estimate. Actual Meta billing currency/rate may differ.')
+    warnings.push('FX estimate')
   }
   return warnings
 }
@@ -357,9 +352,9 @@ export function calculatePricingEstimate(args: {
   return {
     status: 'ok',
     rateMicros,
-    rateDisplay: formatRateMicros(rateMicros, args.rate.currency),
+    rateDisplay: `${formatRateMicros(rateMicros, args.rate.currency)} / message`,
     rawTotalMicros: total,
-    totalDisplay: formatMicros(total, args.rate.currency, 2),
+    totalDisplay: `${formatMicros(total, args.rate.currency, 2)} total`,
     warnings: pricingWarnings(args.rate, args.now),
   }
 }

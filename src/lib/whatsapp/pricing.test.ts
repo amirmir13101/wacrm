@@ -9,6 +9,7 @@ import {
   estimateBroadcastPricingBreakdown,
   findRateForPhone,
   formatMicros,
+  formatRateMicros,
   isConvertedCurrencyEstimate,
   parseRateToMicros,
   type WhatsAppPricingRate,
@@ -61,6 +62,7 @@ describe('WhatsApp pricing helpers', () => {
   it('keeps decimal precision with micros', () => {
     expect(parseRateToMicros('0.010900')).toBe(BigInt(10900))
     expect(formatMicros(BigInt(10900) * BigInt(1000), 'USD')).toBe('USD 10.90')
+    expect(formatRateMicros(BigInt(15900), 'GBP')).toBe('GBP 0.0159')
   })
 
   it('calculates Pakistan marketing estimates', () => {
@@ -71,8 +73,8 @@ describe('WhatsApp pricing helpers', () => {
       now: new Date('2026-05-24T00:00:00.000Z'),
     })
     expect(result.status).toBe('ok')
-    expect(result.rateDisplay).toBe('PKR 13.173050')
-    expect(result.totalDisplay).toBe('PKR 13173.05')
+    expect(result.rateDisplay).toBe('PKR 13.1731 / message')
+    expect(result.totalDisplay).toBe('PKR 13173.05 total')
   })
 
   it('calculates Turkey marketing estimates', () => {
@@ -82,8 +84,8 @@ describe('WhatsApp pricing helpers', () => {
       messageCount: 1000,
       now: new Date('2026-05-24T00:00:00.000Z'),
     })
-    expect(result.rateDisplay).toBe('TRY 0.292500')
-    expect(result.totalDisplay).toBe('TRY 292.50')
+    expect(result.rateDisplay).toBe('TRY 0.2925 / message')
+    expect(result.totalDisplay).toBe('TRY 292.50 total')
   })
 
   it('keeps United States rates in USD', () => {
@@ -94,7 +96,7 @@ describe('WhatsApp pricing helpers', () => {
       now: new Date('2026-05-24T00:00:00.000Z'),
     })
 
-    expect(result.totalDisplay).toBe('USD 25.00')
+    expect(result.totalDisplay).toBe('USD 25.00 total')
   })
 
   it('warns for missing and outdated rates', () => {
@@ -107,7 +109,7 @@ describe('WhatsApp pricing helpers', () => {
       messageCount: 1,
       now: new Date('2026-05-24T00:00:00.000Z'),
     })
-    expect(outdated.warnings).toContain('Rate may be outdated.')
+    expect(outdated.warnings).toContain('Outdated')
   })
 
   it('warns when a rate is converted from a USD estimate', () => {
@@ -119,7 +121,7 @@ describe('WhatsApp pricing helpers', () => {
     })
 
     expect(isConvertedCurrencyEstimate(pakistan)).toBe(true)
-    expect(result.warnings).toContain('Converted estimate. Actual Meta billing currency/rate may differ.')
+    expect(result.warnings).toContain('FX estimate')
   })
 
   it('does not require review for admin verified current rows', () => {
@@ -130,9 +132,9 @@ describe('WhatsApp pricing helpers', () => {
       now: new Date('2026-05-24T00:00:00.000Z'),
     })
 
-    expect(result.warnings).not.toContain('Rate not verified.')
-    expect(result.warnings).not.toContain('Rate may be outdated.')
-    expect(result.warnings).not.toContain('Rate should be verified against Meta official calculator.')
+    expect(result.warnings).not.toContain('Not verified')
+    expect(result.warnings).not.toContain('Outdated')
+    expect(result.warnings).not.toContain('Needs review')
   })
 
   it('detects countries from WhatsApp phone numbers', () => {
@@ -154,7 +156,7 @@ describe('WhatsApp pricing helpers', () => {
       messageCount: 12,
       now: new Date('2026-05-24T00:00:00.000Z'),
     })
-    expect(deliveredOnly.totalDisplay).toBe('PKR 158.08')
+    expect(deliveredOnly.totalDisplay).toBe('PKR 158.08 total')
   })
 
   it('converts PKR estimates to USD for display', () => {
@@ -171,7 +173,7 @@ describe('WhatsApp pricing helpers', () => {
     })
 
     expect(converted.status).toBe('ok')
-    expect(converted.display).toBe('USD 10.00')
+    expect(converted.display).toBe('USD 10.00 total')
   })
 
   it('converts Mozambique MZN estimates to INR and PKR for display', () => {
@@ -187,9 +189,9 @@ describe('WhatsApp pricing helpers', () => {
     })
 
     expect(mznToInr.status).toBe('ok')
-    expect(mznToInr.display).toBe('INR 1867.50')
+    expect(mznToInr.display).toBe('INR 1867.50 total')
     expect(mznToPkr.status).toBe('ok')
-    expect(mznToPkr.display).toBe('PKR 6266.25')
+    expect(mznToPkr.display).toBe('PKR 6266.25 total')
   })
 
   it('converts USD estimates to PKR for display', () => {
@@ -200,7 +202,7 @@ describe('WhatsApp pricing helpers', () => {
     })
 
     expect(converted.status).toBe('ok')
-    expect(converted.display).toBe('PKR 6962.50')
+    expect(converted.display).toBe('PKR 6962.50 total')
   })
 
   it('converts GBP and TRY totals to PKR for display', () => {
@@ -216,9 +218,9 @@ describe('WhatsApp pricing helpers', () => {
     })
 
     expect(gbp.status).toBe('ok')
-    expect(gbp.display).toBe('PKR 5.68')
+    expect(gbp.display).toBe('PKR 5.68 total')
     expect(tryResult.status).toBe('ok')
-    expect(tryResult.display).toBe('PKR 2506.50')
+    expect(tryResult.display).toBe('PKR 2506.50 total')
   })
 
   it('converts TRY and XOF totals into selected display currencies', () => {
@@ -234,9 +236,9 @@ describe('WhatsApp pricing helpers', () => {
     })
 
     expect(tryToInr.status).toBe('ok')
-    expect(tryToInr.display).toBe('INR 747.00')
+    expect(tryToInr.display).toBe('INR 747.00 total')
     expect(xofToPkr.status).toBe('ok')
-    expect(xofToPkr.display).toBe('PKR 278.50')
+    expect(xofToPkr.display).toBe('PKR 278.50 total')
   })
 
   it('returns the same amount when converting within the same currency', () => {
@@ -247,7 +249,7 @@ describe('WhatsApp pricing helpers', () => {
     })
 
     expect(converted.status).toBe('ok')
-    expect(converted.display).toBe('MZN 1440.00')
+    expect(converted.display).toBe('MZN 1440.00 total')
     expect(converted.warnings).toEqual([])
   })
 
@@ -272,7 +274,7 @@ describe('WhatsApp pricing helpers', () => {
     )
 
     expect(converted.status).toBe('ok')
-    expect(converted.display).toBe('USD 2.00')
+    expect(converted.display).toBe('USD 2.00 total')
   })
 
   it('prepares country breakdowns for broadcast pricing integration', () => {
