@@ -4,6 +4,7 @@ import {
   buildBroadcastPricingSummary,
   evaluateBroadcastRecipients,
 } from './broadcast-preflight'
+import { convertCurrencyTotalsToCurrency } from './whatsapp/pricing'
 import type { Contact, MessageTemplate, WhatsAppPricingRate } from '@/types'
 
 const baseContact: Contact = {
@@ -98,7 +99,29 @@ describe('broadcast preflight', () => {
       ['Pakistan', 'PKR'],
       ['United States', 'USD'],
     ])
+    expect(pricing.pricingBreakdown[0].estimatedTotalDisplay).toBe('PKR 13.17')
     expect(pricing.currencyTotals.map((row) => row.currency).sort()).toEqual(['PKR', 'USD'])
+    expect(pricing.currencyTotals.every((row) => row.totalMicros)).toBe(true)
+  })
+
+  it('converts multiple-country preflight totals without changing original breakdown', () => {
+    const pricing = buildBroadcastPricingSummary({
+      eligibleRecipients: [
+        { contact: baseContact, normalizedPhone: '923001234567' },
+        { contact: { ...baseContact, id: 'c2', phone: '14155552671' }, normalizedPhone: '14155552671' },
+      ],
+      rates,
+      category: 'marketing',
+    })
+
+    const converted = convertCurrencyTotalsToCurrency(pricing.currencyTotals, 'PKR')
+
+    expect(converted.status).toBe('ok')
+    expect(converted.display).toBe('PKR 20.14')
+    expect(pricing.pricingBreakdown.map((row) => row.estimatedTotalDisplay)).toEqual([
+      'PKR 13.17',
+      'USD 0.03',
+    ])
   })
 
   it('shows missing pricing warnings', () => {

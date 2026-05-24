@@ -14,6 +14,10 @@ import type { WhatsAppPricingRate as DbPricingRate } from '@/types';
 import {
   calculatePricingEstimate,
   categoryRateField,
+  COMMON_VIEW_CURRENCIES,
+  convertMicrosCurrency,
+  EXCHANGE_RATE_LAST_UPDATED_AT,
+  EXCHANGE_RATE_SOURCE_NOTE,
   EXAMPLE_PRICING_RATES,
   isConvertedCurrencyEstimate,
   OFFICIAL_WHATSAPP_PRICING_URL,
@@ -100,6 +104,7 @@ export function WhatsAppPricingManager() {
   const [calculatorRateId, setCalculatorRateId] = useState('');
   const [calculatorCategory, setCalculatorCategory] = useState<WhatsAppPricingCategory>('marketing');
   const [calculatorCount, setCalculatorCount] = useState(1000);
+  const [calculatorViewCurrency, setCalculatorViewCurrency] = useState('');
 
   useEffect(() => {
     if (authLoading) return;
@@ -246,6 +251,14 @@ export function WhatsAppPricingManager() {
       }),
     [calculatorRate, calculatorCategory, calculatorCount],
   );
+  const convertedEstimate = useMemo(() => {
+    if (!calculatorRate || !calculatorViewCurrency || estimate.status !== 'ok') return null;
+    return convertMicrosCurrency({
+      amountMicros: estimate.rawTotalMicros,
+      fromCurrency: calculatorRate.currency,
+      toCurrency: calculatorViewCurrency,
+    });
+  }, [calculatorRate, calculatorViewCurrency, estimate]);
 
   return (
     <div className="space-y-6">
@@ -455,11 +468,46 @@ export function WhatsAppPricingManager() {
             <Field label="Number of messages">
               <Input type="number" min={0} value={calculatorCount} onChange={(e) => setCalculatorCount(Number(e.target.value) || 0)} className="bg-slate-800 border-slate-700 text-white" />
             </Field>
+            <Field label="View estimate in currency">
+              <select
+                value={calculatorViewCurrency}
+                onChange={(e) => setCalculatorViewCurrency(e.target.value)}
+                className="h-9 w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 text-sm text-white"
+              >
+                <option value="">Original currency only</option>
+                {COMMON_VIEW_CURRENCIES.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-sm">
               <p className="text-slate-400">Rate per delivered message</p>
               <p className="mt-1 text-lg font-semibold text-white">{estimate.rateDisplay}</p>
               <p className="mt-3 text-slate-400">Estimated total</p>
               <p className="mt-1 text-2xl font-semibold text-violet-200">{estimate.totalDisplay}</p>
+              {convertedEstimate && (
+                <div className="mt-3 rounded-lg border border-violet-500/20 bg-violet-500/10 p-3">
+                  <p className="text-xs text-violet-200">Converted estimate</p>
+                  <p className="mt-1 text-xl font-semibold text-white">{convertedEstimate.display}</p>
+                  {convertedEstimate.status === 'missing_rate' ? (
+                    <p className="mt-1 text-xs text-amber-200">Conversion rate not configured.</p>
+                  ) : (
+                    <div className="mt-1 space-y-1 text-xs text-slate-400">
+                      <p>
+                        Uses {EXCHANGE_RATE_SOURCE_NOTE.toLowerCase()} updated{' '}
+                        {new Date(EXCHANGE_RATE_LAST_UPDATED_AT).toLocaleDateString()}.
+                      </p>
+                      {convertedEstimate.warnings.map((warning) => (
+                        <p key={warning} className="text-amber-200">
+                          {warning}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {calculatorRate && (
                 <div className="mt-3 space-y-1 text-xs text-slate-400">
                   <p>Category field: {categoryRateField(calculatorCategory)}</p>
@@ -477,6 +525,9 @@ export function WhatsAppPricingManager() {
               )}
               <p className="mt-3 text-xs text-slate-500">
                 Estimate only. Actual Meta billing may differ. Verify against Meta&apos;s official calculator before real campaigns.
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Totals are rounded for display. Internal calculation keeps full precision. Converted totals use admin-maintained exchange rates.
               </p>
             </div>
           </CardContent>

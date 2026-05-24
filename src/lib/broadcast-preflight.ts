@@ -3,6 +3,7 @@ import {
   calculatePricingEstimate,
   detectCountryFromPhone,
   findRateForPhone,
+  formatMicros,
   type WhatsAppPricingCategory,
   type WhatsAppPricingRate,
 } from '@/lib/whatsapp/pricing'
@@ -20,7 +21,9 @@ export interface PricingBreakdownRow {
   currency: string
   category: WhatsAppPricingCategory
   recipientCount: number
+  rateMicros: string
   rateDisplay: string
+  estimatedTotalMicros: string
   estimatedTotalDisplay: string
   verified: boolean
   lastVerifiedAt: string | null
@@ -43,7 +46,7 @@ export interface BroadcastPreflightSummary {
   finalQueueCount: number
   pricingMissingCount: number
   pricingBreakdown: PricingBreakdownRow[]
-  currencyTotals: { currency: string; totalDisplay: string }[]
+  currencyTotals: { currency: string; totalMicros: string; totalDisplay: string }[]
   missingPricingWarnings: string[]
   blockers: string[]
   warnings: string[]
@@ -149,7 +152,9 @@ export function buildBroadcastPricingSummary(args: {
       currency: bucket.rate.currency,
       category: args.category,
       recipientCount: bucket.count,
+      rateMicros: estimate.rateMicros.toString(),
       rateDisplay: estimate.rateDisplay,
+      estimatedTotalMicros: estimate.rawTotalMicros.toString(),
       estimatedTotalDisplay: estimate.totalDisplay,
       verified: bucket.rate.verified_by_admin === true,
       lastVerifiedAt: bucket.rate.last_verified_at ?? null,
@@ -158,12 +163,10 @@ export function buildBroadcastPricingSummary(args: {
   }
 
   const currencyTotals = [...currencyTotalsMicros.entries()].map(([currency, totalMicros]) => {
-    const whole = totalMicros / BigInt(1_000_000)
-    const remainder = totalMicros % BigInt(1_000_000)
-    const cents = (remainder + BigInt(5_000)) / BigInt(10_000)
     return {
       currency,
-      totalDisplay: `${currency} ${whole}.${cents.toString().padStart(2, '0')}`,
+      totalMicros: totalMicros.toString(),
+      totalDisplay: formatMicros(totalMicros, currency, 2),
     }
   })
 

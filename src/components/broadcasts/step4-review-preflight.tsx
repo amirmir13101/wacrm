@@ -9,6 +9,12 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { MessageTemplate, VariableMapping } from '@/types';
 import type { AudienceConfig } from '@/hooks/use-broadcast-sending';
 import type { BroadcastPreflightSummary } from '@/lib/broadcast-preflight';
+import {
+  COMMON_VIEW_CURRENCIES,
+  convertCurrencyTotalsToCurrency,
+  EXCHANGE_RATE_LAST_UPDATED_AT,
+  EXCHANGE_RATE_SOURCE_NOTE,
+} from '@/lib/whatsapp/pricing';
 
 interface Step4ReviewPreflightProps {
   template: MessageTemplate;
@@ -47,6 +53,7 @@ export function Step4ReviewPreflight({
   const [summary, setSummary] = useState<BroadcastPreflightSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewCurrency, setViewCurrency] = useState('ORIGINAL');
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +103,11 @@ export function Step4ReviewPreflight({
     if (summary.pricingMissingCount > 0 && !acknowledgeMissingPricing) return false;
     return true;
   }, [acknowledgeBilling, acknowledgeMissingPricing, summary]);
+
+  const convertedGrandTotal = useMemo(() => {
+    if (!summary || viewCurrency === 'ORIGINAL' || summary.currencyTotals.length === 0) return null;
+    return convertCurrencyTotalsToCurrency(summary.currencyTotals, viewCurrency);
+  }, [summary, viewCurrency]);
 
   if (loading) {
     return (
@@ -165,8 +177,11 @@ export function Step4ReviewPreflight({
       </section>
 
       <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">Pricing</h3>
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-white">Pricing</h3>
+            <p className="mt-1 text-xs text-slate-500">Original country currency breakdown stays unchanged.</p>
+          </div>
           <StatusBadge state={summary.pricingMissingCount > 0 ? 'warning' : 'passed'} />
         </div>
         {summary.pricingBreakdown.length === 0 ? (
@@ -198,12 +213,58 @@ export function Step4ReviewPreflight({
           </div>
         )}
         {summary.currencyTotals.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {summary.currencyTotals.map((row) => (
-              <Badge key={row.currency} variant="outline" className="border-slate-700 text-slate-200">
-                {row.totalDisplay}
-              </Badge>
-            ))}
+          <div className="mt-3 space-y-3 rounded-lg border border-slate-800 bg-slate-950/30 p-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-medium text-slate-300">Original currency totals</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {summary.currencyTotals.map((row) => (
+                    <Badge key={row.currency} variant="outline" className="border-slate-700 text-slate-200">
+                      {row.totalDisplay}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <label className="space-y-1 text-xs text-slate-400">
+                <span>View total in currency</span>
+                <select
+                  value={viewCurrency}
+                  onChange={(event) => setViewCurrency(event.target.value)}
+                  className="block h-9 min-w-44 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm text-white"
+                >
+                  <option value="ORIGINAL">Original currencies</option>
+                  {COMMON_VIEW_CURRENCIES.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {convertedGrandTotal && (
+              <div className="rounded-lg border border-violet-500/20 bg-violet-500/10 p-3">
+                <p className="text-xs text-violet-200">Converted grand total</p>
+                <p className="mt-1 text-xl font-semibold text-white">{convertedGrandTotal.display}</p>
+                {convertedGrandTotal.status === 'missing_rate' ? (
+                  <p className="mt-1 text-xs text-amber-200">Conversion rate not configured.</p>
+                ) : (
+                  <div className="mt-1 space-y-1 text-xs text-slate-400">
+                    <p>
+                      Uses {EXCHANGE_RATE_SOURCE_NOTE.toLowerCase()} updated{' '}
+                      {new Date(EXCHANGE_RATE_LAST_UPDATED_AT).toLocaleDateString()}.
+                    </p>
+                    {convertedGrandTotal.warnings.map((warning) => (
+                      <p key={warning} className="text-amber-200">
+                        {warning}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="text-xs text-slate-500">
+              Totals are rounded for display. Internal calculation keeps full precision.
+            </p>
           </div>
         )}
         {summary.missingPricingWarnings.length > 0 && (
@@ -219,6 +280,7 @@ export function Step4ReviewPreflight({
         <AlertDescription>
           This is an estimate only. Actual Meta billing may differ. Meta charges based on delivered
           messages, recipient country, message category, and current official Meta pricing.
+          Converted totals use admin-maintained exchange rates.
         </AlertDescription>
       </Alert>
 

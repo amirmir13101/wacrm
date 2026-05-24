@@ -3,6 +3,8 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   calculatePricingEstimate,
+  convertCurrencyTotalsToCurrency,
+  convertMicrosCurrency,
   detectCountryFromPhone,
   estimateBroadcastPricingBreakdown,
   findRateForPhone,
@@ -153,6 +155,76 @@ describe('WhatsApp pricing helpers', () => {
       now: new Date('2026-05-24T00:00:00.000Z'),
     })
     expect(deliveredOnly.totalDisplay).toBe('PKR 158.08')
+  })
+
+  it('converts PKR estimates to USD for display', () => {
+    const estimate = calculatePricingEstimate({
+      rate: pakistan,
+      category: 'utility',
+      messageCount: 1000,
+      now: new Date('2026-05-24T00:00:00.000Z'),
+    })
+    const converted = convertMicrosCurrency({
+      amountMicros: estimate.rawTotalMicros,
+      fromCurrency: 'PKR',
+      toCurrency: 'USD',
+    })
+
+    expect(converted.status).toBe('ok')
+    expect(converted.display).toBe('USD 10.00')
+  })
+
+  it('converts USD estimates to PKR for display', () => {
+    const converted = convertMicrosCurrency({
+      amountMicros: BigInt(25_000_000),
+      fromCurrency: 'USD',
+      toCurrency: 'PKR',
+    })
+
+    expect(converted.status).toBe('ok')
+    expect(converted.display).toBe('PKR 6962.50')
+  })
+
+  it('converts GBP and TRY totals to PKR for display', () => {
+    const gbp = convertMicrosCurrency({
+      amountMicros: BigInt(15_900),
+      fromCurrency: 'GBP',
+      toCurrency: 'PKR',
+    })
+    const tryResult = convertMicrosCurrency({
+      amountMicros: BigInt(292_500_000),
+      fromCurrency: 'TRY',
+      toCurrency: 'PKR',
+    })
+
+    expect(gbp.status).toBe('ok')
+    expect(gbp.display).toBe('PKR 5.68')
+    expect(tryResult.status).toBe('ok')
+    expect(tryResult.display).toBe('PKR 2506.50')
+  })
+
+  it('warns when a currency conversion rate is missing', () => {
+    const converted = convertMicrosCurrency({
+      amountMicros: BigInt(10_000_000),
+      fromCurrency: 'USD',
+      toCurrency: 'XYZ',
+    })
+
+    expect(converted.status).toBe('missing_rate')
+    expect(converted.display).toBe('Conversion rate not configured')
+  })
+
+  it('converts multiple-country broadcast totals into one selected currency', () => {
+    const converted = convertCurrencyTotalsToCurrency(
+      [
+        { currency: 'PKR', totalMicros: '278500000' },
+        { currency: 'USD', totalMicros: '1000000' },
+      ],
+      'USD',
+    )
+
+    expect(converted.status).toBe('ok')
+    expect(converted.display).toBe('USD 2.00')
   })
 
   it('prepares country breakdowns for broadcast pricing integration', () => {

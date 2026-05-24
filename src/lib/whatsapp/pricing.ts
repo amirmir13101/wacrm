@@ -30,6 +30,46 @@ export interface PricingEstimate {
   warnings: string[]
 }
 
+export const COMMON_VIEW_CURRENCIES = [
+  'USD',
+  'PKR',
+  'GBP',
+  'EUR',
+  'AED',
+  'TRY',
+  'INR',
+  'SAR',
+  'CAD',
+  'AUD',
+] as const
+
+export const EXCHANGE_RATE_LAST_UPDATED_AT = '2026-05-24'
+export const EXCHANGE_RATE_SOURCE_NOTE = 'Admin-maintained exchange rate'
+
+const USD_TO_CURRENCY_RATE_MICROS: Record<string, bigint> = {
+  USD: BigInt(1_000_000),
+  PKR: BigInt(278_500_000),
+  GBP: BigInt(780_000),
+  EUR: BigInt(920_000),
+  AED: BigInt(3_672_500),
+  TRY: BigInt(32_500_000),
+  INR: BigInt(83_000_000),
+  SAR: BigInt(3_750_000),
+  CAD: BigInt(1_370_000),
+  AUD: BigInt(1_520_000),
+}
+
+export interface CurrencyConversionResult {
+  status: 'ok' | 'missing_rate'
+  fromCurrency: string
+  toCurrency: string
+  convertedMicros: bigint
+  display: string
+  warnings: string[]
+  lastUpdatedAt: string
+  sourceNote: string
+}
+
 export const EXAMPLE_PRICING_RATES = [
   { country_name: 'Pakistan', iso_country_code: 'PK', phone_country_code: '92', currency: 'USD' },
   { country_name: 'Turkey', iso_country_code: 'TR', phone_country_code: '90', currency: 'USD' },
@@ -80,6 +120,85 @@ export function formatRateMicros(micros: bigint, currency: string) {
   const whole = micros / BigInt(1_000_000)
   const fraction = (micros % BigInt(1_000_000)).toString().padStart(6, '0')
   return `${currency} ${whole}.${fraction}`
+}
+
+export function convertMicrosCurrency(args: {
+  amountMicros: bigint
+  fromCurrency: string
+  toCurrency: string
+}): CurrencyConversionResult {
+  const fromCurrency = args.fromCurrency.toUpperCase()
+  const toCurrency = args.toCurrency.toUpperCase()
+  const fromRate = USD_TO_CURRENCY_RATE_MICROS[fromCurrency]
+  const toRate = USD_TO_CURRENCY_RATE_MICROS[toCurrency]
+  const base = {
+    fromCurrency,
+    toCurrency,
+    lastUpdatedAt: EXCHANGE_RATE_LAST_UPDATED_AT,
+    sourceNote: EXCHANGE_RATE_SOURCE_NOTE,
+  }
+
+  if (!fromRate || !toRate) {
+    return {
+      ...base,
+      status: 'missing_rate',
+      convertedMicros: BigInt(0),
+      display: 'Conversion rate not configured',
+      warnings: [`Conversion rate not configured for ${fromCurrency} to ${toCurrency}.`],
+    }
+  }
+
+  const convertedMicros = (args.amountMicros * toRate + fromRate / BigInt(2)) / fromRate
+  return {
+    ...base,
+    status: 'ok',
+    convertedMicros,
+    display: formatMicros(convertedMicros, toCurrency, 2),
+    warnings:
+      fromCurrency === toCurrency
+        ? []
+        : [
+            'Converted estimate uses admin-maintained exchange rates.',
+            'Actual Meta billing and FX conversion may differ.',
+          ],
+  }
+}
+
+export function convertCurrencyTotalsToCurrency(
+  totals: Array<{ currency: string; totalMicros: string | bigint }>,
+  targetCurrency: string,
+): CurrencyConversionResult {
+  const target = targetCurrency.toUpperCase()
+  let grandTotal = BigInt(0)
+  const warnings = new Set<string>()
+
+  for (const total of totals) {
+    const amountMicros =
+      typeof total.totalMicros === 'bigint' ? total.totalMicros : BigInt(total.totalMicros || '0')
+    const converted = convertMicrosCurrency({
+      amountMicros,
+      fromCurrency: total.currency,
+      toCurrency: target,
+    })
+
+    if (converted.status === 'missing_rate') {
+      return converted
+    }
+
+    grandTotal += converted.convertedMicros
+    converted.warnings.forEach((warning) => warnings.add(warning))
+  }
+
+  return {
+    status: 'ok',
+    fromCurrency: totals.length === 1 ? totals[0].currency.toUpperCase() : 'MULTIPLE',
+    toCurrency: target,
+    convertedMicros: grandTotal,
+    display: formatMicros(grandTotal, target, 2),
+    warnings: [...warnings],
+    lastUpdatedAt: EXCHANGE_RATE_LAST_UPDATED_AT,
+    sourceNote: EXCHANGE_RATE_SOURCE_NOTE,
+  }
 }
 
 export function isConvertedCurrencyEstimate(rate: Pick<WhatsAppPricingRate, 'notes'>) {
