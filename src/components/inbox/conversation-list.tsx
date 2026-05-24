@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus } from "@/types";
 import { Search, ChevronDown } from "lucide-react";
@@ -13,7 +14,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface ConversationListProps {
@@ -29,8 +29,18 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
   closed: "bg-slate-500",
 };
 
-const FILTER_OPTIONS: { label: string; value: ConversationStatus | "all" }[] = [
-  { label: "All", value: "all" },
+type InboxFilter =
+  | ConversationStatus
+  | "all"
+  | "mine"
+  | "unassigned"
+  | "assigned";
+
+const TEAM_FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
+  { label: "All conversations", value: "all" },
+  { label: "My conversations", value: "mine" },
+  { label: "Unassigned", value: "unassigned" },
+  { label: "Assigned", value: "assigned" },
   { label: "Open", value: "open" },
   { label: "Pending", value: "pending" },
   { label: "Closed", value: "closed" },
@@ -42,8 +52,9 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
 }: ConversationListProps) {
+  const { user } = useAuth();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<ConversationStatus | "all">("all");
+  const [filter, setFilter] = useState<InboxFilter>("all");
   const [loading, setLoading] = useState(true);
 
   // Keep the latest callback in a ref so the fetch effect below can
@@ -99,7 +110,13 @@ export function ConversationList({
   const filtered = useMemo(() => {
     let result = conversations;
 
-    if (filter !== "all") {
+    if (filter === "mine") {
+      result = result.filter((c) => c.assigned_agent_id === user?.id);
+    } else if (filter === "unassigned") {
+      result = result.filter((c) => !c.assigned_agent_id);
+    } else if (filter === "assigned") {
+      result = result.filter((c) => !!c.assigned_agent_id);
+    } else if (filter !== "all") {
       result = result.filter((c) => c.status === filter);
     }
 
@@ -114,7 +131,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search]);
+  }, [conversations, filter, search, user?.id]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,7 +147,7 @@ export function ConversationList({
     [onSelect]
   );
 
-  const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
+  const activeFilter = TEAM_FILTER_OPTIONS.find((o) => o.value === filter);
 
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
@@ -158,7 +175,7 @@ export function ConversationList({
             align="start"
             className="border-slate-700 bg-slate-800"
           >
-            {FILTER_OPTIONS.map((opt) => (
+            {TEAM_FILTER_OPTIONS.map((opt) => (
               <DropdownMenuItem
                 key={opt.value}
                 onClick={() => setFilter(opt.value)}

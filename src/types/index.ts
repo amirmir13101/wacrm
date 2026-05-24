@@ -11,9 +11,29 @@ export interface Profile {
   created_at: string;
 }
 
+export interface Workspace {
+  id: string;
+  name: string;
+  owner_user_id: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface WorkspaceMember {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  role: 'owner' | 'admin' | 'manager' | 'agent';
+  status: 'active' | 'invited' | 'suspended';
+  joined_at?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface Contact {
   id: string;
   user_id: string;
+  workspace_id?: string | null;
   phone: string;
   name?: string;
   email?: string;
@@ -78,6 +98,7 @@ export type ConversationStatus = 'open' | 'pending' | 'closed';
 export interface Conversation {
   id: string;
   user_id: string;
+  workspace_id?: string | null;
   contact_id: string;
   status: ConversationStatus;
   assigned_agent_id?: string;
@@ -123,6 +144,7 @@ export interface MessageReaction {
 export interface WhatsAppConfig {
   id: string;
   user_id: string;
+  workspace_id?: string | null;
   phone_number_id: string;
   waba_id?: string;
   access_token: string;
@@ -134,6 +156,7 @@ export interface WhatsAppConfig {
 export interface MessageTemplate {
   id: string;
   user_id: string;
+  workspace_id?: string | null;
   name: string;
   category: 'Marketing' | 'Utility' | 'Authentication';
   language?: string;
@@ -149,6 +172,7 @@ export interface MessageTemplate {
 export interface Pipeline {
   id: string;
   user_id: string;
+  workspace_id?: string | null;
   name: string;
   created_at: string;
 }
@@ -167,6 +191,7 @@ export type DealStatus = 'open' | 'won' | 'lost';
 export interface Deal {
   id: string;
   user_id: string;
+  workspace_id?: string | null;
   pipeline_id: string;
   stage_id: string;
   /**
@@ -217,6 +242,7 @@ export type VariableMapping =
 export interface Broadcast {
   id: string;
   user_id: string;
+  workspace_id?: string | null;
   name: string;
   template_name: string;
   template_language: string;
@@ -242,6 +268,7 @@ export interface Broadcast {
 export interface WhatsAppPricingRate {
   id: string;
   user_id: string;
+  workspace_id?: string | null;
   country_name: string;
   iso_country_code: string;
   phone_country_code: string;
@@ -370,7 +397,7 @@ export interface TagStepConfig {
 }
 
 export interface AssignConversationStepConfig {
-  mode: 'specific' | 'round_robin';
+  mode: 'specific' | 'round_robin' | 'least_busy' | 'unassigned_only';
   agent_id?: string;
 }
 
@@ -427,6 +454,7 @@ export type AutomationStepConfig =
 export interface Automation {
   id: string;
   user_id: string;
+  workspace_id?: string | null;
   name: string;
   description?: string;
   trigger_type: AutomationTriggerType;

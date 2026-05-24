@@ -53,7 +53,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings', '/admin']
+  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings', '/team', '/admin']
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
@@ -110,6 +110,7 @@ export async function middleware(request: NextRequest) {
       !isCronProtectedBroadcastWorker) ||
     (request.nextUrl.pathname.startsWith('/api/automations') &&
       !isCronProtectedAutomation) ||
+    request.nextUrl.pathname.startsWith('/api/team') ||
     request.nextUrl.pathname.startsWith('/api/pricing') ||
     request.nextUrl.pathname.startsWith('/api/admin')
 

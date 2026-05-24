@@ -9,8 +9,8 @@ import type {
   Deal,
   DealStatus,
   PipelineStage,
-  Profile,
 } from "@/types";
+import type { WorkspaceMemberOption } from "@/lib/team/assignment";
 import {
   Sheet,
   SheetContent,
@@ -62,7 +62,7 @@ export function DealForm({
   const [notes, setNotes] = useState("");
 
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [members, setMembers] = useState<WorkspaceMemberOption[]>([]);
   const [linkedConversation, setLinkedConversation] =
     useState<Conversation | null>(null);
 
@@ -109,11 +109,14 @@ export function DealForm({
     (async () => {
       const [c, p] = await Promise.all([
         supabase.from("contacts").select("*").order("name"),
-        supabase.from("profiles").select("*").order("full_name"),
+        fetch("/api/team/members").then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        }),
       ]);
       if (cancelled) return;
       setContacts((c.data ?? []) as Contact[]);
-      setProfiles((p.data ?? []) as Profile[]);
+      setMembers((p.members as WorkspaceMemberOption[] | undefined) ?? []);
     })();
     return () => {
       cancelled = true;
@@ -160,7 +163,6 @@ export function DealForm({
       contact_id: contactId,
       pipeline_id: pipelineId,
       stage_id: stageId,
-      assigned_to: assignedTo || null,
       notes: notes.trim() || null,
       expected_close_date: expectedCloseDate || null,
     };
@@ -185,13 +187,43 @@ export function DealForm({
         setSaving(false);
         return;
       }
-      const { error } = await supabase
+      const { data: created, error } = await supabase
         .from("deals")
-        .insert({ ...payload, user_id: user.id, status: "open" });
+        .insert({ ...payload, user_id: user.id, status: "open" })
+        .select("id")
+        .single();
       if (error) {
         toast.error("Failed to create deal");
         setSaving(false);
         return;
+      }
+      if (created?.id && assignedTo) {
+        await fetch("/api/team/assign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            target_type: "deal",
+            target_id: created.id,
+            assigned_to_profile_id: assignedTo,
+            reason: "manual",
+          }),
+        });
+      }
+    }
+
+    if (deal && assignedTo !== (deal.assigned_to ?? "")) {
+      const res = await fetch("/api/team/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_type: "deal",
+          target_id: deal.id,
+          assigned_to_profile_id: assignedTo || null,
+          reason: "manual",
+        }),
+      });
+      if (!res.ok) {
+        toast.error("Deal saved, but assignment update failed");
       }
     }
 
@@ -346,8 +378,10 @@ export function DealForm({
                 className="h-9 w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 text-sm text-white outline-none focus:border-violet-500"
               >
                 <option value="">Unassigned</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
+                {members
+                  .filter((member) => member.status === "active" && member.profile_id)
+                  .map((p) => (
+                  <option key={p.id} value={p.profile_id ?? ""}>
                     {p.full_name || p.email}
                   </option>
                 ))}

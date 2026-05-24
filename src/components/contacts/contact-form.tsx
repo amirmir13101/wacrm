@@ -119,8 +119,7 @@ export function ContactForm({
 
       const { data: existingContacts, error: duplicateLookupError } = await supabase
         .from('contacts')
-        .select('id, phone')
-        .eq('user_id', user.id);
+        .select('id, phone');
 
       if (duplicateLookupError) throw duplicateLookupError;
 

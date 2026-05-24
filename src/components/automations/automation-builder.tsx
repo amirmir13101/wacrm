@@ -52,6 +52,7 @@ import {
   type AutomationStageOption,
   type AutomationTagOption,
   type AutomationTemplateOption,
+  type AutomationMemberOption,
 } from "@/lib/automations/builder-options"
 import {
   extractTemplateVariableNumbers,
@@ -86,6 +87,7 @@ interface BuilderOptions {
   tags: AutomationTagOption[]
   pipelines: AutomationPipelineOption[]
   stages: AutomationStageOption[]
+  members: AutomationMemberOption[]
 }
 
 const EMPTY_OPTIONS: BuilderOptions = {
@@ -93,6 +95,7 @@ const EMPTY_OPTIONS: BuilderOptions = {
   tags: [],
   pipelines: [],
   stages: [],
+  members: [],
 }
 
 // ------------------------------------------------------------
@@ -201,7 +204,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
     let cancelled = false
     async function loadOptions() {
       const supabase = createClient()
-      const [templatesRes, tagsRes, pipelinesRes, stagesRes] = await Promise.all([
+      const [templatesRes, tagsRes, pipelinesRes, stagesRes, membersRes] = await Promise.all([
         supabase
           .from("message_templates")
           .select("id, name, language, body_text, status")
@@ -213,6 +216,10 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
           .from("pipeline_stages")
           .select("id, pipeline_id, name")
           .order("position", { ascending: true }),
+        fetch("/api/team/members").then(async (res) => {
+          if (!res.ok) return { members: [] }
+          return res.json()
+        }),
       ])
 
       if (cancelled) return
@@ -223,6 +230,9 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         tags: (tagsRes.data ?? []) as AutomationTagOption[],
         pipelines: (pipelinesRes.data ?? []) as AutomationPipelineOption[],
         stages: (stagesRes.data ?? []) as AutomationStageOption[],
+        members: ((membersRes as { members?: AutomationMemberOption[] }).members ?? []).filter(
+          (member) => member.status === "active",
+        ),
       })
 
       const firstError =
@@ -1021,16 +1031,24 @@ function StepEditor({
               className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
             >
               <option value="round_robin">Round-robin</option>
+              <option value="least_busy">Least busy</option>
               <option value="specific">Specific agent</option>
             </select>
           </FieldBlock>
           {cfg.mode === "specific" && (
-            <FieldBlock label="Agent id">
-              <Input
+            <FieldBlock label="Agent">
+              <select
                 value={(cfg.agent_id as string) ?? ""}
                 onChange={(e) => set({ agent_id: e.target.value })}
-                className="bg-slate-800 text-white"
-              />
+                className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white"
+              >
+                <option value="">Choose an agent</option>
+                {options.members.map((member) => (
+                  <option key={member.id} value={member.user_id}>
+                    {member.full_name || member.email || member.user_id}
+                  </option>
+                ))}
+              </select>
             </FieldBlock>
           )}
         </>

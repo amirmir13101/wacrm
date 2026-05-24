@@ -215,7 +215,8 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           message,
           contact,
           config.user_id,
-          decryptedAccessToken
+          decryptedAccessToken,
+          config.workspace_id ?? null,
         )
       }
     }
@@ -439,7 +440,8 @@ async function processMessage(
   message: WhatsAppMessage,
   contact: { profile: { name: string }; wa_id: string },
   userId: string,
-  accessToken: string
+  accessToken: string,
+  workspaceId: string | null = null,
 ) {
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
@@ -448,7 +450,8 @@ async function processMessage(
   const contactOutcome = await findOrCreateContact(
     userId,
     senderPhone,
-    contactName
+    contactName,
+    workspaceId,
   )
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
@@ -456,7 +459,8 @@ async function processMessage(
   // Find or create conversation
   const conversation = await findOrCreateConversation(
     userId,
-    contactRecord.id
+    contactRecord.id,
+    workspaceId,
   )
   if (!conversation) return
 
@@ -738,7 +742,8 @@ interface ContactOutcome {
 async function findOrCreateContact(
   userId: string,
   phone: string,
-  name: string
+  name: string,
+  workspaceId: string | null = null,
 ): Promise<ContactOutcome | null> {
   // Look up existing contacts for this user
   const { data: contacts, error: contactsError } = await supabaseAdmin()
@@ -770,6 +775,7 @@ async function findOrCreateContact(
     .from('contacts')
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       phone,
       name: name || phone,
       whatsapp_opt_in: false,
@@ -785,7 +791,7 @@ async function findOrCreateContact(
   return { contact: newContact, wasCreated: true }
 }
 
-async function findOrCreateConversation(userId: string, contactId: string) {
+async function findOrCreateConversation(userId: string, contactId: string, workspaceId: string | null = null) {
   // Look for existing conversation
   const { data: existing, error: findError } = await supabaseAdmin()
     .from('conversations')
@@ -803,6 +809,7 @@ async function findOrCreateConversation(userId: string, contactId: string) {
     .from('conversations')
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       contact_id: contactId,
     })
     .select()

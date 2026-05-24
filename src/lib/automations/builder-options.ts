@@ -22,6 +22,16 @@ export interface AutomationStageOption {
   name: string
 }
 
+export interface AutomationMemberOption {
+  id: string
+  user_id: string
+  profile_id: string | null
+  full_name: string | null
+  email: string | null
+  role: string
+  status: string
+}
+
 export function approvedTemplateOptions<T extends AutomationTemplateOption>(
   templates: T[],
 ): T[] {

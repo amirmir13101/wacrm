@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import type { Pipeline, PipelineStage, Deal } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
@@ -38,11 +39,13 @@ const SPEC_DEFAULT_STAGES = [
 
 export default function PipelinesPage() {
   const supabase = createClient();
+  const { profile } = useAuth();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [dealFilter, setDealFilter] = useState<"all" | "mine" | "unassigned" | "assigned">("all");
   const [loading, setLoading] = useState(true);
 
   // Dialog / sheet state
@@ -275,6 +278,12 @@ export default function PipelinesPage() {
   }
 
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId);
+  const visibleDeals = deals.filter((deal) => {
+    if (dealFilter === "mine") return deal.assigned_to === profile?.id;
+    if (dealFilter === "unassigned") return !deal.assigned_to;
+    if (dealFilter === "assigned") return !!deal.assigned_to;
+    return true;
+  });
 
   if (loading) {
     return (
@@ -346,6 +355,16 @@ export default function PipelinesPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <select
+            value={dealFilter}
+            onChange={(e) => setDealFilter(e.target.value as typeof dealFilter)}
+            className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm text-slate-200 outline-none"
+          >
+            <option value="all">All deals</option>
+            <option value="mine">My deals</option>
+            <option value="unassigned">Unassigned</option>
+            <option value="assigned">Assigned</option>
+          </select>
           <Button
             variant="outline"
             onClick={() => setNewPipelineOpen(true)}
@@ -385,10 +404,10 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <>
-          <PipelineAnalytics stages={stages} deals={deals} />
+          <PipelineAnalytics stages={stages} deals={visibleDeals} />
           <PipelineBoard
             stages={stages}
-            deals={deals}
+            deals={visibleDeals}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}

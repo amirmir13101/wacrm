@@ -26,6 +26,7 @@ import {
   resolveTemplateParams,
   type TemplateVariableMappings,
 } from './template-variables'
+import { leastBusyAgent, nextRoundRobinAgent } from '@/lib/team/assignment'
 
 // ------------------------------------------------------------
 // Public API
@@ -406,21 +407,37 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'assign_conversation': {
       const cfg = step.step_config as AssignConversationStepConfig
       if (!args.contactId) throw new Error('assign_conversation needs a contact')
-      let agentId = cfg.agent_id
+      let agentId: string | null | undefined = cfg.agent_id
       if (cfg.mode === 'round_robin') {
-        const { data: profiles } = await db
-          .from('profiles')
-          .select('user_id')
-          .eq('user_id', args.automation.user_id)
-          .limit(1)
-        agentId = profiles?.[0]?.user_id
+        agentId = await resolveRoundRobinAgent(args.automation)
+      }
+      if (cfg.mode === 'least_busy') {
+        agentId = await resolveLeastBusyAgent(args.automation)
       }
       if (!agentId) return 'no agent resolved'
+
+      const { data: conversation } = await db
+        .from('conversations')
+        .select('id, assigned_agent_id, workspace_id')
+        .eq('user_id', args.automation.user_id)
+        .eq('contact_id', args.contactId)
+        .maybeSingle()
+
       await db
         .from('conversations')
         .update({ assigned_agent_id: agentId })
         .eq('user_id', args.automation.user_id)
         .eq('contact_id', args.contactId)
+      if (conversation?.workspace_id && conversation?.id) {
+        await db.from('assignment_history').insert({
+          workspace_id: conversation.workspace_id,
+          conversation_id: conversation.id,
+          assigned_from_user_id: conversation.assigned_agent_id,
+          assigned_to_user_id: agentId,
+          assigned_by_user_id: args.automation.user_id,
+          reason: `automation:${cfg.mode}`,
+        })
+      }
       return `assigned to ${agentId}`
     }
 
@@ -510,6 +527,71 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
 function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
   if (automation.trigger_type !== 'keyword_match') return true
   return keywordTriggerMatches(automation.trigger_config as KeywordMatchTriggerConfig, ctx?.message_text)
+}
+
+async function resolveRoundRobinAgent(automation: Automation): Promise<string | null> {
+  const workspaceId = automation.workspace_id
+  if (!workspaceId) return automation.user_id
+  const db = supabaseAdmin()
+  const { data: members } = await db
+    .from('workspace_members')
+    .select('user_id, role, status')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: true })
+  const { data: state } = await db
+    .from('workspace_assignment_state')
+    .select('last_round_robin_user_id')
+    .eq('workspace_id', workspaceId)
+    .maybeSingle()
+  const agentId = nextRoundRobinAgent(
+    (members ?? []) as Array<{ user_id: string; role: string; status: string }>,
+    state?.last_round_robin_user_id ?? null,
+  )
+  if (agentId) {
+    await db.from('workspace_assignment_state').upsert(
+      {
+        workspace_id: workspaceId,
+        last_round_robin_user_id: agentId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'workspace_id' },
+    )
+  }
+  return agentId
+}
+
+async function resolveLeastBusyAgent(automation: Automation): Promise<string | null> {
+  const workspaceId = automation.workspace_id
+  if (!workspaceId) return automation.user_id
+  const db = supabaseAdmin()
+  const { data: members } = await db
+    .from('workspace_members')
+    .select('user_id, role, status')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'active')
+
+  const { data: conversations } = await db
+    .from('conversations')
+    .select('assigned_agent_id')
+    .eq('workspace_id', workspaceId)
+    .in('status', ['open', 'pending'])
+    .not('assigned_agent_id', 'is', null)
+
+  const counts = new Map<string, number>()
+  for (const row of (conversations ?? []) as Array<{ assigned_agent_id: string | null }>) {
+    if (!row.assigned_agent_id) continue
+    counts.set(row.assigned_agent_id, (counts.get(row.assigned_agent_id) ?? 0) + 1)
+  }
+
+  return leastBusyAgent(
+    ((members ?? []) as Array<{ user_id: string; role: string; status: string }>).map(
+      (member) => ({
+        ...member,
+        open_conversations: counts.get(member.user_id) ?? 0,
+      }),
+    ),
+  )
 }
 
 export function keywordTriggerMatches(config: unknown, messageText: unknown): boolean {

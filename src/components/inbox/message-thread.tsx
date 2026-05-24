@@ -11,8 +11,8 @@ import type {
   Contact,
   ConversationStatus,
   MessageTemplate,
-  Profile,
 } from "@/types";
+import type { WorkspaceMemberOption } from "@/lib/team/assignment";
 import {
   MessageSquare,
   ChevronDown,
@@ -42,6 +42,14 @@ interface ReplyDraft {
   id: string;
   authorLabel: string;
   preview: string;
+}
+
+interface AssignmentHistoryRow {
+  id: string;
+  assigned_to_user_id: string | null;
+  assigned_by_user_id: string | null;
+  reason: string | null;
+  created_at: string;
 }
 
 function renderTemplateBody(body: string, params: string[]): string {
@@ -117,27 +125,24 @@ export function MessageThread({
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [members, setMembers] = useState<WorkspaceMemberOption[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
+  const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistoryRow[]>([]);
 
-  // Profiles are bounded by RLS to rows the current user is allowed to
-  // see — today that's just the current user, but the dropdown keeps the
-  // shape ready for shared-team workspaces without a refactor.
   useEffect(() => {
     let cancelled = false;
-    const supabase = createClient();
-    supabase
-      .from("profiles")
-      .select("*")
-      .order("full_name")
-      .then(({ data, error }) => {
+    fetch("/api/team/members")
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
         if (cancelled) return;
-        if (error) {
-          console.error("Failed to fetch profiles:", error);
-          return;
-        }
-        setProfiles((data as Profile[]) ?? []);
+        setMembers((data.members as WorkspaceMemberOption[] | undefined) ?? []);
+      })
+      .catch((error) => {
+        if (!cancelled) console.error("Failed to fetch team members:", error);
       });
     return () => {
       cancelled = true;
@@ -216,6 +221,27 @@ export function MessageThread({
       if (!cancelled) setLoading(false);
     })();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) {
+      setAssignmentHistory([]);
+      return;
+    }
+    const supabase = createClient();
+    let cancelled = false;
+    supabase
+      .from("assignment_history")
+      .select("id, assigned_to_user_id, assigned_by_user_id, reason, created_at")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: false })
+      .limit(3)
+      .then(({ data }) => {
+        if (!cancelled) setAssignmentHistory((data as AssignmentHistoryRow[]) ?? []);
+      });
     return () => {
       cancelled = true;
     };
@@ -588,21 +614,37 @@ export function MessageThread({
     async (agentId: string | null) => {
       if (!conversation) return;
 
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("conversations")
-        .update({ assigned_agent_id: agentId })
-        .eq("id", conversation.id);
+      const res = await fetch("/api/team/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_type: "conversation",
+          target_id: conversation.id,
+          assigned_to_user_id: agentId,
+          reason: "manual",
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
 
-      if (error) {
-        console.error("Failed to update assignment:", error);
+      if (!res.ok) {
+        console.error("Failed to update assignment:", payload);
         toast.error("Failed to update assignment");
         return;
       }
 
       onAssignChange(conversation.id, agentId);
+      setAssignmentHistory((prev) => [
+        {
+          id: `local-${Date.now()}`,
+          assigned_to_user_id: agentId,
+          assigned_by_user_id: user?.id ?? null,
+          reason: "manual",
+          created_at: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
     },
-    [conversation, onAssignChange],
+    [conversation, onAssignChange, user?.id],
   );
 
   // Empty state
@@ -628,9 +670,10 @@ export function MessageThread({
     (s) => s.value === conversation.status
   );
   const assignedAgentId = conversation.assigned_agent_id ?? null;
-  const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
+  const activeMembers = members.filter((member) => member.status === "active");
+  const currentAssignee = activeMembers.find((p) => p.user_id === assignedAgentId);
   const assignLabel = assignedAgentId
-    ? (currentAssignee?.full_name ?? "Assigned")
+    ? (currentAssignee?.full_name ?? currentAssignee?.email ?? "Assigned")
     : "Assign";
 
   return (
@@ -713,12 +756,12 @@ export function MessageThread({
               align="end"
               className="border-slate-700 bg-slate-800"
             >
-              {profiles.length === 0 ? (
+              {activeMembers.length === 0 ? (
                 <DropdownMenuItem disabled className="text-sm text-slate-500">
                   No teammates available
                 </DropdownMenuItem>
               ) : (
-                profiles.map((p) => {
+                activeMembers.map((p) => {
                   const isSelected = p.user_id === assignedAgentId;
                   return (
                     <DropdownMenuItem
@@ -730,7 +773,7 @@ export function MessageThread({
                       )}
                     >
                       <span className="flex-1">
-                        {p.full_name}
+                        {p.full_name || p.email}
                         {p.user_id === user?.id ? " (me)" : ""}
                       </span>
                       {isSelected && <Check className="ml-2 h-3 w-3" />}
@@ -753,6 +796,13 @@ export function MessageThread({
           </DropdownMenu>
         </div>
       </div>
+
+      {assignmentHistory.length > 0 && (
+        <div className="border-b border-slate-800 bg-slate-900/70 px-4 py-2 text-[11px] text-slate-400">
+          Last assignment: {format(new Date(assignmentHistory[0].created_at), "MMM d, h:mm a")}
+          {assignmentHistory[0].reason ? ` (${assignmentHistory[0].reason})` : ""}
+        </div>
+      )}
 
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">

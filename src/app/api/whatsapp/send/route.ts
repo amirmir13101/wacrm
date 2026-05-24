@@ -74,7 +74,6 @@ export async function POST(request: Request) {
       .from('conversations')
       .select('*, contact:contacts(*)')
       .eq('id', conversation_id)
-      .eq('user_id', user.id)
       .single()
 
     if (convError || !conversation) {
@@ -102,11 +101,13 @@ export async function POST(request: Request) {
     }
 
     // Fetch and decrypt WhatsApp config
-    const { data: config, error: configError } = await supabase
+    let configQuery = supabase
       .from('whatsapp_config')
       .select('*')
-      .eq('user_id', user.id)
-      .single()
+    configQuery = conversation.workspace_id
+      ? configQuery.eq('workspace_id', conversation.workspace_id)
+      : configQuery.eq('user_id', conversation.user_id ?? user.id)
+    const { data: config, error: configError } = await configQuery.single()
 
     if (configError || !config) {
       return NextResponse.json(

@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   LogOut,
   User,
+  UserCheck,
   X,
 } from "lucide-react";
 import {
@@ -39,6 +40,7 @@ const navItems = [
   { href: "/pipelines", label: "Pipelines", icon: GitBranch },
   { href: "/broadcasts", label: "Broadcasts", icon: Radio },
   { href: "/automations", label: "Automations", icon: Zap },
+  { href: "/team", label: "Team", icon: UserCheck },
 ];
 
 const bottomNavItems = [
