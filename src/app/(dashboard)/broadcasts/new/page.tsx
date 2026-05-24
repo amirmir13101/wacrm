@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -8,14 +8,17 @@ import { MessageTemplate } from '@/types';
 import { Step1ChooseTemplate } from '@/components/broadcasts/step1-choose-template';
 import { Step2SelectAudience } from '@/components/broadcasts/step2-select-audience';
 import { Step3Personalize } from '@/components/broadcasts/step3-personalize';
+import { Step4ReviewPreflight } from '@/components/broadcasts/step4-review-preflight';
 import { Step4ScheduleSend } from '@/components/broadcasts/step4-schedule-send';
 import { useBroadcastSending } from '@/hooks/use-broadcast-sending';
 import { Check } from 'lucide-react';
+import type { BroadcastPreflightSummary } from '@/lib/broadcast-preflight';
 
 const steps = [
   { label: 'Template', key: 'template' },
   { label: 'Audience', key: 'audience' },
   { label: 'Personalize', key: 'personalize' },
+  { label: 'Preflight', key: 'preflight' },
   { label: 'Send', key: 'send' },
 ] as const;
 
@@ -40,6 +43,13 @@ export default function NewBroadcastPage() {
     Record<string, { type: 'static' | 'field' | 'custom_field'; value: string }>
   >({});
   const [name, setName] = useState('');
+  const [preflight, setPreflight] = useState<BroadcastPreflightSummary | null>(null);
+  const [acknowledgeBilling, setAcknowledgeBilling] = useState(false);
+  const [acknowledgeMissingPricing, setAcknowledgeMissingPricing] = useState(false);
+
+  const handlePreflightChange = useCallback((summary: BroadcastPreflightSummary | null) => {
+    setPreflight(summary);
+  }, []);
 
   async function handleSend() {
     if (!template) return;
@@ -56,6 +66,8 @@ export default function NewBroadcastPage() {
           excludeTagIds: audience.excludeTagIds,
         },
         variables,
+        acknowledgeBilling,
+        acknowledgeMissingPricing: acknowledgeMissingPricing || (preflight?.pricingMissingCount ?? 0) === 0,
       });
       router.push(`/broadcasts/${broadcastId}`);
     } catch (err) {
@@ -203,6 +215,20 @@ export default function NewBroadcastPage() {
             />
           )}
           {currentStep === 3 && template && (
+            <Step4ReviewPreflight
+              template={template}
+              audience={audience}
+              variables={variables}
+              acknowledgeBilling={acknowledgeBilling}
+              acknowledgeMissingPricing={acknowledgeMissingPricing}
+              onAcknowledgeBillingChange={setAcknowledgeBilling}
+              onAcknowledgeMissingPricingChange={setAcknowledgeMissingPricing}
+              onPreflightChange={handlePreflightChange}
+              onNext={() => setCurrentStep(4)}
+              onBack={() => setCurrentStep(2)}
+            />
+          )}
+          {currentStep === 4 && template && (
             <Step4ScheduleSend
               name={name}
               onNameChange={setName}
@@ -210,7 +236,7 @@ export default function NewBroadcastPage() {
               audience={audience}
               onSend={handleSend}
               onSaveDraft={handleSaveDraft}
-              onBack={() => setCurrentStep(2)}
+              onBack={() => setCurrentStep(3)}
               isProcessing={isProcessing}
               progress={progress}
             />

@@ -13,6 +13,16 @@ describe('/api/whatsapp/broadcast compatibility route', () => {
     expect(source).toContain('broadcast_recipients')
   })
 
+  it('enforces server-side preflight rules before queueing', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
+
+    expect(source).toContain('buildBroadcastPreflightSummary')
+    expect(source).toContain('preflight.blockers.length')
+    expect(source).toContain('acknowledge_billing')
+    expect(source).toContain('acknowledge_missing_pricing')
+    expect(source).toContain('evaluateBroadcastRecipients')
+  })
+
   it('converts shared raw params into queued static template variables', () => {
     expect(
       sharedStaticVariables([

@@ -9,12 +9,28 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit'
-import type { Contact, VariableMapping } from '@/types'
+import {
+  buildBroadcastPreflightSummary,
+  evaluateBroadcastRecipients,
+} from '@/lib/broadcast-preflight'
+import type { Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
 
 interface IncomingRecipient {
   phone: string
   params?: string[]
   name?: string
+}
+
+type AudienceConfig = {
+  type: 'all' | 'tags' | 'custom_field' | 'csv' | 'api'
+  tagIds?: string[]
+  customField?: {
+    fieldId: string
+    operator: 'is' | 'is_not' | 'contains'
+    value: string
+  }
+  csvContacts?: { phone: string; name?: string }[]
+  excludeTagIds?: string[]
 }
 
 export function sameParams(a: string[], b: string[]) {
@@ -41,23 +57,80 @@ export function sharedStaticVariables(
   }, {})
 }
 
-async function findOrCreateContacts(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-  recipients: IncomingRecipient[],
-): Promise<Contact[]> {
-  const normalizedByPhone = new Map<string, IncomingRecipient>()
-  for (const recipient of recipients) {
-    const normalized = normalizeWhatsAppPhone(recipient.phone).phone
-    normalizedByPhone.set(normalized, { ...recipient, phone: normalized })
+async function fetchApprovedOrSelectedTemplate(args: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  userId: string
+  templateId?: string
+  templateName?: string
+  language?: string
+}) {
+  let query = args.supabase
+    .from('message_templates')
+    .select('*')
+    .eq('user_id', args.userId)
+
+  if (args.templateId) {
+    query = query.eq('id', args.templateId)
+  } else if (args.templateName) {
+    query = query
+      .eq('name', args.templateName)
+      .eq('language', args.language || 'en_US')
+  } else {
+    throw new Error('template_id or template_name is required')
   }
 
-  const { data: existing, error: lookupError } = await supabase
+  const { data, error } = await query.maybeSingle()
+  if (error) throw new Error(`Failed to verify template: ${error.message}`)
+  return data as MessageTemplate | null
+}
+
+async function fetchWhatsAppConnected(args: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  userId: string
+}) {
+  const { data, error } = await args.supabase
+    .from('whatsapp_config')
+    .select('id, status')
+    .eq('user_id', args.userId)
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to check WhatsApp connection: ${error.message}`)
+  return data?.status === 'connected'
+}
+
+async function fetchPricingRates(args: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  userId: string
+}) {
+  const { data, error } = await args.supabase
+    .from('whatsapp_pricing_rates')
+    .select('*')
+    .eq('user_id', args.userId)
+
+  if (error) throw new Error(`Failed to load pricing rates: ${error.message}`)
+  return (data ?? []) as WhatsAppPricingRate[]
+}
+
+async function upsertCsvContactsForQueue(args: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  userId: string
+  rows: { phone: string; name?: string }[]
+}) {
+  const normalizedByPhone = new Map<string, { phone: string; name?: string }>()
+  for (const row of args.rows) {
+    try {
+      const phone = normalizeWhatsAppPhone(row.phone).phone
+      normalizedByPhone.set(phone, { ...row, phone })
+    } catch {
+      // Invalid rows are counted in preflight from the temporary contact below.
+    }
+  }
+
+  const { data: existing, error: lookupError } = await args.supabase
     .from('contacts')
     .select('*')
-    .eq('user_id', userId)
-
-  if (lookupError) throw new Error(`Failed to look up contacts: ${lookupError.message}`)
+    .eq('user_id', args.userId)
+  if (lookupError) throw new Error(`Failed to look up CSV contacts: ${lookupError.message}`)
 
   const byPhone = new Map<string, Contact>()
   for (const contact of (existing ?? []) as Contact[]) {
@@ -66,20 +139,19 @@ async function findOrCreateContacts(
 
   const missing = [...normalizedByPhone.entries()]
     .filter(([phone]) => !byPhone.has(phone))
-    .map(([phone, recipient]) => ({
-      user_id: userId,
+    .map(([phone, row]) => ({
+      user_id: args.userId,
       phone,
-      name: recipient.name?.trim() || null,
+      name: row.name?.trim() || null,
       whatsapp_opt_in: false,
     }))
 
   for (let i = 0; i < missing.length; i += 200) {
-    const { data: inserted, error: insertError } = await supabase
+    const { data: inserted, error } = await args.supabase
       .from('contacts')
       .insert(missing.slice(i, i + 200))
       .select('*')
-
-    if (insertError) throw new Error(`Failed to create contacts: ${insertError.message}`)
+    if (error) throw new Error(`Failed to create CSV contacts: ${error.message}`)
     for (const contact of (inserted ?? []) as Contact[]) {
       if (contact.phone) byPhone.set(normalizePhoneForComparison(contact.phone), contact)
     }
@@ -90,14 +162,109 @@ async function findOrCreateContacts(
     .filter((contact): contact is Contact => Boolean(contact))
 }
 
-/**
- * Compatibility endpoint for older callers.
- *
- * This route used to send every WhatsApp broadcast message immediately from
- * the API request. Production bulk sending must go through the server-side
- * queue, so this endpoint now creates the broadcast + pending recipient rows
- * and lets /api/whatsapp/broadcast/worker perform delivery.
- */
+async function resolveAudience(args: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  userId: string
+  audience: AudienceConfig
+  createCsvContacts: boolean
+}) {
+  let contacts: Contact[] = []
+
+  if (args.audience.type === 'all') {
+    const { data, error } = await args.supabase
+      .from('contacts')
+      .select('*')
+      .eq('user_id', args.userId)
+    if (error) throw new Error(`Failed to fetch contacts: ${error.message}`)
+    contacts = (data ?? []) as Contact[]
+  } else if (args.audience.type === 'tags' && args.audience.tagIds?.length) {
+    const { data, error } = await args.supabase
+      .from('contact_tags')
+      .select('contact_id')
+      .in('tag_id', args.audience.tagIds)
+    if (error) throw new Error(`Failed to fetch contact tags: ${error.message}`)
+    const ids = [...new Set((data ?? []).map((row) => row.contact_id))]
+    if (ids.length > 0) {
+      const { data: contactRows, error: contactError } = await args.supabase
+        .from('contacts')
+        .select('*')
+        .eq('user_id', args.userId)
+        .in('id', ids)
+      if (contactError) throw new Error(`Failed to fetch contacts: ${contactError.message}`)
+      contacts = (contactRows ?? []) as Contact[]
+    }
+  } else if (args.audience.type === 'custom_field' && args.audience.customField) {
+    const { fieldId, operator, value } = args.audience.customField
+    let query = args.supabase
+      .from('contact_custom_values')
+      .select('contact_id')
+      .eq('custom_field_id', fieldId)
+    if (operator === 'is') query = query.eq('value', value)
+    else if (operator === 'is_not') query = query.neq('value', value)
+    else query = query.ilike('value', `%${value}%`)
+
+    const { data, error } = await query
+    if (error) throw new Error(`Custom-field filter failed: ${error.message}`)
+    const ids = [...new Set((data ?? []).map((row) => row.contact_id))]
+    if (ids.length > 0) {
+      const { data: contactRows, error: contactError } = await args.supabase
+        .from('contacts')
+        .select('*')
+        .eq('user_id', args.userId)
+        .in('id', ids)
+      if (contactError) throw new Error(`Failed to fetch contacts: ${contactError.message}`)
+      contacts = (contactRows ?? []) as Contact[]
+    }
+  } else if (args.audience.type === 'csv' && args.audience.csvContacts?.length) {
+    if (args.createCsvContacts) {
+      contacts = await upsertCsvContactsForQueue({
+        supabase: args.supabase,
+        userId: args.userId,
+        rows: args.audience.csvContacts,
+      })
+    } else {
+      contacts = args.audience.csvContacts.map((row, index) => {
+        let phone = row.phone
+        try {
+          phone = normalizeWhatsAppPhone(row.phone).phone
+        } catch {
+          // Keep the raw value so preflight can count it as invalid.
+        }
+        return {
+          id: `csv-${index}`,
+          user_id: args.userId,
+          phone,
+          name: row.name,
+          whatsapp_opt_in: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as Contact
+      })
+    }
+  }
+
+  if (args.audience.excludeTagIds?.length && contacts.length > 0) {
+    const { data } = await args.supabase
+      .from('contact_tags')
+      .select('contact_id')
+      .in('tag_id', args.audience.excludeTagIds)
+    const excluded = new Set((data ?? []).map((row) => row.contact_id))
+    contacts = contacts.filter((contact) => !excluded.has(contact.id))
+  }
+
+  return contacts
+}
+
+function legacyAudienceFromRecipients(recipients: IncomingRecipient[]): AudienceConfig {
+  return {
+    type: 'csv',
+    csvContacts: recipients.map((recipient) => ({
+      phone: recipient.phone,
+      name: recipient.name,
+    })),
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -112,116 +279,124 @@ export async function POST(request: Request) {
     }
 
     const limit = checkRateLimit(`broadcast:${user.id}`, RATE_LIMITS.broadcast)
-    if (!limit.success) {
-      return rateLimitResponse(limit)
-    }
+    if (!limit.success) return rateLimitResponse(limit)
 
     const body = await request.json()
-    const {
-      recipients: newRecipients,
-      phone_numbers,
-      template_name,
-      template_language,
-      template_params,
-      name,
-    } = body
+    const mode = body.mode === 'preflight' ? 'preflight' : 'queue'
 
-    let recipients: IncomingRecipient[]
-    if (Array.isArray(newRecipients) && newRecipients.length > 0) {
-      recipients = newRecipients
-    } else if (Array.isArray(phone_numbers) && phone_numbers.length > 0) {
-      const shared: string[] = Array.isArray(template_params) ? template_params : []
-      recipients = phone_numbers.map((phone: string) => ({ phone, params: shared }))
-    } else {
-      return NextResponse.json(
-        {
-          error:
-            'Provide either `recipients` or `phone_numbers`; it must be a non-empty array.',
-        },
-        { status: 400 },
-      )
-    }
+    let audience: AudienceConfig | null = body.audience ?? null
+    let variables: Record<string, VariableMapping> = body.variables ?? {}
+    let templateName = body.template_name as string | undefined
+    let templateLanguage = (body.template_language as string | undefined) ?? 'en_US'
 
-    if (!template_name) {
-      return NextResponse.json({ error: 'template_name is required' }, { status: 400 })
-    }
+    if (!audience) {
+      const recipients = Array.isArray(body.recipients)
+        ? (body.recipients as IncomingRecipient[])
+        : Array.isArray(body.phone_numbers)
+          ? (body.phone_numbers as string[]).map((phone) => ({
+              phone,
+              params: Array.isArray(body.template_params) ? body.template_params : [],
+            }))
+          : []
 
-    const language = template_language || 'en_US'
-    const { data: approvedTemplate, error: templateError } = await supabase
-      .from('message_templates')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('name', template_name)
-      .eq('language', language)
-      .eq('status', 'Approved')
-      .maybeSingle()
-
-    if (templateError) {
-      console.error('Error checking broadcast template approval:', templateError)
-      return NextResponse.json(
-        { error: 'Failed to verify template approval status' },
-        { status: 500 },
-      )
-    }
-
-    if (!approvedTemplate) {
-      return NextResponse.json(
-        {
-          error:
-            'Only approved Meta templates can be used for broadcasts. Sync approved templates from Settings and try again.',
-        },
-        { status: 400 },
-      )
-    }
-
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('id, status')
-      .eq('user_id', user.id)
-      .single()
-
-    if (configError || !config || config.status !== 'connected') {
-      return NextResponse.json(
-        {
-          error:
-            'WhatsApp not configured. Please set up your WhatsApp integration first.',
-        },
-        { status: 400 },
-      )
-    }
-
-    let variables: Record<string, VariableMapping>
-    try {
+      if (recipients.length === 0) {
+        return NextResponse.json({ error: 'No recipients or audience provided.' }, { status: 400 })
+      }
+      audience = legacyAudienceFromRecipients(recipients)
       variables = sharedStaticVariables(recipients)
-    } catch (error) {
+    }
+
+    const template = await fetchApprovedOrSelectedTemplate({
+      supabase,
+      userId: user.id,
+      templateId: body.template_id,
+      templateName,
+      language: templateLanguage,
+    })
+
+    if (!template) {
+      return NextResponse.json({ error: 'Template not found.' }, { status: 400 })
+    }
+    templateName = template.name
+    templateLanguage = template.language ?? 'en_US'
+
+    const [whatsappConnected, rates, contacts] = await Promise.all([
+      fetchWhatsAppConnected({ supabase, userId: user.id }),
+      fetchPricingRates({ supabase, userId: user.id }),
+      resolveAudience({
+        supabase,
+        userId: user.id,
+        audience,
+        createCsvContacts: mode === 'queue',
+      }),
+    ])
+
+    const preflight = buildBroadcastPreflightSummary({
+      whatsappConnected,
+      template,
+      contacts,
+      rates,
+    })
+
+    if (mode === 'preflight') {
+      return NextResponse.json({ success: true, preflight })
+    }
+
+    if (preflight.blockers.length > 0) {
+      return NextResponse.json({ error: preflight.blockers[0], preflight }, { status: 400 })
+    }
+    if (preflight.pricingMissingCount > 0 && body.acknowledge_missing_pricing !== true) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : 'Invalid template parameters' },
+        {
+          error: 'Pricing is missing for some recipients. Please acknowledge before queueing.',
+          preflight,
+        },
+        { status: 400 },
+      )
+    }
+    if (body.acknowledge_billing !== true) {
+      return NextResponse.json(
+        {
+          error: 'Please confirm recipients are opted in and you understand this is an estimated cost.',
+          preflight,
+        },
         { status: 400 },
       )
     }
 
-    const contacts = await findOrCreateContacts(supabase, user.id, recipients)
-    if (contacts.length === 0) {
-      return NextResponse.json({ error: 'No valid recipients found.' }, { status: 400 })
-    }
+    const recipientResult = evaluateBroadcastRecipients(contacts)
+    const eligibleContacts = recipientResult.eligible.map((recipient) => recipient.contact)
 
     const { data: broadcast, error: broadcastError } = await supabase
       .from('broadcasts')
       .insert({
         user_id: user.id,
-        name: name?.trim() || `Queued broadcast - ${new Date().toLocaleString()}`,
-        template_name,
-        template_language: language,
+        name: body.name?.trim() || `Queued broadcast - ${new Date().toLocaleString()}`,
+        template_name: templateName,
+        template_language: templateLanguage,
         template_variables: variables,
-        audience_filter: { type: 'api' },
+        audience_filter: audience,
         status: 'queued',
-        total_recipients: contacts.length,
+        total_recipients: eligibleContacts.length,
         sent_count: 0,
         delivered_count: 0,
         read_count: 0,
         replied_count: 0,
         failed_count: 0,
         skipped_count: 0,
+        preflight_total_selected: preflight.totalSelected,
+        preflight_eligible_count: preflight.eligibleCount,
+        preflight_skipped_not_opted_in: preflight.skippedNotOptedIn,
+        preflight_skipped_opted_out: preflight.skippedOptedOut,
+        preflight_skipped_invalid_phone: preflight.skippedInvalidPhone,
+        preflight_skipped_duplicate_phone: preflight.skippedDuplicatePhone,
+        estimated_cost_summary: {
+          pricingBreakdown: preflight.pricingBreakdown,
+          currencyTotals: preflight.currencyTotals,
+          missingPricingWarnings: preflight.missingPricingWarnings,
+        },
+        pricing_missing_count: preflight.pricingMissingCount,
+        preflight_acknowledged_at: new Date().toISOString(),
       })
       .select('id')
       .single()
@@ -230,23 +405,23 @@ export async function POST(request: Request) {
       throw new Error(`Failed to create broadcast: ${broadcastError?.message ?? 'unknown error'}`)
     }
 
-    for (let i = 0; i < contacts.length; i += 200) {
-      const { error: recipientsError } = await supabase
+    for (let i = 0; i < eligibleContacts.length; i += 200) {
+      const { error } = await supabase
         .from('broadcast_recipients')
         .insert(
-          contacts.slice(i, i + 200).map((contact) => ({
+          eligibleContacts.slice(i, i + 200).map((contact) => ({
             broadcast_id: broadcast.id,
             contact_id: contact.id,
             status: 'pending',
           })),
         )
 
-      if (recipientsError) {
+      if (error) {
         await supabase
           .from('broadcasts')
-          .update({ status: 'failed', queue_error: recipientsError.message })
+          .update({ status: 'failed', queue_error: error.message })
           .eq('id', broadcast.id)
-        throw new Error(`Failed to queue recipients: ${recipientsError.message}`)
+        throw new Error(`Failed to queue recipients: ${error.message}`)
       }
     }
 
@@ -254,9 +429,9 @@ export async function POST(request: Request) {
       success: true,
       queued: true,
       broadcast_id: broadcast.id,
-      total: contacts.length,
-      message:
-        'Broadcast queued. Delivery will be handled by the server-side broadcast worker.',
+      total: eligibleContacts.length,
+      preflight,
+      message: 'Broadcast queued. Delivery will be handled by the server-side broadcast worker.',
     })
   } catch (error) {
     console.error('Error queueing WhatsApp broadcast:', error)
