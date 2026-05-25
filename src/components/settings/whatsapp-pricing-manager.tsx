@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Calculator, Edit2, ExternalLink, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
+import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -95,8 +96,9 @@ function rateCell(rate: DbPricingRate, key: 'marketing_rate' | 'utility_rate') {
 
 export function WhatsAppPricingManager() {
   const supabase = createClient();
-  const { user, profile, loading: authLoading } = useAuth();
-  const isAdmin = profile?.role === 'admin';
+  const { user, loading: authLoading } = useAuth();
+  const workspace = useWorkspacePermissions();
+  const canManagePricing = workspace.has('manage_pricing_rates');
 
   const [rates, setRates] = useState<DbPricingRate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,8 +154,8 @@ export function WhatsAppPricingManager() {
 
   async function saveRate() {
     if (!user) return;
-    if (!isAdmin) {
-      toast.error('Only admins can manage pricing rates');
+    if (!canManagePricing) {
+      toast.error('You cannot manage pricing rates');
       return;
     }
     if (!form.country_name.trim() || !form.iso_country_code.trim() || !form.phone_country_code.trim()) {
@@ -196,8 +198,8 @@ export function WhatsAppPricingManager() {
   }
 
   async function deleteRate(rate: DbPricingRate) {
-    if (!isAdmin) {
-      toast.error('Only admins can delete pricing rates');
+    if (!canManagePricing) {
+      toast.error('You cannot delete pricing rates');
       return;
     }
     if (!confirm(`Delete pricing rate for ${rate.country_name}?`)) return;
@@ -210,7 +212,7 @@ export function WhatsAppPricingManager() {
   }
 
   async function addExampleRates() {
-    if (!user || !isAdmin) return;
+    if (!user || !canManagePricing) return;
     setSaving(true);
     const existing = new Set(rates.map((rate) => `${rate.iso_country_code}:${rate.currency}`));
     const rows = EXAMPLE_PRICING_RATES.filter(
@@ -279,7 +281,7 @@ export function WhatsAppPricingManager() {
             Official WhatsApp pricing page <ExternalLink className="size-3" />
           </a>
         </div>
-        {isAdmin && (
+        {canManagePricing && (
           <Button
             type="button"
             variant="outline"
@@ -293,13 +295,13 @@ export function WhatsAppPricingManager() {
         )}
       </div>
 
-      {!isAdmin && (
+      {!canManagePricing && (
         <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 text-sm text-slate-300">
           Pricing is admin-managed. You can view rates and calculate estimates.
         </div>
       )}
 
-      {isAdmin && (
+      {canManagePricing && (
       <Card className="border-slate-800 bg-slate-900/70">
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-4">
@@ -354,7 +356,7 @@ export function WhatsAppPricingManager() {
             Verified by admin against official Meta calculator
           </label>
           <div className="flex gap-2">
-            <Button onClick={saveRate} disabled={!isAdmin || saving} className="bg-violet-600 text-white hover:bg-violet-700">
+            <Button onClick={saveRate} disabled={!canManagePricing || saving} className="bg-violet-600 text-white hover:bg-violet-700">
               {saving && <Loader2 className="size-4 animate-spin" />}
               {editingId ? 'Update Rate' : 'Add Rate'}
             </Button>
@@ -389,16 +391,16 @@ export function WhatsAppPricingManager() {
                 <th className="px-3 py-2 text-left">Marketing</th>
                 <th className="px-3 py-2 text-left">Utility</th>
                 <th className="px-3 py-2 text-left">Verified</th>
-                {isAdmin && <th className="px-3 py-2 text-right">Actions</th>}
+                {canManagePricing && <th className="px-3 py-2 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={isAdmin ? 7 : 6} className="px-3 py-8 text-center text-slate-500">Loading pricing rates...</td></tr>
+                <tr><td colSpan={canManagePricing ? 7 : 6} className="px-3 py-8 text-center text-slate-500">Loading pricing rates...</td></tr>
               ) : rates.length === 0 ? (
-                <tr><td colSpan={isAdmin ? 7 : 6} className="px-3 py-8 text-center text-slate-500">No pricing rates configured.</td></tr>
+                <tr><td colSpan={canManagePricing ? 7 : 6} className="px-3 py-8 text-center text-slate-500">No pricing rates configured.</td></tr>
               ) : filteredRates.length === 0 ? (
-                <tr><td colSpan={isAdmin ? 7 : 6} className="px-3 py-8 text-center text-slate-500">No pricing rates match your search.</td></tr>
+                <tr><td colSpan={canManagePricing ? 7 : 6} className="px-3 py-8 text-center text-slate-500">No pricing rates match your search.</td></tr>
               ) : (
                 filteredRates.map((rate) => (
                   <tr key={rate.id} className="border-t border-slate-800 text-slate-300">
@@ -423,7 +425,7 @@ export function WhatsAppPricingManager() {
                         )}
                       </div>
                     </td>
-                    {isAdmin && <td className="px-3 py-2">
+                    {canManagePricing && <td className="px-3 py-2">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon-sm" onClick={() => edit(rate)} className="text-slate-300">
                           <Edit2 className="size-4" />

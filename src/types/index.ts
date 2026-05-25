@@ -25,6 +25,11 @@ export interface WorkspaceMember {
   user_id: string;
   role: 'owner' | 'admin' | 'manager' | 'agent';
   status: 'active' | 'invited' | 'suspended';
+  permissions?: Record<string, boolean>;
+  can_connect_own_whatsapp?: boolean;
+  contact_visibility?: string;
+  conversation_visibility?: string;
+  deal_visibility?: string;
   joined_at?: string;
   created_at: string;
   updated_at?: string;

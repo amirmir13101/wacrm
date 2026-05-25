@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { canManageTeam } from '@/lib/team/assignment'
+import { canManageTeamWithPermissions, defaultPermissionsForRole } from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 
 export async function PATCH(
@@ -15,7 +15,10 @@ export async function PATCH(
       { status: workspaceResult.status },
     )
   }
-  if (!canManageTeam(workspaceResult.workspace.role)) {
+  if (!canManageTeamWithPermissions({
+    role: workspaceResult.workspace.role,
+    permissions: workspaceResult.workspace.permissions,
+  })) {
     return NextResponse.json({ error: 'Manager access required' }, { status: 403 })
   }
 
@@ -31,6 +34,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Owner role cannot be assigned here' }, { status: 400 })
     }
     update.role = body.role
+    if (!body.permissions) update.permissions = defaultPermissionsForRole(body.role)
   }
 
   if (typeof body.status === 'string') {
@@ -38,6 +42,18 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
     update.status = body.status
+  }
+
+  if (body.permissions && typeof body.permissions === 'object') {
+    update.permissions = body.permissions
+  }
+
+  if (typeof body.can_connect_own_whatsapp === 'boolean') {
+    update.can_connect_own_whatsapp = body.can_connect_own_whatsapp
+  }
+
+  for (const key of ['contact_visibility', 'conversation_visibility', 'deal_visibility']) {
+    if (typeof body[key] === 'string') update[key] = body[key]
   }
 
   if (Object.keys(update).length === 0) {

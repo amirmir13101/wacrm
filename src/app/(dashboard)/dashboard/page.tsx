@@ -31,10 +31,12 @@ import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
+import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions'
 
 type RangeDays = 7 | 30 | 90
 
 export default function DashboardPage() {
+  const workspace = useWorkspacePermissions()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
 
@@ -121,7 +123,9 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Live analytics across conversations, contacts, deals, broadcasts, and automations.
+          {workspace.role === 'agent'
+            ? 'Your assigned conversations, deals, and recent workspace activity.'
+            : 'Live analytics across conversations, contacts, deals, broadcasts, and automations.'}
         </p>
       </div>
 

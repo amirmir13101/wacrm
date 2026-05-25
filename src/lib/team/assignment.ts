@@ -1,3 +1,5 @@
+import { hasWorkspacePermission, type WorkspacePermissions } from './permissions'
+
 export type WorkspaceRole = 'owner' | 'admin' | 'manager' | 'agent'
 export type WorkspaceMemberStatus = 'active' | 'invited' | 'suspended'
 export type AssignmentMode = 'specific_agent' | 'round_robin' | 'least_busy' | 'unassigned_only'
@@ -8,6 +10,11 @@ export interface WorkspaceMemberOption {
   user_id: string
   role: WorkspaceRole
   status: WorkspaceMemberStatus
+  permissions?: Record<string, boolean>
+  can_connect_own_whatsapp?: boolean
+  contact_visibility?: string
+  conversation_visibility?: string
+  deal_visibility?: string
   profile_id: string | null
   full_name: string | null
   email: string | null
@@ -22,23 +29,43 @@ export function canManageTeam(role: string | null | undefined): boolean {
 
 export function canAssignConversation(args: {
   role?: string | null
+  permissions?: WorkspacePermissions | null
   actorUserId: string
   currentAssignedUserId?: string | null
   nextAssignedUserId?: string | null
 }): boolean {
-  if (canManageTeam(args.role)) return true
+  if (hasWorkspacePermission({ role: args.role, permissions: args.permissions }, 'assign_conversations')) {
+    return true
+  }
   if (args.role !== 'agent') return false
-  return !args.currentAssignedUserId && args.nextAssignedUserId === args.actorUserId
+  return (
+    hasWorkspacePermission({ role: args.role, permissions: args.permissions }, 'view_unassigned_conversations') &&
+    !args.currentAssignedUserId &&
+    args.nextAssignedUserId === args.actorUserId
+  )
 }
 
 export function canSeeConversation(args: {
   role?: string | null
+  permissions?: WorkspacePermissions | null
   actorUserId: string
   assignedAgentId?: string | null
 }): boolean {
-  if (canManageTeam(args.role)) return true
+  if (hasWorkspacePermission({ role: args.role, permissions: args.permissions }, 'view_all_conversations')) return true
   if (args.role !== 'agent') return false
-  return !args.assignedAgentId || args.assignedAgentId === args.actorUserId
+  if (!args.assignedAgentId) {
+    return hasWorkspacePermission(
+      { role: args.role, permissions: args.permissions },
+      'view_unassigned_conversations',
+    )
+  }
+  return (
+    args.assignedAgentId === args.actorUserId &&
+    hasWorkspacePermission(
+      { role: args.role, permissions: args.permissions },
+      'view_assigned_conversations',
+    )
+  )
 }
 
 export function nextRoundRobinAgent(

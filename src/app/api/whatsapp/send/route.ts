@@ -13,6 +13,9 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit'
+import { requireCurrentWorkspace } from '@/lib/team/server'
+import { hasWorkspacePermission } from '@/lib/team/permissions'
+import { canSeeConversation } from '@/lib/team/assignment'
 
 export async function POST(request: Request) {
   try {
@@ -28,6 +31,22 @@ export async function POST(request: Request) {
         { error: 'Unauthorized' },
         { status: 401 }
       )
+    }
+
+    const workspaceResult = await requireCurrentWorkspace()
+    if (!workspaceResult.ok) {
+      return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
+    }
+    const workspace = workspaceResult.workspace
+    if (!hasWorkspacePermission(
+      {
+        role: workspace.role,
+        permissions: workspace.permissions,
+        can_connect_own_whatsapp: workspace.canConnectOwnWhatsApp,
+      },
+      'reply_to_conversations',
+    )) {
+      return NextResponse.json({ error: 'You cannot reply to conversations' }, { status: 403 })
     }
 
     // Per-user rate limit. Bucket key is scoped to this route so
@@ -84,6 +103,27 @@ export async function POST(request: Request) {
     }
 
     const contact = conversation.contact
+    if (
+      !canSeeConversation({
+        role: workspace.role,
+        permissions: workspace.permissions,
+        actorUserId: user.id,
+        assignedAgentId: conversation.assigned_agent_id,
+      })
+    ) {
+      return NextResponse.json(
+        { error: 'You cannot reply to this conversation' },
+        { status: 403 },
+      )
+    }
+
+    if (conversation.workspace_id && conversation.workspace_id !== workspace.workspaceId) {
+      return NextResponse.json(
+        { error: 'Conversation not found in this workspace' },
+        { status: 404 },
+      )
+    }
+
     if (!contact?.phone) {
       return NextResponse.json(
         { error: 'Contact phone number not found' },
@@ -107,7 +147,10 @@ export async function POST(request: Request) {
     configQuery = conversation.workspace_id
       ? configQuery.eq('workspace_id', conversation.workspace_id)
       : configQuery.eq('user_id', conversation.user_id ?? user.id)
-    const { data: config, error: configError } = await configQuery.single()
+    const { data: config, error: configError } = await configQuery
+      .order('connected_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     if (configError || !config) {
       return NextResponse.json(

@@ -5,6 +5,11 @@ import {
   isAdmin,
   type ApprovalProfile,
 } from '@/lib/auth/approval'
+import {
+  canAccessDashboardPath,
+  hasWorkspacePermission,
+  type WorkspacePermissions,
+} from '@/lib/team/permissions'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -31,6 +36,11 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   let profile: ApprovalProfile | null = null
+  let workspaceMember: {
+    role: string | null
+    permissions?: WorkspacePermissions | null
+    can_connect_own_whatsapp?: boolean | null
+  } | null = null
   if (user) {
     const { data } = await supabase
       .from('profiles')
@@ -39,6 +49,16 @@ export async function middleware(request: NextRequest) {
       .maybeSingle()
 
     profile = data ?? { role: 'user', approval_status: 'pending' }
+
+    const { data: member } = await supabase
+      .from('workspace_members')
+      .select('role, permissions, can_connect_own_whatsapp')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .order('joined_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    workspaceMember = member
   }
 
   // Auth pages - redirect to dashboard if already logged in
@@ -81,6 +101,16 @@ export async function middleware(request: NextRequest) {
     }
 
     if (request.nextUrl.pathname.startsWith('/admin') && !isAdmin(profile)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+
+    if (
+      !request.nextUrl.pathname.startsWith('/admin') &&
+      workspaceMember &&
+      !canAccessDashboardPath(workspaceMember, request.nextUrl.pathname)
+    ) {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
       return NextResponse.redirect(url)
@@ -128,6 +158,41 @@ export async function middleware(request: NextRequest) {
 
   if (user && request.nextUrl.pathname.startsWith('/api/admin') && !isAdmin(profile)) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+  }
+
+  if (user && workspaceMember) {
+    const path = request.nextUrl.pathname
+    const method = request.method
+    const deny = (message = 'Permission required') =>
+      NextResponse.json({ error: message }, { status: 403 })
+
+    if (path.startsWith('/api/whatsapp/config')) {
+      if (
+        method !== 'GET' &&
+        !hasWorkspacePermission(workspaceMember, 'manage_whatsapp_config') &&
+        !hasWorkspacePermission(workspaceMember, 'connect_own_whatsapp_config')
+      ) return deny('You cannot manage WhatsApp configuration')
+    }
+    if (path.startsWith('/api/whatsapp/send') && !hasWorkspacePermission(workspaceMember, 'reply_to_conversations')) {
+      return deny('You cannot reply to conversations')
+    }
+    if (path.startsWith('/api/whatsapp/broadcast') && method !== 'GET' && !hasWorkspacePermission(workspaceMember, 'queue_broadcasts')) {
+      return deny('You cannot manage broadcasts')
+    }
+    if (path.startsWith('/api/team') && method !== 'GET' && !hasWorkspacePermission(workspaceMember, 'manage_team_members')) {
+      return deny('You cannot manage team members')
+    }
+    if (path.startsWith('/api/contacts') && method !== 'GET' && !hasWorkspacePermission(workspaceMember, 'edit_contacts')) {
+      return deny('You cannot edit contacts')
+    }
+    if (path.startsWith('/api/pricing') && method !== 'GET' && !hasWorkspacePermission(workspaceMember, 'manage_pricing_rates')) {
+      return deny('You cannot manage pricing rates')
+    }
+    if (path.startsWith('/api/automations') && !path.endsWith('/cron')) {
+      if (method === 'GET' && !hasWorkspacePermission(workspaceMember, 'view_automations')) return deny()
+      if (method === 'POST' && !hasWorkspacePermission(workspaceMember, 'create_automations')) return deny()
+      if ((method === 'PATCH' || method === 'DELETE') && !hasWorkspacePermission(workspaceMember, 'edit_automations')) return deny()
+    }
   }
 
   return supabaseResponse

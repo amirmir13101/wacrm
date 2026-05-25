@@ -10,10 +10,11 @@ describe('WhatsAppPricingManager', () => {
     expect(source()).toContain("fetch('/api/pricing/rates')")
   })
 
-  it('keeps editing controls admin-only while the calculator remains visible', () => {
+  it('keeps editing controls permission-gated while the calculator remains visible', () => {
     const text = source()
 
-    expect(text).toContain('{isAdmin && (')
+    expect(text).toContain("workspace.has('manage_pricing_rates')")
+    expect(text).toContain('{canManagePricing && (')
     expect(text).toContain('Cost Calculator')
     expect(text).toContain('Pricing is admin-managed. You can view rates and calculate estimates.')
   })

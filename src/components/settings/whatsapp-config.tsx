@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
+import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,6 +38,9 @@ type ResetReason = 'token_corrupted' | 'meta_api_error' | null;
 export function WhatsAppConfig() {
   const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
+  const workspace = useWorkspacePermissions();
+  const canManageConfig =
+    workspace.has('manage_whatsapp_config') || workspace.has('connect_own_whatsapp_config');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -62,11 +66,27 @@ export function WhatsAppConfig() {
   const fetchConfig = useCallback(async (userId: string) => {
     setLoading(true);
     try {
+      if (!canManageConfig) {
+        const res = await fetch('/api/whatsapp/config', { method: 'GET' });
+        const payload = await res.json().catch(() => ({}));
+        setConfig(null);
+        setConnectionStatus(payload.connected ? 'connected' : 'disconnected');
+        setResetReason(null);
+        setStatusMessage(payload.message || 'Workspace WhatsApp is managed by the owner.');
+        setLoading(false);
+        return;
+      }
+
       // Load form values from Supabase (shows what's in DB)
-      const { data, error } = await supabase
+      let configQuery = supabase
         .from('whatsapp_config')
         .select('*')
-        .eq('user_id', userId)
+      configQuery = workspace.data?.workspace_id
+        ? configQuery.eq('workspace_id', workspace.data.workspace_id)
+        : configQuery.eq('user_id', userId)
+      const { data, error } = await configQuery
+        .order('connected_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (error) {
@@ -119,16 +139,16 @@ export function WhatsAppConfig() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [canManageConfig, supabase, workspace.data?.workspace_id]);
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || workspace.loading) return;
     if (!user) {
       setLoading(false);
       return;
     }
     fetchConfig(user.id);
-  }, [authLoading, user, fetchConfig]);
+  }, [authLoading, workspace.loading, user, fetchConfig]);
 
   async function handleSave() {
     if (!phoneNumberId.trim()) {
@@ -271,6 +291,31 @@ export function WhatsAppConfig() {
   }
 
   const showResetBanner = resetReason === 'token_corrupted';
+
+  if (!canManageConfig) {
+    return (
+      <div className="mt-4 max-w-3xl space-y-4">
+        <Alert className="bg-slate-900 border-slate-700">
+          <div className="flex items-center gap-2">
+            {connectionStatus === 'connected' ? (
+              <CheckCircle2 className="size-4 text-violet-500" />
+            ) : (
+              <XCircle className="size-4 text-amber-500" />
+            )}
+            <AlertTitle className="text-white mb-0">
+              Workspace WhatsApp is managed by the owner
+            </AlertTitle>
+          </div>
+          <AlertDescription className="text-slate-400">
+            {connectionStatus === 'connected'
+              ? 'Your replies use the workspace WhatsApp connection. API credentials are hidden from team members.'
+              : statusMessage ||
+                'The workspace owner needs to connect WhatsApp before messaging is available.'}
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_380px] mt-4">

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useWorkspacePermissions } from "@/hooks/use-workspace-permissions";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus } from "@/types";
 import { Search, ChevronDown } from "lucide-react";
@@ -53,6 +54,7 @@ export function ConversationList({
   onConversationsLoaded,
 }: ConversationListProps) {
   const { user } = useAuth();
+  const workspace = useWorkspacePermissions();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [loading, setLoading] = useState(true);
@@ -107,17 +109,26 @@ export function ConversationList({
     };
   }, []);
 
-  const filtered = useMemo(() => {
+  const visibleFilterOptions = TEAM_FILTER_OPTIONS.filter((option) => {
+    if (option.value === "all") return workspace.has("view_all_conversations");
+    if (option.value === "mine") return workspace.has("view_assigned_conversations");
+    if (option.value === "unassigned") return workspace.has("view_unassigned_conversations");
+    return true;
+  });
+  const activeFilter = visibleFilterOptions.find((o) => o.value === filter) ?? visibleFilterOptions[0];
+  const effectiveFilter = activeFilter?.value ?? "mine";
+
+  const filtered = (() => {
     let result = conversations;
 
-    if (filter === "mine") {
+    if (effectiveFilter === "mine") {
       result = result.filter((c) => c.assigned_agent_id === user?.id);
-    } else if (filter === "unassigned") {
+    } else if (effectiveFilter === "unassigned") {
       result = result.filter((c) => !c.assigned_agent_id);
-    } else if (filter === "assigned") {
+    } else if (effectiveFilter === "assigned") {
       result = result.filter((c) => !!c.assigned_agent_id);
-    } else if (filter !== "all") {
-      result = result.filter((c) => c.status === filter);
+    } else if (effectiveFilter !== "all") {
+      result = result.filter((c) => c.status === effectiveFilter);
     }
 
     if (search.trim()) {
@@ -131,7 +142,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search, user?.id]);
+  })();
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,8 +157,6 @@ export function ConversationList({
     },
     [onSelect]
   );
-
-  const activeFilter = TEAM_FILTER_OPTIONS.find((o) => o.value === filter);
 
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
@@ -175,7 +184,7 @@ export function ConversationList({
             align="start"
             className="border-slate-700 bg-slate-800"
           >
-            {TEAM_FILTER_OPTIONS.map((opt) => (
+            {visibleFilterOptions.map((opt) => (
               <DropdownMenuItem
                 key={opt.value}
                 onClick={() => setFilter(opt.value)}

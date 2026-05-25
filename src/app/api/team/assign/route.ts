@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { canAssignConversation, canManageTeam } from '@/lib/team/assignment'
+import { canAssignConversation } from '@/lib/team/assignment'
 import { listWorkspaceMembers, requireCurrentWorkspace } from '@/lib/team/server'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { hasWorkspacePermission } from '@/lib/team/permissions'
 
 export async function POST(request: Request) {
   const workspaceResult = await requireCurrentWorkspace()
@@ -34,6 +35,11 @@ export async function POST(request: Request) {
 
   const admin = supabaseAdmin()
   const workspace = workspaceResult.workspace
+  const permissionSubject = {
+    role: workspace.role,
+    permissions: workspace.permissions,
+    can_connect_own_whatsapp: workspace.canConnectOwnWhatsApp,
+  }
   const members = await listWorkspaceMembers(workspace.workspaceId)
   const activeUserIds = new Set(
     members.filter((member) => member.status === 'active').map((member) => member.user_id),
@@ -57,6 +63,7 @@ export async function POST(request: Request) {
     if (
       !canAssignConversation({
         role: workspace.role,
+        permissions: workspace.permissions,
         actorUserId: workspace.userId,
         currentAssignedUserId: conversation.assigned_agent_id,
         nextAssignedUserId: assignedToUserId,
@@ -107,7 +114,10 @@ export async function POST(request: Request) {
 
   if (dealError) return NextResponse.json({ error: dealError.message }, { status: 500 })
   if (!deal) return NextResponse.json({ error: 'Deal not found' }, { status: 404 })
-  if (!canManageTeam(workspace.role) && assignedToProfileId !== null) {
+  if (
+    !hasWorkspacePermission(permissionSubject, 'assign_deals') &&
+    assignedToProfileId !== null
+  ) {
     return NextResponse.json({ error: 'Only managers can assign deals' }, { status: 403 })
   }
 

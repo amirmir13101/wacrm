@@ -6,6 +6,8 @@ import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
+import { useWorkspacePermissions } from "@/hooks/use-workspace-permissions";
+import type { WorkspacePermission } from "@/lib/team/permissions";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -33,14 +35,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/inbox", label: "Inbox", icon: MessageSquare },
-  { href: "/contacts", label: "Contacts", icon: Users },
-  { href: "/pipelines", label: "Pipelines", icon: GitBranch },
-  { href: "/broadcasts", label: "Broadcasts", icon: Radio },
-  { href: "/automations", label: "Automations", icon: Zap },
-  { href: "/team", label: "Team", icon: UserCheck },
+const navItems: Array<{
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  permission: WorkspacePermission;
+}> = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view_dashboard" },
+  { href: "/inbox", label: "Inbox", icon: MessageSquare, permission: "view_inbox" },
+  { href: "/contacts", label: "Contacts", icon: Users, permission: "view_contacts" },
+  { href: "/pipelines", label: "Pipelines", icon: GitBranch, permission: "view_pipeline" },
+  { href: "/broadcasts", label: "Broadcasts", icon: Radio, permission: "view_broadcasts" },
+  { href: "/automations", label: "Automations", icon: Zap, permission: "view_automations" },
+  { href: "/team", label: "Team", icon: UserCheck, permission: "view_team" },
 ];
 
 const bottomNavItems = [
@@ -56,15 +63,25 @@ interface SidebarProps {
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
+  const workspace = useWorkspacePermissions();
   const totalUnread = useTotalUnread();
   const isAdmin =
     profile?.role === "admin" && profile?.approval_status === "approved";
+  const visibleNavItems = navItems.filter((item) => {
+    if (item.href === "/team") {
+      return workspace.has("view_team") || workspace.has("manage_team_members");
+    }
+    return workspace.has(item.permission);
+  });
+  const settingsVisible = workspace.has("view_settings");
   const visibleBottomNavItems = isAdmin
     ? [
         { href: "/admin/users", label: "Admin users", icon: ShieldCheck },
-        ...bottomNavItems,
+        ...(settingsVisible ? bottomNavItems : []),
       ]
-    : bottomNavItems;
+    : settingsVisible
+      ? bottomNavItems
+      : [];
 
   // Close the drawer when route changes — users opened it to navigate,
   // so once they pick a destination the drawer should get out of the way.
@@ -142,7 +159,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {/* Main navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));

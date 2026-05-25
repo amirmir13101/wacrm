@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useWorkspacePermissions } from "@/hooks/use-workspace-permissions";
 import { cn } from "@/lib/utils";
 import type {
   Conversation,
@@ -122,6 +123,7 @@ export function MessageThread({
   onBack,
 }: MessageThreadProps) {
   const { user } = useAuth();
+  const workspace = useWorkspacePermissions();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
@@ -670,6 +672,9 @@ export function MessageThread({
     (s) => s.value === conversation.status
   );
   const assignedAgentId = conversation.assigned_agent_id ?? null;
+  const canAssignConversation = workspace.has("assign_conversations");
+  const canCloseConversation = workspace.has("close_conversations");
+  const canReply = workspace.has("reply_to_conversations");
   const activeMembers = members.filter((member) => member.status === "active");
   const currentAssignee = activeMembers.find((p) => p.user_id === assignedAgentId);
   const assignLabel = assignedAgentId
@@ -716,7 +721,7 @@ export function MessageThread({
 
         <div className="flex items-center gap-2">
           {/* Status dropdown */}
-          <DropdownMenu>
+          {canCloseConversation && <DropdownMenu>
             <DropdownMenuTrigger className={cn(
                   "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-slate-800",
                   currentStatus?.color ?? "text-slate-400"
@@ -738,10 +743,10 @@ export function MessageThread({
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu>}
 
           {/* Assign dropdown */}
-          <DropdownMenu>
+          {canAssignConversation && <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
                 "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-slate-800",
@@ -793,7 +798,7 @@ export function MessageThread({
                 </>
               )}
             </DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu>}
         </div>
       </div>
 
@@ -881,6 +886,7 @@ export function MessageThread({
       <MessageComposer
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
+        canReply={canReply}
         onSend={handleSend}
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}

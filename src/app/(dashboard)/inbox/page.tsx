@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
@@ -30,6 +29,7 @@ export default function InboxPage() {
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
+  const [whatsappConnectionMessage, setWhatsappConnectionMessage] = useState("");
 
   // Fire the deep-link auto-select exactly once per URL — subsequent
   // list refreshes (realtime, manual refetch) must not snap the user
@@ -40,23 +40,11 @@ export default function InboxPage() {
   // Check WhatsApp connection status on mount
   useEffect(() => {
     const checkConnection = async () => {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user;
-
-      if (!user) return;
-
-      // Table is `whatsapp_config` (singular) — the previous "whatsapp_configs"
-      // query always returned no rows, so the banner always showed "not connected".
-      const { data } = await supabase
-        .from("whatsapp_config")
-        .select("status")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      setWhatsappConnected(data?.status === "connected");
+      const response = await fetch("/api/whatsapp/config");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return;
+      setWhatsappConnected(payload.connected === true);
+      setWhatsappConnectionMessage(payload.message ?? "");
     };
 
     checkConnection();
@@ -291,7 +279,8 @@ export default function InboxPage() {
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
           <WifiOff className="h-4 w-4 text-amber-400" />
           <p className="text-xs text-amber-400">
-            WhatsApp® is not connected. Go to Settings to connect your account.
+            {whatsappConnectionMessage ||
+              "Workspace WhatsApp is not connected. Ask the owner to configure it."}
           </p>
         </div>
       )}

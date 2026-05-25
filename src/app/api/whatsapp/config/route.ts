@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { requireCurrentWorkspace } from '@/lib/team/server'
+import { hasWorkspacePermission } from '@/lib/team/permissions'
 
 /**
  * GET /api/whatsapp/config
@@ -18,21 +20,25 @@ import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
  */
 export async function GET() {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const workspaceResult = await requireCurrentWorkspace()
+    if (!workspaceResult.ok) {
+      return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
     }
+    const workspace = workspaceResult.workspace
+    const subject = {
+      role: workspace.role,
+      permissions: workspace.permissions,
+      can_connect_own_whatsapp: workspace.canConnectOwnWhatsApp,
+    }
+    const canManage = hasWorkspacePermission(subject, 'manage_whatsapp_config')
+    const canConnectOwn = hasWorkspacePermission(subject, 'connect_own_whatsapp_config')
 
-    const { data: config, error: configError } = await supabase
+    const { data: config, error: configError } = await supabaseAdmin()
       .from('whatsapp_config')
       .select('phone_number_id, access_token, status')
-      .eq('user_id', user.id)
+      .eq('workspace_id', workspace.workspaceId)
+      .order('connected_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
 
     if (configError) {
@@ -48,7 +54,9 @@ export async function GET() {
         {
           connected: false,
           reason: 'no_config',
-          message: 'No WhatsApp configuration saved yet. Fill in the form and click Save Configuration.',
+          message: canManage || canConnectOwn
+            ? 'No WhatsApp configuration saved yet. Fill in the form and click Save Configuration.'
+            : 'Workspace WhatsApp is not connected. Ask the workspace owner to configure it.',
         },
         { status: 200 }
       )
@@ -65,9 +73,10 @@ export async function GET() {
         {
           connected: false,
           reason: 'token_corrupted',
-          needs_reset: true,
-          message:
-            'The stored access token cannot be decrypted with the current ENCRYPTION_KEY. This usually means the key changed, or it differs between environments (local vs Hostinger vs Vercel). Click "Reset Configuration" below, then re-save.',
+          needs_reset: canManage || canConnectOwn,
+          message: canManage || canConnectOwn
+            ? 'The stored access token cannot be decrypted with the current ENCRYPTION_KEY. Click "Reset Configuration" below, then re-save.'
+            : 'Workspace WhatsApp needs owner attention before messaging is available.',
         },
         { status: 200 }
       )
@@ -79,7 +88,11 @@ export async function GET() {
         phoneNumberId: config.phone_number_id,
         accessToken,
       })
-      return NextResponse.json({ connected: true, phone_info: phoneInfo })
+      return NextResponse.json({
+        connected: true,
+        phone_info: phoneInfo,
+        managed_by_owner: !(canManage || canConnectOwn),
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown Meta API error'
       console.error('[whatsapp/config GET] Meta API verification failed:', message)
@@ -109,15 +122,21 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const workspaceResult = await requireCurrentWorkspace()
+    if (!workspaceResult.ok) {
+      return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
+    }
+    const workspace = workspaceResult.workspace
+    const subject = {
+      role: workspace.role,
+      permissions: workspace.permissions,
+      can_connect_own_whatsapp: workspace.canConnectOwnWhatsApp,
+    }
+    if (
+      !hasWorkspacePermission(subject, 'manage_whatsapp_config') &&
+      !hasWorkspacePermission(subject, 'connect_own_whatsapp_config')
+    ) {
+      return NextResponse.json({ error: 'You cannot manage WhatsApp configuration' }, { status: 403 })
     }
 
     const body = await request.json()
@@ -165,14 +184,17 @@ export async function POST(request: Request) {
     }
 
     // Upsert — overwrite any existing (possibly corrupted) config
-    const { data: existing } = await supabase
+    const admin = supabaseAdmin()
+    const { data: existing } = await admin
       .from('whatsapp_config')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('workspace_id', workspace.workspaceId)
+      .order('connected_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
 
     if (existing) {
-      const { error: updateError } = await supabase
+      const { error: updateError } = await admin
         .from('whatsapp_config')
         .update({
           phone_number_id,
@@ -183,7 +205,7 @@ export async function POST(request: Request) {
           connected_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('user_id', user.id)
+        .eq('id', existing.id)
 
       if (updateError) {
         console.error('Error updating whatsapp_config:', updateError)
@@ -193,10 +215,11 @@ export async function POST(request: Request) {
         )
       }
     } else {
-      const { error: insertError } = await supabase
+      const { error: insertError } = await admin
         .from('whatsapp_config')
         .insert({
-          user_id: user.id,
+          user_id: workspace.userId,
+          workspace_id: workspace.workspaceId,
           phone_number_id,
           waba_id: waba_id || null,
           access_token: encryptedAccessToken,
@@ -230,21 +253,27 @@ export async function POST(request: Request) {
  */
 export async function DELETE() {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const workspaceResult = await requireCurrentWorkspace()
+    if (!workspaceResult.ok) {
+      return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
+    }
+    const workspace = workspaceResult.workspace
+    const subject = {
+      role: workspace.role,
+      permissions: workspace.permissions,
+      can_connect_own_whatsapp: workspace.canConnectOwnWhatsApp,
+    }
+    if (
+      !hasWorkspacePermission(subject, 'manage_whatsapp_config') &&
+      !hasWorkspacePermission(subject, 'connect_own_whatsapp_config')
+    ) {
+      return NextResponse.json({ error: 'You cannot manage WhatsApp configuration' }, { status: 403 })
     }
 
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await supabaseAdmin()
       .from('whatsapp_config')
       .delete()
-      .eq('user_id', user.id)
+      .eq('workspace_id', workspace.workspaceId)
 
     if (deleteError) {
       console.error('Error deleting whatsapp_config:', deleteError)

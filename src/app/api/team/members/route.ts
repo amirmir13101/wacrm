@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireCurrentWorkspace, listWorkspaceMembers } from '@/lib/team/server'
-import { canManageTeam } from '@/lib/team/assignment'
+import { canManageTeamWithPermissions, defaultPermissionsForRole } from '@/lib/team/permissions'
 
 export async function GET() {
   const workspaceResult = await requireCurrentWorkspace()
@@ -18,7 +18,15 @@ export async function GET() {
     workspace_id: workspaceResult.workspace.workspaceId,
     current_user_id: workspaceResult.workspace.userId,
     current_role: workspaceResult.workspace.role,
-    can_manage_team: canManageTeam(workspaceResult.workspace.role),
+    current_permissions: workspaceResult.workspace.permissions,
+    current_can_connect_own_whatsapp: workspaceResult.workspace.canConnectOwnWhatsApp,
+    current_contact_visibility: workspaceResult.workspace.contactVisibility,
+    current_conversation_visibility: workspaceResult.workspace.conversationVisibility,
+    current_deal_visibility: workspaceResult.workspace.dealVisibility,
+    can_manage_team: canManageTeamWithPermissions({
+      role: workspaceResult.workspace.role,
+      permissions: workspaceResult.workspace.permissions,
+    }),
     members,
   })
 }
@@ -31,13 +39,24 @@ export async function POST(request: Request) {
       { status: workspaceResult.status },
     )
   }
-  if (!canManageTeam(workspaceResult.workspace.role)) {
+  if (!canManageTeamWithPermissions({
+    role: workspaceResult.workspace.role,
+    permissions: workspaceResult.workspace.permissions,
+  })) {
     return NextResponse.json({ error: 'Manager access required' }, { status: 403 })
   }
 
   const body = await request.json().catch(() => ({}))
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const role = typeof body.role === 'string' ? body.role : 'agent'
+  const permissions =
+    body.permissions && typeof body.permissions === 'object'
+      ? body.permissions
+      : defaultPermissionsForRole(role)
+  const canConnectOwnWhatsApp = Boolean(body.can_connect_own_whatsapp)
+  const contactVisibility = typeof body.contact_visibility === 'string' ? body.contact_visibility : role === 'agent' ? 'assigned_only' : 'all'
+  const conversationVisibility = typeof body.conversation_visibility === 'string' ? body.conversation_visibility : role === 'agent' ? 'unassigned_and_assigned' : 'all'
+  const dealVisibility = typeof body.deal_visibility === 'string' ? body.deal_visibility : role === 'agent' ? 'assigned_only' : 'all'
 
   if (!email) {
     return NextResponse.json({ error: 'Email is required' }, { status: 400 })
@@ -75,6 +94,11 @@ export async function POST(request: Request) {
       user_id: profile.user_id,
       role,
       status: 'active',
+      permissions,
+      can_connect_own_whatsapp: canConnectOwnWhatsApp,
+      contact_visibility: contactVisibility,
+      conversation_visibility: conversationVisibility,
+      deal_visibility: dealVisibility,
       joined_at: new Date().toISOString(),
     },
     { onConflict: 'workspace_id,user_id' },

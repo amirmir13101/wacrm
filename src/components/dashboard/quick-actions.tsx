@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { UserPlus, Briefcase, Radio, Zap } from 'lucide-react'
 import type { ComponentType } from 'react'
+import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions'
+import type { WorkspacePermission } from '@/lib/team/permissions'
 
 // Quick-action shortcuts. Each navigates to the page that owns the
 // relevant "create" flow. We deliberately don't try to auto-open any
@@ -13,19 +15,24 @@ interface Action {
   href: string
   icon: ComponentType<{ className?: string }>
   tint: string
+  permission: WorkspacePermission
 }
 
 const ACTIONS: Action[] = [
-  { label: 'New Contact', href: '/contacts', icon: UserPlus, tint: 'text-violet-400' },
-  { label: 'New Deal', href: '/pipelines', icon: Briefcase, tint: 'text-blue-400' },
-  { label: 'New Broadcast', href: '/broadcasts/new', icon: Radio, tint: 'text-amber-400' },
-  { label: 'New Automation', href: '/automations/new', icon: Zap, tint: 'text-violet-400' },
+  { label: 'New Contact', href: '/contacts', icon: UserPlus, tint: 'text-violet-400', permission: 'create_contacts' },
+  { label: 'New Deal', href: '/pipelines', icon: Briefcase, tint: 'text-blue-400', permission: 'create_deals' },
+  { label: 'New Broadcast', href: '/broadcasts/new', icon: Radio, tint: 'text-amber-400', permission: 'create_broadcasts' },
+  { label: 'New Automation', href: '/automations/new', icon: Zap, tint: 'text-violet-400', permission: 'create_automations' },
 ]
 
 export function QuickActions() {
+  const workspace = useWorkspacePermissions()
+  const actions = ACTIONS.filter((action) => workspace.has(action.permission))
+  if (actions.length === 0) return null
+
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {ACTIONS.map((a) => {
+      {actions.map((a) => {
         const Icon = a.icon
         return (
           <Link

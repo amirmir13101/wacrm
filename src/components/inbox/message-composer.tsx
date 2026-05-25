@@ -16,6 +16,7 @@ interface ReplyDraft {
 interface MessageComposerProps {
   conversationId: string;
   sessionExpired: boolean;
+  canReply?: boolean;
   onSend: (text: string, replyToId?: string) => void;
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
@@ -25,6 +26,7 @@ interface MessageComposerProps {
 export function MessageComposer({
   conversationId,
   sessionExpired,
+  canReply = true,
   onSend,
   onOpenTemplates,
   replyTo,
@@ -44,7 +46,7 @@ export function MessageComposer({
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+    if (!trimmed || sending || sessionExpired || !canReply) return;
 
     setSending(true);
     try {
@@ -56,7 +58,7 @@ export function MessageComposer({
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [text, sending, sessionExpired, canReply, onSend, replyTo?.id]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -103,6 +105,13 @@ export function MessageComposer({
           </Button>
         </div>
       )}
+      {!canReply && (
+        <div className="mb-2 rounded-lg bg-slate-800 px-3 py-2">
+          <p className="text-xs text-slate-400">
+            You can view this conversation, but replies are not enabled for your role.
+          </p>
+        </div>
+      )}
 
       <div className="flex items-end gap-2">
         <Button
@@ -121,22 +130,24 @@ export function MessageComposer({
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           placeholder={
-            sessionExpired
+            !canReply
+              ? "Reply permission is not enabled"
+              : sessionExpired
               ? "Session expired - use a template"
               : "Type a message... (Shift+Enter for new line)"
           }
-          disabled={sessionExpired}
+          disabled={sessionExpired || !canReply}
           rows={1}
           className={cn(
             "flex-1 resize-none rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition-colors focus:border-violet-500/50",
-            sessionExpired && "cursor-not-allowed opacity-50"
+            (sessionExpired || !canReply) && "cursor-not-allowed opacity-50"
           )}
         />
 
         <Button
           size="sm"
           className="h-9 w-9 shrink-0 bg-violet-600 p-0 hover:bg-violet-500 disabled:opacity-40"
-          disabled={!text.trim() || sessionExpired || sending}
+          disabled={!text.trim() || sessionExpired || !canReply || sending}
           onClick={handleSend}
         >
           <Send className="h-4 w-4" />
