@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
+import { inviteAuthPath } from "@/lib/team/invitations";
 
 interface InviteInfo {
   invited_email: string;
@@ -41,6 +42,18 @@ export default function AcceptInvitePage() {
     let cancelled = false;
     async function loadInvite() {
       setLoading(true);
+      if (!token) {
+        const { data: sessionResult } = await supabase.auth.getUser();
+        if (cancelled) return;
+        setUserEmail(sessionResult.user?.email ?? null);
+        setError(
+          sessionResult.user?.email
+            ? "You may have a pending invitation, but this link is missing its secure token. Ask the owner to send a new invite link."
+            : "This invitation link is missing or incomplete. Please ask the workspace owner to send you a new invite link.",
+        );
+        setLoading(false);
+        return;
+      }
       const [{ data: sessionResult }, validateResponse] = await Promise.all([
         supabase.auth.getUser(),
         fetch("/api/invite/validate", {
@@ -134,13 +147,13 @@ export default function AcceptInvitePage() {
 
           {!loading && invite && !userEmail && (
             <div className="grid gap-2 sm:grid-cols-2">
-              <Link href={`/login?invite_token=${encodeURIComponent(token)}`}>
+              <Link href={inviteAuthPath("/login", token)}>
                 <Button className="w-full bg-violet-600 text-white hover:bg-violet-500">
                   Login with this email
                 </Button>
               </Link>
               <Link
-                href={`/signup?invite_token=${encodeURIComponent(token)}&email=${encodeURIComponent(invitedEmail)}`}
+                href={inviteAuthPath("/signup", token, invitedEmail)}
               >
                 <Button variant="outline" className="w-full border-slate-700 text-slate-200 hover:bg-slate-800">
                   Create account
@@ -159,7 +172,7 @@ export default function AcceptInvitePage() {
                 variant="outline"
                 onClick={async () => {
                   await supabase.auth.signOut();
-                  window.location.href = `/login?invite_token=${encodeURIComponent(token)}`;
+                  window.location.href = inviteAuthPath("/login", token);
                 }}
                 className="w-full border-slate-700 text-slate-200 hover:bg-slate-800"
               >

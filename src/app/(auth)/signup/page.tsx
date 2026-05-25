@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { MessageSquare, CheckCircle } from "lucide-react";
+import { inviteAuthPath, inviteUrl } from "@/lib/team/invitations";
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState("");
@@ -52,6 +53,7 @@ export default function SignupPage() {
       email,
       password,
       options: {
+        emailRedirectTo: inviteToken ? inviteUrl(inviteToken) : undefined,
         data: {
           full_name: fullName,
         },
@@ -92,7 +94,7 @@ export default function SignupPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/login">
+            <Link href={inviteToken ? inviteAuthPath("/login", inviteToken) : "/login"}>
               <Button
                 variant="outline"
                 className="w-full border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -199,7 +201,7 @@ export default function SignupPage() {
           <p className="mt-6 text-center text-sm text-slate-400">
             Already have an account?{" "}
             <Link
-              href="/login"
+              href={inviteToken ? inviteAuthPath("/login", inviteToken) : "/login"}
               className="text-violet-500 hover:text-violet-400"
             >
               Sign in

@@ -87,6 +87,15 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname === '/signup' ||
     request.nextUrl.pathname === '/forgot-password'
   )) {
+    const inviteToken = request.nextUrl.searchParams.get('invite_token')
+    const redirect = request.nextUrl.searchParams.get('redirect')
+    if (inviteToken && redirect === '/invite/accept') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/invite/accept'
+      url.search = ''
+      url.searchParams.set('token', inviteToken)
+      return NextResponse.redirect(url)
+    }
     const url = request.nextUrl.clone()
     url.pathname = approvalRedirectPath(profile) ?? '/dashboard'
     return NextResponse.redirect(url)

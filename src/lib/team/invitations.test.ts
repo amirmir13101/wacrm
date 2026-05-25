@@ -4,6 +4,8 @@ import {
   createInviteToken,
   defaultInviteVisibility,
   hashInviteToken,
+  inviteAcceptPath,
+  inviteAuthPath,
   inviteUrl,
 } from './invitations'
 
@@ -39,5 +41,18 @@ describe('workspace invitations', () => {
 
     expect(url).toContain('/invite/accept?token=plain-token-value')
     expect(url).not.toContain(hashInviteToken('plain-token-value'))
+  })
+
+  it('preserves invite token in login and signup links', () => {
+    expect(inviteAuthPath('/login', 'abc123')).toBe(
+      '/login?invite_token=abc123&redirect=%2Finvite%2Faccept',
+    )
+    expect(inviteAuthPath('/signup', 'abc123', 'agent@example.com')).toBe(
+      '/signup?invite_token=abc123&redirect=%2Finvite%2Faccept&email=agent%40example.com',
+    )
+  })
+
+  it('redirects successful auth back to the tokenized accept page', () => {
+    expect(inviteAcceptPath('abc123')).toBe('/invite/accept?token=abc123')
   })
 })

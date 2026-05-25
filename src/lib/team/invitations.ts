@@ -45,6 +45,19 @@ export function inviteUrl(token: string): string {
   return `${baseUrl.replace(/\/$/, '')}/invite/accept?token=${encodeURIComponent(token)}`
 }
 
+export function inviteAcceptPath(token: string): string {
+  return `/invite/accept?token=${encodeURIComponent(token)}`
+}
+
+export function inviteAuthPath(pathname: '/login' | '/signup', token: string, email?: string): string {
+  const params = new URLSearchParams({
+    invite_token: token,
+    redirect: '/invite/accept',
+  })
+  if (email) params.set('email', email)
+  return `${pathname}?${params.toString()}`
+}
+
 export function defaultInviteVisibility(role: string): {
   contact_visibility: VisibilityMode
   conversation_visibility: VisibilityMode

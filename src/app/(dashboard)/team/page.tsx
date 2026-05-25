@@ -242,6 +242,9 @@ export default function TeamPage() {
           {latestInviteLink && (
             <div className="mt-3 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
               <p className="text-xs font-medium text-violet-100">Invite link ready</p>
+              <p className="mt-1 text-xs text-violet-100/80">
+                Copy this link now. For security, it cannot be shown again after you leave this page.
+              </p>
               <div className="mt-2 flex gap-2">
                 <Input
                   readOnly
@@ -362,6 +365,9 @@ export default function TeamPage() {
         <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
           <div className="border-b border-slate-800 px-4 py-3">
             <h2 className="text-sm font-semibold text-white">Pending invitations</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Invite links are only shown when created. Revoke an old invite and create a new one to generate a fresh link.
+            </p>
           </div>
           {data.invitations?.length ? (
             <div className="divide-y divide-slate-800">

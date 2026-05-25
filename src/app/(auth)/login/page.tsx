@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { MessageSquare } from "lucide-react";
+import { inviteAcceptPath, inviteAuthPath } from "@/lib/team/invitations";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -27,6 +28,7 @@ export default function LoginPage() {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("invite_token") ?? "";
   });
+  const inviteRedirectPath = inviteToken ? inviteAcceptPath(inviteToken) : "/dashboard";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +46,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push(inviteToken ? `/invite/accept?token=${encodeURIComponent(inviteToken)}` : "/dashboard");
+    router.push(inviteRedirectPath);
   };
 
   return (
@@ -117,7 +119,7 @@ export default function LoginPage() {
           <p className="mt-6 text-center text-sm text-slate-400">
             Don&apos;t have an account?{" "}
             <Link
-              href="/signup"
+              href={inviteToken ? inviteAuthPath("/signup", inviteToken, email) : "/signup"}
               className="text-violet-500 hover:text-violet-400"
             >
               Create account
