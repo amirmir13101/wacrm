@@ -36,6 +36,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   let profile: ApprovalProfile | null = null
+  let activeWorkspaceId: string | null = null
   let workspaceMember: {
     role: string | null
     permissions?: WorkspacePermissions | null
@@ -44,20 +45,39 @@ export async function middleware(request: NextRequest) {
   if (user) {
     const { data } = await supabase
       .from('profiles')
-      .select('role, approval_status')
+      .select('role, approval_status, active_workspace_id')
       .eq('user_id', user.id)
       .maybeSingle()
 
     profile = data ?? { role: 'user', approval_status: 'pending' }
+    activeWorkspaceId = data?.active_workspace_id ?? null
 
-    const { data: member } = await supabase
+    let memberQuery = supabase
       .from('workspace_members')
       .select('role, permissions, can_connect_own_whatsapp')
       .eq('user_id', user.id)
       .eq('status', 'active')
+
+    if (activeWorkspaceId) {
+      memberQuery = memberQuery.eq('workspace_id', activeWorkspaceId)
+    }
+
+    let { data: member } = await memberQuery
       .order('joined_at', { ascending: true })
       .limit(1)
       .maybeSingle()
+
+    if (!member && activeWorkspaceId) {
+      const fallback = await supabase
+        .from('workspace_members')
+        .select('role, permissions, can_connect_own_whatsapp')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .order('joined_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      member = fallback.data
+    }
     workspaceMember = member
   }
 

@@ -17,12 +17,19 @@ import { MessageSquare, CheckCircle } from "lucide-react";
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("email") ?? "";
+  });
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [inviteToken] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("invite_token") ?? "";
+  });
   const supabase = createClient();
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -74,6 +81,7 @@ export default function SignupPage() {
             </CardTitle>
             <CardDescription className="text-slate-400">
               Your account has been created and is pending admin approval.
+              {inviteToken ? " After confirming your email, login from the invite link to join the workspace." : ""}
               {email ? (
                 <>
                   {" "}
@@ -107,7 +115,7 @@ export default function SignupPage() {
           </div>
           <CardTitle className="text-xl text-white">Create account</CardTitle>
           <CardDescription className="text-slate-400">
-            Get started with CRM Template for WhatsApp
+            {inviteToken ? "Create your agent account with the invited email" : "Get started with CRM Template for WhatsApp"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -143,6 +151,7 @@ export default function SignupPage() {
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                readOnly={Boolean(inviteToken)}
                 required
                 className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
               />

@@ -12,6 +12,7 @@ import {
 
 interface WorkspacePermissionState {
   workspace_id: string
+  workspace_name?: string | null
   current_user_id: string
   current_role: string
   current_permissions?: WorkspacePermissions
@@ -21,6 +22,14 @@ interface WorkspacePermissionState {
   current_deal_visibility?: string
   can_manage_team: boolean
   members: WorkspaceMemberOption[]
+  invitations?: unknown[]
+  workspaces?: Array<{
+    workspace_id: string
+    workspace_name: string | null
+    role: string
+    status: string
+    is_active: boolean
+  }>
 }
 
 export function useWorkspacePermissions() {
@@ -67,6 +76,16 @@ export function useWorkspacePermissions() {
     permissions,
     has: (permission: WorkspacePermission) => hasWorkspacePermission(subject, permission),
     canManageTeam: data?.can_manage_team === true,
+    workspaces: data?.workspaces ?? [],
+    workspaceName: data?.workspace_name ?? null,
+    workspaceId: data?.workspace_id ?? null,
+    refresh: () =>
+      fetch("/api/team/members")
+        .then(async (res) => {
+          const payload = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(payload?.error ?? "Failed to load workspace permissions")
+          setData(payload as WorkspacePermissionState)
+        })
+        .catch(() => setData(null)),
   }
 }
-

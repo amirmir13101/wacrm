@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { createClient } from '@/lib/supabase/server'
 import type { ApprovalStatus, UserRole } from '@/lib/auth/approval'
+import { ensureApprovedUserOwnWorkspace } from '@/lib/team/server'
 
 const allowedStatuses: ApprovalStatus[] = [
   'pending',
@@ -97,6 +98,22 @@ export async function PATCH(
       { error: `Failed to update user: ${error.message}` },
       { status: 500 },
     )
+  }
+
+  if (nextStatus === 'approved') {
+    try {
+      await ensureApprovedUserOwnWorkspace(data.user_id)
+    } catch (workspaceError) {
+      return NextResponse.json(
+        {
+          error:
+            workspaceError instanceof Error
+              ? `User approved, but workspace setup failed: ${workspaceError.message}`
+              : 'User approved, but workspace setup failed',
+        },
+        { status: 500 },
+      )
+    }
   }
 
   return NextResponse.json({ user: data })

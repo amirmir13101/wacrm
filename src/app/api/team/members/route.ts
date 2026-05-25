@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { requireCurrentWorkspace, listWorkspaceMembers } from '@/lib/team/server'
+import { listWorkspaceInvitations } from '@/lib/team/invitations'
+import {
+  listCurrentUserWorkspaces,
+  requireCurrentWorkspace,
+  listWorkspaceMembers,
+} from '@/lib/team/server'
 import { canManageTeamWithPermissions, defaultPermissionsForRole } from '@/lib/team/permissions'
 
 export async function GET() {
@@ -13,9 +18,19 @@ export async function GET() {
     )
   }
 
-  const members = await listWorkspaceMembers(workspaceResult.workspace.workspaceId)
+  const [members, workspaces, invitations] = await Promise.all([
+    listWorkspaceMembers(workspaceResult.workspace.workspaceId),
+    listCurrentUserWorkspaces(workspaceResult.workspace.userId),
+    canManageTeamWithPermissions({
+      role: workspaceResult.workspace.role,
+      permissions: workspaceResult.workspace.permissions,
+    })
+      ? listWorkspaceInvitations(workspaceResult.workspace.workspaceId)
+      : Promise.resolve([]),
+  ])
   return NextResponse.json({
     workspace_id: workspaceResult.workspace.workspaceId,
+    workspace_name: workspaceResult.workspace.workspaceName,
     current_user_id: workspaceResult.workspace.userId,
     current_role: workspaceResult.workspace.role,
     current_permissions: workspaceResult.workspace.permissions,
@@ -28,6 +43,8 @@ export async function GET() {
       permissions: workspaceResult.workspace.permissions,
     }),
     members,
+    invitations,
+    workspaces,
   })
 }
 

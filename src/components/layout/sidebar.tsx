@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -62,6 +63,7 @@ interface SidebarProps {
 
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { profile, signOut } = useAuth();
   const workspace = useWorkspacePermissions();
   const totalUnread = useTotalUnread();
@@ -82,6 +84,20 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     : settingsVisible
       ? bottomNavItems
       : [];
+
+  async function switchWorkspace(workspaceId: string) {
+    if (!workspaceId || workspaceId === workspace.workspaceId) return;
+    const res = await fetch("/api/team/workspaces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspace_id: workspaceId }),
+    });
+    if (res.ok) {
+      await workspace.refresh();
+      router.push("/dashboard");
+      router.refresh();
+    }
+  }
 
   // Close the drawer when route changes — users opened it to navigate,
   // so once they pick a destination the drawer should get out of the way.
@@ -158,6 +174,25 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
         {/* Main navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
+          {workspace.workspaces.length > 1 && (
+            <div className="mb-3 rounded-lg border border-slate-800 bg-slate-950/40 p-2">
+              <label className="mb-1 block text-[11px] font-medium uppercase text-slate-500">
+                Workspace
+              </label>
+              <select
+                value={workspace.workspaceId ?? ""}
+                onChange={(event) => switchWorkspace(event.target.value)}
+                className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-2 text-xs text-white"
+              >
+                {workspace.workspaces.map((item) => (
+                  <option key={item.workspace_id} value={item.workspace_id}>
+                    {item.workspace_name || "Workspace"} ({item.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <ul className="flex flex-col gap-1">
             {visibleNavItems.map((item) => {
               const isActive =

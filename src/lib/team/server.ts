@@ -10,6 +10,7 @@ import {
 
 export interface CurrentWorkspace {
   workspaceId: string
+  workspaceName?: string | null
   userId: string
   role: WorkspaceRole
   permissions: WorkspacePermissions
@@ -17,6 +18,14 @@ export interface CurrentWorkspace {
   contactVisibility: VisibilityMode
   conversationVisibility: VisibilityMode
   dealVisibility: VisibilityMode
+}
+
+export interface WorkspaceOption {
+  workspace_id: string
+  workspace_name: string | null
+  role: WorkspaceRole
+  status: string
+  is_active: boolean
 }
 
 export async function requireCurrentWorkspace(): Promise<
@@ -31,11 +40,23 @@ export async function requireCurrentWorkspace(): Promise<
   if (!user) return { ok: false, status: 401, error: 'Unauthorized' }
 
   const admin = supabaseAdmin()
-  const { data: member, error } = await admin
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('active_workspace_id')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  let memberQuery = admin
     .from('workspace_members')
-    .select('workspace_id, role, status, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility')
+    .select('workspace_id, role, status, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility, workspace:workspaces(name)')
     .eq('user_id', user.id)
     .eq('status', 'active')
+
+  if (profile?.active_workspace_id) {
+    memberQuery = memberQuery.eq('workspace_id', profile.active_workspace_id)
+  }
+
+  let { data: member, error } = await memberQuery
     .order('joined_at', { ascending: true })
     .limit(1)
     .maybeSingle()
@@ -43,6 +64,23 @@ export async function requireCurrentWorkspace(): Promise<
   if (error) {
     return { ok: false, status: 500, error: `Workspace lookup failed: ${error.message}` }
   }
+
+  if (!member && profile?.active_workspace_id) {
+    const fallback = await admin
+      .from('workspace_members')
+      .select('workspace_id, role, status, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility, workspace:workspaces(name)')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .order('joined_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    member = fallback.data
+    error = fallback.error
+    if (error) {
+      return { ok: false, status: 500, error: `Workspace lookup failed: ${error.message}` }
+    }
+  }
+
   if (!member) {
     return { ok: false, status: 403, error: 'Active workspace membership required' }
   }
@@ -51,6 +89,7 @@ export async function requireCurrentWorkspace(): Promise<
     ok: true,
     workspace: {
       workspaceId: member.workspace_id as string,
+      workspaceName: readWorkspaceName(member.workspace),
       userId: user.id,
       role: member.role as WorkspaceRole,
       permissions: (member.permissions ?? {}) as WorkspacePermissions,
@@ -60,6 +99,104 @@ export async function requireCurrentWorkspace(): Promise<
       dealVisibility: (member.deal_visibility ?? 'assigned_only') as VisibilityMode,
     },
   }
+}
+
+export async function listCurrentUserWorkspaces(userId: string): Promise<WorkspaceOption[]> {
+  const admin = supabaseAdmin()
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('active_workspace_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const { data, error } = await admin
+    .from('workspace_members')
+    .select('workspace_id, role, status, workspace:workspaces(name)')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .order('joined_at', { ascending: true })
+
+  if (error) throw new Error(error.message)
+
+  return ((data ?? []) as Array<{
+    workspace_id: string
+    role: WorkspaceRole
+    status: string
+    workspace?: { name?: string | null } | Array<{ name?: string | null }> | null
+  }>).map((row) => ({
+    workspace_id: row.workspace_id,
+    workspace_name: readWorkspaceName(row.workspace),
+    role: row.role,
+    status: row.status,
+    is_active: row.workspace_id === profile?.active_workspace_id,
+  }))
+}
+
+function readWorkspaceName(
+  workspace?: { name?: string | null } | Array<{ name?: string | null }> | null,
+): string | null {
+  if (Array.isArray(workspace)) return workspace[0]?.name ?? null
+  return workspace?.name ?? null
+}
+
+export async function ensureApprovedUserOwnWorkspace(userId: string): Promise<string | null> {
+  const admin = supabaseAdmin()
+  const { data: profile, error: profileError } = await admin
+    .from('profiles')
+    .select('user_id, full_name, email, approval_status')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (profileError) throw new Error(profileError.message)
+  if (!profile || profile.approval_status !== 'approved') return null
+
+  const { data: existingWorkspace, error: workspaceLookupError } = await admin
+    .from('workspaces')
+    .select('id')
+    .eq('owner_user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (workspaceLookupError) throw new Error(workspaceLookupError.message)
+
+  let workspaceId = existingWorkspace?.id as string | undefined
+  if (!workspaceId) {
+    const name = `${profile.full_name?.trim() || profile.email || 'CRM'}'s Workspace`
+    const { data: created, error: createError } = await admin
+      .from('workspaces')
+      .insert({ name, owner_user_id: userId })
+      .select('id')
+      .single()
+    if (createError) throw new Error(createError.message)
+    workspaceId = created.id
+  }
+  if (!workspaceId) throw new Error('Workspace setup failed')
+
+  const { error: memberError } = await admin.from('workspace_members').upsert(
+    {
+      workspace_id: workspaceId,
+      user_id: userId,
+      role: 'owner',
+      status: 'active',
+      permissions: {},
+      can_connect_own_whatsapp: false,
+      contact_visibility: 'all',
+      conversation_visibility: 'all',
+      deal_visibility: 'all',
+      joined_at: new Date().toISOString(),
+    },
+    { onConflict: 'workspace_id,user_id' },
+  )
+  if (memberError) throw new Error(memberError.message)
+
+  await admin
+    .from('profiles')
+    .update({ active_workspace_id: workspaceId })
+    .eq('user_id', userId)
+    .is('active_workspace_id', null)
+
+  return workspaceId
 }
 
 export async function listWorkspaceMembers(

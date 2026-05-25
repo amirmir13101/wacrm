@@ -6,6 +6,8 @@ import {
   AlertTriangle,
   Briefcase,
   ChevronDown,
+  Copy,
+  Mail,
   MessageSquare,
   ShieldCheck,
   Sparkles,
@@ -34,11 +36,31 @@ import {
 
 interface TeamResponse {
   workspace_id: string;
+  workspace_name?: string | null;
   current_user_id: string;
   current_role: string;
   current_permissions?: WorkspacePermissions;
   can_manage_team: boolean;
   members: WorkspaceMemberOption[];
+  invitations?: WorkspaceInvitation[];
+  workspaces?: Array<{
+    workspace_id: string;
+    workspace_name: string | null;
+    role: string;
+    status: string;
+    is_active: boolean;
+  }>;
+}
+
+interface WorkspaceInvitation {
+  id: string;
+  invited_email: string;
+  role: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
+  invited_by_email?: string | null;
+  invite_url?: string;
 }
 
 export default function TeamPage() {
@@ -50,6 +72,7 @@ export default function TeamPage() {
     defaultPermissionsForRole("agent"),
   );
   const [newCanConnectOwnWhatsapp, setNewCanConnectOwnWhatsapp] = useState(false);
+  const [latestInviteLink, setLatestInviteLink] = useState<string | null>(null);
 
   async function loadTeam() {
     setLoading(true);
@@ -86,8 +109,8 @@ export default function TeamPage() {
     };
   }, []);
 
-  async function addMember() {
-    const res = await fetch("/api/team/members", {
+  async function createInvite() {
+    const res = await fetch("/api/team/invitations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -99,14 +122,35 @@ export default function TeamPage() {
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
-      toast.error(payload?.error ?? "Failed to add member");
+      toast.error(payload?.error ?? "Failed to create invitation");
       return;
     }
-    toast.success("Team member added");
+    toast.success("Invitation created");
+    setLatestInviteLink(payload?.invitation?.invite_url ?? null);
     setEmail("");
     setNewMemberPermissions(defaultPermissionsForRole(role));
     setNewCanConnectOwnWhatsapp(false);
     await loadTeam();
+  }
+
+  async function revokeInvite(id: string) {
+    const res = await fetch("/api/team/invitations", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action: "revoke" }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(payload?.error ?? "Failed to revoke invitation");
+      return;
+    }
+    toast.success("Invitation revoked");
+    await loadTeam();
+  }
+
+  async function copyText(text: string) {
+    await navigator.clipboard.writeText(text);
+    toast.success("Invite link copied");
   }
 
   async function updateMember(id: string, update: Record<string, unknown>) {
@@ -160,7 +204,15 @@ export default function TeamPage() {
 
       {data?.can_manage_team && (
         <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
-          <h2 className="text-sm font-semibold text-white">Add approved user</h2>
+          <div className="flex items-start gap-2">
+            <Mail className="mt-0.5 size-4 text-violet-300" />
+            <div>
+              <h2 className="text-sm font-semibold text-white">Invite team member</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Send this link manually. The agent must login or sign up with the invited email.
+              </p>
+            </div>
+          </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_160px_auto]">
             <Input
               value={email}
@@ -180,13 +232,34 @@ export default function TeamPage() {
               <option value="manager">Manager</option>
               <option value="admin">Admin</option>
             </select>
-            <Button onClick={addMember} disabled={!email.trim()} className="bg-violet-600 text-white hover:bg-violet-700">
-              Add
+            <Button onClick={createInvite} disabled={!email.trim()} className="bg-violet-600 text-white hover:bg-violet-700">
+              Invite
             </Button>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            The user must already be signed up and approved before they can be added.
+            Email sending is not configured yet, so copy the invite link and send it yourself.
           </p>
+          {latestInviteLink && (
+            <div className="mt-3 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
+              <p className="text-xs font-medium text-violet-100">Invite link ready</p>
+              <div className="mt-2 flex gap-2">
+                <Input
+                  readOnly
+                  value={latestInviteLink}
+                  className="border-slate-700 bg-slate-950 text-xs text-slate-200"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => copyText(latestInviteLink)}
+                  className="border-slate-700 text-slate-200 hover:bg-slate-800"
+                >
+                  <Copy className="mr-2 size-4" />
+                  Copy
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
             <PermissionEditor
               permissions={newMemberPermissions}
@@ -284,6 +357,62 @@ export default function TeamPage() {
           </div>
         )}
       </div>
+
+      {data?.can_manage_team && (
+        <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+          <div className="border-b border-slate-800 px-4 py-3">
+            <h2 className="text-sm font-semibold text-white">Pending invitations</h2>
+          </div>
+          {data.invitations?.length ? (
+            <div className="divide-y divide-slate-800">
+              {data.invitations.map((invite) => (
+                <div key={invite.id} className="grid gap-3 px-4 py-3 md:grid-cols-[1fr_120px_110px_150px] md:items-center">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white">{invite.invited_email}</p>
+                    <p className="text-xs text-slate-500">
+                      Expires {new Date(invite.expires_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className="text-xs capitalize text-slate-300">{invite.role}</span>
+                  <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    invite.status === "pending"
+                      ? "bg-violet-500/10 text-violet-200"
+                      : "bg-slate-800 text-slate-300"
+                  }`}>
+                    {invite.status}
+                  </span>
+                  <div className="flex gap-2">
+                    {invite.invite_url && invite.status === "pending" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => copyText(invite.invite_url!)}
+                        className="border-slate-700 text-slate-200 hover:bg-slate-800"
+                      >
+                        Copy link
+                      </Button>
+                    )}
+                    {invite.status === "pending" && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => revokeInvite(invite.id)}
+                        className="text-amber-200 hover:bg-amber-500/10"
+                      >
+                        Revoke
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-4 py-5 text-sm text-slate-500">No pending invitations.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
