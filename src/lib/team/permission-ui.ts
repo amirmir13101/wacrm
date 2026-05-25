@@ -30,6 +30,7 @@ export interface PermissionGroup {
   title: string
   helper: string
   items: PermissionItem[]
+  section?: 'main' | 'conversation' | 'contact' | 'sales' | 'marketing' | 'admin' | 'whatsapp'
 }
 
 export interface PermissionPreset {
@@ -45,12 +46,14 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'dashboard',
     title: 'Dashboard',
     helper: 'Basic CRM overview widgets.',
+    section: 'main',
     items: [{ key: 'view_dashboard', label: 'View dashboard' }],
   },
   {
     id: 'inbox',
     title: 'Inbox',
     helper: 'WhatsApp conversation access and actions.',
+    section: 'conversation',
     items: [
       { key: 'view_inbox', label: 'View inbox' },
       { key: 'view_all_conversations', label: 'View all conversations' },
@@ -65,6 +68,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'contacts',
     title: 'Contacts',
     helper: 'Contact records, exports, and contact edits.',
+    section: 'contact',
     items: [
       { key: 'view_contacts', label: 'View contacts' },
       { key: 'view_all_contacts', label: 'View all contacts' },
@@ -79,6 +83,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'broadcasts',
     title: 'Broadcasts',
     helper: 'Campaign creation, queue control, and reports.',
+    section: 'marketing',
     items: [
       { key: 'view_broadcasts', label: 'View broadcasts' },
       { key: 'create_broadcasts', label: 'Create broadcasts' },
@@ -91,6 +96,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'templates',
     title: 'Templates',
     helper: 'Approved Meta template catalog access.',
+    section: 'marketing',
     items: [
       { key: 'view_templates', label: 'View templates' },
       { key: 'sync_templates', label: 'Sync templates' },
@@ -101,6 +107,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'automations',
     title: 'Automations',
     helper: 'Workflow builder access and activation controls.',
+    section: 'main',
     items: [
       { key: 'view_automations', label: 'View automations' },
       { key: 'create_automations', label: 'Create automations' },
@@ -112,6 +119,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'pipeline',
     title: 'Pipeline',
     helper: 'Deal board, assignments, and deal status.',
+    section: 'sales',
     items: [
       { key: 'view_pipeline', label: 'View pipeline' },
       { key: 'view_all_deals', label: 'View all deals' },
@@ -126,6 +134,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'reports',
     title: 'Reports',
     helper: 'Reporting and exports.',
+    section: 'main',
     items: [
       { key: 'view_reports', label: 'View reports' },
       { key: 'export_reports', label: 'Export reports', danger: true },
@@ -135,6 +144,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'pricing',
     title: 'Pricing',
     helper: 'WhatsApp cost estimates and rate management.',
+    section: 'admin',
     items: [
       { key: 'view_pricing', label: 'View pricing' },
       { key: 'use_cost_calculator', label: 'Use cost calculator' },
@@ -145,6 +155,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'settings',
     title: 'Settings',
     helper: 'Workspace settings and WhatsApp setup.',
+    section: 'admin',
     items: [
       { key: 'view_settings', label: 'View settings' },
       { key: 'manage_whatsapp_config', label: 'Manage WhatsApp config', danger: true },
@@ -155,6 +166,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'team',
     title: 'Team',
     helper: 'Member list, roles, and permission editing.',
+    section: 'admin',
     items: [
       { key: 'view_team', label: 'View team' },
       { key: 'manage_team_members', label: 'Manage team members', danger: true },
@@ -165,6 +177,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     id: 'whatsapp',
     title: 'WhatsApp API',
     helper: 'Which WhatsApp connection this member can use.',
+    section: 'whatsapp',
     items: [
       { key: 'use_workspace_whatsapp_config', label: 'Use workspace WhatsApp config' },
       { key: 'connect_own_whatsapp_config', label: 'Connect own WhatsApp config', danger: true },
@@ -175,14 +188,14 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
 export const ROLE_PRESETS: PermissionPreset[] = [
   {
     id: 'agent_basic',
-    label: 'Agent basic',
-    helper: 'Assigned inbox, assigned contacts, and assigned deals.',
+    label: 'Basic Agent',
+    helper: 'Can view and reply to assigned chats only.',
     permissions: defaultPermissionsForRole('agent'),
   },
   {
     id: 'sales_agent',
-    label: 'Sales agent',
-    helper: 'Inbox plus contact creation and assigned pipeline work.',
+    label: 'Sales Agent',
+    helper: 'Can handle assigned chats, contacts, and deals.',
     permissions: {
       ...defaultPermissionsForRole('agent'),
       create_contacts: true,
@@ -192,8 +205,8 @@ export const ROLE_PRESETS: PermissionPreset[] = [
   },
   {
     id: 'support_agent',
-    label: 'Support agent',
-    helper: 'Inbox-focused access with unassigned conversations.',
+    label: 'Support Agent',
+    helper: 'Can handle inbox and support conversations.',
     permissions: {
       view_dashboard: true,
       view_inbox: true,
@@ -210,18 +223,109 @@ export const ROLE_PRESETS: PermissionPreset[] = [
   {
     id: 'manager',
     label: 'Manager',
-    helper: 'Team supervision, assignment, broadcasts, and reports.',
+    helper: 'Can view team activity and assign work.',
     permissions: defaultPermissionsForRole('manager'),
   },
   {
     id: 'full_access',
-    label: 'Full access',
-    helper: 'All workspace permissions except platform admin pages.',
+    label: 'Full Access',
+    helper: 'Can access almost everything except platform admin.',
     permissions: Object.fromEntries(
       WORKSPACE_PERMISSIONS.map((permission) => [permission, true]),
     ) as Record<WorkspacePermission, boolean>,
   },
 ]
+
+export const ADVANCED_PERMISSION_SECTIONS = [
+  {
+    id: 'main',
+    title: 'Main access',
+    groupIds: ['dashboard', 'inbox', 'contacts', 'pipeline', 'broadcasts', 'automations', 'reports'],
+  },
+  {
+    id: 'conversation',
+    title: 'Conversation permissions',
+    groupIds: ['inbox'],
+  },
+  {
+    id: 'contact',
+    title: 'Contact permissions',
+    groupIds: ['contacts'],
+  },
+  {
+    id: 'sales',
+    title: 'Sales / Pipeline permissions',
+    groupIds: ['pipeline'],
+  },
+  {
+    id: 'marketing',
+    title: 'Marketing permissions',
+    groupIds: ['broadcasts', 'templates'],
+  },
+  {
+    id: 'admin',
+    title: 'Advanced admin permissions',
+    groupIds: ['pricing', 'settings', 'team'],
+    danger: true,
+  },
+  {
+    id: 'whatsapp',
+    title: 'WhatsApp connection',
+    groupIds: ['whatsapp'],
+  },
+] as const
+
+export const MAIN_ACCESS_PERMISSIONS: Array<{
+  key: WorkspacePermission
+  label: string
+}> = [
+  { key: 'view_dashboard', label: 'Dashboard' },
+  { key: 'view_inbox', label: 'Inbox' },
+  { key: 'view_contacts', label: 'Contacts' },
+  { key: 'view_pipeline', label: 'Pipeline' },
+  { key: 'view_broadcasts', label: 'Broadcasts' },
+  { key: 'view_automations', label: 'Automations' },
+  { key: 'view_reports', label: 'Reports' },
+]
+
+export function findMatchingPreset(permissions: WorkspacePermissions): PermissionPreset | null {
+  for (const preset of ROLE_PRESETS) {
+    const matches = WORKSPACE_PERMISSIONS.every(
+      (permission) => Boolean(permissions[permission]) === Boolean(preset.permissions[permission]),
+    )
+    if (matches) return preset
+  }
+  return null
+}
+
+export function enabledMainAccessLabels(permissions: WorkspacePermissions): string[] {
+  return MAIN_ACCESS_PERMISSIONS
+    .filter((item) => permissions[item.key] === true)
+    .map((item) => item.label)
+}
+
+export function permissionSummary(permissions: WorkspacePermissions): {
+  access: string
+  canReply: boolean
+  canBroadcast: boolean
+  canManageSettings: boolean
+  whatsapp: string
+} {
+  const access = enabledMainAccessLabels(permissions).join(', ') || 'No main tabs'
+  return {
+    access,
+    canReply: permissions.reply_to_conversations === true,
+    canBroadcast: permissions.queue_broadcasts === true,
+    canManageSettings:
+      permissions.manage_business_settings === true ||
+      permissions.manage_whatsapp_config === true ||
+      permissions.manage_pricing_rates === true,
+    whatsapp:
+      permissions.connect_own_whatsapp_config === true
+        ? 'Can connect own WhatsApp'
+        : 'Uses workspace connection',
+  }
+}
 
 export function enabledCount(
   permissions: WorkspacePermissions,

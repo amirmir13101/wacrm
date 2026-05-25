@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ADVANCED_PERMISSION_SECTIONS,
+  MAIN_ACCESS_PERMISSIONS,
   PERMISSION_GROUPS,
   ROLE_PRESETS,
   applyPermissionPreset,
   enabledCount,
+  findMatchingPreset,
+  permissionSummary,
   setGroupPermissions,
 } from './permission-ui'
 import { WORKSPACE_PERMISSIONS, defaultPermissionsForRole } from './permissions'
@@ -18,6 +22,24 @@ describe('team permission UI helpers', () => {
     expect(titles).toContain('Broadcasts')
     expect(titles).toContain('WhatsApp API')
     expect(PERMISSION_GROUPS.every((group) => group.items.length > 0)).toBe(true)
+  })
+
+  it('keeps advanced permissions organized behind clear sections', () => {
+    const sectionTitles = ADVANCED_PERMISSION_SECTIONS.map((section) => section.title)
+    const mainAccessLabels = MAIN_ACCESS_PERMISSIONS.map((item) => item.label)
+
+    expect(sectionTitles).toContain('Main access')
+    expect(sectionTitles).toContain('Advanced admin permissions')
+    expect(sectionTitles).toContain('WhatsApp connection')
+    expect(mainAccessLabels).toEqual([
+      'Dashboard',
+      'Inbox',
+      'Contacts',
+      'Pipeline',
+      'Broadcasts',
+      'Automations',
+      'Reports',
+    ])
   })
 
   it('marks dangerous permissions clearly', () => {
@@ -60,6 +82,30 @@ describe('team permission UI helpers', () => {
     expect(preset.permissions.view_broadcasts).not.toBe(true)
     expect(preset.permissions.manage_whatsapp_config).not.toBe(true)
     expect(preset.canConnectOwnWhatsapp).toBe(false)
+  })
+
+  it('finds matching presets and reports custom permissions', () => {
+    const agent = applyPermissionPreset('agent_basic')
+    const custom = {
+      ...agent.permissions,
+      view_broadcasts: true,
+    }
+
+    expect(findMatchingPreset(agent.permissions)?.id).toBe('agent_basic')
+    expect(findMatchingPreset(custom)).toBeNull()
+  })
+
+  it('summarizes permissions in owner-friendly language', () => {
+    const preset = applyPermissionPreset('sales_agent')
+    const summary = permissionSummary(preset.permissions)
+
+    expect(summary.access).toContain('Inbox')
+    expect(summary.access).toContain('Contacts')
+    expect(summary.access).toContain('Pipeline')
+    expect(summary.canReply).toBe(true)
+    expect(summary.canBroadcast).toBe(false)
+    expect(summary.canManageSettings).toBe(false)
+    expect(summary.whatsapp).toBe('Uses workspace connection')
   })
 
   it('manager preset matches manager defaults', () => {

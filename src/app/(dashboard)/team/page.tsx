@@ -15,6 +15,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import type { WorkspaceMemberOption } from "@/lib/team/assignment";
 import {
   defaultPermissionsForRole,
@@ -23,11 +24,12 @@ import {
   type WorkspacePermissions,
 } from "@/lib/team/permissions";
 import {
-  PERMISSION_GROUPS,
+  MAIN_ACCESS_PERMISSIONS,
+  type PermissionItem,
   ROLE_PRESETS,
   applyPermissionPreset,
-  enabledCount,
-  setGroupPermissions,
+  findMatchingPreset,
+  permissionSummary,
 } from "@/lib/team/permission-ui";
 
 interface TeamResponse {
@@ -301,10 +303,17 @@ function PermissionEditor({
   onSetPermissions: (permissions: WorkspacePermissions) => void;
   onToggleOwnWhatsapp: (checked: boolean) => void;
 }) {
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    inbox: true,
-    contacts: true,
-  });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const editorPermissions = useMemo(
+    () => ({
+      ...permissions,
+      connect_own_whatsapp_config: canConnectOwnWhatsapp,
+    }),
+    [canConnectOwnWhatsapp, permissions],
+  );
+  const matchingPreset = findMatchingPreset(editorPermissions);
+  const summary = permissionSummary(editorPermissions);
 
   function applyPreset(presetId: string) {
     const preset = applyPermissionPreset(presetId);
@@ -312,144 +321,393 @@ function PermissionEditor({
     onToggleOwnWhatsapp(preset.canConnectOwnWhatsapp);
   }
 
-  function setGroup(groupId: string, enabled: boolean) {
-    const group = PERMISSION_GROUPS.find((item) => item.id === groupId);
-    if (!group) return;
-    const next = setGroupPermissions(permissions, group, enabled);
+  function setItems(items: PermissionItem[], enabled: boolean) {
+    const next = {
+      ...editorPermissions,
+      ...Object.fromEntries(items.map((item) => [item.key, enabled])),
+    };
     onSetPermissions(next);
-    if (group.id === "whatsapp") {
+    if (items.some((item) => item.key === "connect_own_whatsapp_config")) {
       onToggleOwnWhatsapp(Boolean(next.connect_own_whatsapp_config));
+    }
+  }
+
+  function togglePermission(permission: WorkspacePermission, checked: boolean) {
+    onToggle(permission, checked);
+    if (permission === "connect_own_whatsapp_config") {
+      onToggleOwnWhatsapp(checked);
     }
   }
 
   return (
     <div className="space-y-4" data-testid="permission-editor">
-      <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="mr-auto">
-            <div className="flex items-center gap-2 text-sm font-medium text-white">
-              <Sparkles className="size-4 text-violet-300" />
-              Role presets
-            </div>
+      <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+        <div className="flex items-start gap-2">
+          <Sparkles className="mt-0.5 size-4 text-violet-300" />
+          <div>
+            <p className="text-sm font-semibold text-white">Step 2: Choose a permission preset</p>
             <p className="mt-1 text-xs text-slate-500">
-              Start with a preset, then fine-tune permissions below.
+              Pick the closest job type. Advanced permissions stay hidden unless you need them.
             </p>
           </div>
-          {ROLE_PRESETS.map((preset) => (
-            <Button
-              key={preset.id}
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={disabled}
-              title={preset.helper}
-              onClick={() => applyPreset(preset.id)}
-              className="border-slate-700 bg-slate-900 text-xs text-slate-200 hover:bg-slate-800"
-            >
-              {preset.label}
-            </Button>
-          ))}
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-5">
+          {ROLE_PRESETS.map((preset) => {
+            const active = matchingPreset?.id === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => applyPreset(preset.id)}
+                className={`min-h-24 rounded-lg border p-3 text-left transition ${
+                  active
+                    ? "border-violet-500 bg-violet-500/10"
+                    : "border-slate-800 bg-slate-900 hover:border-slate-600"
+                } disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-white">{preset.label}</p>
+                  {active && (
+                    <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-medium text-violet-200">
+                      selected
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-400">{preset.helper}</p>
+              </button>
+            );
+          })}
+        </div>
+        {!matchingPreset && (
+          <div className="mt-3 inline-flex rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-100">
+            Custom permissions
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-white">Step 3: Review access summary</p>
+            <p className="mt-1 text-xs text-slate-500">
+              This is what the member can do with the selected permissions.
+            </p>
+          </div>
+          <span className="rounded-full border border-slate-700 px-2.5 py-1 text-xs text-slate-300">
+            {matchingPreset?.label ?? "Custom permissions"}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryTile label="Access" value={summary.access} />
+          <SummaryTile label="Can reply" value={summary.canReply ? "Yes" : "No"} />
+          <SummaryTile label="Can broadcast" value={summary.canBroadcast ? "Yes" : "No"} />
+          <SummaryTile label="Settings" value={summary.canManageSettings ? "Can manage" : "View only"} />
+          <SummaryTile label="WhatsApp" value={summary.whatsapp} wide />
         </div>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-2">
-        {PERMISSION_GROUPS.map((group) => (
-          <div
-            key={group.id}
-            className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900/80"
-          >
-            <button
-              type="button"
-              onClick={() => setOpenGroups((prev) => ({ ...prev, [group.id]: !prev[group.id] }))}
-              className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-slate-800/70"
-              aria-expanded={openGroups[group.id] === true}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-medium text-white">{group.title}</p>
-                  <span className="rounded-full border border-slate-700 px-2 py-0.5 text-[11px] text-slate-400">
-                    {enabledCount(permissions, group)} of {group.items.length} enabled
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs text-slate-500">{group.helper}</p>
-              </div>
-              <ChevronDown
-                className={`size-4 text-slate-500 transition-transform ${
-                  openGroups[group.id] ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            {openGroups[group.id] && (
-              <div className="border-t border-slate-800 px-3 py-3">
-                <div className="mb-3 flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={disabled}
-                    onClick={() => setGroup(group.id, true)}
-                    className="h-7 px-2 text-xs text-violet-200 hover:bg-violet-500/10"
-                  >
-                    Select group
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={disabled}
-                    onClick={() => setGroup(group.id, false)}
-                    className="h-7 px-2 text-xs text-slate-400 hover:bg-slate-800"
-                  >
-                    Clear group
-                  </Button>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-              {group.items.map((item) => (
-                <label
-                  key={item.key}
-                      className={`flex min-h-10 items-center gap-2 rounded-md border px-2.5 py-2 text-xs ${
-                        item.danger
-                          ? "border-amber-500/30 bg-amber-500/5 text-amber-100"
-                          : "border-slate-800 bg-slate-950/50 text-slate-300"
-                      }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={permissions[item.key] === true}
-                    disabled={disabled}
-                        onChange={(event) => {
-                          onToggle(item.key, event.target.checked);
-                          if (item.key === "connect_own_whatsapp_config") {
-                            onToggleOwnWhatsapp(event.target.checked);
-                          }
-                        }}
-                    className="size-3 accent-violet-600"
-                  />
-                      <span>{item.label}</span>
-                      {item.danger && (
-                        <AlertTriangle className="ml-auto size-3 text-amber-300" />
-                      )}
-                </label>
-              ))}
-                </div>
-              </div>
-            )}
+      <div className="rounded-lg border border-slate-800 bg-slate-900">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((value) => !value)}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-800/60"
+          aria-expanded={advancedOpen}
+        >
+          <div>
+            <p className="text-sm font-semibold text-white">Step 4: Advanced permissions</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Optional. Open only when a preset needs fine tuning.
+            </p>
           </div>
-        ))}
+          <ChevronDown
+            className={`size-4 text-slate-500 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {advancedOpen && (
+          <div className="space-y-4 border-t border-slate-800 p-4">
+            <PermissionSection
+              title="Main access"
+              helper="Which main CRM tabs this member can open."
+              items={MAIN_ACCESS_PERMISSIONS.map((item) => ({ ...item, key: item.key }))}
+              permissions={editorPermissions}
+              disabled={disabled}
+              onToggle={togglePermission}
+              onSetItems={setItems}
+            />
+
+            <PermissionSection
+              title="Conversation permissions"
+              helper="Chat visibility and reply controls."
+              items={[
+                { key: "view_assigned_conversations", label: "View assigned conversations" },
+                { key: "view_unassigned_conversations", label: "View unassigned conversations" },
+                { key: "view_all_conversations", label: "View all conversations" },
+                { key: "reply_to_conversations", label: "Reply to conversations" },
+                { key: "assign_conversations", label: "Assign conversations" },
+                { key: "close_conversations", label: "Close conversations" },
+              ]}
+              permissions={editorPermissions}
+              disabled={disabled}
+              onToggle={togglePermission}
+              onSetItems={setItems}
+            />
+
+            <PermissionSection
+              title="Contact permissions"
+              helper="Contact visibility and contact record actions."
+              items={[
+                { key: "view_assigned_contacts", label: "View assigned contacts" },
+                { key: "view_all_contacts", label: "View all contacts" },
+                { key: "create_contacts", label: "Create contacts" },
+                { key: "edit_contacts", label: "Edit contacts" },
+                { key: "delete_contacts", label: "Delete contacts", danger: true },
+                { key: "export_contacts", label: "Export contacts", danger: true },
+              ]}
+              permissions={editorPermissions}
+              disabled={disabled}
+              onToggle={togglePermission}
+              onSetItems={setItems}
+            />
+
+            <PermissionSection
+              title="Sales / Pipeline permissions"
+              helper="Deal visibility and sales pipeline actions."
+              items={[
+                { key: "view_assigned_deals", label: "View assigned deals" },
+                { key: "view_all_deals", label: "View all deals" },
+                { key: "create_deals", label: "Create deals" },
+                { key: "edit_deals", label: "Edit deals" },
+                { key: "assign_deals", label: "Assign deals" },
+                { key: "mark_deal_won_lost", label: "Mark won/lost" },
+              ]}
+              permissions={editorPermissions}
+              disabled={disabled}
+              onToggle={togglePermission}
+              onSetItems={setItems}
+            />
+
+            <PermissionSection
+              title="Marketing permissions"
+              helper="Broadcast and template actions."
+              items={[
+                { key: "create_broadcasts", label: "Create broadcasts" },
+                { key: "queue_broadcasts", label: "Queue broadcasts", danger: true },
+                {
+                  key: "pause_resume_cancel_broadcasts",
+                  label: "Pause/resume/cancel broadcasts",
+                  danger: true,
+                },
+                { key: "view_broadcast_reports", label: "View broadcast reports" },
+                { key: "view_templates", label: "View templates" },
+                { key: "sync_templates", label: "Sync templates" },
+                { key: "manage_local_templates", label: "Manage local templates" },
+              ]}
+              permissions={editorPermissions}
+              disabled={disabled}
+              onToggle={togglePermission}
+              onSetItems={setItems}
+            />
+
+            <PermissionSection
+              title="Automation permissions"
+              helper="Workflow builder access and activation controls."
+              items={[
+                { key: "create_automations", label: "Create automations" },
+                { key: "edit_automations", label: "Edit automations" },
+                {
+                  key: "activate_deactivate_automations",
+                  label: "Activate/deactivate automations",
+                },
+              ]}
+              permissions={editorPermissions}
+              disabled={disabled}
+              onToggle={togglePermission}
+              onSetItems={setItems}
+            />
+
+            <div className="overflow-hidden rounded-lg border border-amber-500/25 bg-amber-500/5">
+              <button
+                type="button"
+                onClick={() => setAdminOpen((value) => !value)}
+                className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                aria-expanded={adminOpen}
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="size-4 text-amber-300" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-100">
+                      Advanced admin permissions
+                    </p>
+                    <p className="mt-0.5 text-xs text-amber-100/70">
+                      Settings, pricing, team, exports, and WhatsApp connection controls.
+                    </p>
+                  </div>
+                </div>
+                <ChevronDown
+                  className={`size-4 text-amber-200 transition-transform ${adminOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+              {adminOpen && (
+                <div className="space-y-4 border-t border-amber-500/20 p-3">
+                  <PermissionSection
+                    title="Reports and pricing"
+                    helper="Reporting exports and pricing rate management."
+                    items={[
+                      { key: "export_reports", label: "Export reports", danger: true },
+                      { key: "view_pricing", label: "View pricing" },
+                      { key: "use_cost_calculator", label: "Use cost calculator" },
+                      { key: "manage_pricing_rates", label: "Manage pricing rates", danger: true },
+                    ]}
+                    permissions={editorPermissions}
+                    disabled={disabled}
+                    onToggle={togglePermission}
+                    onSetItems={setItems}
+                  />
+                  <PermissionSection
+                    title="Settings and team"
+                    helper="Workspace settings and member management."
+                    items={[
+                      { key: "view_settings", label: "View settings" },
+                      {
+                        key: "manage_whatsapp_config",
+                        label: "Manage WhatsApp config",
+                        danger: true,
+                      },
+                      { key: "manage_business_settings", label: "Manage business settings" },
+                      { key: "view_team", label: "View team" },
+                      { key: "manage_team_members", label: "Manage team members", danger: true },
+                      { key: "edit_team_permissions", label: "Edit team permissions", danger: true },
+                    ]}
+                    permissions={editorPermissions}
+                    disabled={disabled}
+                    onToggle={togglePermission}
+                    onSetItems={setItems}
+                  />
+                  <PermissionSection
+                    title="WhatsApp connection"
+                    helper="Most agents should use the workspace connection."
+                    items={[
+                      {
+                        key: "use_workspace_whatsapp_config",
+                        label: "Use workspace WhatsApp connection",
+                      },
+                      {
+                        key: "connect_own_whatsapp_config",
+                        label: "Allow own WhatsApp connection",
+                        danger: true,
+                      },
+                    ]}
+                    permissions={editorPermissions}
+                    disabled={disabled}
+                    onToggle={togglePermission}
+                    onSetItems={setItems}
+                  />
+                </div>
+              )}
             </div>
-      <label className="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-        <input
-          type="checkbox"
-          checked={canConnectOwnWhatsapp}
-          disabled={disabled}
-          onChange={(event) => {
-            onToggleOwnWhatsapp(event.target.checked);
-            onToggle("connect_own_whatsapp_config", event.target.checked);
-          }}
-          className="size-3 accent-amber-500"
-        />
-        Allow this member to connect their own WhatsApp API
-      </label>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SummaryTile({
+  label,
+  value,
+  wide,
+}: {
+  label: string;
+  value: string;
+  wide?: boolean;
+}) {
+  return (
+    <div className={`rounded-md border border-slate-800 bg-slate-950/50 p-3 ${wide ? "md:col-span-2 xl:col-span-4" : ""}`}>
+      <p className="text-[11px] font-medium uppercase text-slate-500">{label}</p>
+      <p className="mt-1 text-sm text-white">{value}</p>
+    </div>
+  );
+}
+
+function PermissionSection({
+  title,
+  helper,
+  items,
+  permissions,
+  disabled,
+  onToggle,
+  onSetItems,
+}: {
+  title: string;
+  helper: string;
+  items: PermissionItem[];
+  permissions: WorkspacePermissions;
+  disabled: boolean;
+  onToggle: (permission: WorkspacePermission, checked: boolean) => void;
+  onSetItems: (items: PermissionItem[], enabled: boolean) => void;
+}) {
+  const enabled = items.filter((item) => permissions[item.key] === true).length;
+
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-white">{title}</p>
+            <span className="rounded-full border border-slate-700 px-2 py-0.5 text-[11px] text-slate-400">
+              {enabled} of {items.length} enabled
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">{helper}</p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={() => onSetItems(items, true)}
+            className="h-7 px-2 text-xs text-violet-200 hover:bg-violet-500/10"
+          >
+            Select
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={() => onSetItems(items, false)}
+            className="h-7 px-2 text-xs text-slate-400 hover:bg-slate-800"
+          >
+            Clear
+          </Button>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {items.map((item) => (
+          <label
+            key={item.key}
+            className={`flex min-h-11 items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs ${
+              item.danger
+                ? "border-amber-500/30 bg-amber-500/5 text-amber-100"
+                : "border-slate-800 bg-slate-900 text-slate-300"
+            }`}
+          >
+            <span className="inline-flex items-center gap-2">
+              {item.danger && <AlertTriangle className="size-3 text-amber-300" />}
+              {item.label}
+            </span>
+            <Switch
+              checked={permissions[item.key] === true}
+              disabled={disabled}
+              onCheckedChange={(checked) => onToggle(item.key, Boolean(checked))}
+              aria-label={item.label}
+            />
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
