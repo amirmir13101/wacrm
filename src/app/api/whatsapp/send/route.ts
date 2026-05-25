@@ -17,6 +17,7 @@ import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { canSeeConversation } from '@/lib/team/assignment'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 
 export async function POST(request: Request) {
   try {
@@ -143,16 +144,17 @@ export async function POST(request: Request) {
 
     // Fetch and decrypt WhatsApp config
     const admin = supabaseAdmin()
-    let configQuery = admin
-      .from('whatsapp_config')
-      .select('*')
-    configQuery = conversation.workspace_id
-      ? configQuery.eq('workspace_id', conversation.workspace_id)
-      : configQuery.eq('user_id', conversation.user_id ?? user.id)
-    const { data: config, error: configError } = await configQuery
-      .order('connected_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const {
+      config,
+      error: configError,
+    } = await findWorkspaceWhatsAppConfig<{
+      id: string
+      phone_number_id: string
+      access_token: string
+    }>({
+      workspaceId: conversation.workspace_id ?? workspace.workspaceId,
+      columns: '*',
+    })
 
     if (configError || !config) {
       return NextResponse.json(

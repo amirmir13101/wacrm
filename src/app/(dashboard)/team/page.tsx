@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { UserCheck, Users, MessageSquare, Briefcase, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  Briefcase,
+  ChevronDown,
+  MessageSquare,
+  ShieldCheck,
+  Sparkles,
+  UserCheck,
+  Users,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +22,13 @@ import {
   type WorkspacePermission,
   type WorkspacePermissions,
 } from "@/lib/team/permissions";
+import {
+  PERMISSION_GROUPS,
+  ROLE_PRESETS,
+  applyPermissionPreset,
+  enabledCount,
+  setGroupPermissions,
+} from "@/lib/team/permission-ui";
 
 interface TeamResponse {
   workspace_id: string;
@@ -22,87 +38,6 @@ interface TeamResponse {
   can_manage_team: boolean;
   members: WorkspaceMemberOption[];
 }
-
-const PERMISSION_GROUPS: Array<{
-  title: string;
-  items: Array<{ key: WorkspacePermission; label: string }>;
-}> = [
-  {
-    title: "Dashboard",
-    items: [{ key: "view_dashboard", label: "View dashboard" }],
-  },
-  {
-    title: "Inbox",
-    items: [
-      { key: "view_inbox", label: "View inbox" },
-      { key: "view_all_conversations", label: "All conversations" },
-      { key: "view_assigned_conversations", label: "Assigned conversations" },
-      { key: "view_unassigned_conversations", label: "Unassigned conversations" },
-      { key: "reply_to_conversations", label: "Reply" },
-      { key: "assign_conversations", label: "Assign conversations" },
-      { key: "close_conversations", label: "Close conversations" },
-    ],
-  },
-  {
-    title: "Contacts",
-    items: [
-      { key: "view_contacts", label: "View contacts" },
-      { key: "view_all_contacts", label: "All contacts" },
-      { key: "view_assigned_contacts", label: "Assigned contacts" },
-      { key: "create_contacts", label: "Create" },
-      { key: "edit_contacts", label: "Edit" },
-      { key: "delete_contacts", label: "Delete" },
-      { key: "export_contacts", label: "Export" },
-    ],
-  },
-  {
-    title: "Broadcasts",
-    items: [
-      { key: "view_broadcasts", label: "View" },
-      { key: "create_broadcasts", label: "Create" },
-      { key: "queue_broadcasts", label: "Queue" },
-      { key: "pause_resume_cancel_broadcasts", label: "Pause/resume/cancel" },
-      { key: "view_broadcast_reports", label: "Reports" },
-    ],
-  },
-  {
-    title: "Templates & Automations",
-    items: [
-      { key: "view_templates", label: "View templates" },
-      { key: "sync_templates", label: "Sync templates" },
-      { key: "manage_local_templates", label: "Manage local templates" },
-      { key: "view_automations", label: "View automations" },
-      { key: "create_automations", label: "Create automations" },
-      { key: "edit_automations", label: "Edit automations" },
-      { key: "activate_deactivate_automations", label: "Activate/deactivate" },
-    ],
-  },
-  {
-    title: "Pipeline",
-    items: [
-      { key: "view_pipeline", label: "View pipeline" },
-      { key: "view_all_deals", label: "All deals" },
-      { key: "view_assigned_deals", label: "Assigned deals" },
-      { key: "create_deals", label: "Create deals" },
-      { key: "edit_deals", label: "Edit deals" },
-      { key: "assign_deals", label: "Assign deals" },
-      { key: "mark_deal_won_lost", label: "Won/lost" },
-    ],
-  },
-  {
-    title: "Settings",
-    items: [
-      { key: "view_pricing", label: "View pricing" },
-      { key: "use_cost_calculator", label: "Cost calculator" },
-      { key: "manage_pricing_rates", label: "Manage pricing rates" },
-      { key: "view_settings", label: "View settings" },
-      { key: "manage_whatsapp_config", label: "Manage workspace WhatsApp" },
-      { key: "view_team", label: "View team" },
-      { key: "manage_team_members", label: "Manage members" },
-      { key: "edit_team_permissions", label: "Edit permissions" },
-    ],
-  },
-];
 
 export default function TeamPage() {
   const [data, setData] = useState<TeamResponse | null>(null);
@@ -258,6 +193,7 @@ export default function TeamPage() {
               onToggle={(permission, checked) =>
                 setNewMemberPermissions((prev) => ({ ...prev, [permission]: checked }))
               }
+              onSetPermissions={setNewMemberPermissions}
               onToggleOwnWhatsapp={setNewCanConnectOwnWhatsapp}
             />
           </div>
@@ -332,6 +268,9 @@ export default function TeamPage() {
                           },
                         })
                       }
+                      onSetPermissions={(permissions) =>
+                        updateMember(member.id, { permissions })
+                      }
                       onToggleOwnWhatsapp={(checked) =>
                         updateMember(member.id, { can_connect_own_whatsapp: checked })
                       }
@@ -352,48 +291,161 @@ function PermissionEditor({
   disabled,
   canConnectOwnWhatsapp,
   onToggle,
+  onSetPermissions,
   onToggleOwnWhatsapp,
 }: {
   permissions: WorkspacePermissions;
   disabled: boolean;
   canConnectOwnWhatsapp: boolean;
   onToggle: (permission: WorkspacePermission, checked: boolean) => void;
+  onSetPermissions: (permissions: WorkspacePermissions) => void;
   onToggleOwnWhatsapp: (checked: boolean) => void;
 }) {
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    inbox: true,
+    contacts: true,
+  });
+
+  function applyPreset(presetId: string) {
+    const preset = applyPermissionPreset(presetId);
+    onSetPermissions(preset.permissions);
+    onToggleOwnWhatsapp(preset.canConnectOwnWhatsapp);
+  }
+
+  function setGroup(groupId: string, enabled: boolean) {
+    const group = PERMISSION_GROUPS.find((item) => item.id === groupId);
+    if (!group) return;
+    const next = setGroupPermissions(permissions, group, enabled);
+    onSetPermissions(next);
+    if (group.id === "whatsapp") {
+      onToggleOwnWhatsapp(Boolean(next.connect_own_whatsapp_config));
+    }
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 lg:grid-cols-2">
-        {PERMISSION_GROUPS.map((group) => (
-          <div key={group.title}>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {group.title}
+    <div className="space-y-4" data-testid="permission-editor">
+      <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="mr-auto">
+            <div className="flex items-center gap-2 text-sm font-medium text-white">
+              <Sparkles className="size-4 text-violet-300" />
+              Role presets
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Start with a preset, then fine-tune permissions below.
             </p>
-            <div className="flex flex-wrap gap-2">
+          </div>
+          {ROLE_PRESETS.map((preset) => (
+            <Button
+              key={preset.id}
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={disabled}
+              title={preset.helper}
+              onClick={() => applyPreset(preset.id)}
+              className="border-slate-700 bg-slate-900 text-xs text-slate-200 hover:bg-slate-800"
+            >
+              {preset.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-2">
+        {PERMISSION_GROUPS.map((group) => (
+          <div
+            key={group.id}
+            className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900/80"
+          >
+            <button
+              type="button"
+              onClick={() => setOpenGroups((prev) => ({ ...prev, [group.id]: !prev[group.id] }))}
+              className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-slate-800/70"
+              aria-expanded={openGroups[group.id] === true}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-white">{group.title}</p>
+                  <span className="rounded-full border border-slate-700 px-2 py-0.5 text-[11px] text-slate-400">
+                    {enabledCount(permissions, group)} of {group.items.length} enabled
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs text-slate-500">{group.helper}</p>
+              </div>
+              <ChevronDown
+                className={`size-4 text-slate-500 transition-transform ${
+                  openGroups[group.id] ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            {openGroups[group.id] && (
+              <div className="border-t border-slate-800 px-3 py-3">
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={disabled}
+                    onClick={() => setGroup(group.id, true)}
+                    className="h-7 px-2 text-xs text-violet-200 hover:bg-violet-500/10"
+                  >
+                    Select group
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={disabled}
+                    onClick={() => setGroup(group.id, false)}
+                    className="h-7 px-2 text-xs text-slate-400 hover:bg-slate-800"
+                  >
+                    Clear group
+                  </Button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
               {group.items.map((item) => (
                 <label
                   key={item.key}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs text-slate-300"
+                      className={`flex min-h-10 items-center gap-2 rounded-md border px-2.5 py-2 text-xs ${
+                        item.danger
+                          ? "border-amber-500/30 bg-amber-500/5 text-amber-100"
+                          : "border-slate-800 bg-slate-950/50 text-slate-300"
+                      }`}
                 >
                   <input
                     type="checkbox"
                     checked={permissions[item.key] === true}
                     disabled={disabled}
-                    onChange={(event) => onToggle(item.key, event.target.checked)}
+                        onChange={(event) => {
+                          onToggle(item.key, event.target.checked);
+                          if (item.key === "connect_own_whatsapp_config") {
+                            onToggleOwnWhatsapp(event.target.checked);
+                          }
+                        }}
                     className="size-3 accent-violet-600"
                   />
-                  {item.label}
+                      <span>{item.label}</span>
+                      {item.danger && (
+                        <AlertTriangle className="ml-auto size-3 text-amber-300" />
+                      )}
                 </label>
               ))}
-            </div>
+                </div>
+              </div>
+            )}
           </div>
         ))}
-      </div>
+            </div>
       <label className="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
         <input
           type="checkbox"
           checked={canConnectOwnWhatsapp}
           disabled={disabled}
-          onChange={(event) => onToggleOwnWhatsapp(event.target.checked)}
+          onChange={(event) => {
+            onToggleOwnWhatsapp(event.target.checked);
+            onToggle("connect_own_whatsapp_config", event.target.checked);
+          }}
           className="size-3 accent-amber-500"
         />
         Allow this member to connect their own WhatsApp API

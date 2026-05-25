@@ -3,10 +3,10 @@ import { createClient } from '@/lib/supabase/server';
 import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
-import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { requireCurrentWorkspace } from '@/lib/team/server';
 import { hasWorkspacePermission } from '@/lib/team/permissions';
 import { canSeeConversation } from '@/lib/team/assignment';
+import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config';
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -127,13 +127,16 @@ export async function POST(request: Request) {
     }
 
     // WhatsApp config + access token
-    const { data: config, error: configError } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('phone_number_id, access_token')
-      .eq('workspace_id', workspace.workspaceId)
-      .order('connected_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const {
+      config,
+      error: configError,
+    } = await findWorkspaceWhatsAppConfig<{
+      phone_number_id: string
+      access_token: string
+    }>({
+      workspaceId: workspace.workspaceId,
+      columns: 'phone_number_id, access_token, status',
+    });
 
     if (configError || !config) {
       return NextResponse.json(

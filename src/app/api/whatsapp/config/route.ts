@@ -4,6 +4,7 @@ import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
+import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 
 /**
  * GET /api/whatsapp/config
@@ -33,13 +34,18 @@ export async function GET() {
     const canManage = hasWorkspacePermission(subject, 'manage_whatsapp_config')
     const canConnectOwn = hasWorkspacePermission(subject, 'connect_own_whatsapp_config')
 
-    const { data: config, error: configError } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('phone_number_id, access_token, status')
-      .eq('workspace_id', workspace.workspaceId)
-      .order('connected_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const {
+      config,
+      source,
+      error: configError,
+    } = await findWorkspaceWhatsAppConfig<{
+      phone_number_id: string
+      access_token: string
+      status: string
+    }>({
+      workspaceId: workspace.workspaceId,
+      columns: 'phone_number_id, access_token, status',
+    })
 
     if (configError) {
       console.error('Error fetching whatsapp_config:', configError)
@@ -92,6 +98,7 @@ export async function GET() {
         connected: true,
         phone_info: phoneInfo,
         managed_by_owner: !(canManage || canConnectOwn),
+        legacy_config_source: source === 'legacy_member',
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown Meta API error'

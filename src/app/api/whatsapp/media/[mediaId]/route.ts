@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { canSeeConversation } from '@/lib/team/assignment'
+import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 
 export async function GET(
   request: Request,
@@ -70,13 +70,16 @@ export async function GET(
 
     // Fetch and decrypt workspace WhatsApp config without exposing it
     // through client-readable Supabase policies.
-    const { data: config, error: configError } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('*')
-      .eq('workspace_id', workspace.workspaceId)
-      .order('connected_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const {
+      config,
+      error: configError,
+    } = await findWorkspaceWhatsAppConfig<{
+      phone_number_id: string
+      access_token: string
+    }>({
+      workspaceId: workspace.workspaceId,
+      columns: 'phone_number_id, access_token, status',
+    })
 
     if (configError || !config) {
       return NextResponse.json(

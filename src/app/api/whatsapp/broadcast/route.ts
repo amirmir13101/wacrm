@@ -17,6 +17,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { dedupeSharedPricingRates } from '@/lib/whatsapp/pricing-rates'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
+import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 import type { Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
 
 interface IncomingRecipient {
@@ -89,18 +90,13 @@ async function fetchApprovedOrSelectedTemplate(args: {
 }
 
 async function fetchWhatsAppConnected(args: {
-  supabase: Awaited<ReturnType<typeof createClient>>
   workspaceId: string
 }) {
-  const { data, error } = await args.supabase
-    .from('whatsapp_config')
-    .select('id, status')
-    .eq('workspace_id', args.workspaceId)
-    .order('connected_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) throw new Error(`Failed to check WhatsApp connection: ${error.message}`)
+  const { config: data, error } = await findWorkspaceWhatsAppConfig<{ id: string; status: string }>({
+    workspaceId: args.workspaceId,
+    columns: 'id, status',
+  })
+  if (error) throw new Error(`Failed to check WhatsApp connection: ${error}`)
   return data?.status === 'connected'
 }
 
@@ -345,7 +341,7 @@ export async function POST(request: Request) {
     templateLanguage = template.language ?? 'en_US'
 
     const [whatsappConnected, rates, contacts] = await Promise.all([
-      fetchWhatsAppConnected({ supabase, workspaceId: workspace.workspaceId }),
+      fetchWhatsAppConnected({ workspaceId: workspace.workspaceId }),
       fetchPricingRates(),
       resolveAudience({
         supabase,

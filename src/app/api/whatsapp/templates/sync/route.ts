@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireWorkspacePermission } from '@/lib/team/server'
+import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 
 /**
  * Sync message templates from Meta → local message_templates table.
@@ -109,13 +110,16 @@ export async function POST() {
     const admin = supabaseAdmin()
 
     // whatsapp_config holds waba_id + encrypted access_token.
-    const { data: config, error: configError } = await admin
-      .from('whatsapp_config')
-      .select('*')
-      .eq('workspace_id', workspace.workspaceId)
-      .order('connected_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const {
+      config,
+      error: configError,
+    } = await findWorkspaceWhatsAppConfig<{
+      waba_id?: string | null
+      access_token: string
+    }>({
+      workspaceId: workspace.workspaceId,
+      columns: '*',
+    })
 
     if (configError || !config) {
       return NextResponse.json(
