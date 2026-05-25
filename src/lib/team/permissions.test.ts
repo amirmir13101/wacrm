@@ -42,5 +42,17 @@ describe('workspace permissions', () => {
       ),
     ).toBe(true)
   })
-})
 
+  it('separates platform admin pages from workspace owner dashboards', () => {
+    expect(canAccessDashboardPath({ role: 'owner' }, '/team')).toBe(true)
+    expect(canAccessDashboardPath({ role: 'owner' }, '/settings')).toBe(true)
+    expect(canAccessDashboardPath({ role: 'agent' }, '/team')).toBe(false)
+    expect(canAccessDashboardPath({ role: 'agent' }, '/settings')).toBe(true)
+  })
+
+  it('allows pricing viewing without granting pricing edits', () => {
+    expect(hasWorkspacePermission({ role: 'agent' }, 'view_pricing')).toBe(true)
+    expect(hasWorkspacePermission({ role: 'agent' }, 'use_cost_calculator')).toBe(true)
+    expect(hasWorkspacePermission({ role: 'agent' }, 'manage_pricing_rates')).toBe(false)
+  })
+})

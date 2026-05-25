@@ -3,6 +3,10 @@ import { createClient } from '@/lib/supabase/server';
 import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
+import { supabaseAdmin } from '@/lib/automations/admin-client';
+import { requireCurrentWorkspace } from '@/lib/team/server';
+import { hasWorkspacePermission } from '@/lib/team/permissions';
+import { canSeeConversation } from '@/lib/team/assignment';
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -29,6 +33,26 @@ export async function POST(request: Request) {
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const workspaceResult = await requireCurrentWorkspace();
+    if (!workspaceResult.ok) {
+      return NextResponse.json(
+        { error: workspaceResult.error },
+        { status: workspaceResult.status },
+      );
+    }
+    const workspace = workspaceResult.workspace;
+    const permissionSubject = {
+      role: workspace.role,
+      permissions: workspace.permissions,
+      can_connect_own_whatsapp: workspace.canConnectOwnWhatsApp,
+    };
+    if (!hasWorkspacePermission(permissionSubject, 'reply_to_conversations')) {
+      return NextResponse.json(
+        { error: 'You cannot reply to conversations' },
+        { status: 403 },
+      );
     }
 
     const limit = checkRateLimit(`react:${user.id}`, RATE_LIMITS.react);
@@ -71,12 +95,21 @@ export async function POST(request: Request) {
 
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select('id, user_id, contact:contacts(phone)')
+      .select('id, user_id, workspace_id, assigned_agent_id, contact:contacts(phone)')
       .eq('id', targetMessage.conversation_id)
-      .eq('user_id', user.id)
       .maybeSingle();
 
-    if (convError || !conversation) {
+    if (
+      convError ||
+      !conversation ||
+      conversation.workspace_id !== workspace.workspaceId ||
+      !canSeeConversation({
+        role: workspace.role,
+        permissions: workspace.permissions,
+        actorUserId: user.id,
+        assignedAgentId: conversation.assigned_agent_id,
+      })
+    ) {
       return NextResponse.json(
         { error: 'Conversation not found' },
         { status: 404 },
@@ -94,11 +127,13 @@ export async function POST(request: Request) {
     }
 
     // WhatsApp config + access token
-    const { data: config, error: configError } = await supabase
+    const { data: config, error: configError } = await supabaseAdmin()
       .from('whatsapp_config')
       .select('phone_number_id, access_token')
-      .eq('user_id', user.id)
-      .single();
+      .eq('workspace_id', workspace.workspaceId)
+      .order('connected_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (configError || !config) {
       return NextResponse.json(

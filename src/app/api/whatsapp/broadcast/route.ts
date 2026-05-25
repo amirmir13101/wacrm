@@ -15,6 +15,8 @@ import {
 } from '@/lib/broadcast-preflight'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { dedupeSharedPricingRates } from '@/lib/whatsapp/pricing-rates'
+import { requireCurrentWorkspace } from '@/lib/team/server'
+import { hasWorkspacePermission } from '@/lib/team/permissions'
 import type { Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
 
 interface IncomingRecipient {
@@ -61,7 +63,7 @@ export function sharedStaticVariables(
 
 async function fetchApprovedOrSelectedTemplate(args: {
   supabase: Awaited<ReturnType<typeof createClient>>
-  userId: string
+  workspaceId: string
   templateId?: string
   templateName?: string
   language?: string
@@ -69,7 +71,7 @@ async function fetchApprovedOrSelectedTemplate(args: {
   let query = args.supabase
     .from('message_templates')
     .select('*')
-    .eq('user_id', args.userId)
+    .eq('workspace_id', args.workspaceId)
 
   if (args.templateId) {
     query = query.eq('id', args.templateId)
@@ -88,12 +90,14 @@ async function fetchApprovedOrSelectedTemplate(args: {
 
 async function fetchWhatsAppConnected(args: {
   supabase: Awaited<ReturnType<typeof createClient>>
-  userId: string
+  workspaceId: string
 }) {
   const { data, error } = await args.supabase
     .from('whatsapp_config')
     .select('id, status')
-    .eq('user_id', args.userId)
+    .eq('workspace_id', args.workspaceId)
+    .order('connected_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   if (error) throw new Error(`Failed to check WhatsApp connection: ${error.message}`)
@@ -112,6 +116,7 @@ async function fetchPricingRates() {
 async function upsertCsvContactsForQueue(args: {
   supabase: Awaited<ReturnType<typeof createClient>>
   userId: string
+  workspaceId: string
   rows: { phone: string; name?: string }[]
 }) {
   const normalizedByPhone = new Map<string, { phone: string; name?: string }>()
@@ -127,7 +132,7 @@ async function upsertCsvContactsForQueue(args: {
   const { data: existing, error: lookupError } = await args.supabase
     .from('contacts')
     .select('*')
-    .eq('user_id', args.userId)
+    .eq('workspace_id', args.workspaceId)
   if (lookupError) throw new Error(`Failed to look up CSV contacts: ${lookupError.message}`)
 
   const byPhone = new Map<string, Contact>()
@@ -139,6 +144,7 @@ async function upsertCsvContactsForQueue(args: {
     .filter(([phone]) => !byPhone.has(phone))
     .map(([phone, row]) => ({
       user_id: args.userId,
+      workspace_id: args.workspaceId,
       phone,
       name: row.name?.trim() || null,
       whatsapp_opt_in: false,
@@ -163,6 +169,7 @@ async function upsertCsvContactsForQueue(args: {
 async function resolveAudience(args: {
   supabase: Awaited<ReturnType<typeof createClient>>
   userId: string
+  workspaceId: string
   audience: AudienceConfig
   createCsvContacts: boolean
 }) {
@@ -172,7 +179,7 @@ async function resolveAudience(args: {
     const { data, error } = await args.supabase
       .from('contacts')
       .select('*')
-      .eq('user_id', args.userId)
+      .eq('workspace_id', args.workspaceId)
     if (error) throw new Error(`Failed to fetch contacts: ${error.message}`)
     contacts = (data ?? []) as Contact[]
   } else if (args.audience.type === 'tags' && args.audience.tagIds?.length) {
@@ -186,7 +193,7 @@ async function resolveAudience(args: {
       const { data: contactRows, error: contactError } = await args.supabase
         .from('contacts')
         .select('*')
-        .eq('user_id', args.userId)
+        .eq('workspace_id', args.workspaceId)
         .in('id', ids)
       if (contactError) throw new Error(`Failed to fetch contacts: ${contactError.message}`)
       contacts = (contactRows ?? []) as Contact[]
@@ -208,7 +215,7 @@ async function resolveAudience(args: {
       const { data: contactRows, error: contactError } = await args.supabase
         .from('contacts')
         .select('*')
-        .eq('user_id', args.userId)
+        .eq('workspace_id', args.workspaceId)
         .in('id', ids)
       if (contactError) throw new Error(`Failed to fetch contacts: ${contactError.message}`)
       contacts = (contactRows ?? []) as Contact[]
@@ -218,6 +225,7 @@ async function resolveAudience(args: {
       contacts = await upsertCsvContactsForQueue({
         supabase: args.supabase,
         userId: args.userId,
+        workspaceId: args.workspaceId,
         rows: args.audience.csvContacts,
       })
     } else {
@@ -231,6 +239,7 @@ async function resolveAudience(args: {
         return {
           id: `csv-${index}`,
           user_id: args.userId,
+          workspace_id: args.workspaceId,
           phone,
           name: row.name,
           whatsapp_opt_in: false,
@@ -281,6 +290,23 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const mode = body.mode === 'preflight' ? 'preflight' : 'queue'
+    const workspaceResult = await requireCurrentWorkspace()
+    if (!workspaceResult.ok) {
+      return NextResponse.json(
+        { error: workspaceResult.error },
+        { status: workspaceResult.status },
+      )
+    }
+    const workspace = workspaceResult.workspace
+    const permissionSubject = {
+      role: workspace.role,
+      permissions: workspace.permissions,
+      can_connect_own_whatsapp: workspace.canConnectOwnWhatsApp,
+    }
+    const requiredPermission = mode === 'preflight' ? 'create_broadcasts' : 'queue_broadcasts'
+    if (!hasWorkspacePermission(permissionSubject, requiredPermission)) {
+      return NextResponse.json({ error: 'Permission required' }, { status: 403 })
+    }
 
     let audience: AudienceConfig | null = body.audience ?? null
     let variables: Record<string, VariableMapping> = body.variables ?? {}
@@ -306,7 +332,7 @@ export async function POST(request: Request) {
 
     const template = await fetchApprovedOrSelectedTemplate({
       supabase,
-      userId: user.id,
+      workspaceId: workspace.workspaceId,
       templateId: body.template_id,
       templateName,
       language: templateLanguage,
@@ -319,11 +345,12 @@ export async function POST(request: Request) {
     templateLanguage = template.language ?? 'en_US'
 
     const [whatsappConnected, rates, contacts] = await Promise.all([
-      fetchWhatsAppConnected({ supabase, userId: user.id }),
+      fetchWhatsAppConnected({ supabase, workspaceId: workspace.workspaceId }),
       fetchPricingRates(),
       resolveAudience({
         supabase,
         userId: user.id,
+        workspaceId: workspace.workspaceId,
         audience,
         createCsvContacts: mode === 'queue',
       }),
@@ -369,6 +396,7 @@ export async function POST(request: Request) {
       .from('broadcasts')
       .insert({
         user_id: user.id,
+        workspace_id: workspace.workspaceId,
         name: body.name?.trim() || `Queued broadcast - ${new Date().toLocaleString()}`,
         template_name: templateName,
         template_language: templateLanguage,

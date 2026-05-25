@@ -16,6 +16,7 @@ import {
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { canSeeConversation } from '@/lib/team/assignment'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
 
 export async function POST(request: Request) {
   try {
@@ -141,7 +142,8 @@ export async function POST(request: Request) {
     }
 
     // Fetch and decrypt WhatsApp config
-    let configQuery = supabase
+    const admin = supabaseAdmin()
+    let configQuery = admin
       .from('whatsapp_config')
       .select('*')
     configQuery = conversation.workspace_id
@@ -167,7 +169,7 @@ export async function POST(request: Request) {
     // concurrent sends both produce valid GCM ciphertexts of the same
     // plaintext, last write wins.
     if (isLegacyFormat(config.access_token)) {
-      void supabase
+      void admin
         .from('whatsapp_config')
         .update({ access_token: encrypt(accessToken) })
         .eq('id', config.id)
@@ -282,7 +284,7 @@ export async function POST(request: Request) {
       console.log(
         `[whatsapp/send] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
       )
-      await supabase
+      await admin
         .from('contacts')
         .update({ phone: workingPhone })
         .eq('id', contact.id)

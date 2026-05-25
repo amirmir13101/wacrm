@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { requireCurrentWorkspace } from '@/lib/team/server'
+import { canSeeConversation } from '@/lib/team/assignment'
 
 export async function GET(
   request: Request,
@@ -31,12 +34,49 @@ export async function GET(
       )
     }
 
-    // Fetch and decrypt WhatsApp config
-    const { data: config, error: configError } = await supabase
+    const workspaceResult = await requireCurrentWorkspace()
+    if (!workspaceResult.ok) {
+      return NextResponse.json(
+        { error: workspaceResult.error },
+        { status: workspaceResult.status },
+      )
+    }
+    const workspace = workspaceResult.workspace
+    const mediaPath = `/api/whatsapp/media/${mediaId}`
+
+    const { data: message, error: messageError } = await supabase
+      .from('messages')
+      .select('id, conversation_id, conversation:conversations(id, workspace_id, assigned_agent_id)')
+      .eq('media_url', mediaPath)
+      .maybeSingle()
+
+    const conversation = Array.isArray(message?.conversation)
+      ? message?.conversation[0]
+      : message?.conversation
+
+    if (
+      messageError ||
+      !conversation ||
+      conversation.workspace_id !== workspace.workspaceId ||
+      !canSeeConversation({
+        role: workspace.role,
+        permissions: workspace.permissions,
+        actorUserId: user.id,
+        assignedAgentId: conversation.assigned_agent_id,
+      })
+    ) {
+      return NextResponse.json({ error: 'Media not found' }, { status: 404 })
+    }
+
+    // Fetch and decrypt workspace WhatsApp config without exposing it
+    // through client-readable Supabase policies.
+    const { data: config, error: configError } = await supabaseAdmin()
       .from('whatsapp_config')
       .select('*')
-      .eq('user_id', user.id)
-      .single()
+      .eq('workspace_id', workspace.workspaceId)
+      .order('connected_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     if (configError || !config) {
       return NextResponse.json(

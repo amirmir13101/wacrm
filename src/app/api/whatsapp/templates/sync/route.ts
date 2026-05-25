@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { requireWorkspacePermission } from '@/lib/team/server'
 
 /**
  * Sync message templates from Meta → local message_templates table.
@@ -96,12 +98,24 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const workspaceResult = await requireWorkspacePermission('sync_templates')
+    if (!workspaceResult.ok) {
+      return NextResponse.json(
+        { error: workspaceResult.error },
+        { status: workspaceResult.status },
+      )
+    }
+    const workspace = workspaceResult.workspace
+    const admin = supabaseAdmin()
+
     // whatsapp_config holds waba_id + encrypted access_token.
-    const { data: config, error: configError } = await supabase
+    const { data: config, error: configError } = await admin
       .from('whatsapp_config')
       .select('*')
-      .eq('user_id', user.id)
-      .single()
+      .eq('workspace_id', workspace.workspaceId)
+      .order('connected_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     if (configError || !config) {
       return NextResponse.json(
@@ -174,6 +188,7 @@ export async function POST() {
 
       const row = {
         user_id: user.id,
+        workspace_id: workspace.workspaceId,
         name: t.name,
         category: normalizeCategory(t.category),
         language: t.language,
@@ -185,10 +200,10 @@ export async function POST() {
         updated_at: new Date().toISOString(),
       }
 
-      const { data: existing, error: lookupErr } = await supabase
+      const { data: existing, error: lookupErr } = await admin
         .from('message_templates')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('workspace_id', workspace.workspaceId)
         .eq('name', t.name)
         .eq('language', t.language)
         .maybeSingle()
@@ -203,7 +218,7 @@ export async function POST() {
       }
 
       if (existing?.id) {
-        const { error: updErr } = await supabase
+        const { error: updErr } = await admin
           .from('message_templates')
           .update(row)
           .eq('id', existing.id)
@@ -217,7 +232,7 @@ export async function POST() {
           updated++
         }
       } else {
-        const { error: insErr } = await supabase
+        const { error: insErr } = await admin
           .from('message_templates')
           .insert(row)
         if (insErr) {
