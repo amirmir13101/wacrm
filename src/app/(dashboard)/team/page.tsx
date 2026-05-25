@@ -161,10 +161,8 @@ export default function TeamPage() {
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
-      toast.error(payload?.error ?? "Failed to update member");
-      return;
+      throw new Error(payload?.error ?? "Failed to update member");
     }
-    toast.success("Member updated");
     await loadTeam();
   }
 
@@ -287,75 +285,13 @@ export default function TeamPage() {
         ) : (
           <div className="divide-y divide-slate-800">
             {data?.members.map((member) => (
-              <div key={member.id} className="space-y-3 px-4 py-3">
-                <div className="grid gap-3 md:grid-cols-[1fr_130px_130px_120px_120px] md:items-center">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-white">
-                    {member.full_name || member.email || member.user_id}
-                    {member.user_id === data.current_user_id ? " (you)" : ""}
-                  </p>
-                  <p className="truncate text-xs text-slate-500">{member.email}</p>
-                </div>
-                <select
-                  value={member.role}
-                  onChange={(e) => updateMember(member.id, { role: e.target.value })}
-                  disabled={!data.can_manage_team || member.role === "owner"}
-                  className="h-8 rounded-md border border-slate-700 bg-slate-800 px-2 text-xs text-white disabled:opacity-60"
-                >
-                  <option value="owner">Owner</option>
-                  <option value="admin">Admin</option>
-                  <option value="manager">Manager</option>
-                  <option value="agent">Agent</option>
-                </select>
-                <select
-                  value={member.status}
-                  onChange={(e) => updateMember(member.id, { status: e.target.value })}
-                  disabled={!data.can_manage_team || member.role === "owner"}
-                  className="h-8 rounded-md border border-slate-700 bg-slate-800 px-2 text-xs text-white disabled:opacity-60"
-                >
-                  <option value="active">Active</option>
-                  <option value="invited">Invited</option>
-                  <option value="suspended">Suspended</option>
-                </select>
-                <span className="text-xs text-slate-400">
-                  {member.open_conversations ?? 0} conversations
-                </span>
-                <span className="text-xs text-slate-400">
-                  {member.assigned_deals ?? 0} deals
-                </span>
-                </div>
-                {data.can_manage_team && member.role !== "owner" && (
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/30 p-3">
-                    <PermissionEditor
-                      permissions={effectivePermissions({
-                        role: member.role,
-                        permissions: member.permissions,
-                        can_connect_own_whatsapp: member.can_connect_own_whatsapp,
-                      })}
-                      disabled={!data.can_manage_team}
-                      canConnectOwnWhatsapp={Boolean(member.can_connect_own_whatsapp)}
-                      onToggle={(permission, checked) =>
-                        updateMember(member.id, {
-                          permissions: {
-                            ...effectivePermissions({
-                              role: member.role,
-                              permissions: member.permissions,
-                              can_connect_own_whatsapp: member.can_connect_own_whatsapp,
-                            }),
-                            [permission]: checked,
-                          },
-                        })
-                      }
-                      onSetPermissions={(permissions) =>
-                        updateMember(member.id, { permissions })
-                      }
-                      onToggleOwnWhatsapp={(checked) =>
-                        updateMember(member.id, { can_connect_own_whatsapp: checked })
-                      }
-                    />
-                  </div>
-                )}
-              </div>
+              <MemberCard
+                key={member.id}
+                member={member}
+                currentUserId={data.current_user_id}
+                canManageTeam={data.can_manage_team}
+                onSave={async (update) => updateMember(member.id, update)}
+              />
             ))}
           </div>
         )}
@@ -420,6 +356,250 @@ export default function TeamPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function MemberCard({
+  member,
+  currentUserId,
+  canManageTeam,
+  onSave,
+}: {
+  member: WorkspaceMemberOption;
+  currentUserId: string;
+  canManageTeam: boolean;
+  onSave: (update: Record<string, unknown>) => Promise<void>;
+}) {
+  const savedPermissions = useMemo(
+    () =>
+      effectivePermissions({
+        role: member.role,
+        permissions: member.permissions,
+        can_connect_own_whatsapp: member.can_connect_own_whatsapp,
+      }),
+    [member.can_connect_own_whatsapp, member.permissions, member.role],
+  );
+  const [draftRole, setDraftRole] = useState(member.role);
+  const [draftStatus, setDraftStatus] = useState(member.status);
+  const [draftPermissions, setDraftPermissions] = useState<WorkspacePermissions>(savedPermissions);
+  const [draftOwnWhatsapp, setDraftOwnWhatsapp] = useState(Boolean(member.can_connect_own_whatsapp));
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraftRole(member.role);
+    setDraftStatus(member.status);
+    setDraftPermissions(savedPermissions);
+    setDraftOwnWhatsapp(Boolean(member.can_connect_own_whatsapp));
+  }, [member.can_connect_own_whatsapp, member.role, member.status, savedPermissions]);
+
+  const savedSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        role: member.role,
+        status: member.status,
+        permissions: savedPermissions,
+        can_connect_own_whatsapp: Boolean(member.can_connect_own_whatsapp),
+      }),
+    [member.can_connect_own_whatsapp, member.role, member.status, savedPermissions],
+  );
+  const draftSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        role: draftRole,
+        status: draftStatus,
+        permissions: draftPermissions,
+        can_connect_own_whatsapp: draftOwnWhatsapp,
+      }),
+    [draftOwnWhatsapp, draftPermissions, draftRole, draftStatus],
+  );
+  const hasChanges = savedSnapshot !== draftSnapshot;
+  const editorPermissions = useMemo(
+    () => ({ ...draftPermissions, connect_own_whatsapp_config: draftOwnWhatsapp }),
+    [draftOwnWhatsapp, draftPermissions],
+  );
+  const preset = findMatchingPreset(editorPermissions);
+  const summary = permissionSummary(editorPermissions);
+  const enabledPermissions = Object.values(editorPermissions).filter(Boolean).length;
+  const canEdit = canManageTeam && member.role !== "owner";
+
+  function resetDraft() {
+    setDraftRole(member.role);
+    setDraftStatus(member.status);
+    setDraftPermissions(savedPermissions);
+    setDraftOwnWhatsapp(Boolean(member.can_connect_own_whatsapp));
+  }
+
+  async function saveDraft() {
+    setSaving(true);
+    try {
+      await onSave({
+        role: draftRole,
+        status: draftStatus,
+        permissions: draftPermissions,
+        can_connect_own_whatsapp: draftOwnWhatsapp,
+      });
+      toast.success("Permissions updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update permissions");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="m-3 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/50 shadow-sm shadow-black/20">
+      <div className="border-b border-slate-800 bg-slate-900/80 px-4 py-4">
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-start">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="truncate text-sm font-semibold text-white">
+                {member.full_name || member.email || member.user_id}
+                {member.user_id === currentUserId ? " (you)" : ""}
+              </h3>
+              <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium capitalize text-violet-100">
+                {draftRole}
+              </span>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${
+                draftStatus === "active"
+                  ? "bg-emerald-500/10 text-emerald-200"
+                  : draftStatus === "suspended"
+                    ? "bg-amber-500/10 text-amber-200"
+                    : "bg-slate-800 text-slate-300"
+              }`}>
+                {draftStatus}
+              </span>
+              {hasChanges && (
+                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-100">
+                  Unsaved changes
+                </span>
+              )}
+            </div>
+            <p className="mt-1 truncate text-xs text-slate-500">{member.email}</p>
+            <p className="mt-2 text-xs text-slate-400">
+              {preset?.label ?? "Custom permissions"} / {enabledPermissions} permissions enabled
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 sm:flex sm:items-center">
+            <span className="rounded-md border border-slate-800 bg-slate-950 px-2 py-1">
+              {member.open_conversations ?? 0} conversations
+            </span>
+            <span className="rounded-md border border-slate-800 bg-slate-950 px-2 py-1">
+              {member.assigned_deals ?? 0} deals
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4 p-4">
+        <div className="grid gap-3 md:grid-cols-[160px_160px_1fr] md:items-end">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-400">Role</label>
+            <select
+              value={draftRole}
+              onChange={(event) => setDraftRole(event.target.value as WorkspaceMemberOption["role"])}
+              disabled={!canEdit}
+              className="h-9 w-full rounded-md border border-slate-700 bg-slate-800 px-2 text-xs text-white disabled:opacity-60"
+            >
+              <option value="owner">Owner</option>
+              <option value="admin">Admin</option>
+              <option value="manager">Manager</option>
+              <option value="agent">Agent</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-400">Status</label>
+            <select
+              value={draftStatus}
+              onChange={(event) => setDraftStatus(event.target.value as WorkspaceMemberOption["status"])}
+              disabled={!canEdit}
+              className="h-9 w-full rounded-md border border-slate-700 bg-slate-800 px-2 text-xs text-white disabled:opacity-60"
+            >
+              <option value="active">Active</option>
+              <option value="invited">Invited</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-4">
+            <SummaryTile label="Access" value={summary.access} wide />
+            <SummaryTile label="Reply" value={summary.canReply ? "Yes" : "No"} />
+            <SummaryTile label="Broadcast" value={summary.canBroadcast ? "Yes" : "No"} />
+            <SummaryTile label="WhatsApp" value={summary.whatsapp} wide />
+          </div>
+        </div>
+
+        {canManageTeam && member.role !== "owner" && (
+          <div className="rounded-lg border border-slate-800 bg-slate-900">
+            <button
+              type="button"
+              onClick={() => setPermissionsOpen((value) => !value)}
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-800/60"
+              aria-expanded={permissionsOpen}
+            >
+              <div>
+                <p className="text-sm font-semibold text-white">View/Edit permissions</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Changes stay as a draft until you click Save changes.
+                </p>
+              </div>
+              <ChevronDown
+                className={`size-4 text-slate-500 transition-transform ${permissionsOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+            {permissionsOpen && (
+              <div className="border-t border-slate-800 p-3">
+                <PermissionEditor
+                  permissions={draftPermissions}
+                  disabled={!canEdit || saving}
+                  canConnectOwnWhatsapp={draftOwnWhatsapp}
+                  onToggle={(permission, checked) =>
+                    setDraftPermissions((prev) => ({ ...prev, [permission]: checked }))
+                  }
+                  onSetPermissions={setDraftPermissions}
+                  onToggleOwnWhatsapp={setDraftOwnWhatsapp}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {canEdit && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
+            <p className={`text-xs ${hasChanges ? "text-amber-200" : "text-slate-500"}`}>
+              {hasChanges ? "You have unsaved changes." : "No permission changes."}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={!hasChanges || saving}
+                onClick={resetDraft}
+                className="text-slate-300 hover:bg-slate-800"
+              >
+                Reset to saved
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!hasChanges || saving}
+                onClick={resetDraft}
+                className="border-slate-700 text-slate-200 hover:bg-slate-800"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={!hasChanges || saving}
+                onClick={saveDraft}
+                className="bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Save changes"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

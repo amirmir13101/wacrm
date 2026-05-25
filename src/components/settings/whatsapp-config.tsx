@@ -14,7 +14,6 @@ import {
   AlertTriangle,
   RotateCcw,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions';
 import { Button } from '@/components/ui/button';
@@ -36,7 +35,6 @@ type ConnectionStatus = 'connected' | 'disconnected' | 'unknown';
 type ResetReason = 'token_corrupted' | 'meta_api_error' | null;
 
 export function WhatsAppConfig() {
-  const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
   const workspace = useWorkspacePermissions();
   const canManageConfig =
@@ -63,12 +61,13 @@ export function WhatsAppConfig() {
       ? `${window.location.origin}/api/whatsapp/webhook`
       : '';
 
-  const fetchConfig = useCallback(async (userId: string) => {
+  const fetchConfig = useCallback(async () => {
     setLoading(true);
     try {
+      const res = await fetch('/api/whatsapp/config', { method: 'GET' });
+      const payload = await res.json().catch(() => ({}));
+
       if (!canManageConfig) {
-        const res = await fetch('/api/whatsapp/config', { method: 'GET' });
-        const payload = await res.json().catch(() => ({}));
         setConfig(null);
         setConnectionStatus(payload.connected ? 'connected' : 'disconnected');
         setResetReason(null);
@@ -77,26 +76,11 @@ export function WhatsAppConfig() {
         return;
       }
 
-      // Load form values from Supabase (shows what's in DB)
-      let configQuery = supabase
-        .from('whatsapp_config')
-        .select('*')
-      configQuery = workspace.data?.workspace_id
-        ? configQuery.eq('workspace_id', workspace.data.workspace_id)
-        : configQuery.eq('user_id', userId)
-      const { data, error } = await configQuery
-        .order('connected_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Failed to load config row:', error);
-      }
-
-      if (data) {
-        setConfig(data);
-        setPhoneNumberId(data.phone_number_id || '');
-        setWabaId(data.waba_id || '');
+      const safeConfig = payload.config as Partial<WhatsAppConfigType> | undefined;
+      if (safeConfig?.phone_number_id) {
+        setConfig(safeConfig as WhatsAppConfigType);
+        setPhoneNumberId(safeConfig.phone_number_id || '');
+        setWabaId(safeConfig.waba_id || '');
         setAccessToken(MASKED_TOKEN);
         setVerifyToken('');
         setTokenEdited(false);
@@ -109,29 +93,14 @@ export function WhatsAppConfig() {
         setTokenEdited(false);
       }
 
-      // Then verify health via the API (decrypts token + pings Meta)
-      if (data) {
-        try {
-          const res = await fetch('/api/whatsapp/config', { method: 'GET' });
-          const payload = await res.json();
-
-          if (payload.connected) {
-            setConnectionStatus('connected');
-            setResetReason(null);
-            setStatusMessage('');
-          } else {
-            setConnectionStatus('disconnected');
-            setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
-            setStatusMessage(payload.message || '');
-          }
-        } catch (err) {
-          console.error('Health check failed:', err);
-          setConnectionStatus('disconnected');
-        }
-      } else {
-        setConnectionStatus('disconnected');
+      if (payload.connected) {
+        setConnectionStatus('connected');
         setResetReason(null);
         setStatusMessage('');
+      } else {
+        setConnectionStatus('disconnected');
+        setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
+        setStatusMessage(payload.message || '');
       }
     } catch (err) {
       console.error('fetchConfig error:', err);
@@ -139,7 +108,7 @@ export function WhatsAppConfig() {
     } finally {
       setLoading(false);
     }
-  }, [canManageConfig, supabase, workspace.data?.workspace_id]);
+  }, [canManageConfig]);
 
   useEffect(() => {
     if (authLoading || workspace.loading) return;
@@ -147,7 +116,7 @@ export function WhatsAppConfig() {
       setLoading(false);
       return;
     }
-    fetchConfig(user.id);
+    fetchConfig();
   }, [authLoading, workspace.loading, user, fetchConfig]);
 
   async function handleSave() {
@@ -205,7 +174,7 @@ export function WhatsAppConfig() {
           : 'Configuration saved successfully'
       );
 
-      if (user) await fetchConfig(user.id);
+      if (user) await fetchConfig();
     } catch (err) {
       console.error('Save error:', err);
       toast.error('Failed to save configuration');

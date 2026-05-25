@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
+import { resolveWhatsAppConfigScope, sanitizeWhatsAppConfigForClient } from '@/lib/team/whatsapp-config-scope'
 
 /**
  * GET /api/whatsapp/config
@@ -31,8 +32,85 @@ export async function GET() {
       permissions: workspace.permissions,
       can_connect_own_whatsapp: workspace.canConnectOwnWhatsApp,
     }
-    const canManage = hasWorkspacePermission(subject, 'manage_whatsapp_config')
-    const canConnectOwn = hasWorkspacePermission(subject, 'connect_own_whatsapp_config')
+    const scope = resolveWhatsAppConfigScope(subject)
+    const canManage = scope === 'workspace'
+    const canConnectOwn = scope === 'own'
+
+    if (!canManage && canConnectOwn) {
+      const { data: ownConfig, error: ownConfigError } = await supabaseAdmin()
+        .from('whatsapp_config')
+        .select('id, phone_number_id, waba_id, access_token, status, connected_at')
+        .eq('workspace_id', workspace.workspaceId)
+        .eq('user_id', workspace.userId)
+        .order('connected_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (ownConfigError) {
+        console.error('Error fetching own whatsapp_config:', ownConfigError)
+        return NextResponse.json(
+          { connected: false, reason: 'db_error', message: 'Failed to fetch your configuration' },
+          { status: 200 }
+        )
+      }
+
+      if (!ownConfig) {
+        return NextResponse.json(
+          {
+            connected: false,
+            reason: 'no_config',
+            own_config: true,
+            message: 'Your WhatsApp connection is not configured.',
+          },
+          { status: 200 }
+        )
+      }
+
+      let ownAccessToken: string
+      try {
+        ownAccessToken = decrypt(ownConfig.access_token)
+      } catch (err) {
+        console.error('[whatsapp/config GET] Own token decryption failed:', err)
+        return NextResponse.json(
+          {
+            connected: false,
+            reason: 'token_corrupted',
+            needs_reset: true,
+            own_config: true,
+            config: sanitizeWhatsAppConfigForClient(ownConfig),
+            message:
+              'Your stored access token cannot be decrypted. Reset your own configuration, then re-save it.',
+          },
+          { status: 200 }
+        )
+      }
+
+      try {
+        const phoneInfo = await verifyPhoneNumber({
+          phoneNumberId: ownConfig.phone_number_id,
+          accessToken: ownAccessToken,
+        })
+        return NextResponse.json({
+          connected: true,
+          own_config: true,
+          config: sanitizeWhatsAppConfigForClient(ownConfig),
+          phone_info: phoneInfo,
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown Meta API error'
+        console.error('[whatsapp/config GET] Own Meta API verification failed:', message)
+        return NextResponse.json(
+          {
+            connected: false,
+            reason: 'meta_api_error',
+            own_config: true,
+            config: sanitizeWhatsAppConfigForClient(ownConfig),
+            message: `Meta API rejected your credentials: ${message}`,
+          },
+          { status: 200 }
+        )
+      }
+    }
 
     const {
       config,
@@ -40,11 +118,12 @@ export async function GET() {
       error: configError,
     } = await findWorkspaceWhatsAppConfig<{
       phone_number_id: string
+      waba_id: string | null
       access_token: string
       status: string
     }>({
       workspaceId: workspace.workspaceId,
-      columns: 'phone_number_id, access_token, status',
+      columns: 'phone_number_id, waba_id, access_token, status',
     })
 
     if (configError) {
@@ -96,6 +175,7 @@ export async function GET() {
       })
       return NextResponse.json({
         connected: true,
+        config: canManage ? sanitizeWhatsAppConfigForClient(config) : undefined,
         phone_info: phoneInfo,
         managed_by_owner: !(canManage || canConnectOwn),
         legacy_config_source: source === 'legacy_member',
@@ -192,10 +272,13 @@ export async function POST(request: Request) {
 
     // Upsert — overwrite any existing (possibly corrupted) config
     const admin = supabaseAdmin()
-    const { data: existing } = await admin
+    const existingQuery = admin
       .from('whatsapp_config')
       .select('id')
       .eq('workspace_id', workspace.workspaceId)
+      .eq('user_id', workspace.userId)
+
+    const { data: existing } = await existingQuery
       .order('connected_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -277,10 +360,16 @@ export async function DELETE() {
       return NextResponse.json({ error: 'You cannot manage WhatsApp configuration' }, { status: 403 })
     }
 
-    const { error: deleteError } = await supabaseAdmin()
+    const deleteQuery = supabaseAdmin()
       .from('whatsapp_config')
       .delete()
       .eq('workspace_id', workspace.workspaceId)
+
+    if (!hasWorkspacePermission(subject, 'manage_whatsapp_config')) {
+      deleteQuery.eq('user_id', workspace.userId)
+    }
+
+    const { error: deleteError } = await deleteQuery
 
     if (deleteError) {
       console.error('Error deleting whatsapp_config:', deleteError)
