@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { MessageSquare, CheckCircle } from "lucide-react";
-import { inviteAuthPath, inviteUrl } from "@/lib/team/invitations";
+import { friendlyAuthError, inviteAuthPath, inviteUrl } from "@/lib/team/invitations";
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState("");
@@ -27,11 +27,41 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [cookieInviteActive, setCookieInviteActive] = useState(false);
   const [inviteToken] = useState(() => {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("invite_token") ?? "";
   });
+  const [inviteRequested] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("invite") === "1" || params.get("redirect") === "/invite/accept";
+  });
+  const inviteActive = Boolean(inviteToken || cookieInviteActive);
   const supabase = createClient();
+
+  useEffect(() => {
+    let cancelled = false;
+    if (inviteToken || !inviteRequested) return;
+    fetch("/api/invite/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+      .then(async (res) => {
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        if (cancelled) return;
+        setCookieInviteActive(true);
+        if (payload?.invitation?.invited_email) {
+          setEmail(payload.invitation.invited_email);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteRequested, inviteToken]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +83,11 @@ export default function SignupPage() {
       email,
       password,
       options: {
-        emailRedirectTo: inviteToken ? inviteUrl(inviteToken) : undefined,
+        emailRedirectTo: inviteToken
+          ? inviteUrl(inviteToken)
+          : inviteActive
+            ? `${window.location.origin}/invite/accept`
+            : undefined,
         data: {
           full_name: fullName,
         },
@@ -61,7 +95,7 @@ export default function SignupPage() {
     });
 
     if (error) {
-      setError(error.message);
+      setError(friendlyAuthError(error.message));
       setLoading(false);
       return;
     }
@@ -82,8 +116,9 @@ export default function SignupPage() {
               Account pending approval
             </CardTitle>
             <CardDescription className="text-slate-400">
-              Your account has been created and is pending admin approval.
-              {inviteToken ? " After confirming your email, login from the invite link to join the workspace." : ""}
+              {inviteActive
+                ? "Account created. Please confirm your email if required, then return to this invite link or sign in to finish joining the workspace."
+                : "Your account has been created and is pending admin approval."}
               {email ? (
                 <>
                   {" "}
@@ -94,7 +129,7 @@ export default function SignupPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href={inviteToken ? inviteAuthPath("/login", inviteToken) : "/login"}>
+            <Link href={inviteActive ? inviteAuthPath("/login", inviteToken) : "/login"}>
               <Button
                 variant="outline"
                 className="w-full border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -117,7 +152,7 @@ export default function SignupPage() {
           </div>
           <CardTitle className="text-xl text-white">Create account</CardTitle>
           <CardDescription className="text-slate-400">
-            {inviteToken ? "Create your agent account with the invited email" : "Get started with CRM Template for WhatsApp"}
+            {inviteActive ? "Create your agent account with the invited email" : "Get started with CRM Template for WhatsApp"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -153,7 +188,7 @@ export default function SignupPage() {
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                readOnly={Boolean(inviteToken)}
+                readOnly={inviteActive}
                 required
                 className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
               />
@@ -201,7 +236,7 @@ export default function SignupPage() {
           <p className="mt-6 text-center text-sm text-slate-400">
             Already have an account?{" "}
             <Link
-              href={inviteToken ? inviteAuthPath("/login", inviteToken) : "/login"}
+              href={inviteActive ? inviteAuthPath("/login", inviteToken) : "/login"}
               className="text-violet-500 hover:text-violet-400"
             >
               Sign in

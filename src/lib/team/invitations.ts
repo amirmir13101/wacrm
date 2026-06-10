@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { defaultPermissionsForRole, type VisibilityMode, type WorkspacePermissions } from './permissions'
 import type { WorkspaceRole } from './assignment'
+import { INVITE_COOKIE_MAX_AGE_SECONDS, INVITE_TOKEN_COOKIE } from './invite-constants'
 
 export interface WorkspaceInvitationSummary {
   id: string
@@ -32,6 +33,8 @@ export interface InvitationValidation {
   invitation?: WorkspaceInvitationSummary
 }
 
+export { INVITE_COOKIE_MAX_AGE_SECONDS, INVITE_TOKEN_COOKIE }
+
 export function createInviteToken(): string {
   return randomBytes(32).toString('base64url')
 }
@@ -45,17 +48,42 @@ export function inviteUrl(token: string): string {
   return `${baseUrl.replace(/\/$/, '')}/invite/accept?token=${encodeURIComponent(token)}`
 }
 
-export function inviteAcceptPath(token: string): string {
-  return `/invite/accept?token=${encodeURIComponent(token)}`
+export function inviteAcceptPath(token?: string): string {
+  return token ? `/invite/accept?token=${encodeURIComponent(token)}` : '/invite/accept'
 }
 
-export function inviteAuthPath(pathname: '/login' | '/signup', token: string, email?: string): string {
-  const params = new URLSearchParams({
-    invite_token: token,
-    redirect: '/invite/accept',
-  })
+export function inviteAuthPath(pathname: '/login' | '/signup', token?: string, email?: string): string {
+  const params = new URLSearchParams()
+  if (token) {
+    params.set('invite_token', token)
+  } else {
+    params.set('invite', '1')
+  }
+  params.set('redirect', '/invite/accept')
   if (email) params.set('email', email)
   return `${pathname}?${params.toString()}`
+}
+
+export function friendlyInviteError(error?: string): string {
+  if (!error || error === 'Invite token is required') {
+    return 'This invitation link is missing or incomplete. Please ask the workspace owner to send you a new invite link.'
+  }
+  if (error === 'Invitation not found' || error.includes('expired') || error.includes('revoked')) {
+    return 'This invitation is invalid or expired. Please ask the workspace owner for a new invite.'
+  }
+  return error
+}
+
+export function friendlyAuthError(error?: string): string {
+  const message = error ?? ''
+  const normalized = message.toLowerCase()
+  if (normalized.includes('invalid login') || normalized.includes('invalid credentials')) {
+    return 'The email or password is incorrect. If you just created this account, please confirm your email first.'
+  }
+  if (normalized.includes('email not confirmed') || normalized.includes('confirm')) {
+    return 'Your account was created, but email confirmation is required before login. Please check your inbox.'
+  }
+  return message || 'Unable to sign in. Please try again.'
 }
 
 export function defaultInviteVisibility(role: string): {

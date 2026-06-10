@@ -170,6 +170,14 @@ export default function TeamPage() {
     () => data?.members.filter((member) => member.status === "active") ?? [],
     [data?.members],
   );
+  const pendingInvites = useMemo(
+    () => data?.invitations?.filter((invite) => invite.status === "pending") ?? [],
+    [data?.invitations],
+  );
+  const pastInvites = useMemo(
+    () => data?.invitations?.filter((invite) => invite.status !== "pending") ?? [],
+    [data?.invitations],
+  );
 
   return (
     <div className="space-y-6">
@@ -305,49 +313,10 @@ export default function TeamPage() {
               Invite links are only shown when created. Revoke an old invite and create a new one to generate a fresh link.
             </p>
           </div>
-          {data.invitations?.length ? (
+          {pendingInvites.length ? (
             <div className="divide-y divide-slate-800">
-              {data.invitations.map((invite) => (
-                <div key={invite.id} className="grid gap-3 px-4 py-3 md:grid-cols-[1fr_120px_110px_150px] md:items-center">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-white">{invite.invited_email}</p>
-                    <p className="text-xs text-slate-500">
-                      Expires {new Date(invite.expires_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <span className="text-xs capitalize text-slate-300">{invite.role}</span>
-                  <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                    invite.status === "pending"
-                      ? "bg-violet-500/10 text-violet-200"
-                      : "bg-slate-800 text-slate-300"
-                  }`}>
-                    {invite.status}
-                  </span>
-                  <div className="flex gap-2">
-                    {invite.invite_url && invite.status === "pending" && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => copyText(invite.invite_url!)}
-                        className="border-slate-700 text-slate-200 hover:bg-slate-800"
-                      >
-                        Copy link
-                      </Button>
-                    )}
-                    {invite.status === "pending" && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => revokeInvite(invite.id)}
-                        className="text-amber-200 hover:bg-amber-500/10"
-                      >
-                        Revoke
-                      </Button>
-                    )}
-                  </div>
-                </div>
+              {pendingInvites.map((invite) => (
+                <InvitationRow key={invite.id} invite={invite} onCopy={copyText} onRevoke={revokeInvite} />
               ))}
             </div>
           ) : (
@@ -355,6 +324,81 @@ export default function TeamPage() {
           )}
         </div>
       )}
+
+      {data?.can_manage_team && pastInvites.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+          <div className="border-b border-slate-800 px-4 py-3">
+            <h2 className="text-sm font-semibold text-white">Past invitations</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Accepted, revoked, and expired invitations are kept for audit history.
+            </p>
+          </div>
+          <div className="divide-y divide-slate-800">
+            {pastInvites.map((invite) => (
+              <InvitationRow key={invite.id} invite={invite} onCopy={copyText} onRevoke={revokeInvite} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InvitationRow({
+  invite,
+  onCopy,
+  onRevoke,
+}: {
+  invite: WorkspaceInvitation;
+  onCopy: (text: string) => Promise<void>;
+  onRevoke: (id: string) => Promise<void>;
+}) {
+  const isPending = invite.status === "pending";
+  return (
+    <div className="grid gap-3 px-4 py-3 md:grid-cols-[1fr_120px_110px_180px] md:items-center">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-white">{invite.invited_email}</p>
+        <p className="text-xs text-slate-500">
+          Expires {new Date(invite.expires_at).toLocaleDateString()}
+        </p>
+        {isPending && !invite.invite_url && (
+          <p className="mt-1 text-xs text-amber-200">
+            Invite link was only shown when created. Revoke and create a new invite to generate a new link.
+          </p>
+        )}
+      </div>
+      <span className="text-xs capitalize text-slate-300">{invite.role}</span>
+      <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ${
+        isPending
+          ? "bg-violet-500/10 text-violet-200"
+          : "bg-slate-800 text-slate-300"
+      }`}>
+        {invite.status}
+      </span>
+      <div className="flex gap-2">
+        {invite.invite_url && isPending && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onCopy(invite.invite_url!)}
+            className="border-slate-700 text-slate-200 hover:bg-slate-800"
+          >
+            Copy link
+          </Button>
+        )}
+        {isPending && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onRevoke(invite.id)}
+            className="text-amber-200 hover:bg-amber-500/10"
+          >
+            Revoke
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

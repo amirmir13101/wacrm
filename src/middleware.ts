@@ -10,6 +10,7 @@ import {
   hasWorkspacePermission,
   type WorkspacePermissions,
 } from '@/lib/team/permissions'
+import { INVITE_TOKEN_COOKIE } from '@/lib/team/invite-constants'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -87,13 +88,25 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname === '/signup' ||
     request.nextUrl.pathname === '/forgot-password'
   )) {
-    const inviteToken = request.nextUrl.searchParams.get('invite_token')
+    const inviteToken =
+      request.nextUrl.searchParams.get('invite_token') ??
+      request.cookies.get(INVITE_TOKEN_COOKIE)?.value ??
+      ''
     const redirect = request.nextUrl.searchParams.get('redirect')
-    if (inviteToken && redirect === '/invite/accept') {
+    const inviteFlow = redirect === '/invite/accept' || request.nextUrl.searchParams.get('invite') === '1'
+    if (inviteToken && inviteFlow) {
       const url = request.nextUrl.clone()
       url.pathname = '/invite/accept'
       url.search = ''
-      url.searchParams.set('token', inviteToken)
+      if (request.nextUrl.searchParams.get('invite_token')) {
+        url.searchParams.set('token', inviteToken)
+      }
+      return NextResponse.redirect(url)
+    }
+    if (inviteFlow && request.cookies.get(INVITE_TOKEN_COOKIE)?.value) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/invite/accept'
+      url.search = ''
       return NextResponse.redirect(url)
     }
     const url = request.nextUrl.clone()

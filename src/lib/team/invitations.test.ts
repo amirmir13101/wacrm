@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   createInviteToken,
   defaultInviteVisibility,
+  friendlyAuthError,
+  friendlyInviteError,
   hashInviteToken,
   inviteAcceptPath,
   inviteAuthPath,
@@ -54,5 +56,20 @@ describe('workspace invitations', () => {
 
   it('redirects successful auth back to the tokenized accept page', () => {
     expect(inviteAcceptPath('abc123')).toBe('/invite/accept?token=abc123')
+    expect(inviteAcceptPath()).toBe('/invite/accept')
+  })
+
+  it('builds cookie-backed auth links when the URL token is no longer present', () => {
+    expect(inviteAuthPath('/login')).toBe('/login?invite=1&redirect=%2Finvite%2Faccept')
+    expect(inviteAuthPath('/signup', '', 'agent@example.com')).toBe(
+      '/signup?invite=1&redirect=%2Finvite%2Faccept&email=agent%40example.com',
+    )
+  })
+
+  it('uses friendly invite and auth errors for common invite flow failures', () => {
+    expect(friendlyInviteError('Invite token is required')).toContain('missing or incomplete')
+    expect(friendlyInviteError('Invitation not found')).toContain('invalid or expired')
+    expect(friendlyAuthError('Invalid login credentials')).toContain('email or password is incorrect')
+    expect(friendlyAuthError('Email not confirmed')).toContain('email confirmation is required')
   })
 })

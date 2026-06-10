@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -15,20 +15,56 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { MessageSquare } from "lucide-react";
-import { inviteAcceptPath, inviteAuthPath } from "@/lib/team/invitations";
+import { friendlyAuthError, inviteAcceptPath, inviteAuthPath } from "@/lib/team/invitations";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [cookieInviteActive, setCookieInviteActive] = useState(false);
   const router = useRouter();
   const supabase = createClient();
   const [inviteToken] = useState(() => {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("invite_token") ?? "";
   });
-  const inviteRedirectPath = inviteToken ? inviteAcceptPath(inviteToken) : "/dashboard";
+  const [inviteRequested] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("invite") === "1" || params.get("redirect") === "/invite/accept";
+  });
+  const inviteActive = Boolean(inviteToken || cookieInviteActive);
+  const inviteRedirectPath = inviteToken
+    ? inviteAcceptPath(inviteToken)
+    : inviteActive
+      ? inviteAcceptPath()
+      : "/dashboard";
+
+  useEffect(() => {
+    let cancelled = false;
+    if (inviteToken || !inviteRequested) return;
+    fetch("/api/invite/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+      .then(async (res) => {
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        if (cancelled) return;
+        setCookieInviteActive(true);
+        if (payload?.invitation?.invited_email) {
+          setInviteEmail(payload.invitation.invited_email);
+          setEmail((current) => current || payload.invitation.invited_email);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteRequested, inviteToken]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +77,7 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setError(error.message);
+      setError(friendlyAuthError(error.message));
       setLoading(false);
       return;
     }
@@ -58,7 +94,7 @@ export default function LoginPage() {
           </div>
           <CardTitle className="text-xl text-white">Welcome back</CardTitle>
           <CardDescription className="text-slate-400">
-            {inviteToken ? "Sign in with the invited email to join the workspace" : "Sign in to your account"}
+            {inviteActive ? "Sign in with the invited email to join the workspace" : "Sign in to your account"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -119,7 +155,7 @@ export default function LoginPage() {
           <p className="mt-6 text-center text-sm text-slate-400">
             Don&apos;t have an account?{" "}
             <Link
-              href={inviteToken ? inviteAuthPath("/signup", inviteToken, email) : "/signup"}
+              href={inviteActive ? inviteAuthPath("/signup", inviteToken, inviteEmail || email) : "/signup"}
               className="text-violet-500 hover:text-violet-400"
             >
               Create account

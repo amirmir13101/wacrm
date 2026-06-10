@@ -42,31 +42,24 @@ export default function AcceptInvitePage() {
     let cancelled = false;
     async function loadInvite() {
       setLoading(true);
-      if (!token) {
-        const { data: sessionResult } = await supabase.auth.getUser();
-        if (cancelled) return;
-        setUserEmail(sessionResult.user?.email ?? null);
-        setError(
-          sessionResult.user?.email
-            ? "You may have a pending invitation, but this link is missing its secure token. Ask the owner to send a new invite link."
-            : "This invitation link is missing or incomplete. Please ask the workspace owner to send you a new invite link.",
-        );
-        setLoading(false);
-        return;
-      }
       const [{ data: sessionResult }, validateResponse] = await Promise.all([
         supabase.auth.getUser(),
         fetch("/api/invite/validate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify(token ? { token } : {}),
         }),
       ]);
       const payload = await validateResponse.json().catch(() => ({}));
       if (cancelled) return;
       setUserEmail(sessionResult.user?.email ?? null);
       if (!validateResponse.ok) {
-        setError(payload?.error ?? "Invitation is invalid");
+        setError(
+          payload?.error ??
+            (token
+              ? "This invitation is invalid or expired. Please ask the workspace owner for a new invite."
+              : "This invitation link is missing or incomplete. Please ask the workspace owner to send you a new invite link."),
+        );
         setLoading(false);
         return;
       }
@@ -85,7 +78,7 @@ export default function AcceptInvitePage() {
     const res = await fetch("/api/invite/accept", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify(token ? { token } : {}),
     });
     const payload = await res.json().catch(() => ({}));
     setAccepting(false);
@@ -167,6 +160,7 @@ export default function AcceptInvitePage() {
               <p className="text-sm text-slate-300">
                 You are logged in as <span className="text-white">{userEmail}</span>.
                 This invitation was sent to <span className="text-white">{invite.invited_email}</span>.
+                Please log out and sign in with that email.
               </p>
               <Button
                 variant="outline"
