@@ -82,6 +82,10 @@ export async function requireCurrentWorkspace(): Promise<
   }
 
   if (!member) {
+    member = await repairAcceptedInvitationMembership(user.id)
+  }
+
+  if (!member) {
     return { ok: false, status: 403, error: 'Active workspace membership required' }
   }
 
@@ -333,4 +337,63 @@ async function assignedDealCounts(workspaceId: string): Promise<Map<string, numb
     counts.set(row.assigned_to, (counts.get(row.assigned_to) ?? 0) + 1)
   }
   return counts
+}
+
+async function repairAcceptedInvitationMembership(userId: string) {
+  const admin = supabaseAdmin()
+  const { data: invitation, error: invitationError } = await admin
+    .from('workspace_invitations')
+    .select('workspace_id, role, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility, workspace:workspaces(name)')
+    .eq('accepted_by_user_id', userId)
+    .eq('status', 'accepted')
+    .order('accepted_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (invitationError || !invitation) return null
+
+  const { error: memberError } = await admin.from('workspace_members').upsert(
+    {
+      workspace_id: invitation.workspace_id,
+      user_id: userId,
+      role: invitation.role,
+      status: 'active',
+      permissions: invitation.permissions ?? {},
+      can_connect_own_whatsapp: Boolean(invitation.can_connect_own_whatsapp),
+      contact_visibility: invitation.contact_visibility ?? 'assigned_only',
+      conversation_visibility: invitation.conversation_visibility ?? 'unassigned_and_assigned',
+      deal_visibility: invitation.deal_visibility ?? 'assigned_only',
+      joined_at: new Date().toISOString(),
+    },
+    { onConflict: 'workspace_id,user_id' },
+  )
+
+  if (memberError) return null
+
+  await admin.from('agent_status').upsert(
+    {
+      workspace_id: invitation.workspace_id,
+      user_id: userId,
+      availability: 'online',
+    },
+    { onConflict: 'workspace_id,user_id' },
+  )
+
+  await admin
+    .from('profiles')
+    .update({ active_workspace_id: invitation.workspace_id })
+    .eq('user_id', userId)
+    .is('active_workspace_id', null)
+
+  return {
+    workspace_id: invitation.workspace_id,
+    role: invitation.role,
+    status: 'active',
+    permissions: invitation.permissions ?? {},
+    can_connect_own_whatsapp: Boolean(invitation.can_connect_own_whatsapp),
+    contact_visibility: invitation.contact_visibility ?? 'assigned_only',
+    conversation_visibility: invitation.conversation_visibility ?? 'unassigned_and_assigned',
+    deal_visibility: invitation.deal_visibility ?? 'assigned_only',
+    workspace: invitation.workspace,
+  }
 }
