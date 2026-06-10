@@ -109,3 +109,68 @@ export async function PATCH(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }
+
+export async function DELETE(request: Request) {
+  const workspaceResult = await requireCurrentWorkspace()
+  if (!workspaceResult.ok) {
+    return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
+  }
+
+  if (!canManageTeamWithPermissions({
+    role: workspaceResult.workspace.role,
+    permissions: workspaceResult.workspace.permissions,
+  })) {
+    return NextResponse.json({ error: 'Manager access required' }, { status: 403 })
+  }
+
+  const { searchParams } = new URL(request.url)
+  const body = await request.json().catch(() => ({}))
+  const id =
+    typeof body.id === 'string'
+      ? body.id
+      : searchParams.get('id') ?? ''
+
+  if (!id) {
+    return NextResponse.json({ error: 'Invitation is required' }, { status: 400 })
+  }
+
+  const admin = supabaseAdmin()
+  const { data: invitation, error: lookupError } = await admin
+    .from('workspace_invitations')
+    .select('id, status')
+    .eq('id', id)
+    .eq('workspace_id', workspaceResult.workspace.workspaceId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (lookupError) return NextResponse.json({ error: lookupError.message }, { status: 500 })
+  if (!invitation) {
+    return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
+  }
+  if (invitation.status === 'accepted') {
+    return NextResponse.json(
+      { error: 'Accepted invitations are kept for audit history.' },
+      { status: 400 },
+    )
+  }
+
+  const deletedAt = new Date().toISOString()
+  const update: Record<string, string> = {
+    deleted_at: deletedAt,
+    deleted_by: workspaceResult.workspace.userId,
+  }
+  if (invitation.status === 'pending') {
+    update.status = 'revoked'
+    update.revoked_at = deletedAt
+  }
+
+  const { error } = await admin
+    .from('workspace_invitations')
+    .update(update)
+    .eq('id', id)
+    .eq('workspace_id', workspaceResult.workspace.workspaceId)
+    .is('deleted_at', null)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true })
+}

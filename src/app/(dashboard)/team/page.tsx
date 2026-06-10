@@ -148,6 +148,30 @@ export default function TeamPage() {
     await loadTeam();
   }
 
+  async function deleteInvite(invite: WorkspaceInvitation) {
+    if (invite.status === "accepted") {
+      toast.info("Accepted invitations are kept for audit history.");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Delete this invitation from the list? This action cannot be used to accept the invite.",
+    );
+    if (!confirmed) return;
+
+    const res = await fetch("/api/team/invitations", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: invite.id }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(payload?.error ?? "Failed to delete invitation");
+      return;
+    }
+    toast.success("Invitation deleted from list");
+    await loadTeam();
+  }
+
   async function copyText(text: string) {
     await navigator.clipboard.writeText(text);
     toast.success("Invite link copied");
@@ -316,7 +340,13 @@ export default function TeamPage() {
           {pendingInvites.length ? (
             <div className="divide-y divide-slate-800">
               {pendingInvites.map((invite) => (
-                <InvitationRow key={invite.id} invite={invite} onCopy={copyText} onRevoke={revokeInvite} />
+                <InvitationRow
+                  key={invite.id}
+                  invite={invite}
+                  onCopy={copyText}
+                  onRevoke={revokeInvite}
+                  onDelete={deleteInvite}
+                />
               ))}
             </div>
           ) : (
@@ -335,7 +365,13 @@ export default function TeamPage() {
           </div>
           <div className="divide-y divide-slate-800">
             {pastInvites.map((invite) => (
-              <InvitationRow key={invite.id} invite={invite} onCopy={copyText} onRevoke={revokeInvite} />
+              <InvitationRow
+                key={invite.id}
+                invite={invite}
+                onCopy={copyText}
+                onRevoke={revokeInvite}
+                onDelete={deleteInvite}
+              />
             ))}
           </div>
         </div>
@@ -348,12 +384,15 @@ function InvitationRow({
   invite,
   onCopy,
   onRevoke,
+  onDelete,
 }: {
   invite: WorkspaceInvitation;
   onCopy: (text: string) => Promise<void>;
   onRevoke: (id: string) => Promise<void>;
+  onDelete: (invite: WorkspaceInvitation) => Promise<void>;
 }) {
   const isPending = invite.status === "pending";
+  const canDelete = invite.status !== "accepted";
   return (
     <div className="grid gap-3 px-4 py-3 md:grid-cols-[1fr_120px_110px_180px] md:items-center">
       <div className="min-w-0">
@@ -397,6 +436,21 @@ function InvitationRow({
           >
             Revoke
           </Button>
+        )}
+        {canDelete ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(invite)}
+            className="text-red-200 hover:bg-red-500/10"
+          >
+            Delete
+          </Button>
+        ) : (
+          <span className="self-center text-xs text-slate-500">
+            Kept for audit
+          </span>
         )}
       </div>
     </div>

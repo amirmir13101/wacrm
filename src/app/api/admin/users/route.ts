@@ -24,7 +24,7 @@ async function requireAdmin() {
   return { user, profile }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const adminCheck = await requireAdmin()
   if ('error' in adminCheck) {
     return NextResponse.json(
@@ -33,13 +33,25 @@ export async function GET() {
     )
   }
 
+  const { searchParams } = new URL(request.url)
+  const status = searchParams.get('status')
+  const includeDeleted = status === 'deleted' || searchParams.get('include_deleted') === '1'
+
   const admin = supabaseAdmin()
-  const { data, error } = await admin
+  let query = admin
     .from('profiles')
     .select(
-      'id, user_id, full_name, email, role, approval_status, approved_at, approved_by, created_at, updated_at',
+      'id, user_id, full_name, email, role, approval_status, approved_at, approved_by, deleted_at, deleted_by, delete_reason, created_at, updated_at',
     )
     .order('created_at', { ascending: false })
+
+  if (status) {
+    query = query.eq('approval_status', status)
+  } else if (!includeDeleted) {
+    query = query.neq('approval_status', 'deleted')
+  }
+
+  const { data, error } = await query
 
   if (error) {
     return NextResponse.json(

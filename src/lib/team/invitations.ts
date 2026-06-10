@@ -23,6 +23,7 @@ export interface WorkspaceInvitationSummary {
   accepted_at?: string | null
   accepted_by_user_id?: string | null
   revoked_at?: string | null
+  deleted_at?: string | null
   created_at: string
   invite_url?: string
 }
@@ -113,6 +114,7 @@ export async function listWorkspaceInvitations(
     .from('workspace_invitations')
     .select('*, workspace:workspaces(name)')
     .eq('workspace_id', workspaceId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -146,6 +148,7 @@ export async function validateInvitationToken(token: string): Promise<Invitation
   if (!data) return { ok: false, error: 'Invitation not found' }
 
   const invitation = invitationRowToSummary(data as Record<string, unknown>, new Map())
+  if (invitation.deleted_at) return { ok: false, error: 'This invitation was deleted' }
   if (invitation.status === 'revoked') return { ok: false, error: 'This invitation was revoked' }
   if (invitation.status === 'accepted') return { ok: false, error: 'This invitation was already accepted' }
   if (new Date(invitation.expires_at).getTime() < Date.now()) {
@@ -305,6 +308,7 @@ function invitationRowToSummary(
     accepted_at: row.accepted_at ? String(row.accepted_at) : null,
     accepted_by_user_id: row.accepted_by_user_id ? String(row.accepted_by_user_id) : null,
     revoked_at: row.revoked_at ? String(row.revoked_at) : null,
+    deleted_at: row.deleted_at ? String(row.deleted_at) : null,
     created_at: String(row.created_at),
   }
 }

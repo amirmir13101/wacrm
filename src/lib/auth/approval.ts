@@ -4,7 +4,8 @@ export type ApprovalStatus =
   | 'pending'
   | 'approved'
   | 'rejected'
-  | 'suspended';
+  | 'suspended'
+  | 'deleted';
 
 export interface ApprovalProfile {
   role: string | null;
@@ -34,6 +35,8 @@ export function approvalMessage(status: string | null | undefined) {
       return 'Your account request was rejected. Contact the administrator if you believe this is a mistake.';
     case 'suspended':
       return 'Your account is suspended. Contact the administrator to restore access.';
+    case 'deleted':
+      return 'Your account has been removed. Please contact support.';
     case 'pending':
     default:
       return 'Your account has been created and is pending admin approval.';

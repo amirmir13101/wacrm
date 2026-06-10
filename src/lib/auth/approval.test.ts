@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  approvalMessage,
   approvalRedirectPath,
   isAdmin,
   isApproved,
@@ -30,8 +31,10 @@ describe('approval access rules', () => {
     expect(isAdmin(profile('approved', 'user'))).toBe(false);
   });
 
-  it('blocks rejected and suspended users from dashboard routes', () => {
+  it('blocks rejected, suspended, and deleted users from dashboard routes', () => {
     expect(approvalRedirectPath(profile('rejected'))).toBe('/pending-approval');
     expect(approvalRedirectPath(profile('suspended'))).toBe('/pending-approval');
+    expect(approvalRedirectPath(profile('deleted'))).toBe('/pending-approval');
+    expect(approvalMessage('deleted')).toContain('removed');
   });
 });

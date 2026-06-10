@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Loader2,
   ShieldOff,
+  Trash2,
   UserCog,
   type LucideIcon,
 } from "lucide-react";
@@ -38,6 +39,8 @@ interface AdminUser {
   approval_status: ApprovalStatus;
   approved_at: string | null;
   approved_by: string | null;
+  deleted_at?: string | null;
+  delete_reason?: string | null;
   created_at: string;
 }
 
@@ -46,17 +49,22 @@ const statusClass: Record<ApprovalStatus, string> = {
   approved: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
   rejected: "border-red-400/30 bg-red-400/10 text-red-200",
   suspended: "border-slate-500/40 bg-slate-500/10 text-slate-300",
+  deleted: "border-red-500/40 bg-red-500/10 text-red-200",
 };
+
+type UserFilter = "active" | ApprovalStatus;
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<UserFilter>("active");
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/users");
+      const query = filter === "active" ? "" : `?status=${filter}`;
+      const res = await fetch(`/api/admin/users${query}`);
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Failed to load users");
       setUsers(body.users ?? []);
@@ -65,7 +73,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter]);
 
   useEffect(() => {
     void loadUsers();
@@ -78,6 +86,7 @@ export default function AdminUsersPage() {
       blocked: users.filter((user) =>
         ["rejected", "suspended"].includes(user.approval_status),
       ).length,
+      deleted: users.filter((user) => user.approval_status === "deleted").length,
     }),
     [users],
   );
@@ -107,6 +116,30 @@ export default function AdminUsersPage() {
     }
   };
 
+  const deleteUser = async (user: AdminUser) => {
+    const typed = window.prompt(
+      `Delete ${user.email}?\n\nThey will lose CRM access. Existing CRM history will be kept.\n\nType DELETE to confirm.`,
+    );
+    if (typed !== "DELETE") return;
+
+    setSavingId(user.id);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delete_reason: "Deleted from Admin users page" }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Failed to delete user");
+      toast.success("User deleted safely");
+      await loadUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete user");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -116,7 +149,7 @@ export default function AdminUsersPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <StatCard
           icon={UserCog}
           label="Pending approval"
@@ -128,6 +161,7 @@ export default function AdminUsersPage() {
           value={counts.approved}
         />
         <StatCard icon={ShieldOff} label="Blocked users" value={counts.blocked} />
+        <StatCard icon={Trash2} label="Deleted users" value={counts.deleted} />
       </div>
 
       <Card className="border-slate-800 bg-slate-900">
@@ -139,6 +173,31 @@ export default function AdminUsersPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {([
+              ["active", "Active"],
+              ["pending", "Pending"],
+              ["approved", "Approved"],
+              ["suspended", "Suspended"],
+              ["rejected", "Rejected"],
+              ["deleted", "Deleted"],
+            ] as Array<[UserFilter, string]>).map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={filter === value ? "default" : "outline"}
+                onClick={() => setFilter(value)}
+                className={
+                  filter === value
+                    ? "bg-violet-600 text-white hover:bg-violet-500"
+                    : "border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+                }
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
           {loading ? (
             <div className="flex items-center gap-2 py-8 text-sm text-slate-400">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -183,7 +242,7 @@ export default function AdminUsersPage() {
                     <TableCell>
                       <select
                         value={user.role}
-                        disabled={savingId === user.id}
+                        disabled={savingId === user.id || user.approval_status === "deleted"}
                         onChange={(event) =>
                           void updateUser(user.id, {
                             role: event.target.value as UserRole,
@@ -204,7 +263,8 @@ export default function AdminUsersPage() {
                           label="Approve"
                           disabled={
                             savingId === user.id ||
-                            user.approval_status === "approved"
+                            user.approval_status === "approved" ||
+                            user.approval_status === "deleted"
                           }
                           onClick={() =>
                             updateUser(user.id, { approval_status: "approved" })
@@ -214,7 +274,8 @@ export default function AdminUsersPage() {
                           label="Reject"
                           disabled={
                             savingId === user.id ||
-                            user.approval_status === "rejected"
+                            user.approval_status === "rejected" ||
+                            user.approval_status === "deleted"
                           }
                           onClick={() =>
                             updateUser(user.id, { approval_status: "rejected" })
@@ -224,13 +285,23 @@ export default function AdminUsersPage() {
                           label="Suspend"
                           disabled={
                             savingId === user.id ||
-                            user.approval_status === "suspended"
+                            user.approval_status === "suspended" ||
+                            user.approval_status === "deleted"
                           }
                           onClick={() =>
                             updateUser(user.id, {
                               approval_status: "suspended",
                             })
                           }
+                        />
+                        <ActionButton
+                          label="Delete"
+                          danger
+                          disabled={
+                            savingId === user.id ||
+                            user.approval_status === "deleted"
+                          }
+                          onClick={() => void deleteUser(user)}
                         />
                       </div>
                     </TableCell>
@@ -272,10 +343,12 @@ function StatCard({
 function ActionButton({
   label,
   disabled,
+  danger,
   onClick,
 }: {
   label: string;
   disabled: boolean;
+  danger?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -284,7 +357,11 @@ function ActionButton({
       variant="outline"
       disabled={disabled}
       onClick={onClick}
-      className="border-slate-700 text-slate-200 hover:bg-slate-800 hover:text-white"
+      className={
+        danger
+          ? "border-red-500/40 text-red-200 hover:bg-red-500/10 hover:text-red-100"
+          : "border-slate-700 text-slate-200 hover:bg-slate-800 hover:text-white"
+      }
     >
       {label}
     </Button>

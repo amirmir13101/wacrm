@@ -27,7 +27,7 @@ export default async function PendingApprovalPage() {
     : { data: null };
 
   const status = profile?.approval_status ?? "pending";
-  const isBlocked = status === "rejected" || status === "suspended";
+  const isBlocked = status === "rejected" || status === "suspended" || status === "deleted";
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-10 text-white">
@@ -41,7 +41,11 @@ export default async function PendingApprovalPage() {
             )}
           </div>
           <CardTitle className="text-xl text-white">
-            {isBlocked ? "Account access blocked" : "Pending admin approval"}
+            {status === "deleted"
+              ? "Account removed"
+              : isBlocked
+                ? "Account access blocked"
+                : "Pending admin approval"}
           </CardTitle>
           <CardDescription className="text-slate-400">
             {approvalMessage(status)}
