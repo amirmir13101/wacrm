@@ -48,7 +48,7 @@ export async function requireCurrentWorkspace(): Promise<
 
   let memberQuery = admin
     .from('workspace_members')
-    .select('workspace_id, role, status, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility, workspace:workspaces(name)')
+    .select('workspace_id, role, status, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility, workspace:workspaces(name, archived_at)')
     .eq('user_id', user.id)
     .eq('status', 'active')
 
@@ -65,16 +65,18 @@ export async function requireCurrentWorkspace(): Promise<
     return { ok: false, status: 500, error: `Workspace lookup failed: ${error.message}` }
   }
 
+  if (member && workspaceIsArchived(member.workspace)) {
+    member = null
+  }
+
   if (!member && profile?.active_workspace_id) {
     const fallback = await admin
       .from('workspace_members')
-      .select('workspace_id, role, status, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility, workspace:workspaces(name)')
+      .select('workspace_id, role, status, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility, workspace:workspaces(name, archived_at)')
       .eq('user_id', user.id)
       .eq('status', 'active')
       .order('joined_at', { ascending: true })
-      .limit(1)
-      .maybeSingle()
-    member = fallback.data
+    member = (fallback.data ?? []).find((row) => !workspaceIsArchived(row.workspace)) ?? null
     error = fallback.error
     if (error) {
       return { ok: false, status: 500, error: `Workspace lookup failed: ${error.message}` }
@@ -115,7 +117,7 @@ export async function listCurrentUserWorkspaces(userId: string): Promise<Workspa
 
   const { data, error } = await admin
     .from('workspace_members')
-    .select('workspace_id, role, status, workspace:workspaces(name)')
+    .select('workspace_id, role, status, workspace:workspaces(name, archived_at)')
     .eq('user_id', userId)
     .eq('status', 'active')
     .order('joined_at', { ascending: true })
@@ -126,21 +128,30 @@ export async function listCurrentUserWorkspaces(userId: string): Promise<Workspa
     workspace_id: string
     role: WorkspaceRole
     status: string
-    workspace?: { name?: string | null } | Array<{ name?: string | null }> | null
-  }>).map((row) => ({
-    workspace_id: row.workspace_id,
-    workspace_name: readWorkspaceName(row.workspace),
-    role: row.role,
-    status: row.status,
-    is_active: row.workspace_id === profile?.active_workspace_id,
-  }))
+    workspace?: { name?: string | null; archived_at?: string | null } | Array<{ name?: string | null; archived_at?: string | null }> | null
+  }>)
+    .filter((row) => !workspaceIsArchived(row.workspace))
+    .map((row) => ({
+      workspace_id: row.workspace_id,
+      workspace_name: readWorkspaceName(row.workspace),
+      role: row.role,
+      status: row.status,
+      is_active: row.workspace_id === profile?.active_workspace_id,
+    }))
 }
 
 function readWorkspaceName(
-  workspace?: { name?: string | null } | Array<{ name?: string | null }> | null,
+  workspace?: { name?: string | null; archived_at?: string | null } | Array<{ name?: string | null; archived_at?: string | null }> | null,
 ): string | null {
   if (Array.isArray(workspace)) return workspace[0]?.name ?? null
   return workspace?.name ?? null
+}
+
+function workspaceIsArchived(
+  workspace?: { archived_at?: string | null } | Array<{ archived_at?: string | null }> | null,
+): boolean {
+  if (Array.isArray(workspace)) return Boolean(workspace[0]?.archived_at)
+  return Boolean(workspace?.archived_at)
 }
 
 export async function ensureApprovedUserOwnWorkspace(userId: string): Promise<string | null> {
@@ -158,6 +169,7 @@ export async function ensureApprovedUserOwnWorkspace(userId: string): Promise<st
     .from('workspaces')
     .select('id')
     .eq('owner_user_id', userId)
+    .is('archived_at', null)
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()
@@ -343,14 +355,14 @@ async function repairAcceptedInvitationMembership(userId: string) {
   const admin = supabaseAdmin()
   const { data: invitation, error: invitationError } = await admin
     .from('workspace_invitations')
-    .select('workspace_id, role, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility, workspace:workspaces(name)')
+    .select('workspace_id, role, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility, workspace:workspaces(name, archived_at)')
     .eq('accepted_by_user_id', userId)
     .eq('status', 'accepted')
     .order('accepted_at', { ascending: true })
     .limit(1)
     .maybeSingle()
 
-  if (invitationError || !invitation) return null
+  if (invitationError || !invitation || workspaceIsArchived(invitation.workspace)) return null
 
   const { error: memberError } = await admin.from('workspace_members').upsert(
     {

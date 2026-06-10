@@ -42,6 +42,7 @@ export async function middleware(request: NextRequest) {
     role: string | null
     permissions?: WorkspacePermissions | null
     can_connect_own_whatsapp?: boolean | null
+    workspace?: { archived_at?: string | null } | Array<{ archived_at?: string | null }> | null
   } | null = null
   if (user) {
     const { data } = await supabase
@@ -55,7 +56,7 @@ export async function middleware(request: NextRequest) {
 
     let memberQuery = supabase
       .from('workspace_members')
-      .select('role, permissions, can_connect_own_whatsapp')
+      .select('role, permissions, can_connect_own_whatsapp, workspace:workspaces(archived_at)')
       .eq('user_id', user.id)
       .eq('status', 'active')
 
@@ -68,16 +69,18 @@ export async function middleware(request: NextRequest) {
       .limit(1)
       .maybeSingle()
 
+    if (member && workspaceIsArchived(member.workspace)) {
+      member = null
+    }
+
     if (!member && activeWorkspaceId) {
       const fallback = await supabase
         .from('workspace_members')
-        .select('role, permissions, can_connect_own_whatsapp')
+        .select('role, permissions, can_connect_own_whatsapp, workspace:workspaces(archived_at)')
         .eq('user_id', user.id)
         .eq('status', 'active')
         .order('joined_at', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      member = fallback.data
+      member = (fallback.data ?? []).find((row) => !workspaceIsArchived(row.workspace)) ?? null
     }
     workspaceMember = member
   }
@@ -238,6 +241,13 @@ export async function middleware(request: NextRequest) {
   }
 
   return supabaseResponse
+}
+
+function workspaceIsArchived(
+  workspace?: { archived_at?: string | null } | Array<{ archived_at?: string | null }> | null,
+): boolean {
+  if (Array.isArray(workspace)) return Boolean(workspace[0]?.archived_at)
+  return Boolean(workspace?.archived_at)
 }
 
 export const config = {

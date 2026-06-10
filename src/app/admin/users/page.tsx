@@ -44,6 +44,17 @@ interface AdminUser {
   created_at: string;
 }
 
+interface OwnedWorkspaceDeleteOption {
+  id: string;
+  name: string;
+  candidates: Array<{
+    user_id: string;
+    full_name: string | null;
+    email: string | null;
+    role: string;
+  }>;
+}
+
 const statusClass: Record<ApprovalStatus, string> = {
   pending: "border-amber-400/30 bg-amber-400/10 text-amber-200",
   approved: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
@@ -59,6 +70,13 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<UserFilter>("active");
+  const [ownerDelete, setOwnerDelete] = useState<{
+    user: AdminUser;
+    workspaces: OwnedWorkspaceDeleteOption[];
+    transfers: Record<string, string>;
+    archiveConfirmation: string;
+    mode: "transfer" | "archive";
+  } | null>(null);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -116,28 +134,100 @@ export default function AdminUsersPage() {
     }
   };
 
-  const deleteUser = async (user: AdminUser) => {
-    const typed = window.prompt(
-      `Delete ${user.email}?\n\nThey will lose CRM access. Existing CRM history will be kept.\n\nType DELETE to confirm.`,
-    );
-    if (typed !== "DELETE") return;
+  const deleteUser = async (
+    user: AdminUser,
+    options?: {
+      action?: "delete" | "transfer_delete" | "archive_delete";
+      transfers?: Array<{ workspace_id: string; new_owner_user_id: string }>;
+      confirmation?: string;
+      deleteReason?: string;
+      skipDeletePrompt?: boolean;
+    },
+  ) => {
+    if (!options?.skipDeletePrompt) {
+      const typed = window.prompt(
+        `Delete ${user.email}?\n\nThey will lose CRM access. Existing CRM history will be kept.\n\nType DELETE to confirm.`,
+      );
+      if (typed !== "DELETE") return;
+    }
 
     setSavingId(user.id);
     try {
       const res = await fetch(`/api/admin/users/${user.id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ delete_reason: "Deleted from Admin users page" }),
+        body: JSON.stringify({
+          action: options?.action ?? "delete",
+          transfers: options?.transfers,
+          confirmation: options?.confirmation,
+          delete_reason: options?.deleteReason ?? "Deleted from Admin users page",
+        }),
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Failed to delete user");
-      toast.success("User deleted safely");
+      if (!res.ok) {
+        if (res.status === 409 && body.requires_owner_action) {
+          const workspaces = (body.owned_workspaces ?? []) as OwnedWorkspaceDeleteOption[];
+          setOwnerDelete({
+            user,
+            workspaces,
+            transfers: Object.fromEntries(
+              workspaces.map((workspace) => [
+                workspace.id,
+                workspace.candidates[0]?.user_id ?? "",
+              ]),
+            ),
+            archiveConfirmation: "",
+            mode: workspaces.every((workspace) => workspace.candidates.length > 0)
+              ? "transfer"
+              : "archive",
+          });
+          toast.message("This user owns workspace(s). Choose transfer or archive.");
+          return;
+        }
+        throw new Error(body.error ?? "Failed to delete user");
+      }
+      toast.success(options?.action === "archive_delete" ? "Workspace archived and user deleted" : "User deleted safely");
+      setOwnerDelete(null);
       await loadUsers();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete user");
     } finally {
       setSavingId(null);
     }
+  };
+
+  const submitOwnerDelete = async () => {
+    if (!ownerDelete) return;
+    if (ownerDelete.mode === "transfer") {
+      const missing = ownerDelete.workspaces.find(
+        (workspace) => !ownerDelete.transfers[workspace.id],
+      );
+      if (missing) {
+        toast.error(`Choose a new owner for ${missing.name}`);
+        return;
+      }
+      await deleteUser(ownerDelete.user, {
+        action: "transfer_delete",
+        transfers: ownerDelete.workspaces.map((workspace) => ({
+          workspace_id: workspace.id,
+          new_owner_user_id: ownerDelete.transfers[workspace.id],
+        })),
+        deleteReason: "Workspace ownership transferred, then user soft-deleted",
+        skipDeletePrompt: true,
+      });
+      return;
+    }
+
+    if (ownerDelete.archiveConfirmation !== "ARCHIVE DELETE") {
+      toast.error("Type ARCHIVE DELETE to confirm workspace archive.");
+      return;
+    }
+    await deleteUser(ownerDelete.user, {
+      action: "archive_delete",
+      confirmation: ownerDelete.archiveConfirmation,
+      deleteReason: "Workspace archived, then owner soft-deleted",
+      skipDeletePrompt: true,
+    });
   };
 
   return (
@@ -295,7 +385,7 @@ export default function AdminUsersPage() {
                           }
                         />
                         <ActionButton
-                          label="Delete"
+                          label={savingId === user.id ? "Deleting..." : "Delete"}
                           danger
                           disabled={
                             savingId === user.id ||
@@ -312,6 +402,187 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      {ownerDelete && (
+        <OwnerDeleteModal
+          state={ownerDelete}
+          saving={savingId === ownerDelete.user.id}
+          onClose={() => setOwnerDelete(null)}
+          onModeChange={(mode) =>
+            setOwnerDelete((current) => (current ? { ...current, mode } : current))
+          }
+          onTransferChange={(workspaceId, newOwnerUserId) =>
+            setOwnerDelete((current) =>
+              current
+                ? {
+                    ...current,
+                    transfers: {
+                      ...current.transfers,
+                      [workspaceId]: newOwnerUserId,
+                    },
+                  }
+                : current,
+            )
+          }
+          onArchiveConfirmationChange={(archiveConfirmation) =>
+            setOwnerDelete((current) =>
+              current ? { ...current, archiveConfirmation } : current,
+            )
+          }
+          onSubmit={() => void submitOwnerDelete()}
+        />
+      )}
+    </div>
+  );
+}
+
+function OwnerDeleteModal({
+  state,
+  saving,
+  onClose,
+  onModeChange,
+  onTransferChange,
+  onArchiveConfirmationChange,
+  onSubmit,
+}: {
+  state: {
+    user: AdminUser;
+    workspaces: OwnedWorkspaceDeleteOption[];
+    transfers: Record<string, string>;
+    archiveConfirmation: string;
+    mode: "transfer" | "archive";
+  };
+  saving: boolean;
+  onClose: () => void;
+  onModeChange: (mode: "transfer" | "archive") => void;
+  onTransferChange: (workspaceId: string, newOwnerUserId: string) => void;
+  onArchiveConfirmationChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const canTransfer = state.workspaces.every((workspace) => workspace.candidates.length > 0);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+      <div className="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div className="border-b border-slate-800 p-5">
+          <h2 className="text-lg font-semibold text-white">
+            This user owns workspace(s)
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Choose how to safely remove {state.user.email}. CRM history will be kept.
+          </p>
+        </div>
+
+        <div className="space-y-4 p-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              disabled={!canTransfer || saving}
+              onClick={() => onModeChange("transfer")}
+              className={`rounded-lg border p-4 text-left ${
+                state.mode === "transfer"
+                  ? "border-violet-500 bg-violet-500/10"
+                  : "border-slate-700 bg-slate-950/50"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              <p className="text-sm font-semibold text-white">Transfer ownership</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Move each workspace to another active member, then delete this user.
+              </p>
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => onModeChange("archive")}
+              className={`rounded-lg border p-4 text-left ${
+                state.mode === "archive"
+                  ? "border-red-500 bg-red-500/10"
+                  : "border-slate-700 bg-slate-950/50"
+              }`}
+            >
+              <p className="text-sm font-semibold text-white">Archive workspace and delete</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Block workspace access, keep all history, and delete the owner.
+              </p>
+            </button>
+          </div>
+
+          {state.mode === "transfer" ? (
+            <div className="space-y-3">
+              {!canTransfer && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+                  One or more workspaces has no active member to receive ownership. Use archive instead.
+                </div>
+              )}
+              {state.workspaces.map((workspace) => (
+                <div key={workspace.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                  <label className="text-sm font-medium text-white">{workspace.name}</label>
+                  <select
+                    value={state.transfers[workspace.id] ?? ""}
+                    disabled={saving || workspace.candidates.length === 0}
+                    onChange={(event) => onTransferChange(workspace.id, event.target.value)}
+                    className="mt-2 h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-2 text-sm text-white"
+                  >
+                    {workspace.candidates.length === 0 ? (
+                      <option value="">No active member available</option>
+                    ) : (
+                      workspace.candidates.map((candidate) => (
+                        <option key={candidate.user_id} value={candidate.user_id}>
+                          {candidate.full_name || candidate.email || candidate.user_id} ({candidate.role})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4">
+              <p className="text-sm font-medium text-red-100">
+                This will archive {state.workspaces.length} workspace(s), suspend members, and keep all CRM history.
+              </p>
+              <label className="mt-3 block text-xs font-medium text-red-100">
+                Type ARCHIVE DELETE to confirm
+              </label>
+              <input
+                value={state.archiveConfirmation}
+                disabled={saving}
+                onChange={(event) => onArchiveConfirmationChange(event.target.value)}
+                className="mt-2 h-9 w-full rounded-md border border-red-500/40 bg-slate-950 px-3 text-sm text-white"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-800 p-5">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={saving}
+            onClick={onClose}
+            className="border-slate-700 text-slate-200 hover:bg-slate-800"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={saving || (state.mode === "transfer" && !canTransfer)}
+            onClick={onSubmit}
+            className={
+              state.mode === "archive"
+                ? "bg-red-600 text-white hover:bg-red-500"
+                : "bg-violet-600 text-white hover:bg-violet-500"
+            }
+          >
+            {saving
+              ? state.mode === "archive"
+                ? "Archiving..."
+                : "Transferring..."
+              : state.mode === "archive"
+                ? "Archive and delete"
+                : "Transfer and delete"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
