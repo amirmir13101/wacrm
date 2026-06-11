@@ -17,7 +17,6 @@ import {
   Radio,
   Zap,
   Settings,
-  ShieldCheck,
   LogOut,
   User,
   UserCheck,
@@ -67,8 +66,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const { profile, signOut } = useAuth();
   const workspace = useWorkspacePermissions();
   const totalUnread = useTotalUnread();
-  const isAdmin =
-    profile?.role === "admin" && profile?.approval_status === "approved";
   const visibleNavItems = navItems.filter((item) => {
     if (item.href === "/team") {
       return workspace.has("view_team") || workspace.has("manage_team_members");
@@ -76,14 +73,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     return workspace.has(item.permission);
   });
   const settingsVisible = workspace.has("view_settings");
-  const visibleBottomNavItems = isAdmin
-    ? [
-        { href: "/admin/users", label: "Admin users", icon: ShieldCheck },
-        ...(settingsVisible ? bottomNavItems : []),
-      ]
-    : settingsVisible
-      ? bottomNavItems
-      : [];
+  const visibleBottomNavItems = settingsVisible ? bottomNavItems : [];
 
   async function switchWorkspace(workspaceId: string) {
     if (!workspaceId || workspaceId === workspace.workspaceId) return;

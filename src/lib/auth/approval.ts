@@ -27,6 +27,14 @@ export function approvalRedirectPath(
   return '/pending-approval';
 }
 
+export function authenticatedRedirectPath(
+  profile: ApprovalProfile | null | undefined,
+) {
+  const approvalPath = approvalRedirectPath(profile);
+  if (approvalPath) return approvalPath;
+  return isAdmin(profile) ? '/admin' : '/dashboard';
+}
+
 export function approvalMessage(status: string | null | undefined) {
   switch (status) {
     case 'approved':

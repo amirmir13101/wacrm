@@ -13,6 +13,7 @@ const adminShell = readFileSync(
   'utf8',
 )
 const adminPage = readFileSync(join(process.cwd(), 'src/app/admin/page.tsx'), 'utf8')
+const adminProfilePage = readFileSync(join(process.cwd(), 'src/app/admin/profile/page.tsx'), 'utf8')
 const adminContactsPage = readFileSync(join(process.cwd(), 'src/app/admin/contacts/page.tsx'), 'utf8')
 const adminContactDetailPage = readFileSync(
   join(process.cwd(), 'src/app/admin/contacts/[id]/page.tsx'),
@@ -37,6 +38,8 @@ describe('separate platform admin dashboard', () => {
     expect(adminLayout).toContain('PlatformAdminShell')
     expect(adminShell).toContain('/admin/users')
     expect(adminShell).toContain('/admin/contacts')
+    expect(adminShell).toContain('/admin/profile')
+    expect(adminShell).toContain('Profile')
     expect(adminShell).toContain('Logout')
     expect(adminShell).not.toContain('/inbox')
     expect(adminShell).not.toContain('/broadcasts')
@@ -78,5 +81,12 @@ describe('separate platform admin dashboard', () => {
     expect(adminContactsPage).toContain('Uploaded contact lists')
     expect(adminContactDetailPage).toContain('/api/admin/contact-imports/${id}')
     expect(adminContactDetailPage).toContain('Opt-in')
+  })
+
+  it('renders a separate admin profile page without workspace settings', () => {
+    expect(adminProfilePage).toContain('Admin account')
+    expect(adminProfilePage).toContain('approval_status')
+    expect(adminProfilePage).not.toContain('WhatsApp')
+    expect(adminProfilePage).not.toContain('workspace settings')
   })
 })

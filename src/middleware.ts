@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import {
   approvalRedirectPath,
+  authenticatedRedirectPath,
   isAdmin,
   type ApprovalProfile,
 } from '@/lib/auth/approval'
@@ -113,7 +114,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url)
     }
     const url = request.nextUrl.clone()
-    url.pathname = approvalRedirectPath(profile) ?? '/dashboard'
+    url.pathname = authenticatedRedirectPath(profile)
     return NextResponse.redirect(url)
   }
 
@@ -133,7 +134,7 @@ export async function middleware(request: NextRequest) {
 
   if (user && request.nextUrl.pathname === '/pending-approval' && !approvalRedirectPath(profile)) {
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
+    url.pathname = authenticatedRedirectPath(profile)
     return NextResponse.redirect(url)
   }
 
@@ -148,6 +149,12 @@ export async function middleware(request: NextRequest) {
     if (request.nextUrl.pathname.startsWith('/admin') && !isAdmin(profile)) {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+
+    if (isAdmin(profile) && !request.nextUrl.pathname.startsWith('/admin')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/admin'
       return NextResponse.redirect(url)
     }
 

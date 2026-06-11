@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { authenticatedRedirectPath } from "@/lib/auth/approval";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -77,7 +78,13 @@ export default async function HomePage() {
   } = await supabase.auth.getUser();
 
   if (user) {
-    redirect("/dashboard");
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, approval_status")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    redirect(authenticatedRedirectPath(profile));
   }
 
   return (

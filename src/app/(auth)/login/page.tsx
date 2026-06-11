@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { MessageSquare } from "lucide-react";
+import { authenticatedRedirectPath } from "@/lib/auth/approval";
 import { friendlyAuthError, inviteAcceptPath, inviteAuthPath } from "@/lib/team/invitations";
 
 export default function LoginPage() {
@@ -82,7 +83,23 @@ export default function LoginPage() {
       return;
     }
 
-    router.push(inviteRedirectPath);
+    if (inviteActive) {
+      router.push(inviteRedirectPath);
+      return;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: profile } = user
+      ? await supabase
+          .from("profiles")
+          .select("role, approval_status")
+          .eq("user_id", user.id)
+          .maybeSingle()
+      : { data: null };
+
+    router.push(authenticatedRedirectPath(profile));
   };
 
   return (
