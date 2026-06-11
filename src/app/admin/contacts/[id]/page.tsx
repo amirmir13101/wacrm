@@ -1,10 +1,11 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -37,6 +38,14 @@ interface ImportRow {
   created_at: string;
 }
 
+const PAGE_SIZE_OPTIONS = [50, 100, 250, 500] as const;
+
+function initialNumberParam(name: string, fallback: number) {
+  if (typeof window === "undefined") return fallback;
+  const value = Number(new URLSearchParams(window.location.search).get(name));
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
 export default function AdminContactImportDetailPage({
   params,
 }: {
@@ -46,23 +55,59 @@ export default function AdminContactImportDetailPage({
   const [importDetail, setImportDetail] = useState<ImportDetail | null>(null);
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(() => initialNumberParam("page", 1));
+  const [pageSize, setPageSize] = useState(() => {
+    const requested = initialNumberParam("pageSize", 100);
+    return PAGE_SIZE_OPTIONS.includes(requested as (typeof PAGE_SIZE_OPTIONS)[number])
+      ? requested
+      : 100;
+  });
+  const [total, setTotal] = useState(0);
 
-  useEffect(() => {
-    async function loadImport() {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(page * pageSize, total);
+
+  const syncUrl = useCallback((nextPage: number, nextPageSize: number) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", String(nextPage));
+    url.searchParams.set("pageSize", String(nextPageSize));
+    window.history.replaceState(null, "", url.toString());
+  }, []);
+
+  const loadImport = useCallback(
+    async (nextPage = page, nextPageSize = pageSize) => {
+      setLoading(true);
       try {
-        const res = await fetch(`/api/admin/contact-imports/${id}`);
+        syncUrl(nextPage, nextPageSize);
+        const query = new URLSearchParams({
+          page: String(nextPage),
+          pageSize: String(nextPageSize),
+        });
+        const res = await fetch(`/api/admin/contact-imports/${id}?${query.toString()}`);
         const body = await res.json();
         if (!res.ok) throw new Error(body.error ?? "Failed to load import");
         setImportDetail(body.import);
         setRows(body.rows ?? []);
+        setTotal(body.total ?? 0);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load import");
       } finally {
         setLoading(false);
       }
-    }
-    void loadImport();
-  }, [id]);
+    },
+    [id, page, pageSize, syncUrl],
+  );
+
+  useEffect(() => {
+    void loadImport(page, pageSize);
+  }, [loadImport, page, pageSize]);
+
+  function changePageSize(value: string) {
+    const nextPageSize = Number(value);
+    setPageSize(nextPageSize);
+    setPage(1);
+  }
 
   if (loading) {
     return (
@@ -108,8 +153,27 @@ export default function AdminContactImportDetailPage({
       </div>
 
       <Card className="border-slate-800 bg-slate-900">
-        <CardHeader>
-          <CardTitle className="text-white">Rows</CardTitle>
+        <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-white">Rows</CardTitle>
+            <p className="mt-1 text-sm text-slate-400">
+              Showing {rangeStart}-{rangeEnd} of {total} contacts
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <span>Rows per page</span>
+            <select
+              value={pageSize}
+              onChange={(event) => changePageSize(event.target.value)}
+              className="h-9 rounded-md border border-slate-700 bg-slate-950 px-2 text-sm text-white"
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
         </CardHeader>
         <CardContent>
           {rows.length === 0 ? (
@@ -140,6 +204,31 @@ export default function AdminContactImportDetailPage({
               </TableBody>
             </Table>
           )}
+          <div className="mt-4 flex flex-col gap-3 border-t border-slate-800 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-400">
+              Showing {rangeStart}-{rangeEnd} of {total} contacts
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={loading || page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                className="border-slate-700 bg-transparent text-slate-200 hover:bg-slate-800"
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={loading || page >= totalPages}
+                onClick={() => setPage((current) => current + 1)}
+                className="border-slate-700 bg-transparent text-slate-200 hover:bg-slate-800"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

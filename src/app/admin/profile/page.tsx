@@ -1,6 +1,7 @@
 import { CalendarDays, Mail, ShieldCheck, User } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AdminPasswordForm } from "@/components/admin/admin-password-form";
 import { requirePlatformAdmin } from "@/lib/admin/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -72,6 +73,15 @@ export default async function AdminProfilePage() {
             label="Account created"
             value={createdAt}
           />
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-800 bg-slate-900">
+        <CardHeader>
+          <CardTitle className="text-white">Change Password</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AdminPasswordForm />
         </CardContent>
       </Card>
     </div>

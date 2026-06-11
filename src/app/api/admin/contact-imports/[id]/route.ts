@@ -3,8 +3,15 @@ import { NextResponse } from "next/server";
 import { requirePlatformAdmin } from "@/lib/admin/auth";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 
+const PAGE_SIZE_OPTIONS = [50, 100, 250, 500] as const;
+
+function parsePositiveInt(value: string | null, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const adminCheck = await requirePlatformAdmin();
@@ -16,6 +23,17 @@ export async function GET(
   }
 
   const { id } = await params;
+  const url = new URL(request.url);
+  const page = parsePositiveInt(url.searchParams.get("page"), 1);
+  const requestedPageSize = parsePositiveInt(url.searchParams.get("pageSize"), 100);
+  const pageSize = PAGE_SIZE_OPTIONS.includes(
+    requestedPageSize as (typeof PAGE_SIZE_OPTIONS)[number],
+  )
+    ? requestedPageSize
+    : 100;
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
   const admin = supabaseAdmin();
   const { data: importRow, error: importError } = await admin
     .from("admin_contact_imports")
@@ -28,12 +46,15 @@ export async function GET(
   if (importError) return NextResponse.json({ error: importError.message }, { status: 500 });
   if (!importRow) return NextResponse.json({ error: "Import not found" }, { status: 404 });
 
-  const [{ data: rows, error: rowsError }, { data: uploader }] = await Promise.all([
+  const [{ data: rows, error: rowsError, count }, { data: uploader }] = await Promise.all([
     admin
       .from("admin_contact_import_rows")
-      .select("id, contact_id, name, phone, city, category, opt_in_status, raw_data, created_at")
+      .select("id, contact_id, name, phone, city, category, opt_in_status, raw_data, created_at", {
+        count: "exact",
+      })
       .eq("import_id", id)
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: true })
+      .range(from, to),
     admin
       .from("profiles")
       .select("user_id, full_name, email")
@@ -49,5 +70,8 @@ export async function GET(
       uploader: uploader ?? null,
     },
     rows: rows ?? [],
+    page,
+    pageSize,
+    total: count ?? 0,
   });
 }
