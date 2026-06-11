@@ -37,6 +37,7 @@ interface AdminUser {
   email: string;
   role: UserRole;
   approval_status: ApprovalStatus;
+  account_type?: "platform_admin" | "workspace_owner" | "pending_signup" | "platform_user";
   approved_at: string | null;
   approved_by: string | null;
   deleted_at?: string | null;
@@ -61,6 +62,20 @@ const statusClass: Record<ApprovalStatus, string> = {
   rejected: "border-red-400/30 bg-red-400/10 text-red-200",
   suspended: "border-slate-500/40 bg-slate-500/10 text-slate-300",
   deleted: "border-red-500/40 bg-red-500/10 text-red-200",
+};
+
+const accountTypeLabel: Record<NonNullable<AdminUser["account_type"]>, string> = {
+  platform_admin: "Platform Admin",
+  workspace_owner: "Workspace Owner",
+  pending_signup: "Pending Signup",
+  platform_user: "Platform User",
+};
+
+const accountTypeClass: Record<NonNullable<AdminUser["account_type"]>, string> = {
+  platform_admin: "border-violet-400/30 bg-violet-400/10 text-violet-200",
+  workspace_owner: "border-cyan-400/30 bg-cyan-400/10 text-cyan-200",
+  pending_signup: "border-amber-400/30 bg-amber-400/10 text-amber-200",
+  platform_user: "border-slate-500/40 bg-slate-500/10 text-slate-300",
 };
 
 type UserFilter = "active" | ApprovalStatus;
@@ -302,6 +317,7 @@ export default function AdminUsersPage() {
               <TableHeader>
                 <TableRow className="border-slate-800 hover:bg-transparent">
                   <TableHead className="text-slate-300">User</TableHead>
+                  <TableHead className="text-slate-300">Account</TableHead>
                   <TableHead className="text-slate-300">Status</TableHead>
                   <TableHead className="text-slate-300">Role</TableHead>
                   <TableHead className="text-slate-300">Created</TableHead>
@@ -320,6 +336,16 @@ export default function AdminUsersPage() {
                         </p>
                         <p className="text-xs text-slate-400">{user.email}</p>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={
+                          accountTypeClass[user.account_type ?? "platform_user"]
+                        }
+                      >
+                        {accountTypeLabel[user.account_type ?? "platform_user"]}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge

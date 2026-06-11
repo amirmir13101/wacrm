@@ -3,6 +3,24 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { createClient } from '@/lib/supabase/server'
 
+type AdminUserAccountType = 'platform_admin' | 'workspace_owner' | 'pending_signup' | 'platform_user'
+
+interface ProfileRow {
+  id: string
+  user_id: string
+  full_name: string | null
+  email: string | null
+  role: string
+  approval_status: string
+  approved_at: string | null
+  approved_by: string | null
+  deleted_at?: string | null
+  deleted_by?: string | null
+  delete_reason?: string | null
+  created_at: string
+  updated_at: string
+}
+
 async function requireAdmin() {
   const supabase = await createClient()
   const {
@@ -60,5 +78,128 @@ export async function GET(request: Request) {
     )
   }
 
-  return NextResponse.json({ users: data ?? [] })
+  let users: Array<ProfileRow & { account_type: AdminUserAccountType }>
+  try {
+    users = await filterPlatformAdminUsers((data ?? []) as ProfileRow[])
+  } catch (classificationError) {
+    return NextResponse.json(
+      {
+        error:
+          classificationError instanceof Error
+            ? classificationError.message
+            : 'Failed to classify admin users',
+      },
+      { status: 500 },
+    )
+  }
+
+  return NextResponse.json({ users })
+}
+
+async function filterPlatformAdminUsers(profiles: ProfileRow[]) {
+  if (profiles.length === 0) return []
+
+  const admin = supabaseAdmin()
+  const userIds = profiles.map((profile) => profile.user_id).filter(Boolean)
+  const emails = profiles
+    .map((profile) => profile.email?.trim().toLowerCase())
+    .filter((email): email is string => Boolean(email))
+
+  const [
+    ownedWorkspaceResult,
+    memberResult,
+    invitedEmailResult,
+    acceptedInviteResult,
+  ] = await Promise.all([
+    userIds.length
+      ? admin.from('workspaces').select('owner_user_id').in('owner_user_id', userIds)
+      : Promise.resolve({ data: [], error: null }),
+    userIds.length
+      ? admin.from('workspace_members').select('user_id, role').in('user_id', userIds)
+      : Promise.resolve({ data: [], error: null }),
+    emails.length
+      ? admin
+          .from('workspace_invitations')
+          .select('invited_email')
+          .in('invited_email', emails)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+    userIds.length
+      ? admin
+          .from('workspace_invitations')
+          .select('accepted_by_user_id')
+          .in('accepted_by_user_id', userIds)
+          .is('deleted_at', null)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  const lookupError =
+    ownedWorkspaceResult.error ??
+    memberResult.error ??
+    invitedEmailResult.error ??
+    acceptedInviteResult.error
+
+  if (lookupError) {
+    throw new Error(`Failed to classify admin users: ${lookupError.message}`)
+  }
+
+  const workspaceOwnerUserIds = new Set(
+    ((ownedWorkspaceResult.data ?? []) as Array<{ owner_user_id: string | null }>)
+      .map((row) => row.owner_user_id)
+      .filter((userId): userId is string => Boolean(userId)),
+  )
+  const teamMemberOnlyUserIds = new Set(
+    ((memberResult.data ?? []) as Array<{ user_id: string | null; role: string | null }>)
+      .filter((row) => row.role !== 'owner')
+      .map((row) => row.user_id)
+      .filter((userId): userId is string => Boolean(userId)),
+  )
+  const invitedEmails = new Set(
+    ((invitedEmailResult.data ?? []) as Array<{ invited_email: string | null }>)
+      .map((row) => row.invited_email?.trim().toLowerCase())
+      .filter((email): email is string => Boolean(email)),
+  )
+  const acceptedInviteUserIds = new Set(
+    ((acceptedInviteResult.data ?? []) as Array<{ accepted_by_user_id: string | null }>)
+      .map((row) => row.accepted_by_user_id)
+      .filter((userId): userId is string => Boolean(userId)),
+  )
+
+  return profiles
+    .map((profile) => ({
+      ...profile,
+      account_type: classifyAdminUser(profile, {
+        workspaceOwnerUserIds,
+        teamMemberOnlyUserIds,
+        invitedEmails,
+        acceptedInviteUserIds,
+      }),
+    }))
+    .filter(
+      (profile): profile is ProfileRow & { account_type: AdminUserAccountType } =>
+        profile.account_type !== null,
+    )
+}
+
+function classifyAdminUser(
+  profile: ProfileRow,
+  context: {
+    workspaceOwnerUserIds: Set<string>
+    teamMemberOnlyUserIds: Set<string>
+    invitedEmails: Set<string>
+    acceptedInviteUserIds: Set<string>
+  },
+): AdminUserAccountType | null {
+  if (profile.role === 'admin') return 'platform_admin'
+  if (context.workspaceOwnerUserIds.has(profile.user_id)) return 'workspace_owner'
+
+  const email = profile.email?.trim().toLowerCase() ?? ''
+  const hasInviteFootprint =
+    context.teamMemberOnlyUserIds.has(profile.user_id) ||
+    context.acceptedInviteUserIds.has(profile.user_id) ||
+    (email ? context.invitedEmails.has(email) : false)
+
+  if (hasInviteFootprint) return null
+  if (profile.approval_status === 'pending') return 'pending_signup'
+  return 'platform_user'
 }
