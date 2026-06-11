@@ -107,6 +107,11 @@ export default function AdminUsersPage() {
     [users],
   );
 
+  function userBelongsInCurrentFilter(user: AdminUser) {
+    if (filter === "active") return user.approval_status !== "deleted";
+    return user.approval_status === filter;
+  }
+
   const updateUser = async (
     userId: string,
     updates: Partial<Pick<AdminUser, "approval_status" | "role">>,
@@ -122,9 +127,19 @@ export default function AdminUsersPage() {
       if (!res.ok) throw new Error(body.error ?? "Failed to update user");
 
       setUsers((current) =>
-        current.map((user) => (user.id === userId ? body.user : user)),
+        current.flatMap((user) => {
+          if (user.id !== userId) return [user];
+          const updated = {
+            ...user,
+            ...body.user,
+            account_type: user.account_type,
+            owned_workspaces_count: user.owned_workspaces_count,
+          } as AdminUser;
+          return userBelongsInCurrentFilter(updated) ? [updated] : [];
+        }),
       );
       toast.success("User updated");
+      await loadUsers();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update user");
     } finally {

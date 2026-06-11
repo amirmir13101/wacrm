@@ -19,7 +19,7 @@ describe('platform admin routing separation', () => {
 
   it('preserves invite login flow before role-aware normal redirects', () => {
     expect(loginPage).toContain('if (inviteActive)')
-    expect(loginPage).toContain('router.push(inviteRedirectPath)')
+    expect(loginPage).toContain('refreshClientRoute(router, inviteRedirectPath)')
     expect(loginPage).toContain('inviteAuthPath("/signup"')
   })
 

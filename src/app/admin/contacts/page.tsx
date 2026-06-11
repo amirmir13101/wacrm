@@ -141,10 +141,14 @@ export default function AdminContactImportsPage() {
           ? "Uploaded contact list deleted."
           : `${confirmIds.length} uploaded contact lists deleted.`,
       );
+      const deletedIds = new Set(confirmIds);
+      const deletedVisibleCount = imports.filter((item) => deletedIds.has(item.id)).length;
       const nextTotal = Math.max(0, total - confirmIds.length);
       const nextPage = page > 1 && (page - 1) * pageSize >= nextTotal ? page - 1 : page;
       setConfirmIds([]);
       setSelectedIds(new Set());
+      setImports((current) => current.filter((item) => !deletedIds.has(item.id)));
+      setTotal((current) => Math.max(0, current - deletedVisibleCount));
       setPage(nextPage);
       await loadImports(nextPage, pageSize);
     } catch (error) {

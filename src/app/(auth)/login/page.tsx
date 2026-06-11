@@ -17,6 +17,7 @@ import {
 import { MessageSquare } from "lucide-react";
 import { authenticatedRedirectPath } from "@/lib/auth/approval";
 import { friendlyAuthError, inviteAcceptPath, inviteAuthPath } from "@/lib/team/invitations";
+import { refreshClientRoute } from "@/lib/ui/post-mutation";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -72,34 +73,41 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      setError(friendlyAuthError(error.message));
+      if (error) {
+        setError(friendlyAuthError(error.message));
+        return;
+      }
+
+      await supabase.auth.refreshSession().catch(() => undefined);
+
+      if (inviteActive) {
+        refreshClientRoute(router, inviteRedirectPath);
+        return;
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const { data: profile } = user
+        ? await supabase
+            .from("profiles")
+            .select("role, approval_status, account_type, must_change_password")
+            .eq("user_id", user.id)
+            .maybeSingle()
+        : { data: null };
+
+      refreshClientRoute(router, authenticatedRedirectPath(profile));
+    } catch (err) {
+      setError(err instanceof Error ? friendlyAuthError(err.message) : "Could not sign in.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (inviteActive) {
-      router.push(inviteRedirectPath);
-      return;
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const { data: profile } = user
-      ? await supabase
-          .from("profiles")
-          .select("role, approval_status, account_type, must_change_password")
-          .eq("user_id", user.id)
-          .maybeSingle()
-      : { data: null };
-
-    router.push(authenticatedRedirectPath(profile));
   };
 
   return (

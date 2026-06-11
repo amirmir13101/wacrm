@@ -80,16 +80,20 @@ export default function TeamPage() {
     temporary_password: string;
   } | null>(null);
 
-  async function loadTeam() {
-    setLoading(true);
-    const res = await fetch("/api/team/members");
-    const payload = await res.json().catch(() => ({}));
-    setLoading(false);
-    if (!res.ok) {
-      toast.error(payload?.error ?? "Failed to load team");
-      return;
+  async function loadTeam(options: { showLoading?: boolean } = {}) {
+    if (options.showLoading ?? true) setLoading(true);
+    try {
+      const res = await fetch("/api/team/members");
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.error ?? "Failed to load team");
+      }
+      setData(payload as TeamResponse);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load team");
+    } finally {
+      if (options.showLoading ?? true) setLoading(false);
     }
-    setData(payload as TeamResponse);
   }
 
   useEffect(() => {
@@ -144,7 +148,7 @@ export default function TeamPage() {
       setConfirmTemporaryPassword("");
       setNewMemberPermissions(defaultPermissionsForRole(role));
       setNewCanConnectOwnWhatsapp(false);
-      await loadTeam();
+      await loadTeam({ showLoading: false });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create team member");
     } finally {
@@ -164,7 +168,7 @@ export default function TeamPage() {
       return;
     }
     toast.success("Invitation revoked");
-    await loadTeam();
+    await loadTeam({ showLoading: false });
   }
 
   async function deleteInvite(invite: WorkspaceInvitation) {
@@ -188,7 +192,15 @@ export default function TeamPage() {
       return;
     }
     toast.success("Invitation deleted from list");
-    await loadTeam();
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            invitations: current.invitations?.filter((item) => item.id !== invite.id) ?? [],
+          }
+        : current,
+    );
+    await loadTeam({ showLoading: false });
   }
 
   async function copyText(text: string) {
@@ -206,7 +218,17 @@ export default function TeamPage() {
     if (!res.ok) {
       throw new Error(payload?.error ?? "Failed to update member");
     }
-    await loadTeam();
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            members: current.members.map((member) =>
+              member.id === id ? { ...member, ...update } : member,
+            ),
+          }
+        : current,
+    );
+    await loadTeam({ showLoading: false });
   }
 
   async function deleteMember(member: WorkspaceMemberOption) {
@@ -216,12 +238,17 @@ export default function TeamPage() {
     if (!confirmed) return;
     const res = await fetch(`/api/team/members/${member.id}`, { method: "DELETE" });
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      toast.error(payload?.error ?? "Failed to delete team member");
-      return;
-    }
+    if (!res.ok) throw new Error(payload?.error ?? "Failed to delete team member");
     toast.success("Team member deleted");
-    await loadTeam();
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            members: current.members.filter((item) => item.id !== member.id),
+          }
+        : current,
+    );
+    await loadTeam({ showLoading: false });
   }
 
   const activeMembers = useMemo(
@@ -627,6 +654,8 @@ function MemberCard({
     setDeleting(true);
     try {
       await onDelete();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete team member");
     } finally {
       setDeleting(false);
     }

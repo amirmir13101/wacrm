@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
+import { refreshClientRoute } from "@/lib/ui/post-mutation";
 
 function passwordValidationError(password: string) {
   if (password.length < 8) return "New password must be at least 8 characters.";
@@ -50,9 +51,11 @@ export default function ForcedPasswordChangePage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "Password update failed.");
+      await supabase.auth.refreshSession().catch(() => undefined);
       toast.success("Password updated successfully.");
-      router.replace("/dashboard");
-      router.refresh();
+      setNewPassword("");
+      setConfirmPassword("");
+      refreshClientRoute(router, "/dashboard");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Password update failed.";
       setError(message);
