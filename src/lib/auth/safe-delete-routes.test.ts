@@ -24,19 +24,15 @@ const teamPage = readFileSync(
   'utf8',
 )
 
-describe('safe delete routes and UI', () => {
-  it('soft-deletes platform users and blocks unsafe admin actions', () => {
+describe('permanent delete routes and UI', () => {
+  it('permanently deletes platform users and blocks unsafe admin actions', () => {
     expect(adminUserRoute).toContain('export async function DELETE')
     expect(adminUserRoute).toContain('requireAdmin()')
     expect(adminUserRoute).toContain('target.user_id === adminCheck.user.id')
     expect(adminUserRoute).toContain('You cannot delete your own platform admin account')
-    expect(adminUserRoute).toContain(".from('workspaces')")
-    expect(adminUserRoute).toContain('requires_owner_action: true')
-    expect(adminUserRoute).toContain('owned_workspaces: ownedWorkspaceDetails')
-    expect(adminUserRoute).toContain("approval_status: 'deleted'")
-    expect(adminUserRoute).toContain("deleted_at: deletedAt")
-    expect(adminUserRoute).toContain(".from('workspace_members')")
-    expect(adminUserRoute).toContain(".update({ status: 'suspended' })")
+    expect(adminUserRoute).toContain("confirmation !== 'PERMANENT DELETE'")
+    expect(adminUserRoute).toContain('admin.auth.admin.deleteUser(target.user_id)')
+    expect(adminUserRoute).toContain('deleted_user_id: target.user_id')
   })
 
   it('hides deleted users from the default admin users list', () => {
@@ -45,9 +41,11 @@ describe('safe delete routes and UI', () => {
   })
 
   it('requires a clear confirmation before deleting users in the UI', () => {
-    expect(adminUsersPage).toContain('Type DELETE to confirm')
-    expect(adminUsersPage).toContain('typed !== "DELETE"')
+    expect(adminUsersPage).toContain('PermanentDeleteModal')
+    expect(adminUsersPage).toContain('Type PERMANENT DELETE to confirm')
+    expect(adminUsersPage).toContain('confirmation !== "PERMANENT DELETE"')
     expect(adminUsersPage).toContain('method: "DELETE"')
+    expect(adminUsersPage).toContain('setUsers((current) => current.filter')
   })
 
   it('soft-deletes invitations and blocks accepted invite deletion', () => {

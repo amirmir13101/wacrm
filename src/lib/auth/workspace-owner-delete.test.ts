@@ -18,7 +18,7 @@ const adminUsersPage = readFileSync(
 const teamServer = readFileSync(join(process.cwd(), 'src/lib/team/server.ts'), 'utf8')
 const middleware = readFileSync(join(process.cwd(), 'src/middleware.ts'), 'utf8')
 
-describe('workspace owner safe delete options', () => {
+describe('workspace archive support and owner permanent delete', () => {
   it('adds archive metadata and blocks archived workspaces in RLS helpers', () => {
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS archived_at')
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS archived_by')
@@ -27,27 +27,12 @@ describe('workspace owner safe delete options', () => {
     expect(migration).toContain('CREATE OR REPLACE FUNCTION public.is_active_workspace_member')
   })
 
-  it('returns owner delete options instead of hard-deleting workspace owners', () => {
-    expect(adminUserRoute).toContain('requires_owner_action: true')
-    expect(adminUserRoute).toContain('owned_workspaces: ownedWorkspaceDetails')
-    expect(adminUserRoute).toContain("action === 'transfer_delete'")
-    expect(adminUserRoute).toContain("action === 'archive_delete'")
-    expect(adminUserRoute).not.toContain('deleteUser(')
-  })
-
-  it('transfers workspace ownership before soft-deleting the old owner', () => {
-    expect(adminUserRoute).toContain('transferOwnedWorkspaces')
-    expect(adminUserRoute).toContain('owner_user_id: newOwnerUserId')
-    expect(adminUserRoute).toContain("role: 'owner'")
-    expect(adminUserRoute).toContain(".update({ role: 'agent', status: 'suspended' })")
-  })
-
-  it('archives workspaces and suspends members before soft-deleting the owner', () => {
-    expect(adminUserRoute).toContain('archiveOwnedWorkspaces')
-    expect(adminUserRoute).toContain("confirmation !== 'ARCHIVE DELETE'")
-    expect(adminUserRoute).toContain('archived_at: archivedAt')
-    expect(adminUserRoute).toContain("archive_reason: reason")
-    expect(adminUserRoute).toContain(".update({ status: 'suspended' })")
+  it('requires permanent delete confirmation and deletes the auth user', () => {
+    expect(adminUserRoute).toContain("confirmation !== 'PERMANENT DELETE'")
+    expect(adminUserRoute).toContain('admin.auth.admin.deleteUser(target.user_id)')
+    expect(adminUserRoute).toContain('deleted_user_id: target.user_id')
+    expect(adminUserRoute).not.toContain('transferOwnedWorkspaces')
+    expect(adminUserRoute).not.toContain('archiveOwnedWorkspaces')
   })
 
   it('blocks archived workspaces from server and middleware workspace resolution', () => {
@@ -57,13 +42,12 @@ describe('workspace owner safe delete options', () => {
     expect(middleware).toContain('!workspaceIsArchived(row.workspace)')
   })
 
-  it('shows transfer/archive UI and refreshes after success', () => {
-    expect(adminUsersPage).toContain('OwnerDeleteModal')
-    expect(adminUsersPage).toContain('Transfer ownership')
-    expect(adminUsersPage).toContain('Archive workspace and delete')
-    expect(adminUsersPage).toContain('ARCHIVE DELETE')
+  it('shows permanent delete UI and refreshes after success', () => {
+    expect(adminUsersPage).toContain('PermanentDeleteModal')
+    expect(adminUsersPage).toContain('PERMANENT DELETE')
+    expect(adminUsersPage).toContain('owned_workspaces_count')
+    expect(adminUsersPage).toContain('database cascades')
     expect(adminUsersPage).toContain('await loadUsers()')
     expect(adminUsersPage).toContain('Deleting...')
-    expect(adminUsersPage).toContain('Archiving...')
   })
 })

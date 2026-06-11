@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { DashboardShell } from "../(dashboard)/dashboard-shell";
+import { PlatformAdminShell } from "@/components/admin/platform-admin-shell";
 
 export const metadata: Metadata = {
   robots: {
@@ -15,5 +15,5 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <DashboardShell>{children}</DashboardShell>;
+  return <PlatformAdminShell>{children}</PlatformAdminShell>;
 }

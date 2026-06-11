@@ -4,6 +4,10 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { createClient } from '@/lib/supabase/server'
 
 type AdminUserAccountType = 'platform_admin' | 'workspace_owner' | 'pending_signup' | 'platform_user'
+type AdminUserWithType = ProfileRow & {
+  account_type: AdminUserAccountType
+  owned_workspaces_count: number
+}
 
 interface ProfileRow {
   id: string
@@ -78,7 +82,7 @@ export async function GET(request: Request) {
     )
   }
 
-  let users: Array<ProfileRow & { account_type: AdminUserAccountType }>
+  let users: AdminUserWithType[]
   try {
     users = await filterPlatformAdminUsers((data ?? []) as ProfileRow[])
   } catch (classificationError) {
@@ -148,6 +152,14 @@ async function filterPlatformAdminUsers(profiles: ProfileRow[]) {
       .map((row) => row.owner_user_id)
       .filter((userId): userId is string => Boolean(userId)),
   )
+  const ownedWorkspaceCountByUserId = new Map<string, number>()
+  for (const row of (ownedWorkspaceResult.data ?? []) as Array<{ owner_user_id: string | null }>) {
+    if (!row.owner_user_id) continue
+    ownedWorkspaceCountByUserId.set(
+      row.owner_user_id,
+      (ownedWorkspaceCountByUserId.get(row.owner_user_id) ?? 0) + 1,
+    )
+  }
   const teamMemberOnlyUserIds = new Set(
     ((memberResult.data ?? []) as Array<{ user_id: string | null; role: string | null }>)
       .filter((row) => row.role !== 'owner')
@@ -168,6 +180,7 @@ async function filterPlatformAdminUsers(profiles: ProfileRow[]) {
   return profiles
     .map((profile) => ({
       ...profile,
+      owned_workspaces_count: ownedWorkspaceCountByUserId.get(profile.user_id) ?? 0,
       account_type: classifyAdminUser(profile, {
         workspaceOwnerUserIds,
         teamMemberOnlyUserIds,
@@ -176,7 +189,7 @@ async function filterPlatformAdminUsers(profiles: ProfileRow[]) {
       }),
     }))
     .filter(
-      (profile): profile is ProfileRow & { account_type: AdminUserAccountType } =>
+      (profile): profile is AdminUserWithType =>
         profile.account_type !== null,
     )
 }

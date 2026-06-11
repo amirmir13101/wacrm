@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Loader2,
   ShieldOff,
-  Trash2,
   UserCog,
   type LucideIcon,
 } from "lucide-react";
@@ -38,22 +37,10 @@ interface AdminUser {
   role: UserRole;
   approval_status: ApprovalStatus;
   account_type?: "platform_admin" | "workspace_owner" | "pending_signup" | "platform_user";
+  owned_workspaces_count?: number;
   approved_at: string | null;
   approved_by: string | null;
-  deleted_at?: string | null;
-  delete_reason?: string | null;
   created_at: string;
-}
-
-interface OwnedWorkspaceDeleteOption {
-  id: string;
-  name: string;
-  candidates: Array<{
-    user_id: string;
-    full_name: string | null;
-    email: string | null;
-    role: string;
-  }>;
 }
 
 const statusClass: Record<ApprovalStatus, string> = {
@@ -78,19 +65,16 @@ const accountTypeClass: Record<NonNullable<AdminUser["account_type"]>, string> =
   platform_user: "border-slate-500/40 bg-slate-500/10 text-slate-300",
 };
 
-type UserFilter = "active" | ApprovalStatus;
+type UserFilter = "active" | Exclude<ApprovalStatus, "deleted">;
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<UserFilter>("active");
-  const [ownerDelete, setOwnerDelete] = useState<{
+  const [deleteTarget, setDeleteTarget] = useState<{
     user: AdminUser;
-    workspaces: OwnedWorkspaceDeleteOption[];
-    transfers: Record<string, string>;
-    archiveConfirmation: string;
-    mode: "transfer" | "archive";
+    confirmation: string;
   } | null>(null);
 
   const loadUsers = useCallback(async () => {
@@ -119,7 +103,6 @@ export default function AdminUsersPage() {
       blocked: users.filter((user) =>
         ["rejected", "suspended"].includes(user.approval_status),
       ).length,
-      deleted: users.filter((user) => user.approval_status === "deleted").length,
     }),
     [users],
   );
@@ -149,21 +132,10 @@ export default function AdminUsersPage() {
     }
   };
 
-  const deleteUser = async (
-    user: AdminUser,
-    options?: {
-      action?: "delete" | "transfer_delete" | "archive_delete";
-      transfers?: Array<{ workspace_id: string; new_owner_user_id: string }>;
-      confirmation?: string;
-      deleteReason?: string;
-      skipDeletePrompt?: boolean;
-    },
-  ) => {
-    if (!options?.skipDeletePrompt) {
-      const typed = window.prompt(
-        `Delete ${user.email}?\n\nThey will lose CRM access. Existing CRM history will be kept.\n\nType DELETE to confirm.`,
-      );
-      if (typed !== "DELETE") return;
+  const deleteUser = async (user: AdminUser, confirmation: string) => {
+    if (confirmation !== "PERMANENT DELETE") {
+      toast.error("Type PERMANENT DELETE to confirm.");
+      return;
     }
 
     setSavingId(user.id);
@@ -171,38 +143,14 @@ export default function AdminUsersPage() {
       const res = await fetch(`/api/admin/users/${user.id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: options?.action ?? "delete",
-          transfers: options?.transfers,
-          confirmation: options?.confirmation,
-          delete_reason: options?.deleteReason ?? "Deleted from Admin users page",
-        }),
+        body: JSON.stringify({ confirmation }),
       });
       const body = await res.json();
-      if (!res.ok) {
-        if (res.status === 409 && body.requires_owner_action) {
-          const workspaces = (body.owned_workspaces ?? []) as OwnedWorkspaceDeleteOption[];
-          setOwnerDelete({
-            user,
-            workspaces,
-            transfers: Object.fromEntries(
-              workspaces.map((workspace) => [
-                workspace.id,
-                workspace.candidates[0]?.user_id ?? "",
-              ]),
-            ),
-            archiveConfirmation: "",
-            mode: workspaces.every((workspace) => workspace.candidates.length > 0)
-              ? "transfer"
-              : "archive",
-          });
-          toast.message("This user owns workspace(s). Choose transfer or archive.");
-          return;
-        }
-        throw new Error(body.error ?? "Failed to delete user");
-      }
-      toast.success(options?.action === "archive_delete" ? "Workspace archived and user deleted" : "User deleted safely");
-      setOwnerDelete(null);
+      if (!res.ok) throw new Error(body.error ?? "Failed to delete user");
+
+      toast.success("User permanently deleted");
+      setDeleteTarget(null);
+      setUsers((current) => current.filter((item) => item.id !== user.id));
       await loadUsers();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete user");
@@ -211,70 +159,29 @@ export default function AdminUsersPage() {
     }
   };
 
-  const submitOwnerDelete = async () => {
-    if (!ownerDelete) return;
-    if (ownerDelete.mode === "transfer") {
-      const missing = ownerDelete.workspaces.find(
-        (workspace) => !ownerDelete.transfers[workspace.id],
-      );
-      if (missing) {
-        toast.error(`Choose a new owner for ${missing.name}`);
-        return;
-      }
-      await deleteUser(ownerDelete.user, {
-        action: "transfer_delete",
-        transfers: ownerDelete.workspaces.map((workspace) => ({
-          workspace_id: workspace.id,
-          new_owner_user_id: ownerDelete.transfers[workspace.id],
-        })),
-        deleteReason: "Workspace ownership transferred, then user soft-deleted",
-        skipDeletePrompt: true,
-      });
-      return;
-    }
-
-    if (ownerDelete.archiveConfirmation !== "ARCHIVE DELETE") {
-      toast.error("Type ARCHIVE DELETE to confirm workspace archive.");
-      return;
-    }
-    await deleteUser(ownerDelete.user, {
-      action: "archive_delete",
-      confirmation: ownerDelete.archiveConfirmation,
-      deleteReason: "Workspace archived, then owner soft-deleted",
-      skipDeletePrompt: true,
-    });
-  };
-
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-white">Admin users</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Approve, reject, suspend, or reactivate CRM accounts.
+          Manage platform CRM customers and workspace owners. Team-only invited
+          agents stay inside each workspace Team page.
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-4">
-        <StatCard
-          icon={UserCog}
-          label="Pending approval"
-          value={counts.pending}
-        />
-        <StatCard
-          icon={CheckCircle2}
-          label="Approved users"
-          value={counts.approved}
-        />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard icon={UserCog} label="Pending approval" value={counts.pending} />
+        <StatCard icon={CheckCircle2} label="Approved users" value={counts.approved} />
         <StatCard icon={ShieldOff} label="Blocked users" value={counts.blocked} />
-        <StatCard icon={Trash2} label="Deleted users" value={counts.deleted} />
       </div>
 
       <Card className="border-slate-800 bg-slate-900">
         <CardHeader>
           <CardTitle className="text-white">User access</CardTitle>
           <CardDescription>
-            Only approved users can access CRM pages and protected APIs. Admin
-            users can manage approvals from this page.
+            Suspend for temporary blocking. Delete is permanent and removes the
+            auth account plus related workspace-owned data through database
+            cascades.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -285,7 +192,6 @@ export default function AdminUsersPage() {
               ["approved", "Approved"],
               ["suspended", "Suspended"],
               ["rejected", "Rejected"],
-              ["deleted", "Deleted"],
             ] as Array<[UserFilter, string]>).map(([value, label]) => (
               <Button
                 key={value}
@@ -320,10 +226,9 @@ export default function AdminUsersPage() {
                   <TableHead className="text-slate-300">Account</TableHead>
                   <TableHead className="text-slate-300">Status</TableHead>
                   <TableHead className="text-slate-300">Role</TableHead>
+                  <TableHead className="text-slate-300">Workspaces</TableHead>
                   <TableHead className="text-slate-300">Created</TableHead>
-                  <TableHead className="text-right text-slate-300">
-                    Actions
-                  </TableHead>
+                  <TableHead className="text-right text-slate-300">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -340,9 +245,7 @@ export default function AdminUsersPage() {
                     <TableCell>
                       <Badge
                         variant="outline"
-                        className={
-                          accountTypeClass[user.account_type ?? "platform_user"]
-                        }
+                        className={accountTypeClass[user.account_type ?? "platform_user"]}
                       >
                         {accountTypeLabel[user.account_type ?? "platform_user"]}
                       </Badge>
@@ -358,7 +261,7 @@ export default function AdminUsersPage() {
                     <TableCell>
                       <select
                         value={user.role}
-                        disabled={savingId === user.id || user.approval_status === "deleted"}
+                        disabled={savingId === user.id}
                         onChange={(event) =>
                           void updateUser(user.id, {
                             role: event.target.value as UserRole,
@@ -371,53 +274,33 @@ export default function AdminUsersPage() {
                       </select>
                     </TableCell>
                     <TableCell className="text-sm text-slate-400">
+                      {user.owned_workspaces_count ?? 0}
+                    </TableCell>
+                    <TableCell className="text-sm text-slate-400">
                       {new Date(user.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
                         <ActionButton
                           label="Approve"
-                          disabled={
-                            savingId === user.id ||
-                            user.approval_status === "approved" ||
-                            user.approval_status === "deleted"
-                          }
-                          onClick={() =>
-                            updateUser(user.id, { approval_status: "approved" })
-                          }
+                          disabled={savingId === user.id || user.approval_status === "approved"}
+                          onClick={() => updateUser(user.id, { approval_status: "approved" })}
                         />
                         <ActionButton
                           label="Reject"
-                          disabled={
-                            savingId === user.id ||
-                            user.approval_status === "rejected" ||
-                            user.approval_status === "deleted"
-                          }
-                          onClick={() =>
-                            updateUser(user.id, { approval_status: "rejected" })
-                          }
+                          disabled={savingId === user.id || user.approval_status === "rejected"}
+                          onClick={() => updateUser(user.id, { approval_status: "rejected" })}
                         />
                         <ActionButton
                           label="Suspend"
-                          disabled={
-                            savingId === user.id ||
-                            user.approval_status === "suspended" ||
-                            user.approval_status === "deleted"
-                          }
-                          onClick={() =>
-                            updateUser(user.id, {
-                              approval_status: "suspended",
-                            })
-                          }
+                          disabled={savingId === user.id || user.approval_status === "suspended"}
+                          onClick={() => updateUser(user.id, { approval_status: "suspended" })}
                         />
                         <ActionButton
                           label={savingId === user.id ? "Deleting..." : "Delete"}
                           danger
-                          disabled={
-                            savingId === user.id ||
-                            user.approval_status === "deleted"
-                          }
-                          onClick={() => void deleteUser(user)}
+                          disabled={savingId === user.id}
+                          onClick={() => setDeleteTarget({ user, confirmation: "" })}
                         />
                       </div>
                     </TableCell>
@@ -429,157 +312,70 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      {ownerDelete && (
-        <OwnerDeleteModal
-          state={ownerDelete}
-          saving={savingId === ownerDelete.user.id}
-          onClose={() => setOwnerDelete(null)}
-          onModeChange={(mode) =>
-            setOwnerDelete((current) => (current ? { ...current, mode } : current))
+      {deleteTarget && (
+        <PermanentDeleteModal
+          user={deleteTarget.user}
+          confirmation={deleteTarget.confirmation}
+          saving={savingId === deleteTarget.user.id}
+          onConfirmationChange={(confirmation) =>
+            setDeleteTarget((current) => current ? { ...current, confirmation } : current)
           }
-          onTransferChange={(workspaceId, newOwnerUserId) =>
-            setOwnerDelete((current) =>
-              current
-                ? {
-                    ...current,
-                    transfers: {
-                      ...current.transfers,
-                      [workspaceId]: newOwnerUserId,
-                    },
-                  }
-                : current,
-            )
-          }
-          onArchiveConfirmationChange={(archiveConfirmation) =>
-            setOwnerDelete((current) =>
-              current ? { ...current, archiveConfirmation } : current,
-            )
-          }
-          onSubmit={() => void submitOwnerDelete()}
+          onClose={() => setDeleteTarget(null)}
+          onSubmit={() => void deleteUser(deleteTarget.user, deleteTarget.confirmation)}
         />
       )}
     </div>
   );
 }
 
-function OwnerDeleteModal({
-  state,
+function PermanentDeleteModal({
+  user,
+  confirmation,
   saving,
+  onConfirmationChange,
   onClose,
-  onModeChange,
-  onTransferChange,
-  onArchiveConfirmationChange,
   onSubmit,
 }: {
-  state: {
-    user: AdminUser;
-    workspaces: OwnedWorkspaceDeleteOption[];
-    transfers: Record<string, string>;
-    archiveConfirmation: string;
-    mode: "transfer" | "archive";
-  };
+  user: AdminUser;
+  confirmation: string;
   saving: boolean;
+  onConfirmationChange: (value: string) => void;
   onClose: () => void;
-  onModeChange: (mode: "transfer" | "archive") => void;
-  onTransferChange: (workspaceId: string, newOwnerUserId: string) => void;
-  onArchiveConfirmationChange: (value: string) => void;
   onSubmit: () => void;
 }) {
-  const canTransfer = state.workspaces.every((workspace) => workspace.candidates.length > 0);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
-      <div className="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+      <div className="w-full max-w-xl rounded-xl border border-red-500/40 bg-slate-900 shadow-2xl">
         <div className="border-b border-slate-800 p-5">
-          <h2 className="text-lg font-semibold text-white">
-            This user owns workspace(s)
-          </h2>
+          <h2 className="text-lg font-semibold text-white">Permanently delete user</h2>
           <p className="mt-1 text-sm text-slate-400">
-            Choose how to safely remove {state.user.email}. CRM history will be kept.
+            This removes {user.email} from Supabase Auth and deletes related
+            CRM records through database cascades.
           </p>
         </div>
 
         <div className="space-y-4 p-5">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              disabled={!canTransfer || saving}
-              onClick={() => onModeChange("transfer")}
-              className={`rounded-lg border p-4 text-left ${
-                state.mode === "transfer"
-                  ? "border-violet-500 bg-violet-500/10"
-                  : "border-slate-700 bg-slate-950/50"
-              } disabled:cursor-not-allowed disabled:opacity-50`}
-            >
-              <p className="text-sm font-semibold text-white">Transfer ownership</p>
-              <p className="mt-1 text-xs text-slate-400">
-                Move each workspace to another active member, then delete this user.
-              </p>
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => onModeChange("archive")}
-              className={`rounded-lg border p-4 text-left ${
-                state.mode === "archive"
-                  ? "border-red-500 bg-red-500/10"
-                  : "border-slate-700 bg-slate-950/50"
-              }`}
-            >
-              <p className="text-sm font-semibold text-white">Archive workspace and delete</p>
-              <p className="mt-1 text-xs text-slate-400">
-                Block workspace access, keep all history, and delete the owner.
-              </p>
-            </button>
-          </div>
-
-          {state.mode === "transfer" ? (
-            <div className="space-y-3">
-              {!canTransfer && (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
-                  One or more workspaces has no active member to receive ownership. Use archive instead.
-                </div>
-              )}
-              {state.workspaces.map((workspace) => (
-                <div key={workspace.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-                  <label className="text-sm font-medium text-white">{workspace.name}</label>
-                  <select
-                    value={state.transfers[workspace.id] ?? ""}
-                    disabled={saving || workspace.candidates.length === 0}
-                    onChange={(event) => onTransferChange(workspace.id, event.target.value)}
-                    className="mt-2 h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-2 text-sm text-white"
-                  >
-                    {workspace.candidates.length === 0 ? (
-                      <option value="">No active member available</option>
-                    ) : (
-                      workspace.candidates.map((candidate) => (
-                        <option key={candidate.user_id} value={candidate.user_id}>
-                          {candidate.full_name || candidate.email || candidate.user_id} ({candidate.role})
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-              <p className="text-sm font-medium text-red-100">
-                This will archive {state.workspaces.length} workspace(s), suspend members, and keep all CRM history.
-              </p>
-              <label className="mt-3 block text-xs font-medium text-red-100">
-                Type ARCHIVE DELETE to confirm
-              </label>
-              <input
-                value={state.archiveConfirmation}
-                disabled={saving}
-                onChange={(event) => onArchiveConfirmationChange(event.target.value)}
-                className="mt-2 h-9 w-full rounded-md border border-red-500/40 bg-slate-950 px-3 text-sm text-white"
-              />
+          {Boolean(user.owned_workspaces_count) && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
+              This user owns {user.owned_workspaces_count} workspace
+              {user.owned_workspaces_count === 1 ? "" : "s"}. Deleting this user
+              will also permanently remove workspace-owned CRM data such as
+              contacts, conversations, broadcasts, automations, templates, and
+              pipeline records.
             </div>
           )}
+          <label className="block text-sm font-medium text-slate-200">
+            Type PERMANENT DELETE to confirm
+          </label>
+          <input
+            value={confirmation}
+            disabled={saving}
+            onChange={(event) => onConfirmationChange(event.target.value)}
+            className="h-10 w-full rounded-md border border-red-500/40 bg-slate-950 px-3 text-sm text-white"
+          />
         </div>
 
-        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-800 p-5">
+        <div className="flex justify-end gap-2 border-t border-slate-800 p-5">
           <Button
             type="button"
             variant="outline"
@@ -591,21 +387,11 @@ function OwnerDeleteModal({
           </Button>
           <Button
             type="button"
-            disabled={saving || (state.mode === "transfer" && !canTransfer)}
+            disabled={saving || confirmation !== "PERMANENT DELETE"}
             onClick={onSubmit}
-            className={
-              state.mode === "archive"
-                ? "bg-red-600 text-white hover:bg-red-500"
-                : "bg-violet-600 text-white hover:bg-violet-500"
-            }
+            className="bg-red-600 text-white hover:bg-red-500"
           >
-            {saving
-              ? state.mode === "archive"
-                ? "Archiving..."
-                : "Transferring..."
-              : state.mode === "archive"
-                ? "Archive and delete"
-                : "Transfer and delete"}
+            {saving ? "Deleting..." : "Permanent delete"}
           </Button>
         </div>
       </div>

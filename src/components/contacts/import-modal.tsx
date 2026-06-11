@@ -31,6 +31,8 @@ interface ParsedRow {
   name?: string;
   email?: string;
   company?: string;
+  city?: string;
+  category?: string;
   whatsapp_opt_in?: string;
   opt_in?: string;
   subscribed?: string;
@@ -66,6 +68,8 @@ function parseCSV(text: string): ParsedRow[] {
   const nameIdx = headers.indexOf('name');
   const emailIdx = headers.indexOf('email');
   const companyIdx = headers.indexOf('company');
+  const cityIdx = headers.indexOf('city');
+  const categoryIdx = headers.indexOf('category');
   const optionalHeaders = [
     'whatsapp_opt_in',
     'opt_in',
@@ -110,6 +114,9 @@ function parseCSV(text: string): ParsedRow[] {
       email: emailIdx >= 0 ? values[emailIdx]?.replace(/["']/g, '').trim() || undefined : undefined,
       company:
         companyIdx >= 0 ? values[companyIdx]?.replace(/["']/g, '').trim() || undefined : undefined,
+      city: cityIdx >= 0 ? values[cityIdx]?.replace(/["']/g, '').trim() || undefined : undefined,
+      category:
+        categoryIdx >= 0 ? values[categoryIdx]?.replace(/["']/g, '').trim() || undefined : undefined,
     };
 
     optionalHeaders.forEach((header) => {
@@ -271,6 +278,13 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
         duplicateDetails,
         invalidDetails,
       });
+      void recordAdminImportAudit({
+        campaignName: file?.name || 'Contact import',
+        rows: parsedRows,
+        imported,
+        failed,
+        invalidPhones,
+      });
       if (imported > 0) {
         toast.success(`${imported} contact${imported !== 1 ? 's' : ''} imported`);
         onImported();
@@ -289,6 +303,57 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
       toast.error(message);
     } finally {
       setImporting(false);
+    }
+  }
+
+  async function recordAdminImportAudit({
+    campaignName,
+    rows,
+    imported,
+    failed,
+    invalidPhones,
+  }: {
+    campaignName: string;
+    rows: ParsedRow[];
+    imported: number;
+    failed: number;
+    invalidPhones: number;
+  }) {
+    try {
+      await fetch('/api/contacts/imports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaign_name: campaignName,
+          source: 'contacts_csv',
+          total_count: rows.length,
+          valid_count: imported,
+          invalid_count: failed + invalidPhones,
+          rows: rows.map((row) => {
+            let phone = row.phone;
+            try {
+              phone = normalizeWhatsAppPhone(row.phone).phone;
+            } catch {
+              // Keep the original value for audit visibility.
+            }
+            const consent = parseCsvConsent(row);
+            return {
+              name: row.name ?? null,
+              phone,
+              city: row.city ?? null,
+              category: row.category ?? row.company ?? null,
+              opt_in_status: consent.opted_out_at
+                ? 'opted_out'
+                : consent.whatsapp_opt_in
+                  ? 'opted_in'
+                  : 'not_opted_in',
+              raw_data: row,
+            };
+          }),
+        }),
+      });
+    } catch {
+      // Import success should not be rolled back if platform audit logging fails.
     }
   }
 
