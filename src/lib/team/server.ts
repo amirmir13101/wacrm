@@ -158,12 +158,13 @@ export async function ensureApprovedUserOwnWorkspace(userId: string): Promise<st
   const admin = supabaseAdmin()
   const { data: profile, error: profileError } = await admin
     .from('profiles')
-    .select('user_id, full_name, email, approval_status')
+    .select('user_id, full_name, email, approval_status, account_type')
     .eq('user_id', userId)
     .maybeSingle()
 
   if (profileError) throw new Error(profileError.message)
   if (!profile || profile.approval_status !== 'approved') return null
+  if (profile.account_type === 'team_member') return null
 
   const { data: existingWorkspace, error: workspaceLookupError } = await admin
     .from('workspaces')
@@ -244,7 +245,7 @@ export async function listWorkspaceMembers(
   const { data: profiles } = userIds.length
     ? await admin
         .from('profiles')
-        .select('id, user_id, full_name, email, avatar_url')
+        .select('id, user_id, full_name, email, avatar_url, account_type')
         .in('user_id', userIds)
     : { data: [] }
 
@@ -255,6 +256,7 @@ export async function listWorkspaceMembers(
       full_name: string | null
       email: string | null
       avatar_url?: string | null
+      account_type?: string | null
     }>).map((profile) => [profile.user_id, profile]),
   )
 
@@ -280,6 +282,7 @@ export async function listWorkspaceMembers(
       full_name: profile?.full_name ?? null,
       email: profile?.email ?? null,
       avatar_url: profile?.avatar_url ?? null,
+      account_type: profile?.account_type ?? null,
       open_conversations: conversationCounts.get(row.user_id) ?? 0,
       assigned_deals: profile?.id ? dealCounts.get(profile.id) ?? 0 : 0,
     }

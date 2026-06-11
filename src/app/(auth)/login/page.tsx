@@ -94,7 +94,7 @@ export default function LoginPage() {
     const { data: profile } = user
       ? await supabase
           .from("profiles")
-          .select("role, approval_status")
+          .select("role, approval_status, account_type, must_change_password")
           .eq("user_id", user.id)
           .maybeSingle()
       : { data: null };

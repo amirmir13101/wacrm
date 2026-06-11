@@ -80,7 +80,7 @@ export default async function HomePage() {
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, approval_status")
+      .select("role, approval_status, account_type, must_change_password")
       .eq("user_id", user.id)
       .maybeSingle();
 

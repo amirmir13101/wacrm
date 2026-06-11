@@ -10,6 +10,8 @@ export type ApprovalStatus =
 export interface ApprovalProfile {
   role: string | null;
   approval_status: string | null;
+  account_type?: string | null;
+  must_change_password?: boolean | null;
 }
 
 export function isApproved(profile: ApprovalProfile | null | undefined) {
@@ -32,6 +34,7 @@ export function authenticatedRedirectPath(
 ) {
   const approvalPath = approvalRedirectPath(profile);
   if (approvalPath) return approvalPath;
+  if (profile?.must_change_password) return '/change-password';
   return isAdmin(profile) ? '/admin' : '/dashboard';
 }
 

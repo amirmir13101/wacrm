@@ -9,6 +9,14 @@ import {
 } from '@/lib/team/server'
 import { canManageTeamWithPermissions, defaultPermissionsForRole } from '@/lib/team/permissions'
 
+function passwordValidationError(password: string) {
+  if (password.length < 8) return 'Temporary password must be at least 8 characters.'
+  if (!/[A-Z]/.test(password)) return 'Temporary password needs at least one uppercase letter.'
+  if (!/[a-z]/.test(password)) return 'Temporary password needs at least one lowercase letter.'
+  if (!/[0-9]/.test(password)) return 'Temporary password needs at least one number.'
+  return null
+}
+
 export async function GET() {
   const workspaceResult = await requireCurrentWorkspace()
   if (!workspaceResult.ok) {
@@ -65,6 +73,12 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}))
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+  const temporaryPassword =
+    typeof body.temporary_password === 'string' ? body.temporary_password : ''
+  const confirmTemporaryPassword =
+    typeof body.confirm_temporary_password === 'string'
+      ? body.confirm_temporary_password
+      : ''
   const role = typeof body.role === 'string' ? body.role : 'agent'
   const permissions =
     body.permissions && typeof body.permissions === 'object'
@@ -78,37 +92,82 @@ export async function POST(request: Request) {
   if (!email) {
     return NextResponse.json({ error: 'Email is required' }, { status: 400 })
   }
+  if (!email.includes('@')) {
+    return NextResponse.json({ error: 'A valid email is required' }, { status: 400 })
+  }
+  if (temporaryPassword !== confirmTemporaryPassword) {
+    return NextResponse.json({ error: 'Temporary passwords do not match' }, { status: 400 })
+  }
+  const passwordError = passwordValidationError(temporaryPassword)
+  if (passwordError) {
+    return NextResponse.json({ error: passwordError }, { status: 400 })
+  }
   if (!['admin', 'manager', 'agent'].includes(role)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
   }
 
   const admin = supabaseAdmin()
-  const { data: profile, error: profileError } = await admin
+  const { data: existingProfile, error: profileError } = await admin
     .from('profiles')
-    .select('user_id, approval_status')
+    .select('user_id, approval_status, account_type')
     .ilike('email', email)
     .maybeSingle()
 
   if (profileError) {
     return NextResponse.json({ error: profileError.message }, { status: 500 })
   }
-  if (!profile) {
+  if (existingProfile) {
     return NextResponse.json(
-      { error: 'No approved CRM user found with that email.' },
-      { status: 404 },
+      { error: 'An account already exists with this email. Delete it first or use a different email.' },
+      { status: 409 },
     )
   }
-  if (profile.approval_status !== 'approved') {
+
+  const { data: createdUser, error: createUserError } = await admin.auth.admin.createUser({
+    email,
+    password: temporaryPassword,
+    email_confirm: true,
+    user_metadata: {
+      full_name: email.split('@')[0],
+      account_type: 'team_member',
+    },
+  })
+
+  if (createUserError || !createdUser.user) {
     return NextResponse.json(
-      { error: 'User must be approved before joining a workspace.' },
+      { error: createUserError?.message ?? 'Failed to create team member account' },
       { status: 400 },
     )
+  }
+
+  const userId = createdUser.user.id
+  const now = new Date().toISOString()
+
+  const { error: profileUpsertError } = await admin.from('profiles').upsert(
+    {
+      user_id: userId,
+      full_name: email.split('@')[0],
+      email,
+      role: 'user',
+      approval_status: 'approved',
+      account_type: 'team_member',
+      must_change_password: true,
+      temporary_password_set_at: now,
+      active_workspace_id: workspaceResult.workspace.workspaceId,
+      updated_at: now,
+    },
+    { onConflict: 'user_id' },
+  )
+
+  if (profileUpsertError) {
+    await admin.auth.admin.deleteUser(userId)
+    return NextResponse.json({ error: profileUpsertError.message }, { status: 500 })
   }
 
   const { error } = await admin.from('workspace_members').upsert(
     {
       workspace_id: workspaceResult.workspace.workspaceId,
-      user_id: profile.user_id,
+      user_id: userId,
       role,
       status: 'active',
       permissions,
@@ -122,17 +181,23 @@ export async function POST(request: Request) {
   )
 
   if (error) {
+    await admin.auth.admin.deleteUser(userId)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   await admin.from('agent_status').upsert(
     {
       workspace_id: workspaceResult.workspace.workspaceId,
-      user_id: profile.user_id,
+      user_id: userId,
       availability: 'online',
     },
     { onConflict: 'workspace_id,user_id' },
   )
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({
+    success: true,
+    login_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/login`,
+    email,
+    temporary_password: temporaryPassword,
+  })
 }

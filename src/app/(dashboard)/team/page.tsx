@@ -6,8 +6,7 @@ import {
   AlertTriangle,
   Briefcase,
   ChevronDown,
-  Copy,
-  Mail,
+  KeyRound,
   MessageSquare,
   ShieldCheck,
   Sparkles,
@@ -72,7 +71,14 @@ export default function TeamPage() {
     defaultPermissionsForRole("agent"),
   );
   const [newCanConnectOwnWhatsapp, setNewCanConnectOwnWhatsapp] = useState(false);
-  const [latestInviteLink, setLatestInviteLink] = useState<string | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [confirmTemporaryPassword, setConfirmTemporaryPassword] = useState("");
+  const [creatingMember, setCreatingMember] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<{
+    login_url: string;
+    email: string;
+    temporary_password: string;
+  } | null>(null);
 
   async function loadTeam() {
     setLoading(true);
@@ -109,28 +115,41 @@ export default function TeamPage() {
     };
   }, []);
 
-  async function createInvite() {
-    const res = await fetch("/api/team/invitations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email,
-        role,
-        permissions: newMemberPermissions,
-        can_connect_own_whatsapp: newCanConnectOwnWhatsapp,
-      }),
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      toast.error(payload?.error ?? "Failed to create invitation");
-      return;
+  async function createTeamMember() {
+    setCreatingMember(true);
+    setCreatedCredentials(null);
+    try {
+      const res = await fetch("/api/team/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          temporary_password: temporaryPassword,
+          confirm_temporary_password: confirmTemporaryPassword,
+          role,
+          permissions: newMemberPermissions,
+          can_connect_own_whatsapp: newCanConnectOwnWhatsapp,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error ?? "Failed to create team member");
+      toast.success("Team member created");
+      setCreatedCredentials({
+        login_url: payload.login_url ?? `${window.location.origin}/login`,
+        email: payload.email ?? email,
+        temporary_password: payload.temporary_password ?? temporaryPassword,
+      });
+      setEmail("");
+      setTemporaryPassword("");
+      setConfirmTemporaryPassword("");
+      setNewMemberPermissions(defaultPermissionsForRole(role));
+      setNewCanConnectOwnWhatsapp(false);
+      await loadTeam();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create team member");
+    } finally {
+      setCreatingMember(false);
     }
-    toast.success("Invitation created");
-    setLatestInviteLink(payload?.invitation?.invite_url ?? null);
-    setEmail("");
-    setNewMemberPermissions(defaultPermissionsForRole(role));
-    setNewCanConnectOwnWhatsapp(false);
-    await loadTeam();
   }
 
   async function revokeInvite(id: string) {
@@ -174,7 +193,7 @@ export default function TeamPage() {
 
   async function copyText(text: string) {
     await navigator.clipboard.writeText(text);
-    toast.success("Invite link copied");
+    toast.success("Copied");
   }
 
   async function updateMember(id: string, update: Record<string, unknown>) {
@@ -187,6 +206,21 @@ export default function TeamPage() {
     if (!res.ok) {
       throw new Error(payload?.error ?? "Failed to update member");
     }
+    await loadTeam();
+  }
+
+  async function deleteMember(member: WorkspaceMemberOption) {
+    const confirmed = window.confirm(
+      "This will permanently delete this team member account and remove their workspace access.",
+    );
+    if (!confirmed) return;
+    const res = await fetch(`/api/team/members/${member.id}`, { method: "DELETE" });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(payload?.error ?? "Failed to delete team member");
+      return;
+    }
+    toast.success("Team member deleted");
     await loadTeam();
   }
 
@@ -235,19 +269,33 @@ export default function TeamPage() {
       {data?.can_manage_team && (
         <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div className="flex items-start gap-2">
-            <Mail className="mt-0.5 size-4 text-violet-300" />
+            <KeyRound className="mt-0.5 size-4 text-violet-300" />
             <div>
-              <h2 className="text-sm font-semibold text-white">Invite team member</h2>
+              <h2 className="text-sm font-semibold text-white">Add Team Member</h2>
               <p className="mt-1 text-xs text-slate-500">
-                Send this link manually. The agent must login or sign up with the invited email.
+                Create an agent login for this workspace. The agent must change the temporary password on first login.
               </p>
             </div>
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_160px_auto]">
+          <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_180px_180px_160px_auto]">
             <Input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="approved-user@example.com"
+              placeholder="agent@example.com"
+              className="border-slate-700 bg-slate-800 text-white"
+            />
+            <Input
+              type="password"
+              value={temporaryPassword}
+              onChange={(e) => setTemporaryPassword(e.target.value)}
+              placeholder="Temporary password"
+              className="border-slate-700 bg-slate-800 text-white"
+            />
+            <Input
+              type="password"
+              value={confirmTemporaryPassword}
+              onChange={(e) => setConfirmTemporaryPassword(e.target.value)}
+              placeholder="Confirm password"
               className="border-slate-700 bg-slate-800 text-white"
             />
             <select
@@ -262,34 +310,27 @@ export default function TeamPage() {
               <option value="manager">Manager</option>
               <option value="admin">Admin</option>
             </select>
-            <Button onClick={createInvite} disabled={!email.trim()} className="bg-violet-600 text-white hover:bg-violet-700">
-              Invite
+            <Button
+              onClick={createTeamMember}
+              disabled={creatingMember || !email.trim() || !temporaryPassword || !confirmTemporaryPassword}
+              className="bg-violet-600 text-white hover:bg-violet-700"
+            >
+              {creatingMember ? "Creating..." : "Create Team Member"}
             </Button>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Email sending is not configured yet, so copy the invite link and send it yourself.
+            The temporary password is shown only once. Share it securely; it is not stored in plain text.
           </p>
-          {latestInviteLink && (
-            <div className="mt-3 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
-              <p className="text-xs font-medium text-violet-100">Invite link ready</p>
-              <p className="mt-1 text-xs text-violet-100/80">
-                Copy this link now. For security, it cannot be shown again after you leave this page.
+          {createdCredentials && (
+            <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+              <p className="text-xs font-medium text-emerald-100">Team member created</p>
+              <p className="mt-1 text-xs text-emerald-100/80">
+                Share these login details securely. The password will not be shown again.
               </p>
-              <div className="mt-2 flex gap-2">
-                <Input
-                  readOnly
-                  value={latestInviteLink}
-                  className="border-slate-700 bg-slate-950 text-xs text-slate-200"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => copyText(latestInviteLink)}
-                  className="border-slate-700 text-slate-200 hover:bg-slate-800"
-                >
-                  <Copy className="mr-2 size-4" />
-                  Copy
-                </Button>
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                <CredentialBox label="Login URL" value={createdCredentials.login_url} onCopy={copyText} />
+                <CredentialBox label="Email" value={createdCredentials.email} onCopy={copyText} />
+                <CredentialBox label="Temporary password" value={createdCredentials.temporary_password} onCopy={copyText} secret />
               </div>
             </div>
           )}
@@ -323,6 +364,7 @@ export default function TeamPage() {
                 currentUserId={data.current_user_id}
                 canManageTeam={data.can_manage_team}
                 onSave={async (update) => updateMember(member.id, update)}
+                onDelete={() => deleteMember(member)}
               />
             ))}
           </div>
@@ -332,9 +374,9 @@ export default function TeamPage() {
       {data?.can_manage_team && (
         <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
           <div className="border-b border-slate-800 px-4 py-3">
-            <h2 className="text-sm font-semibold text-white">Pending invitations</h2>
+            <h2 className="text-sm font-semibold text-white">Legacy pending invitations</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Invite links are only shown when created. Revoke an old invite and create a new one to generate a fresh link.
+              Legacy invite links are kept for backward compatibility. New agents should be created with Add Team Member.
             </p>
           </div>
           {pendingInvites.length ? (
@@ -350,7 +392,7 @@ export default function TeamPage() {
               ))}
             </div>
           ) : (
-            <div className="px-4 py-5 text-sm text-slate-500">No pending invitations.</div>
+            <div className="px-4 py-5 text-sm text-slate-500">No legacy pending invitations.</div>
           )}
         </div>
       )}
@@ -376,6 +418,38 @@ export default function TeamPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function CredentialBox({
+  label,
+  value,
+  secret,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  secret?: boolean;
+  onCopy: (text: string) => Promise<void>;
+}) {
+  return (
+    <div className="rounded-lg border border-emerald-500/20 bg-slate-950/50 p-3">
+      <p className="text-[11px] font-medium uppercase text-emerald-100/70">{label}</p>
+      <div className="mt-2 flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate text-xs text-white">
+          {secret ? value : value}
+        </code>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onCopy(value)}
+          className="border-slate-700 text-slate-200 hover:bg-slate-800"
+        >
+          Copy
+        </Button>
+      </div>
     </div>
   );
 }
@@ -462,11 +536,13 @@ function MemberCard({
   currentUserId,
   canManageTeam,
   onSave,
+  onDelete,
 }: {
   member: WorkspaceMemberOption;
   currentUserId: string;
   canManageTeam: boolean;
   onSave: (update: Record<string, unknown>) => Promise<void>;
+  onDelete: () => Promise<void>;
 }) {
   const savedPermissions = useMemo(
     () =>
@@ -483,6 +559,7 @@ function MemberCard({
   const [draftOwnWhatsapp, setDraftOwnWhatsapp] = useState(Boolean(member.can_connect_own_whatsapp));
   const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setDraftRole(member.role);
@@ -520,6 +597,7 @@ function MemberCard({
   const summary = permissionSummary(editorPermissions);
   const enabledPermissions = Object.values(editorPermissions).filter(Boolean).length;
   const canEdit = canManageTeam && member.role !== "owner";
+  const canDeleteMember = canEdit && member.account_type === "team_member";
 
   function resetDraft() {
     setDraftRole(member.role);
@@ -542,6 +620,15 @@ function MemberCard({
       toast.error(error instanceof Error ? error.message : "Failed to update permissions");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deleteDraftMember() {
+    setDeleting(true);
+    try {
+      await onDelete();
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -687,12 +774,22 @@ function MemberCard({
               </Button>
               <Button
                 type="button"
-                disabled={!hasChanges || saving}
+                disabled={!hasChanges || saving || deleting}
                 onClick={saveDraft}
                 className="bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-60"
               >
                 {saving ? "Saving..." : "Save changes"}
               </Button>
+              {canDeleteMember && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={deleting}
+                  onClick={() => void deleteDraftMember()}
+                >
+                  {deleting ? "Deleting..." : "Delete member"}
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -1144,3 +1241,6 @@ function MetricCard({
     </div>
   );
 }
+
+
+

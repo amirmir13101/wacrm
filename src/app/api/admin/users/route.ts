@@ -21,6 +21,7 @@ interface ProfileRow {
   deleted_at?: string | null
   deleted_by?: string | null
   delete_reason?: string | null
+  account_type?: string | null
   created_at: string
   updated_at: string
 }
@@ -63,7 +64,7 @@ export async function GET(request: Request) {
   let query = admin
     .from('profiles')
     .select(
-      'id, user_id, full_name, email, role, approval_status, approved_at, approved_by, deleted_at, deleted_by, delete_reason, created_at, updated_at',
+      'id, user_id, full_name, email, role, approval_status, approved_at, approved_by, deleted_at, deleted_by, delete_reason, account_type, created_at, updated_at',
     )
     .order('created_at', { ascending: false })
 
@@ -204,6 +205,7 @@ function classifyAdminUser(
   },
 ): AdminUserAccountType | null {
   if (profile.role === 'admin') return 'platform_admin'
+  if (profile.account_type === 'team_member') return null
   if (context.workspaceOwnerUserIds.has(profile.user_id)) return 'workspace_owner'
 
   const email = profile.email?.trim().toLowerCase() ?? ''

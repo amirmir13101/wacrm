@@ -19,6 +19,7 @@ export interface WorkspaceMemberOption {
   full_name: string | null
   email: string | null
   avatar_url?: string | null
+  account_type?: string | null
   open_conversations?: number
   assigned_deals?: number
 }

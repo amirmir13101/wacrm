@@ -79,6 +79,20 @@ export default function SignupPage() {
 
     setLoading(true);
 
+    if (!inviteActive) {
+      const check = await fetch("/api/auth/signup-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const checkBody = await check.json().catch(() => ({}));
+      if (!check.ok) {
+        setError(checkBody?.error ?? "Unable to create account with this email.");
+        setLoading(false);
+        return;
+      }
+    }
+
     const { error } = await supabase.auth.signUp({
       email,
       password,

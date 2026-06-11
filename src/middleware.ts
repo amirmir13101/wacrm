@@ -48,7 +48,7 @@ export async function middleware(request: NextRequest) {
   if (user) {
     const { data } = await supabase
       .from('profiles')
-      .select('role, approval_status, active_workspace_id')
+      .select('role, approval_status, active_workspace_id, account_type, must_change_password')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -120,7 +120,13 @@ export async function middleware(request: NextRequest) {
 
   // Protected pages - redirect to login if not authenticated
   const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings', '/team', '/admin']
-  if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
+  if (
+    !user &&
+    (
+      protectedPaths.some(path => request.nextUrl.pathname.startsWith(path)) ||
+      request.nextUrl.pathname === '/change-password'
+    )
+  ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
@@ -133,6 +139,23 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && request.nextUrl.pathname === '/pending-approval' && !approvalRedirectPath(profile)) {
+    const url = request.nextUrl.clone()
+    url.pathname = authenticatedRedirectPath(profile)
+    return NextResponse.redirect(url)
+  }
+
+  if (
+    user &&
+    profile?.must_change_password &&
+    request.nextUrl.pathname !== '/change-password' &&
+    protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
+  ) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/change-password'
+    return NextResponse.redirect(url)
+  }
+
+  if (user && !profile?.must_change_password && request.nextUrl.pathname === '/change-password') {
     const url = request.nextUrl.clone()
     url.pathname = authenticatedRedirectPath(profile)
     return NextResponse.redirect(url)
@@ -195,7 +218,8 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/api/team') ||
     request.nextUrl.pathname.startsWith('/api/contacts') ||
     request.nextUrl.pathname.startsWith('/api/pricing') ||
-    request.nextUrl.pathname.startsWith('/api/admin')
+    request.nextUrl.pathname.startsWith('/api/admin') ||
+    request.nextUrl.pathname.startsWith('/api/auth/change-password')
 
   if (!user && approvalProtectedApi) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -204,6 +228,18 @@ export async function middleware(request: NextRequest) {
   if (user && approvalProtectedApi && approvalRedirectPath(profile)) {
     return NextResponse.json(
       { error: 'Account approval required' },
+      { status: 403 }
+    )
+  }
+
+  if (
+    user &&
+    approvalProtectedApi &&
+    profile?.must_change_password &&
+    request.nextUrl.pathname !== '/api/auth/change-password'
+  ) {
+    return NextResponse.json(
+      { error: 'Password change required' },
       { status: 403 }
     )
   }
