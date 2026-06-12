@@ -6,6 +6,7 @@ const footerGroups = [
     heading: "Product",
     links: [
       ["Features", "/features"],
+      ["Pricing", "/pricing"],
       ["Team Inbox", "/features#team-inbox"],
       ["Contacts", "/features#contacts"],
       ["Broadcasts", "/features#broadcasts"],
@@ -17,7 +18,7 @@ const footerGroups = [
     heading: "Company",
     links: [
       ["About", "/features#overview"],
-      ["Pricing", "/#pricing"],
+      ["Pricing", "/pricing"],
       ["FAQ", "/features#faq"],
       ["Contact", "#footer"],
     ],

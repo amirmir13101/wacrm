@@ -5,18 +5,19 @@ import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
+  { label: "Home", href: "/" },
   { label: "Features", href: "/features" },
   { label: "Team Inbox", href: "/features#team-inbox" },
   { label: "Automation", href: "/features#automation" },
   { label: "Broadcasts", href: "/features#broadcasts" },
-  { label: "Pricing", href: "/#pricing" },
+  { label: "Pricing", href: "/pricing" },
   { label: "FAQ", href: "/features#faq" },
 ] as const;
 
 const trustItems = ["Team Inbox", "Automation", "Broadcasts", "Secure Workspaces"];
 
 interface PublicHeaderProps {
-  readonly active?: "home" | "features";
+  readonly active?: "home" | "features" | "pricing";
 }
 
 export function PublicHeader({ active }: PublicHeaderProps) {
@@ -63,8 +64,9 @@ export function PublicHeader({ active }: PublicHeaderProps) {
               <div className="flex items-center justify-center gap-1 rounded-full bg-[#f4fff9] px-2 py-2 ring-1 ring-[#dce9e2] xl:gap-2">
                 {navItems.map((item) => {
                   const isActive =
+                    (active === "home" && item.href === "/") ||
                     (active === "features" && item.href === "/features") ||
-                    (active === "home" && item.href === "/#pricing");
+                    (active === "pricing" && item.href === "/pricing");
 
                   return (
                     <Link

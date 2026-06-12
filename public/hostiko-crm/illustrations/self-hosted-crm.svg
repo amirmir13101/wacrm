@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="520" viewBox="0 0 760 520" role="img" aria-labelledby="title desc">
+  <title id="title">Self-hosted branded WhatsApp CRM setup</title>
+  <desc id="desc">A server, domain, company branding and CRM dashboard connected for a self-hosted Talk Wagon setup.</desc>
+  <rect width="760" height="520" rx="36" fill="#07130e"/>
+  <circle cx="622" cy="92" r="112" fill="#3ddf84" opacity=".2"/>
+  <circle cx="142" cy="430" r="104" fill="#ffbd29" opacity=".18"/>
+  <rect x="78" y="76" width="604" height="366" rx="32" fill="#ffffff"/>
+  <rect x="118" y="132" width="180" height="258" rx="26" fill="#1b372b"/>
+  <rect x="144" y="166" width="128" height="30" rx="15" fill="#3ddf84"/>
+  <rect x="144" y="224" width="128" height="30" rx="15" fill="#ffffff" opacity=".16"/>
+  <rect x="144" y="282" width="128" height="30" rx="15" fill="#ffffff" opacity=".16"/>
+  <rect x="344" y="128" width="258" height="78" rx="24" fill="#f4fff9" stroke="#dbe9e2" stroke-width="2"/>
+  <circle cx="386" cy="167" r="20" fill="#ffbd29"/>
+  <rect x="424" y="152" width="112" height="13" rx="6.5" fill="#07130e"/>
+  <rect x="424" y="176" width="80" height="9" rx="4.5" fill="#5b7169"/>
+  <rect x="344" y="236" width="258" height="78" rx="24" fill="#f4fff9" stroke="#dbe9e2" stroke-width="2"/>
+  <circle cx="386" cy="275" r="20" fill="#3ddf84"/>
+  <rect x="424" y="260" width="134" height="13" rx="6.5" fill="#07130e"/>
+  <rect x="424" y="284" width="92" height="9" rx="4.5" fill="#5b7169"/>
+  <rect x="344" y="344" width="258" height="46" rx="23" fill="#ffbd29"/>
+  <path d="M620 332c0-53-42-96-96-96" stroke="#3ddf84" stroke-width="14" stroke-linecap="round" fill="none"/>
+  <path d="m530 216-12 23 25-4" fill="none" stroke="#3ddf84" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

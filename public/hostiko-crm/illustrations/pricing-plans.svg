@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="700" viewBox="0 0 960 700" role="img" aria-labelledby="title desc">
+  <title id="title">Talk Wagon WhatsApp CRM pricing plans</title>
+  <desc id="desc">Three Talk Wagon pricing plan cards for Free, Pro and Lifetime WhatsApp CRM options.</desc>
+  <rect width="960" height="700" rx="44" fill="#07130e"/>
+  <circle cx="760" cy="132" r="152" fill="#3ddf84" opacity=".18"/>
+  <circle cx="152" cy="562" r="126" fill="#ffbd29" opacity=".18"/>
+  <rect x="82" y="78" width="796" height="544" rx="36" fill="#ffffff"/>
+  <rect x="82" y="78" width="796" height="88" rx="36" fill="#1b372b"/>
+  <circle cx="136" cy="122" r="20" fill="#3ddf84"/>
+  <rect x="178" y="106" width="206" height="15" rx="7.5" fill="#d8fff1"/>
+  <rect x="178" y="132" width="138" height="10" rx="5" fill="#7fb9a9"/>
+  <rect x="664" y="105" width="142" height="36" rx="18" fill="#ffbd29"/>
+  <rect x="132" y="214" width="210" height="318" rx="28" fill="#f4fff9" stroke="#dbe9e2" stroke-width="2"/>
+  <rect x="374" y="186" width="212" height="374" rx="28" fill="#1b372b"/>
+  <rect x="618" y="214" width="210" height="318" rx="28" fill="#f4fff9" stroke="#dbe9e2" stroke-width="2"/>
+  <rect x="414" y="216" width="132" height="28" rx="14" fill="#ffbd29"/>
+  <rect x="174" y="256" width="72" height="16" rx="8" fill="#07130e"/>
+  <rect x="174" y="298" width="96" height="40" rx="20" fill="#3ddf84"/>
+  <rect x="174" y="374" width="124" height="12" rx="6" fill="#7fb9a9"/>
+  <rect x="174" y="404" width="104" height="12" rx="6" fill="#7fb9a9"/>
+  <rect x="174" y="434" width="134" height="12" rx="6" fill="#7fb9a9"/>
+  <rect x="416" y="270" width="70" height="16" rx="8" fill="#ffffff"/>
+  <rect x="416" y="312" width="118" height="42" rx="21" fill="#3ddf84"/>
+  <rect x="416" y="388" width="126" height="12" rx="6" fill="#d8fff1"/>
+  <rect x="416" y="418" width="110" height="12" rx="6" fill="#d8fff1"/>
+  <rect x="416" y="448" width="138" height="12" rx="6" fill="#d8fff1"/>
+  <rect x="660" y="256" width="112" height="16" rx="8" fill="#07130e"/>
+  <rect x="660" y="298" width="120" height="40" rx="20" fill="#ffbd29"/>
+  <rect x="660" y="374" width="124" height="12" rx="6" fill="#7fb9a9"/>
+  <rect x="660" y="404" width="100" height="12" rx="6" fill="#7fb9a9"/>
+  <rect x="660" y="434" width="136" height="12" rx="6" fill="#7fb9a9"/>
+  <path d="M480 98c9-22 29-28 29-28s-1 21-20 32l-6 15-10-11-15 5 11-15 11 2Z" fill="#3ddf84"/>
+  <path d="m472 111 9-9 10 10-9 9-10-10Z" fill="#ffffff"/>
+</svg>
