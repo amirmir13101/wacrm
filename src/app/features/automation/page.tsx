@@ -21,6 +21,7 @@ import {
 
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
+import { HeroBadgeRow } from "@/components/marketing/hero-badge-row";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/features/automation`;
@@ -339,16 +340,7 @@ export default function AutomationFeaturePage() {
                 View All Features
               </Link>
             </div>
-            <div className="mt-8 flex flex-wrap justify-center gap-2 lg:justify-start">
-              {trustPills.map((pill) => (
-                <span
-                  key={pill}
-                  className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-bold text-[#d8fff1]"
-                >
-                  {pill}
-                </span>
-              ))}
-            </div>
+            <HeroBadgeRow items={trustPills} />
           </div>
 
           <div className="rounded-[34px] border border-white/10 bg-white/8 p-4 shadow-[0_32px_95px_rgba(0,0,0,0.35)] backdrop-blur">

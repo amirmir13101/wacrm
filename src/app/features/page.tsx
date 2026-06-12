@@ -23,6 +23,7 @@ import {
 
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
+import { HeroBadgeRow } from "@/components/marketing/hero-badge-row";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/features`;
@@ -309,16 +310,7 @@ export default function FeaturesPage() {
                 Login
               </Link>
             </div>
-            <div className="mt-8 flex flex-wrap justify-center gap-2 lg:justify-start">
-              {heroPills.map((pill) => (
-                <span
-                  key={pill}
-                  className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-bold text-[#d8fff1]"
-                >
-                  {pill}
-                </span>
-              ))}
-            </div>
+            <HeroBadgeRow items={heroPills} />
           </div>
 
           <div className="relative">
