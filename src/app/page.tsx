@@ -21,7 +21,8 @@ import {
   Users,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { PublicFooter } from "@/components/marketing/public-footer";
+import { PublicHeader } from "@/components/marketing/public-header";
 import { authenticatedRedirectPath } from "@/lib/auth/approval";
 import { createClient } from "@/lib/supabase/server";
 
@@ -40,7 +41,7 @@ export const metadata: Metadata = {
     description:
       "Organize WhatsApp conversations, manage contacts, assign team agents, send broadcasts, automate follow-ups, and track sales pipelines from one CRM platform.",
     url: canonicalUrl,
-    siteName: "WACRM",
+    siteName: "Talk Wagon",
     type: "website",
     images: [
       {
@@ -63,17 +64,6 @@ export const metadata: Metadata = {
     follow: true,
   },
 };
-
-const navItems = [
-  { label: "Features", href: "#features" },
-  { label: "Team Inbox", href: "#team-inbox" },
-  { label: "Automation", href: "#automation" },
-  { label: "Broadcasts", href: "#broadcasts" },
-  { label: "Pricing", href: "#pricing" },
-  { label: "FAQ", href: "#faq" },
-];
-
-const trustItems = ["Team Inbox", "Automation", "Broadcasts", "Secure Workspaces"];
 
 const workflowPills = [
   { label: "Team Inbox", icon: MessageSquareText },
@@ -205,7 +195,7 @@ const faqs = [
 const softwareSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "WACRM",
+  name: "Talk Wagon",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   url: canonicalUrl,
@@ -258,64 +248,7 @@ export default async function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
 
-      <header className="relative z-30">
-        <div className="bg-[#0d1b15] text-white">
-          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-3 text-xs sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
-            <p className="text-center text-[#d8fff1] lg:text-left">
-              Production-ready WhatsApp CRM for sales, support, broadcasts, and AI automation.
-            </p>
-            <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-white/85 lg:justify-end">
-              {trustItems.map((item) => (
-                <li key={item} className="inline-flex items-center gap-2">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-[#3ddf84]" aria-hidden="true" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        <nav className="bg-white shadow-[0_12px_35px_rgba(7,19,14,0.08)]">
-          <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-5 sm:px-8 lg:px-10">
-            <div className="flex items-center justify-between gap-5">
-              <Link href="/" className="flex items-center gap-3" aria-label="WACRM home">
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
-                  <MessageSquareText className="h-6 w-6" aria-hidden="true" />
-                </span>
-                <span className="text-2xl font-extrabold tracking-normal text-[#07130e]">
-                  WACRM
-                </span>
-              </Link>
-
-              <div className="hidden items-center gap-4 sm:flex">
-                <Link
-                  href="/login"
-                  className="inline-flex h-11 items-center rounded-full px-4 text-sm font-bold text-[#07130e] hover:bg-[#f4fff9]"
-                >
-                  Login
-                </Link>
-                <Link href="/signup">
-                  <Button className="h-11 rounded-full bg-[#181818] px-6 font-bold text-white hover:bg-[#ffbd29] hover:text-[#07130e]">
-                    Start For Free
-                  </Button>
-                </Link>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-bold uppercase text-[#07130e] sm:text-sm xl:gap-5">
-              {navItems.map((item) => (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  className="rounded-full px-3 py-2 hover:bg-[#eafff3] hover:text-[#08bba4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
-                >
-                  {item.label}
-                </a>
-              ))}
-            </div>
-          </div>
-        </nav>
-      </header>
+      <PublicHeader active="home" />
 
       <section className="relative isolate overflow-hidden bg-[#07130e] text-white">
         <div
@@ -744,41 +677,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <footer id="footer" className="bg-[#0d1b15] px-5 py-16 text-white sm:px-8 lg:px-10">
-        <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-2 lg:grid-cols-6">
-          <div>
-            <Link href="/" className="inline-flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
-                <MessageSquareText className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <span className="text-lg font-extrabold text-white">WACRM</span>
-            </Link>
-            <p className="mt-4 text-sm leading-7 text-[#7fb9a9]">
-              Copyright 2026 WACRM. Secure customer communication for WhatsApp teams.
-            </p>
-          </div>
-          {[
-            ["Product", [["Features", "#features"], ["Team Inbox", "#team-inbox"], ["Contacts", "#features"], ["Broadcasts", "#broadcasts"], ["Automation", "#automation"], ["Pipeline", "#pipeline"]]],
-            ["Company", [["About", "#features"], ["Pricing", "#pricing"], ["FAQ", "#faq"], ["Contact", "#footer"]]],
-            ["Resources", [["WhatsApp CRM", "#features"], ["WhatsApp Automation", "#automation"], ["AI CRM Automation", "#automation"], ["Sales CRM", "#pipeline"]]],
-            ["Account", [["Login", "/login"], ["Start For Free", "/signup"], ["Password Help", "/forgot-password"]]],
-            ["Legal", [["Privacy Policy", "#footer"], ["Terms of Service", "#footer"], ["Security", "#features"]]],
-          ].map(([heading, links]) => (
-            <div key={heading as string}>
-              <h3 className="font-extrabold text-white">{heading as string}</h3>
-              <ul className="mt-4 space-y-3 text-sm text-[#7fb9a9]">
-                {(links as string[][]).map(([label, href]) => (
-                  <li key={label}>
-                    <Link href={href} className="hover:text-[#3ddf84]">
-                      {label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </footer>
+      <PublicFooter />
     </main>
   );
 }

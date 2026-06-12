@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">Talk Wagon CRM logo with a wagon and rocket</title>
+  <desc id="desc">A green wagon carrying chat bubbles with a small yellow rocket rising above it.</desc>
+  <rect width="160" height="160" rx="38" fill="#07130e"/>
+  <circle cx="119" cy="34" r="17" fill="#ffbd29"/>
+  <path d="M104 54c10-24 31-30 31-30s-1 22-22 34l-6 17-12-12-16 5 12-16 13 2Z" fill="#3ddf84"/>
+  <path d="m93 67 10-10 11 11-10 10-11-11Z" fill="#ffffff"/>
+  <path d="M32 71h77c9 0 16 7 16 16v15H45c-7 0-13-5-15-12l-7-27h14l-5 8Z" fill="#3ddf84"/>
+  <path d="M45 88h19c6 0 11-5 11-11V60c0-6-5-11-11-11H45c-6 0-11 5-11 11v17c0 6 5 11 11 11Z" fill="#ffffff"/>
+  <path d="M49 61h22v7H49v-7Zm0 13h15v7H49v-7Z" fill="#07130e"/>
+  <path d="M84 86h25" stroke="#07130e" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="49" cy="115" r="14" fill="#ffbd29"/>
+  <circle cx="104" cy="115" r="14" fill="#ffbd29"/>
+  <circle cx="49" cy="115" r="6" fill="#07130e"/>
+  <circle cx="104" cy="115" r="6" fill="#07130e"/>
+  <path d="M26 102h105" stroke="#ffffff" stroke-width="7" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="520" viewBox="0 0 760 520" role="img" aria-labelledby="title desc">
+  <title id="title">Workspace permissions and team agents</title>
+  <desc id="desc">A secure workspace owner managing agents, permissions, dashboards and WhatsApp connection controls.</desc>
+  <rect width="760" height="520" rx="36" fill="#07130e"/>
+  <circle cx="620" cy="92" r="110" fill="#3ddf84" opacity=".2"/>
+  <circle cx="138" cy="428" r="102" fill="#ffbd29" opacity=".18"/>
+  <rect x="72" y="70" width="616" height="380" rx="30" fill="#ffffff"/>
+  <rect x="72" y="70" width="196" height="380" rx="30" fill="#1b372b"/>
+  <circle cx="134" cy="130" r="28" fill="#3ddf84"/>
+  <rect x="180" y="116" width="54" height="12" rx="6" fill="#d8fff1"/>
+  <rect x="180" y="139" width="70" height="9" rx="4.5" fill="#7fb9a9"/>
+  <rect x="112" y="190" width="116" height="34" rx="17" fill="#3ddf84"/>
+  <rect x="112" y="244" width="116" height="34" rx="17" fill="#ffffff" opacity=".16"/>
+  <rect x="112" y="298" width="116" height="34" rx="17" fill="#ffffff" opacity=".16"/>
+  <rect x="304" y="110" width="150" height="20" rx="10" fill="#07130e"/>
+  <rect x="304" y="146" width="240" height="12" rx="6" fill="#5b7169"/>
+  <rect x="304" y="202" width="322" height="68" rx="22" fill="#f4fff9" stroke="#dbe9e2" stroke-width="2"/>
+  <circle cx="342" cy="236" r="20" fill="#3ddf84"/>
+  <rect x="380" y="220" width="114" height="12" rx="6" fill="#07130e"/>
+  <rect x="380" y="242" width="80" height="9" rx="4.5" fill="#5b7169"/>
+  <rect x="526" y="221" width="64" height="28" rx="14" fill="#ffbd29"/>
+  <rect x="304" y="292" width="322" height="68" rx="22" fill="#f4fff9" stroke="#dbe9e2" stroke-width="2"/>
+  <circle cx="342" cy="326" r="20" fill="#ffbd29"/>
+  <rect x="380" y="310" width="96" height="12" rx="6" fill="#07130e"/>
+  <rect x="380" y="332" width="122" height="9" rx="4.5" fill="#5b7169"/>
+  <rect x="526" y="311" width="64" height="28" rx="14" fill="#3ddf84"/>
+  <path d="M408 424c0-46 34-76 76-76s76 30 76 76" fill="none" stroke="#1b372b" stroke-width="18" stroke-linecap="round"/>
+  <path d="M482 300v72" stroke="#3ddf84" stroke-width="14" stroke-linecap="round"/>
+  <path d="m454 338 28 34 42-58" fill="none" stroke="#ffbd29" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
