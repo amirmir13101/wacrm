@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 const navItems = [
   { label: "Home", href: "/" },
   { label: "Features", href: "/features" },
-  { label: "Team Inbox", href: "/features#team-inbox" },
+  { label: "Team Inbox", href: "/features/team-inbox" },
   { label: "Automation", href: "/features#automation" },
   { label: "Broadcasts", href: "/features#broadcasts" },
   { label: "Pricing", href: "/pricing" },
@@ -17,7 +17,7 @@ const navItems = [
 const trustItems = ["Team Inbox", "Automation", "Broadcasts", "Secure Workspaces"];
 
 interface PublicHeaderProps {
-  readonly active?: "home" | "features" | "pricing";
+  readonly active?: "home" | "features" | "team-inbox" | "pricing";
 }
 
 export function PublicHeader({ active }: PublicHeaderProps) {
@@ -66,6 +66,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
                   const isActive =
                     (active === "home" && item.href === "/") ||
                     (active === "features" && item.href === "/features") ||
+                    (active === "team-inbox" && item.href === "/features/team-inbox") ||
                     (active === "pricing" && item.href === "/pricing");
 
                   return (

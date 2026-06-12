@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="700" viewBox="0 0 960 700" role="img" aria-labelledby="title desc">
+  <title id="title">Shared WhatsApp team inbox for sales and support agents</title>
+  <desc id="desc">A shared team inbox dashboard with customer conversations, assigned agents, contact history and follow-up workflow cards.</desc>
+  <rect width="960" height="700" rx="44" fill="#07130e"/>
+  <circle cx="760" cy="128" r="152" fill="#3ddf84" opacity=".18"/>
+  <circle cx="146" cy="560" r="120" fill="#ffbd29" opacity=".18"/>
+  <rect x="70" y="68" width="820" height="564" rx="34" fill="#ffffff"/>
+  <rect x="70" y="68" width="820" height="82" rx="34" fill="#1b372b"/>
+  <circle cx="122" cy="109" r="19" fill="#3ddf84"/>
+  <rect x="160" y="95" width="188" height="15" rx="7.5" fill="#d8fff1"/>
+  <rect x="160" y="121" width="118" height="10" rx="5" fill="#7fb9a9"/>
+  <rect x="684" y="94" width="148" height="36" rx="18" fill="#ffbd29"/>
+  <rect x="108" y="186" width="238" height="386" rx="26" fill="#f4fff9" stroke="#dbe9e2" stroke-width="2"/>
+  <rect x="380" y="186" width="470" height="158" rx="26" fill="#f4fff9" stroke="#dbe9e2" stroke-width="2"/>
+  <rect x="380" y="378" width="218" height="194" rx="26" fill="#1b372b"/>
+  <rect x="632" y="378" width="218" height="194" rx="26" fill="#f4fff9" stroke="#dbe9e2" stroke-width="2"/>
+  <g>
+    <circle cx="146" cy="230" r="22" fill="#3ddf84"/>
+    <rect x="184" y="215" width="108" height="13" rx="6.5" fill="#07130e"/>
+    <rect x="184" y="240" width="72" height="9" rx="4.5" fill="#5b7169"/>
+    <rect x="132" y="276" width="180" height="52" rx="18" fill="#ffffff"/>
+    <rect x="132" y="348" width="180" height="52" rx="18" fill="#ffffff"/>
+    <rect x="132" y="420" width="180" height="52" rx="18" fill="#ffffff"/>
+    <rect x="156" y="294" width="96" height="10" rx="5" fill="#5b7169"/>
+    <rect x="156" y="366" width="128" height="10" rx="5" fill="#5b7169"/>
+    <rect x="156" y="438" width="84" height="10" rx="5" fill="#5b7169"/>
+  </g>
+  <g>
+    <circle cx="432" cy="238" r="28" fill="#ffbd29"/>
+    <rect x="478" y="218" width="150" height="15" rx="7.5" fill="#07130e"/>
+    <rect x="478" y="248" width="252" height="11" rx="5.5" fill="#5b7169"/>
+    <rect x="478" y="276" width="192" height="11" rx="5.5" fill="#5b7169"/>
+    <rect x="726" y="218" width="82" height="32" rx="16" fill="#3ddf84"/>
+  </g>
+  <g>
+    <rect x="420" y="420" width="112" height="14" rx="7" fill="#d8fff1"/>
+    <rect x="420" y="456" width="132" height="12" rx="6" fill="#7fb9a9"/>
+    <rect x="420" y="488" width="92" height="12" rx="6" fill="#7fb9a9"/>
+    <path d="M452 526h72" stroke="#3ddf84" stroke-width="14" stroke-linecap="round"/>
+  </g>
+  <g>
+    <circle cx="684" cy="432" r="24" fill="#3ddf84"/>
+    <circle cx="742" cy="432" r="24" fill="#ffbd29"/>
+    <circle cx="800" cy="432" r="24" fill="#1b372b"/>
+    <rect x="676" y="486" width="128" height="13" rx="6.5" fill="#07130e"/>
+    <rect x="676" y="516" width="92" height="10" rx="5" fill="#5b7169"/>
+  </g>
+</svg>

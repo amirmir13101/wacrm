@@ -7,7 +7,7 @@ const footerGroups = [
     links: [
       ["Features", "/features"],
       ["Pricing", "/pricing"],
-      ["Team Inbox", "/features#team-inbox"],
+      ["Team Inbox", "/features/team-inbox"],
       ["Contacts", "/features#contacts"],
       ["Broadcasts", "/features#broadcasts"],
       ["Automation", "/features#automation"],
