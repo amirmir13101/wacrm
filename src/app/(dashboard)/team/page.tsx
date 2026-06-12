@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -63,6 +64,8 @@ interface WorkspaceInvitation {
 }
 
 export default function TeamPage() {
+  const router = useRouter();
+  const deletedMemberIdsRef = useRef(new Set<string>());
   const [data, setData] = useState<TeamResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState("");
@@ -79,16 +82,25 @@ export default function TeamPage() {
     email: string;
     temporary_password: string;
   } | null>(null);
+  const [deletingMemberIds, setDeletingMemberIds] = useState<Set<string>>(() => new Set());
 
   async function loadTeam(options: { showLoading?: boolean } = {}) {
     if (options.showLoading ?? true) setLoading(true);
     try {
-      const res = await fetch("/api/team/members");
+      const res = await fetch("/api/team/members", { cache: "no-store" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(payload?.error ?? "Failed to load team");
       }
-      setData(payload as TeamResponse);
+      const nextPayload = payload as TeamResponse;
+      if (deletedMemberIdsRef.current.size) {
+        nextPayload.members = nextPayload.members.filter(
+          (member) =>
+            !deletedMemberIdsRef.current.has(member.id) &&
+            !deletedMemberIdsRef.current.has(member.user_id),
+        );
+      }
+      setData(nextPayload);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load team");
     } finally {
@@ -98,7 +110,7 @@ export default function TeamPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/team/members")
+    fetch("/api/team/members", { cache: "no-store" })
       .then(async (res) => {
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(payload?.error ?? "Failed to load team");
@@ -106,7 +118,14 @@ export default function TeamPage() {
       })
       .then((payload) => {
         if (cancelled) return;
-        setData(payload);
+        setData({
+          ...payload,
+          members: payload.members.filter(
+            (member) =>
+              !deletedMemberIdsRef.current.has(member.id) &&
+              !deletedMemberIdsRef.current.has(member.user_id),
+          ),
+        });
       })
       .catch((error) => {
         if (!cancelled) toast.error(error instanceof Error ? error.message : "Failed to load team");
@@ -203,9 +222,13 @@ export default function TeamPage() {
     await loadTeam({ showLoading: false });
   }
 
-  async function copyText(text: string) {
-    await navigator.clipboard.writeText(text);
-    toast.success("Copied");
+  async function copyText(text: string, successMessage = "Copied") {
+    try {
+      await copyToClipboard(text);
+      toast.success(successMessage);
+    } catch {
+      toast.error("Copy failed. Please copy manually.");
+    }
   }
 
   async function updateMember(id: string, update: Record<string, unknown>) {
@@ -236,19 +259,35 @@ export default function TeamPage() {
       "This will permanently delete this team member account and remove their workspace access.",
     );
     if (!confirmed) return;
-    const res = await fetch(`/api/team/members/${member.id}`, { method: "DELETE" });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(payload?.error ?? "Failed to delete team member");
-    toast.success("Team member deleted");
-    setData((current) =>
-      current
-        ? {
-            ...current,
-            members: current.members.filter((item) => item.id !== member.id),
-          }
-        : current,
-    );
-    await loadTeam({ showLoading: false });
+    setDeletingMemberIds((current) => new Set(current).add(member.id));
+    try {
+      const res = await fetch(`/api/team/members/${member.id}`, { method: "DELETE" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error ?? "Failed to delete team member");
+      deletedMemberIdsRef.current.add(member.id);
+      deletedMemberIdsRef.current.add(member.user_id);
+      toast.success("Team member deleted");
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              members: current.members.filter(
+                (item) => item.id !== member.id && item.user_id !== member.user_id,
+              ),
+            }
+          : current,
+      );
+      router.refresh();
+      await loadTeam({ showLoading: false });
+    } catch (error) {
+      throw error;
+    } finally {
+      setDeletingMemberIds((current) => {
+        const next = new Set(current);
+        next.delete(member.id);
+        return next;
+      });
+    }
   }
 
   const activeMembers = useMemo(
@@ -355,10 +394,41 @@ export default function TeamPage() {
                 Share these login details securely. The password will not be shown again.
               </p>
               <div className="mt-3 grid gap-2 md:grid-cols-3">
-                <CredentialBox label="Login URL" value={createdCredentials.login_url} onCopy={copyText} />
-                <CredentialBox label="Email" value={createdCredentials.email} onCopy={copyText} />
-                <CredentialBox label="Temporary password" value={createdCredentials.temporary_password} onCopy={copyText} secret />
+                <CredentialBox
+                  label="Login URL"
+                  value={createdCredentials.login_url}
+                  onCopy={(value) => copyText(value, "URL copied")}
+                />
+                <CredentialBox
+                  label="Email"
+                  value={createdCredentials.email}
+                  onCopy={(value) => copyText(value, "Email copied")}
+                />
+                <CredentialBox
+                  label="Temporary password"
+                  value={createdCredentials.temporary_password}
+                  onCopy={(value) => copyText(value, "Password copied")}
+                  secret
+                />
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  copyText(
+                    [
+                      `CRM Login URL: ${createdCredentials.login_url}`,
+                      `Email: ${createdCredentials.email}`,
+                      `Temporary Password: ${createdCredentials.temporary_password}`,
+                    ].join("\n"),
+                    "Login details copied",
+                  )
+                }
+                className="mt-3 border-emerald-500/30 text-emerald-100 hover:bg-emerald-500/10"
+              >
+                Copy all login details
+              </Button>
             </div>
           )}
           <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
@@ -392,6 +462,7 @@ export default function TeamPage() {
                 canManageTeam={data.can_manage_team}
                 onSave={async (update) => updateMember(member.id, update)}
                 onDelete={() => deleteMember(member)}
+                isDeleting={deletingMemberIds.has(member.id)}
               />
             ))}
           </div>
@@ -449,6 +520,30 @@ export default function TeamPage() {
   );
 }
 
+async function copyToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  try {
+    const copied = document.execCommand("copy");
+    if (!copied) throw new Error("Fallback copy failed");
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 function CredentialBox({
   label,
   value,
@@ -464,14 +559,19 @@ function CredentialBox({
     <div className="rounded-lg border border-emerald-500/20 bg-slate-950/50 p-3">
       <p className="text-[11px] font-medium uppercase text-emerald-100/70">{label}</p>
       <div className="mt-2 flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate text-xs text-white">
-          {secret ? value : value}
-        </code>
+        <Input
+          value={value}
+          readOnly
+          type={secret ? "text" : "text"}
+          aria-label={label}
+          className="h-8 min-w-0 flex-1 border-slate-700 bg-slate-950 font-mono text-xs text-white"
+          onFocus={(event) => event.currentTarget.select()}
+        />
         <Button
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => onCopy(value)}
+          onClick={() => void onCopy(value)}
           className="border-slate-700 text-slate-200 hover:bg-slate-800"
         >
           Copy
@@ -564,12 +664,14 @@ function MemberCard({
   canManageTeam,
   onSave,
   onDelete,
+  isDeleting,
 }: {
   member: WorkspaceMemberOption;
   currentUserId: string;
   canManageTeam: boolean;
   onSave: (update: Record<string, unknown>) => Promise<void>;
   onDelete: () => Promise<void>;
+  isDeleting: boolean;
 }) {
   const savedPermissions = useMemo(
     () =>
@@ -803,7 +905,7 @@ function MemberCard({
               </Button>
               <Button
                 type="button"
-                disabled={!hasChanges || saving || deleting}
+                disabled={!hasChanges || saving || deleting || isDeleting}
                 onClick={saveDraft}
                 className="bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-60"
               >
@@ -813,10 +915,10 @@ function MemberCard({
                 <Button
                   type="button"
                   variant="destructive"
-                  disabled={deleting}
+                  disabled={deleting || isDeleting}
                   onClick={() => void deleteDraftMember()}
                 >
-                  {deleting ? "Deleting..." : "Delete member"}
+                  {deleting || isDeleting ? "Deleting..." : "Delete member"}
                 </Button>
               )}
             </div>

@@ -41,7 +41,7 @@ describe('CRM stale UI refresh patterns', () => {
   it('updates Team page state immediately after member mutations', () => {
     expect(teamPage).toContain('loadTeam(options: { showLoading?: boolean } = {})')
     expect(teamPage).toContain('await loadTeam({ showLoading: false })')
-    expect(teamPage).toContain('members: current.members.filter((item) => item.id !== member.id)')
+    expect(teamPage).toContain('item.id !== member.id && item.user_id !== member.user_id')
     expect(teamPage).toContain('toast.error(error instanceof Error ? error.message : "Failed to delete team member")')
   })
 
