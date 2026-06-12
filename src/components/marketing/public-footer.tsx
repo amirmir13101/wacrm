@@ -54,11 +54,11 @@ const footerGroups = [
 export function PublicFooter() {
   return (
     <footer id="footer" className="bg-[#0d1b15] px-5 py-16 text-white sm:px-8 lg:px-10">
-      <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-2 lg:grid-cols-6">
-        <div>
+      <div className="mx-auto grid max-w-7xl gap-x-10 gap-y-8 md:grid-cols-2 lg:grid-cols-[minmax(320px,1.35fr)_repeat(5,minmax(0,1fr))]">
+        <div className="md:col-span-2 lg:col-span-1">
           <Link
             href="/"
-            className="inline-flex rounded-[24px] border border-[#3ddf84]/35 bg-[#f4fff9] px-5 py-3 shadow-[0_22px_70px_rgba(0,0,0,0.26)] ring-1 ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#3ddf84]"
+            className="inline-flex max-w-full rounded-[22px] border border-[#3ddf84]/35 bg-[#f4fff9] px-4 py-3 shadow-[0_22px_70px_rgba(0,0,0,0.26)] ring-1 ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#3ddf84]"
             aria-label="Talk Wagon home"
           >
             <Image
@@ -66,7 +66,7 @@ export function PublicFooter() {
               alt="Talk Wagon CRM logo"
               width={520}
               height={79}
-              className="h-10 w-auto max-w-[250px] object-contain sm:h-12 sm:max-w-[310px]"
+              className="h-9 w-auto max-w-[230px] object-contain sm:h-10 sm:max-w-[265px]"
             />
           </Link>
           <p className="mt-4 text-sm leading-7 text-[#7fb9a9]">

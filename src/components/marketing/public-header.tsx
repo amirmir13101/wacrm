@@ -40,7 +40,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
       </div>
 
       <nav className="bg-white shadow-[0_12px_35px_rgba(7,19,14,0.08)]" aria-label="Public navigation">
-        <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
+        <div className="mx-auto max-w-[1680px] px-5 sm:px-8 lg:px-8 xl:px-10">
           <div className="flex min-h-[76px] items-center justify-between gap-5 lg:gap-6">
             <Link
               href="/"
