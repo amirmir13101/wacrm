@@ -41,10 +41,10 @@ export function PublicHeader({ active }: PublicHeaderProps) {
 
       <nav className="bg-white shadow-[0_12px_35px_rgba(7,19,14,0.08)]" aria-label="Public navigation">
         <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-10">
-          <div className="flex min-h-[76px] items-center justify-between gap-4">
+          <div className="flex min-h-[76px] items-center justify-between gap-5 lg:gap-6">
             <Link
               href="/"
-              className="flex shrink-0 items-center gap-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4]"
+              className="mr-4 flex shrink-0 items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4] lg:mr-8 xl:mr-10"
               aria-label="Talk Wagon home"
             >
               <Image
@@ -53,7 +53,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
                 width={520}
                 height={79}
                 priority={active === "home"}
-                className="h-8 w-auto object-contain sm:h-9 lg:h-10"
+                className="h-8 w-auto max-w-[210px] object-contain sm:h-9 sm:max-w-[240px] lg:h-10 lg:max-w-[265px]"
               />
             </Link>
 
