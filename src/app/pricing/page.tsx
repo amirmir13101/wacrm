@@ -18,6 +18,7 @@ import {
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 import { HeroBadgeRow } from "@/components/marketing/hero-badge-row";
+import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/pricing`;
@@ -122,7 +123,7 @@ const plans = [
     description:
       "Best for agencies, hosting companies, and businesses that want a branded self-hosted WhatsApp CRM deployed for their own company.",
     cta: "Request Lifetime Setup",
-    href: "/signup",
+    href: "/pricing#lifetime",
     featured: false,
     note:
       "Server, domain, WhatsApp/Meta API, and any third-party provider costs are separate unless included in a custom agreement.",
@@ -306,6 +307,7 @@ export default function PricingPage() {
             {plans.map((plan) => (
               <article
                 key={plan.name}
+                id={plan.name === "Lifetime" ? "lifetime" : undefined}
                 className={`relative flex h-full flex-col rounded-[32px] p-6 shadow-[0_20px_60px_rgba(7,19,14,0.10)] ring-1 ${
                   plan.featured
                     ? "scale-[1.01] bg-[#1b372b] text-white ring-[#1b372b] lg:-mt-5"
@@ -463,20 +465,12 @@ export default function PricingPage() {
               lifetime branded self-hosted setup for your business.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            <Link
-              href="/signup"
-              className="inline-flex h-12 items-center justify-center rounded-full bg-[#07130e] px-7 text-sm font-bold text-white hover:bg-[#1b372b]"
-            >
-              Start For Free
-            </Link>
-            <Link
-              href="/signup"
-              className="inline-flex h-12 items-center justify-center rounded-full border-2 border-[#07130e] px-7 text-sm font-bold text-[#07130e] hover:bg-[#07130e] hover:text-white"
-            >
-              Request Lifetime Setup
-            </Link>
-          </div>
+          <PublicCtaButtons
+            primaryLabel="Start For Free"
+            primaryHref="/signup"
+            secondaryLabel="Request Lifetime Setup"
+            secondaryHref="/pricing#lifetime"
+          />
         </div>
       </section>
 

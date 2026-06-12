@@ -23,6 +23,7 @@ import {
 
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
+import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 import { authenticatedRedirectPath } from "@/lib/auth/approval";
 import { createClient } from "@/lib/supabase/server";
 
@@ -660,20 +661,12 @@ export default async function HomePage() {
               pipelines into one production-ready WhatsApp CRM dashboard.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            <Link
-              href="/signup"
-              className="inline-flex h-12 items-center justify-center rounded-full bg-[#07130e] px-7 text-sm font-bold text-white hover:bg-[#1b372b]"
-            >
-              Get Started
-            </Link>
-            <Link
-              href="/login"
-              className="inline-flex h-12 items-center justify-center rounded-full border-2 border-[#07130e] px-7 text-sm font-bold text-[#07130e] hover:bg-[#07130e] hover:text-white"
-            >
-              Login to Dashboard
-            </Link>
-          </div>
+          <PublicCtaButtons
+            primaryLabel="Start For Free"
+            primaryHref="/signup"
+            secondaryLabel="Login to Dashboard"
+            secondaryHref="/login"
+          />
         </div>
       </section>
 

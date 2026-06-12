@@ -22,6 +22,7 @@ import {
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 import { HeroBadgeRow } from "@/components/marketing/hero-badge-row";
+import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/features/broadcasts`;
@@ -619,20 +620,12 @@ export default function BroadcastsFeaturePage() {
               and connecting replies to CRM follow-up workflows from one workspace.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            <Link
-              href="/signup"
-              className="inline-flex h-12 items-center justify-center rounded-full bg-[#07130e] px-7 text-sm font-bold text-white hover:bg-[#1b372b]"
-            >
-              Start For Free
-            </Link>
-            <Link
-              href="/pricing"
-              className="inline-flex h-12 items-center justify-center rounded-full border-2 border-[#07130e] px-7 text-sm font-bold text-[#07130e] hover:bg-[#07130e] hover:text-white"
-            >
-              View Pricing
-            </Link>
-          </div>
+          <PublicCtaButtons
+            primaryLabel="Start For Free"
+            primaryHref="/signup"
+            secondaryLabel="View Pricing"
+            secondaryHref="/pricing"
+          />
         </div>
       </section>
 

@@ -24,6 +24,7 @@ import {
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 import { HeroBadgeRow } from "@/components/marketing/hero-badge-row";
+import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/features`;
@@ -699,20 +700,12 @@ export default function FeaturesPage() {
               assign agents, and automate the follow-ups your team repeats every day.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            <Link
-              href="/signup"
-              className="inline-flex h-12 items-center justify-center rounded-full bg-[#07130e] px-7 text-sm font-bold text-white hover:bg-[#1b372b]"
-            >
-              Start For Free
-            </Link>
-            <Link
-              href="/login"
-              className="inline-flex h-12 items-center justify-center rounded-full border-2 border-[#07130e] px-7 text-sm font-bold text-[#07130e] hover:bg-[#07130e] hover:text-white"
-            >
-              Login
-            </Link>
-          </div>
+          <PublicCtaButtons
+            primaryLabel="Start For Free"
+            primaryHref="/signup"
+            secondaryLabel="Login to Dashboard"
+            secondaryHref="/login"
+          />
         </div>
       </section>
 
