@@ -3,22 +3,22 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  BarChart3,
   Bot,
   CheckCircle2,
   ChevronRight,
   Clock3,
   GitBranch,
   Headphones,
+  KeyRound,
   LockKeyhole,
   MessageCircle,
   MessageSquareText,
   Radio,
-  Search,
   ShieldCheck,
   Sparkles,
+  Tags,
+  UserCheck,
   Users,
-  Workflow,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,19 +26,20 @@ import { authenticatedRedirectPath } from "@/lib/auth/approval";
 import { createClient } from "@/lib/supabase/server";
 
 const siteUrl = "https://vpscoaster.live";
+const canonicalUrl = `${siteUrl}/`;
 
 export const metadata: Metadata = {
   title: "WhatsApp CRM for Teams, Broadcasts, Contacts and AI Automation",
   description:
     "Manage WhatsApp customer conversations, team inboxes, contacts, broadcasts, templates, AI workflows, follow-ups, and sales pipelines from one production-ready CRM dashboard.",
   alternates: {
-    canonical: siteUrl,
+    canonical: canonicalUrl,
   },
   openGraph: {
     title: "Production-Ready WhatsApp CRM for Teams and Automation",
     description:
       "Organize WhatsApp conversations, manage contacts, assign team agents, send broadcasts, automate follow-ups, and track sales pipelines from one CRM platform.",
-    url: siteUrl,
+    url: canonicalUrl,
     siteName: "WACRM",
     type: "website",
     images: [
@@ -64,84 +65,112 @@ export const metadata: Metadata = {
 };
 
 const navItems = [
-  { label: "Home", href: "/" },
-  { label: "Inbox", href: "#inbox" },
-  { label: "Contacts", href: "#contacts" },
-  { label: "Broadcasts", href: "#broadcasts" },
+  { label: "Features", href: "#features" },
+  { label: "Team Inbox", href: "#team-inbox" },
   { label: "Automation", href: "#automation" },
-  { label: "Pipeline", href: "#pipeline" },
+  { label: "Broadcasts", href: "#broadcasts" },
+  { label: "Pricing", href: "#pricing" },
+  { label: "FAQ", href: "#faq" },
 ];
 
-const workflowFinder = [
-  ["Inbox", "Shared"],
-  ["Contacts", "Clean"],
-  ["Templates", "Approved"],
-  ["Broadcasts", "Queued"],
-  ["Pipeline", "Tracked"],
+const trustItems = ["Team Inbox", "Automation", "Broadcasts", "Secure Workspaces"];
+
+const workflowPills = [
+  { label: "Team Inbox", icon: MessageSquareText },
+  { label: "Contacts", icon: Users },
+  { label: "Broadcasts", icon: Radio },
+  { label: "Templates", icon: Tags },
+  { label: "AI Automation", icon: Bot },
+  { label: "Follow-Ups", icon: Clock3 },
+  { label: "Sales Pipeline", icon: GitBranch },
+  { label: "Agent Permissions", icon: ShieldCheck },
 ];
 
-const serviceTabs = [
-  "Team Inbox",
-  "Contact CRM",
-  "Broadcast CRM",
-  "Automation",
-  "Pipeline",
-];
-
-const productCards = [
+const featureCards = [
   {
-    title: "Team Inbox CRM",
-    badge: "Support teams",
+    title: "WhatsApp Team Inbox",
     description:
-      "Centralize WhatsApp conversations, assign agents, filter open chats, and keep every customer reply inside one workspace.",
+      "Manage customer messages in one shared CRM inbox with agents, assignments, conversation history, and permission-based access.",
     icon: MessageSquareText,
     image: "/hostiko-crm/illustrations/team-inbox-workflow.svg",
-    features: ["Shared inbox", "Agent assignment", "Conversation history"],
+    alt: "Shared WhatsApp team inbox for agents and managers",
+    href: "#team-inbox",
   },
   {
     title: "Contact Management",
-    badge: "Sales teams",
     description:
-      "Import contacts, normalize phone numbers, record consent, segment with tags, and connect every profile to WhatsApp history.",
+      "Import, organize, search, paginate, select, and bulk manage contacts inside secure workspace-based accounts.",
     icon: Users,
     image: "/hostiko-crm/illustrations/whatsapp-crm-dashboard.svg",
-    features: ["CSV import", "Opt-in status", "Duplicate prevention"],
+    alt: "WhatsApp CRM dashboard with customer conversations and automation workflows",
+    href: "#features",
   },
   {
     title: "Broadcast Campaigns",
-    badge: "Marketing teams",
     description:
-      "Queue approved-template campaigns with preflight checks, pricing estimates, pause controls, retries, and live progress updates.",
+      "Send approved WhatsApp template campaigns to selected contacts and track delivery workflow status from the CRM.",
     icon: Radio,
     image: "/hostiko-crm/illustrations/broadcast-campaigns.svg",
-    features: ["Preflight checks", "Server-side queue", "Live delivery stats"],
+    alt: "Broadcast campaign CRM for WhatsApp contacts",
+    href: "#broadcasts",
   },
   {
-    title: "Workflow Automation",
-    badge: "Operations",
+    title: "AI Workflow Automation",
     description:
-      "Trigger keyword replies, tag flows, time-based actions, assignment rules, and follow-ups while protecting opt-out status.",
+      "Automate repetitive follow-ups, lead routing, status updates, webhooks, and customer communication tasks.",
     icon: Bot,
     image: "/hostiko-crm/illustrations/ai-automation-flow.svg",
-    features: ["Keyword triggers", "Wait steps", "Team routing"],
+    alt: "AI automation workflow for customer follow-ups",
+    href: "#automation",
+  },
+  {
+    title: "Sales Pipeline",
+    description:
+      "Track leads, deals, follow-ups, and customer stages from one simple sales pipeline CRM connected to conversations.",
+    icon: GitBranch,
+    image: "/hostiko-crm/illustrations/sales-pipeline.svg",
+    alt: "Sales pipeline dashboard for WhatsApp CRM leads",
+    href: "#pipeline",
+  },
+  {
+    title: "Role-Based Team Access",
+    description:
+      "Create team agents, force first-login password changes, assign permissions, and control what each member can view or manage.",
+    icon: KeyRound,
+    image: "/hostiko-crm/illustrations/team-inbox-workflow.svg",
+    alt: "Permission-based CRM workspace for team agents",
+    href: "#team-inbox",
   },
 ];
 
-const featureRows = [
+const automationSteps = [
+  "Import or add contacts",
+  "Segment customers",
+  "Send approved templates",
+  "Trigger follow-ups",
+  "Assign conversations",
+  "Track pipeline results",
+];
+
+const plans = [
   {
-    title: "Connect the official Meta WhatsApp Cloud API",
-    text: "Owners manage the workspace WhatsApp connection, while agents can use it safely without seeing private API credentials.",
-    icon: ShieldCheck,
+    title: "Starter CRM",
+    audience: "For small teams",
+    description: "Manage contacts and customer conversations in one WhatsApp CRM workspace.",
+    features: ["Shared inbox foundation", "Contact management CRM", "Customer conversation tracking"],
   },
   {
-    title: "Keep customer consent visible before sending",
-    text: "Broadcasts and automations respect opt-in and opt-out fields so teams can avoid unsafe customer messaging.",
-    icon: LockKeyhole,
+    title: "Team CRM",
+    audience: "For growing businesses",
+    description: "Add agents, role-based permissions, broadcasts, templates, and sales pipelines.",
+    features: ["Team agent CRM", "WhatsApp broadcast CRM", "Sales pipeline CRM"],
+    highlighted: true,
   },
   {
-    title: "Track leads from first chat to closed sale",
-    text: "Move customer opportunities through pipeline stages, assign owners, and keep follow-ups tied to real conversations.",
-    icon: GitBranch,
+    title: "Automation CRM",
+    audience: "For workflow-focused teams",
+    description: "Use WhatsApp workflow automation, AI automation planning, and follow-up workflows.",
+    features: ["WhatsApp automation", "Automated customer follow-ups", "AI automation CRM workflows"],
   },
 ];
 
@@ -149,22 +178,27 @@ const faqs = [
   {
     question: "What is a WhatsApp CRM?",
     answer:
-      "A WhatsApp CRM helps a business organize customer conversations, contacts, broadcasts, templates, follow-ups, team assignments, and sales activity around WhatsApp communication.",
+      "A WhatsApp CRM helps businesses organize customer conversations, contacts, team agents, broadcasts, follow-ups, and sales activity in one dashboard.",
   },
   {
     question: "Can my team manage WhatsApp conversations together?",
     answer:
-      "Yes. The CRM includes a shared WhatsApp team inbox, workspace members, agent assignment, role permissions, and filters for assigned or unassigned conversations.",
+      "Yes. The CRM supports team agents, role-based permissions, shared workspace access, and conversation assignment workflows.",
   },
   {
     question: "Can I send WhatsApp broadcast campaigns?",
     answer:
-      "Yes. Broadcast campaigns use approved WhatsApp templates, recipient opt-in checks, queue processing, retry controls, pause/resume/cancel actions, and delivery status tracking.",
+      "Yes. You can prepare contact lists and send approved WhatsApp template-based campaigns while keeping customer data organized.",
   },
   {
     question: "Does this CRM support automation?",
     answer:
-      "The CRM supports automation workflows for keyword replies, follow-ups, tag triggers, assignment flows, wait steps, and customer workflow actions.",
+      "Yes. It is built for follow-up automation, workflow triggers, customer updates, agent assignment, and AI-powered automation planning.",
+  },
+  {
+    question: "Is it suitable for sales and support teams?",
+    answer:
+      "Yes. Sales teams can manage leads and pipelines, while support teams can handle customer conversations and follow-ups from one workspace.",
   },
 ];
 
@@ -174,9 +208,14 @@ const softwareSchema = {
   name: "WACRM",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
-  url: siteUrl,
+  url: canonicalUrl,
   description:
-    "Production-ready WhatsApp CRM for team inboxes, contact management, broadcast campaigns, AI workflow automation, and sales pipeline tracking.",
+    "Production-ready WhatsApp CRM for team inboxes, contact management, broadcast campaigns, AI workflow automation, customer follow-ups, team agent permissions, and sales pipeline tracking.",
+  offers: {
+    "@type": "Offer",
+    category: "Business messaging CRM",
+    availability: "https://schema.org/InStock",
+  },
 };
 
 const faqSchema = {
@@ -222,197 +261,189 @@ export default async function HomePage() {
       <header className="relative z-30">
         <div className="bg-[#0d1b15] text-white">
           <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-3 text-xs sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
-            <form
-              action="#features"
-              className="hidden w-full max-w-sm items-center gap-2 border-b border-white/30 pb-1 text-[#c8ded6] lg:flex"
-              role="search"
-            >
-              <button
-                type="submit"
-                aria-label="Search CRM workflows"
-                className="flex h-7 w-7 items-center justify-center text-white"
-              >
-                <Search className="h-4 w-4" aria-hidden="true" />
-              </button>
-              <input
-                className="w-full bg-transparent text-xs text-white outline-none placeholder:text-[#7fb9a9]"
-                name="q"
-                placeholder="Search CRM workflows..."
-                type="search"
-              />
-            </form>
-            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-white/85 lg:justify-end">
-              <Link href="/login" className="hover:text-[#3ddf84]">
-                Login
-              </Link>
-              <Link href="/signup" className="hover:text-[#3ddf84]">
-                Registration
-              </Link>
-              <a href="#features" className="hover:text-[#3ddf84]">
-                Features
-              </a>
-              <a href="#faq" className="inline-flex items-center gap-1 hover:text-[#3ddf84]">
-                <MessageCircle className="h-4 w-4" aria-hidden="true" />
-                Support
-              </a>
-            </div>
+            <p className="text-center text-[#d8fff1] lg:text-left">
+              Production-ready WhatsApp CRM for sales, support, broadcasts, and AI automation.
+            </p>
+            <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-white/85 lg:justify-end">
+              {trustItems.map((item) => (
+                <li key={item} className="inline-flex items-center gap-2">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-[#3ddf84]" aria-hidden="true" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
 
         <nav className="bg-white shadow-[0_12px_35px_rgba(7,19,14,0.08)]">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-5 sm:px-8 lg:px-10">
-            <Link href="/" className="flex items-center gap-3" aria-label="WACRM home">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
-                <MessageSquareText className="h-6 w-6" aria-hidden="true" />
-              </span>
-              <span className="text-2xl font-extrabold tracking-normal text-[#07130e]">
-                WACRM
-              </span>
-            </Link>
+          <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-5 sm:px-8 lg:px-10">
+            <div className="flex items-center justify-between gap-5">
+              <Link href="/" className="flex items-center gap-3" aria-label="WACRM home">
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
+                  <MessageSquareText className="h-6 w-6" aria-hidden="true" />
+                </span>
+                <span className="text-2xl font-extrabold tracking-normal text-[#07130e]">
+                  WACRM
+                </span>
+              </Link>
 
-            <div className="hidden items-center gap-7 text-sm font-bold uppercase text-[#07130e] xl:flex">
+              <div className="hidden items-center gap-4 sm:flex">
+                <Link
+                  href="/login"
+                  className="inline-flex h-11 items-center rounded-full px-4 text-sm font-bold text-[#07130e] hover:bg-[#f4fff9]"
+                >
+                  Login
+                </Link>
+                <Link href="/signup">
+                  <Button className="h-11 rounded-full bg-[#181818] px-6 font-bold text-white hover:bg-[#ffbd29] hover:text-[#07130e]">
+                    Start For Free
+                  </Button>
+                </Link>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-bold uppercase text-[#07130e] sm:text-sm xl:gap-5">
               {navItems.map((item) => (
-                <a key={item.label} href={item.href} className="hover:text-[#08bba4]">
+                <a
+                  key={item.label}
+                  href={item.href}
+                  className="rounded-full px-3 py-2 hover:bg-[#eafff3] hover:text-[#08bba4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
+                >
                   {item.label}
                 </a>
               ))}
             </div>
-
-            <Link href="/signup" className="hidden sm:block">
-              <Button className="h-12 rounded-full bg-[#181818] px-7 font-bold text-white hover:bg-[#ffbd29] hover:text-[#07130e]">
-                Get Started
-              </Button>
-            </Link>
           </div>
         </nav>
       </header>
 
       <section className="relative isolate overflow-hidden bg-[#07130e] text-white">
         <div
-          className="absolute inset-0 bg-[radial-gradient(circle_at_50%_22%,rgba(61,223,132,0.25),transparent_30%),linear-gradient(90deg,rgba(7,19,14,0.92),rgba(27,55,43,0.74),rgba(7,19,14,0.94))]"
+          className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(61,223,132,0.25),transparent_30%),linear-gradient(90deg,rgba(7,19,14,0.94),rgba(27,55,43,0.78),rgba(7,19,14,0.96))]"
           aria-hidden="true"
         />
         <div className="absolute inset-0 opacity-30" aria-hidden="true">
           <div className="h-full w-full bg-[linear-gradient(90deg,transparent_0,transparent_9%,rgba(127,185,169,0.22)_9%,rgba(127,185,169,0.22)_9.3%,transparent_9.3%),linear-gradient(0deg,transparent_0,transparent_13%,rgba(127,185,169,0.16)_13%,rgba(127,185,169,0.16)_13.3%,transparent_13.3%)] bg-[length:120px_120px]" />
         </div>
-        <div className="relative mx-auto flex min-h-[470px] max-w-5xl flex-col items-center justify-center px-5 py-20 text-center sm:px-8 lg:px-10">
-          <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-[#d8fff1]">
-            <ShieldCheck className="h-4 w-4 text-[#3ddf84]" aria-hidden="true" />
-            Official Meta WhatsApp Cloud API ready
-          </p>
-          <h1 className="max-w-4xl text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl">
-            WhatsApp CRM for Teams, Broadcasts, Contacts and AI Automation
-          </h1>
-          <p className="mt-6 max-w-3xl text-base leading-8 text-[#d5e9e2] sm:text-lg">
-            Manage customer conversations, agents, contact consent, approved templates,
-            broadcasts, automations, and sales pipelines from one secure CRM workspace.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-sm">
-            <Link
-              href="/signup"
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-[#3ddf84] px-7 font-bold text-[#07130e] hover:bg-[#ffbd29]"
-            >
-              Build CRM Workflow
-              <ChevronRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-            <Link
-              href="/login"
-              className="inline-flex h-12 items-center rounded-full border border-white/30 px-7 font-bold text-white hover:bg-white hover:text-[#07130e]"
-            >
-              Client Dashboard
-            </Link>
+        <div className="relative mx-auto grid min-h-[650px] max-w-7xl items-center gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[0.92fr_1.08fr] lg:px-10">
+          <div className="text-center lg:text-left">
+            <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-[#d8fff1]">
+              <ShieldCheck className="h-4 w-4 text-[#3ddf84]" aria-hidden="true" />
+              Official Meta WhatsApp API style CRM workflows
+            </p>
+            <h1 className="text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl">
+              WhatsApp CRM for Teams, Broadcasts, Contacts and AI Automation
+            </h1>
+            <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
+              Manage customer conversations, contacts, WhatsApp team inboxes,
+              broadcast campaigns, templates, AI workflows, follow-ups, and sales
+              pipelines from one production-ready CRM dashboard.
+            </p>
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
+              <Link
+                href="/signup"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#3ddf84] px-7 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                Start Managing Customers
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+              <Link
+                href="/login"
+                className="inline-flex h-12 items-center justify-center rounded-full border border-white/30 px-7 text-sm font-bold text-white hover:bg-white hover:text-[#07130e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                Login to Dashboard
+              </Link>
+            </div>
+            <p className="mt-6 text-sm text-[#b8cfc7]">
+              Built for businesses that use WhatsApp for sales, support, marketing,
+              and customer follow-ups.
+            </p>
           </div>
-          <nav aria-label="Page breadcrumb" className="mt-8 text-sm text-[#7fb9a9]">
-            <Link href="/" className="text-white hover:text-[#3ddf84]">
-              Home
-            </Link>
-            <span className="mx-2">/</span>
-            <span>WhatsApp CRM Platform</span>
-          </nav>
+
+          <div className="relative">
+            <div className="rounded-[34px] border border-white/10 bg-white/8 p-4 shadow-[0_32px_95px_rgba(0,0,0,0.35)] backdrop-blur">
+              <Image
+                src="/hostiko-crm/illustrations/whatsapp-crm-dashboard.svg"
+                alt="WhatsApp CRM dashboard with customer conversations and automation workflows"
+                width={960}
+                height={700}
+                priority
+                className="h-auto w-full rounded-[26px]"
+              />
+            </div>
+          </div>
         </div>
       </section>
 
       <section className="bg-white px-5 py-14 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-6xl text-center">
           <h2 className="text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-            Build Your WhatsApp Customer Workflow
+            Build Your WhatsApp CRM Workflow
           </h2>
-          <p className="mx-auto mt-3 max-w-2xl text-[#5b7169]">
-            Search the CRM areas your team needs, then start with login or a new
-            workspace account.
+          <p className="mx-auto mt-4 max-w-3xl text-[#5b7169]">
+            Start with your customer conversations, organize contacts, assign agents,
+            send template-based broadcasts, automate follow-ups, and track every lead
+            through your sales pipeline.
           </p>
-          <form
-            action="#features"
-            className="mx-auto mt-8 grid max-w-5xl gap-3 rounded-[30px] bg-white p-3 shadow-[0_20px_70px_rgba(7,19,14,0.14)] lg:grid-cols-[1fr_auto_auto]"
-            role="search"
-          >
-            <label className="sr-only" htmlFor="workflow-search">
-              Search CRM workflow
-            </label>
-            <input
-              id="workflow-search"
-              name="workflow"
-              type="search"
-              className="h-14 rounded-full bg-[#f4fff9] px-6 text-[#07130e] outline-none ring-1 ring-[#dce9e2] placeholder:text-[#7a9188] focus:ring-2 focus:ring-[#3ddf84]"
-              placeholder="Inbox, contacts, broadcasts, automation, pipeline..."
-            />
-            <Button className="h-14 rounded-full bg-[#3ddf84] px-8 font-bold text-[#07130e] hover:bg-[#1fc86f]">
-              <Search className="h-4 w-4" aria-hidden="true" />
-              Search CRM
-            </Button>
-            <Link
-              href="/signup"
-              className="inline-flex h-14 items-center justify-center rounded-full bg-[#ffbd29] px-8 text-sm font-bold text-[#07130e] hover:bg-[#e9aa1c]"
-            >
-              Get Started
-            </Link>
-          </form>
-          <ul className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            {workflowFinder.map(([name, value]) => (
-              <li
-                key={name}
-                className="rounded-full border border-[#dbe9e2] bg-[#f9fdfb] px-5 py-3 text-sm"
+          <div className="mx-auto mt-8 rounded-[30px] bg-white p-4 shadow-[0_20px_70px_rgba(7,19,14,0.14)] ring-1 ring-[#dbe9e2]">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {workflowPills.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.label === "AI Automation" ? "#automation" : item.label === "Broadcasts" ? "#broadcasts" : item.label === "Sales Pipeline" ? "#pipeline" : "#features"}
+                  className="flex items-center gap-3 rounded-full bg-[#f4fff9] px-4 py-4 text-left text-sm font-bold text-[#07130e] ring-1 ring-[#dce9e2] hover:bg-[#eafff3] hover:ring-[#3ddf84] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
+                    <item.icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <span>{item.label}</span>
+                </a>
+              ))}
+            </div>
+            <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+              <a
+                href="#features"
+                className="inline-flex h-12 items-center justify-center rounded-full bg-[#3ddf84] px-7 text-sm font-bold text-[#07130e] hover:bg-[#1fc86f]"
               >
-                <span className="font-extrabold text-[#07130e]">{name}</span>
-                <span className="ml-2 text-[#1b6b48]">{value}</span>
-              </li>
-            ))}
-          </ul>
+                Explore CRM Features
+              </a>
+              <Link
+                href="/signup"
+                className="inline-flex h-12 items-center justify-center rounded-full bg-[#ffbd29] px-7 text-sm font-bold text-[#07130e] hover:bg-[#e9aa1c]"
+              >
+                Create Workspace
+              </Link>
+            </div>
+          </div>
         </div>
       </section>
 
       <section id="features" className="bg-[#f7fbf8] px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-7xl">
-          <h2 className="text-center text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-            Browse CRM Products and Services
-          </h2>
-          <div className="mt-8 flex flex-wrap justify-center gap-2 border-b border-[#dbe9e2] pb-4">
-            {serviceTabs.map((tab, index) => (
-              <a
-                key={tab}
-                href={index === 0 ? "#inbox" : index === 1 ? "#contacts" : index === 2 ? "#broadcasts" : index === 3 ? "#automation" : "#pipeline"}
-                className={`rounded-full px-5 py-2 text-sm font-bold ${
-                  index === 0
-                    ? "bg-[#ffbd29] text-[#07130e]"
-                    : "bg-white text-[#5b7169] hover:bg-[#eafff3] hover:text-[#07130e]"
-                }`}
-              >
-                {tab}
-              </a>
-            ))}
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-bold uppercase text-[#08bba4]">
+              Customer conversation management
+            </p>
+            <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
+              Everything Your WhatsApp Sales and Support Team Needs
+            </h2>
+            <p className="mt-4 text-[#5b7169]">
+              Replace scattered tools with one organized WhatsApp CRM built for
+              conversations, contacts, broadcasts, automations, and team workflows.
+            </p>
           </div>
 
-          <div className="mt-10 grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
-            {productCards.map((card) => (
+          <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {featureCards.map((card) => (
               <article
                 id={
-                  card.title === "Team Inbox CRM"
-                    ? "inbox"
-                    : card.title === "Contact Management"
-                      ? "contacts"
-                      : card.title === "Broadcast Campaigns"
-                        ? "broadcasts"
-                        : "automation"
+                  card.title === "WhatsApp Team Inbox"
+                    ? "team-inbox"
+                    : card.title === "Broadcast Campaigns"
+                      ? "broadcasts"
+                      : card.title === "AI Workflow Automation"
+                        ? "automation"
+                        : undefined
                 }
                 key={card.title}
                 className="group flex h-full flex-col overflow-hidden rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)] ring-1 ring-[#e1eee8]"
@@ -422,40 +453,28 @@ export default async function HomePage() {
                     <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
                       <card.icon className="h-5 w-5" aria-hidden="true" />
                     </span>
-                    <span className="text-sm font-bold text-[#ffdd7a]">
-                      {card.badge}
-                    </span>
+                    <h3 className="text-xl font-extrabold">{card.title}</h3>
                   </div>
-                  <h3 className="mt-5 text-xl font-extrabold">{card.title}</h3>
                 </div>
-                <div className="p-5">
+                <div className="flex flex-1 flex-col p-5">
                   <div className="mb-5 overflow-hidden rounded-[22px] bg-[#f4fff9]">
                     <Image
                       src={card.image}
-                      alt={`${card.title} illustration`}
-                      width={520}
-                      height={360}
+                      alt={card.alt}
+                      width={640}
+                      height={430}
                       loading="lazy"
                       className="h-auto w-full transition-transform duration-300 group-hover:scale-[1.03]"
                     />
                   </div>
                   <p className="text-sm leading-7 text-[#5b7169]">{card.description}</p>
-                  <ul className="mt-5 space-y-3 text-sm text-[#07130e]">
-                    {card.features.map((feature) => (
-                      <li key={feature} className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-[#08bba4]" aria-hidden="true" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="mt-auto border-t border-[#e1eee8] p-5">
-                  <Link
-                    href="/signup"
-                    className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[#3ddf84] text-sm font-bold text-[#07130e] hover:bg-[#ffbd29]"
+                  <a
+                    href={card.href}
+                    className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] hover:text-[#07130e]"
                   >
-                    Start Now
-                  </Link>
+                    Learn more
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                  </a>
                 </div>
               </article>
             ))}
@@ -463,40 +482,74 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="pipeline" className="bg-[#1b372b] px-5 py-20 text-white sm:px-8 lg:px-10">
-        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="relative">
-            <Image
-              src="/hostiko-crm/illustrations/sales-pipeline.svg"
-              alt="Sales pipeline CRM with lead cards and follow-up stages"
-              width={760}
-              height={520}
-              loading="lazy"
-              className="h-auto w-full rounded-[30px] bg-[#0d1b15] shadow-[0_30px_90px_rgba(0,0,0,0.30)]"
-            />
-          </div>
+      <section className="bg-[#1b372b] px-5 py-20 text-white sm:px-8 lg:px-10">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1fr_0.95fr]">
           <div>
             <p className="text-sm font-bold uppercase text-[#ffbd29]">
-              Business CRM control panel
+              WhatsApp workflow automation
             </p>
             <h2 className="mt-4 text-3xl font-extrabold sm:text-4xl">
-              Run Sales, Support, and Follow-Up Workflows From One Dashboard
+              Automate Follow-Ups Without Losing the Human Touch
             </h2>
             <p className="mt-5 text-base leading-8 text-[#d5e9e2]">
-              Keep conversations, contact records, broadcasts, automations, pricing
-              estimates, pipeline deals, and team permissions connected inside the same
-              workspace.
+              Build WhatsApp workflows for welcome messages, no-reply follow-ups,
+              contact updates, deal creation, agent assignment, webhooks, and
+              customer lifecycle automation.
             </p>
-            <div className="mt-8 grid gap-4">
-              {featureRows.map((item) => (
-                <div key={item.title} className="flex gap-4 rounded-[24px] bg-[#0d1b15] p-5">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
-                    <item.icon className="h-5 w-5" aria-hidden="true" />
+            <ol className="mt-8 grid gap-4 sm:grid-cols-2">
+              {automationSteps.map((step, index) => (
+                <li key={step} className="flex gap-4 rounded-[24px] bg-[#0d1b15] p-5">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ffbd29] font-extrabold text-[#07130e]">
+                    {index + 1}
                   </span>
-                  <div>
-                    <h3 className="font-extrabold text-white">{item.title}</h3>
-                    <p className="mt-2 text-sm leading-7 text-[#b8cfc7]">{item.text}</p>
-                  </div>
+                  <span className="self-center text-sm font-bold text-white">{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <Image
+            src="/hostiko-crm/illustrations/ai-automation-flow.svg"
+            alt="AI automation workflow for customer follow-ups"
+            width={760}
+            height={520}
+            loading="lazy"
+            className="h-auto w-full rounded-[30px] bg-[#0d1b15] shadow-[0_30px_90px_rgba(0,0,0,0.30)]"
+          />
+        </div>
+      </section>
+
+      <section className="bg-white px-5 py-20 sm:px-8 lg:px-10">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
+          <Image
+            src="/hostiko-crm/illustrations/team-inbox-workflow.svg"
+            alt="Shared WhatsApp team inbox for agents and managers"
+            width={760}
+            height={520}
+            loading="lazy"
+            className="h-auto w-full rounded-[30px] bg-[#f4fff9] shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
+          />
+          <div>
+            <p className="text-sm font-bold uppercase text-[#08bba4]">
+              Shared inbox for WhatsApp
+            </p>
+            <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
+              A Shared WhatsApp Team Inbox for Modern Businesses
+            </h2>
+            <p className="mt-5 text-base leading-8 text-[#5b7169]">
+              Give agents a permission-based workspace where they can manage assigned
+              conversations, update contacts, follow up with customers, and collaborate
+              without exposing sensitive admin settings.
+            </p>
+            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              {[
+                ["My conversations", UserCheck],
+                ["Unassigned queue", Headphones],
+                ["Role-based CRM", LockKeyhole],
+                ["Conversation history", MessageCircle],
+              ].map(([label, Icon]) => (
+                <div key={label as string} className="rounded-[22px] border border-[#dbe9e2] bg-[#f7fbf8] p-5">
+                  <Icon className="h-6 w-6 text-[#08bba4]" aria-hidden="true" />
+                  <h3 className="mt-3 font-extrabold text-[#07130e]">{label as string}</h3>
                 </div>
               ))}
             </div>
@@ -504,37 +557,135 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="bg-white px-5 py-20 sm:px-8 lg:px-10">
-        <div className="mx-auto max-w-7xl">
-          <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
-            <div>
-              <p className="text-sm font-bold uppercase text-[#08bba4]">
-                Why teams choose WACRM
-              </p>
-              <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-                Built for WhatsApp Customer Operations
-              </h2>
-              <p className="mt-5 leading-8 text-[#5b7169]">
-                The CRM keeps the operational pieces together: customer messages,
-                assigned agents, consent, approved templates, queue processing,
-                automation logs, and workspace security.
-              </p>
-            </div>
-            <div className="grid gap-5 sm:grid-cols-2">
+      <section className="bg-[#f7fbf8] px-5 py-20 sm:px-8 lg:px-10">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1fr_0.95fr]">
+          <div>
+            <p className="text-sm font-bold uppercase text-[#08bba4]">
+              WhatsApp broadcast CRM
+            </p>
+            <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
+              Launch WhatsApp Broadcast Campaigns With More Control
+            </h2>
+            <p className="mt-5 text-base leading-8 text-[#5b7169]">
+              Prepare template-based campaigns, select the right contacts, estimate
+              sending workflow, track sent status, and keep customer communication
+              organized inside the CRM.
+            </p>
+            <div className="mt-8 grid gap-4">
               {[
-                ["Fast team replies", Headphones],
-                ["Live broadcast updates", Radio],
-                ["Automation logs", Clock3],
-                ["Business reports", BarChart3],
-                ["Workspace permissions", ShieldCheck],
-                ["Workflow builder", Workflow],
-              ].map(([label, Icon]) => (
-                <div key={label as string} className="rounded-[24px] border border-[#dbe9e2] bg-[#f7fbf8] p-5">
-                  <Icon className="h-7 w-7 text-[#08bba4]" aria-hidden="true" />
-                  <h3 className="mt-4 font-extrabold text-[#07130e]">{label as string}</h3>
+                "Approved WhatsApp templates",
+                "Contact consent and eligibility checks",
+                "Recent sent and broadcast reporting",
+              ].map((item) => (
+                <div key={item} className="flex items-center gap-3 rounded-full bg-white px-5 py-4 shadow-sm ring-1 ring-[#e1eee8]">
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-[#08bba4]" aria-hidden="true" />
+                  <span className="text-sm font-bold text-[#07130e]">{item}</span>
                 </div>
               ))}
             </div>
+          </div>
+          <Image
+            src="/hostiko-crm/illustrations/broadcast-campaigns.svg"
+            alt="Broadcast campaign CRM for WhatsApp contacts"
+            width={760}
+            height={520}
+            loading="lazy"
+            className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
+          />
+        </div>
+      </section>
+
+      <section id="pipeline" className="bg-[#1b372b] px-5 py-20 text-white sm:px-8 lg:px-10">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
+          <Image
+            src="/hostiko-crm/illustrations/sales-pipeline.svg"
+            alt="Sales pipeline dashboard for WhatsApp CRM leads"
+            width={760}
+            height={520}
+            loading="lazy"
+            className="h-auto w-full rounded-[30px] bg-[#0d1b15] shadow-[0_30px_90px_rgba(0,0,0,0.30)]"
+          />
+          <div>
+            <p className="text-sm font-bold uppercase text-[#ffbd29]">
+              WhatsApp sales automation
+            </p>
+            <h2 className="mt-4 text-3xl font-extrabold sm:text-4xl">
+              Turn Conversations Into Sales Pipeline Progress
+            </h2>
+            <p className="mt-5 text-base leading-8 text-[#d5e9e2]">
+              Move leads from first message to follow-up, deal stage, conversion, or
+              lost status. Keep your WhatsApp customer journey visible from contact to
+              close.
+            </p>
+            <div className="mt-8 grid gap-4">
+              {[
+                ["Lead stages", GitBranch],
+                ["Assigned deal owners", UserCheck],
+                ["Customer follow-up tracking", Clock3],
+              ].map(([label, Icon]) => (
+                <div key={label as string} className="flex gap-4 rounded-[24px] bg-[#0d1b15] p-5">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <h3 className="self-center font-extrabold text-white">{label as string}</h3>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing" className="bg-white px-5 py-20 sm:px-8 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-bold uppercase text-[#08bba4]">
+              Pricing preview
+            </p>
+            <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
+              Simple CRM Plans for Growing WhatsApp Teams
+            </h2>
+            <p className="mt-4 text-[#5b7169]">
+              Choose the CRM workflow level that matches your current business stage.
+              Full pricing details can be added when your commercial plans are ready.
+            </p>
+          </div>
+          <div className="mt-10 grid gap-6 lg:grid-cols-3">
+            {plans.map((plan) => (
+              <article
+                key={plan.title}
+                className={`rounded-[30px] p-6 shadow-[0_20px_60px_rgba(7,19,14,0.10)] ring-1 ${
+                  plan.highlighted
+                    ? "bg-[#1b372b] text-white ring-[#1b372b]"
+                    : "bg-[#f7fbf8] text-[#07130e] ring-[#e1eee8]"
+                }`}
+              >
+                <p className={`text-sm font-bold ${plan.highlighted ? "text-[#ffbd29]" : "text-[#08bba4]"}`}>
+                  {plan.audience}
+                </p>
+                <h3 className="mt-3 text-2xl font-extrabold">{plan.title}</h3>
+                <p className={`mt-4 text-sm leading-7 ${plan.highlighted ? "text-[#d5e9e2]" : "text-[#5b7169]"}`}>
+                  {plan.description}
+                </p>
+                <ul className="mt-6 space-y-3 text-sm">
+                  {plan.features.map((feature) => (
+                    <li key={feature} className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-[#3ddf84]" aria-hidden="true" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <a
+                  href="#pricing"
+                  className={`mt-7 inline-flex h-12 w-full items-center justify-center rounded-full text-sm font-bold ${
+                    plan.highlighted
+                      ? "bg-[#3ddf84] text-[#07130e] hover:bg-[#ffbd29]"
+                      : "bg-[#181818] text-white hover:bg-[#ffbd29] hover:text-[#07130e]"
+                  }`}
+                >
+                  View Pricing
+                </a>
+              </article>
+            ))}
           </div>
         </div>
       </section>
@@ -544,7 +695,7 @@ export default async function HomePage() {
           <div className="text-center">
             <p className="text-sm font-bold uppercase text-[#08bba4]">Questions</p>
             <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-              WhatsApp Business CRM FAQ
+              WhatsApp CRM Questions, Answered
             </h2>
           </div>
           <div className="mt-10 grid gap-4">
@@ -561,7 +712,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="bg-[#ffbd29] px-5 py-10 sm:px-8 lg:px-10">
+      <section className="bg-[#ffbd29] px-5 py-12 sm:px-8 lg:px-10">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div>
             <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#07130e]/10 px-3 py-1 text-sm font-bold text-[#07130e]">
@@ -569,33 +720,33 @@ export default async function HomePage() {
               Production-ready WhatsApp CRM
             </div>
             <h2 className="text-2xl font-extrabold text-[#07130e] sm:text-3xl">
-              Start Managing Your WhatsApp Customers Today
+              Ready to Manage WhatsApp Customers From One CRM?
             </h2>
             <p className="mt-2 max-w-2xl text-[#214336]">
-              Open your secure dashboard or create a workspace for team inboxes,
-              broadcasts, contact management, automation, and pipeline tracking.
+              Bring conversations, contacts, broadcasts, agents, automations, and
+              pipelines into one production-ready WhatsApp CRM dashboard.
             </p>
           </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <Link
-              href="/login"
-              className="inline-flex h-12 items-center justify-center rounded-full border-2 border-[#07130e] px-7 text-sm font-bold text-[#07130e] hover:bg-[#07130e] hover:text-white"
-            >
-              Login
-            </Link>
-            <Link
               href="/signup"
               className="inline-flex h-12 items-center justify-center rounded-full bg-[#07130e] px-7 text-sm font-bold text-white hover:bg-[#1b372b]"
             >
-              Register / Get Started
+              Get Started
+            </Link>
+            <Link
+              href="/login"
+              className="inline-flex h-12 items-center justify-center rounded-full border-2 border-[#07130e] px-7 text-sm font-bold text-[#07130e] hover:bg-[#07130e] hover:text-white"
+            >
+              Login to Dashboard
             </Link>
           </div>
         </div>
       </section>
 
-      <footer className="bg-[#0d1b15] px-5 py-16 text-white sm:px-8 lg:px-10">
+      <footer id="footer" className="bg-[#0d1b15] px-5 py-16 text-white sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-2 lg:grid-cols-6">
-          <div className="lg:col-span-1">
+          <div>
             <Link href="/" className="inline-flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
                 <MessageSquareText className="h-5 w-5" aria-hidden="true" />
@@ -607,11 +758,11 @@ export default async function HomePage() {
             </p>
           </div>
           {[
-            ["CRM Services", [["Team Inbox", "#inbox"], ["Contacts", "#contacts"], ["Broadcasts", "#broadcasts"], ["Pipeline", "#pipeline"]]],
-            ["Automation", [["Workflow Builder", "#automation"], ["Templates", "#features"], ["Reports", "#features"]]],
-            ["Company", [["Features", "#features"], ["FAQ", "#faq"], ["Support", "#faq"]]],
-            ["Account", [["Login", "/login"], ["Register", "/signup"], ["Forgot Password", "/forgot-password"]]],
-            ["Security", [["Permissions", "#pipeline"], ["Opt-in Safety", "#features"], ["Meta Cloud API", "#features"]]],
+            ["Product", [["Features", "#features"], ["Team Inbox", "#team-inbox"], ["Contacts", "#features"], ["Broadcasts", "#broadcasts"], ["Automation", "#automation"], ["Pipeline", "#pipeline"]]],
+            ["Company", [["About", "#features"], ["Pricing", "#pricing"], ["FAQ", "#faq"], ["Contact", "#footer"]]],
+            ["Resources", [["WhatsApp CRM", "#features"], ["WhatsApp Automation", "#automation"], ["AI CRM Automation", "#automation"], ["Sales CRM", "#pipeline"]]],
+            ["Account", [["Login", "/login"], ["Start For Free", "/signup"], ["Password Help", "/forgot-password"]]],
+            ["Legal", [["Privacy Policy", "#footer"], ["Terms of Service", "#footer"], ["Security", "#features"]]],
           ].map(([heading, links]) => (
             <div key={heading as string}>
               <h3 className="font-extrabold text-white">{heading as string}</h3>
