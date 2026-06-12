@@ -6,14 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { MessageSquare, CheckCircle } from "lucide-react";
+import { CheckCircle } from "lucide-react";
+import { HostikoAuthShell } from "@/components/auth/hostiko-auth-shell";
 import { friendlyAuthError, inviteAuthPath, inviteUrl } from "@/lib/team/invitations";
 
 export default function SignupPage() {
@@ -120,16 +114,15 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
-        <Card className="w-full max-w-md border-slate-800 bg-slate-900">
-          <CardHeader className="items-center text-center">
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/10">
-              <CheckCircle className="h-6 w-6 text-violet-500" />
+      <HostikoAuthShell
+        title="Account pending approval"
+        description="Your WhatsApp CRM workspace account is almost ready."
+      >
+          <div className="rounded-[24px] border border-[#315846] bg-[#0d1b15] p-5 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#3ddf84]/15">
+              <CheckCircle className="h-6 w-6 text-[#3ddf84]" />
             </div>
-            <CardTitle className="text-xl text-white">
-              Account pending approval
-            </CardTitle>
-            <CardDescription className="text-slate-400">
+            <p className="text-sm leading-6 text-[#b8cfc7]">
               {inviteActive
                 ? "Account created. Please confirm your email if required, then return to this invite link or sign in to finish joining the workspace."
                 : "Your account has been created and is pending admin approval."}
@@ -140,45 +133,38 @@ export default function SignupPage() {
                   <span className="text-white">{email}</span>.
                 </>
               ) : null}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </p>
             <Link href={inviteActive ? inviteAuthPath("/login", inviteToken) : "/login"}>
               <Button
                 variant="outline"
-                className="w-full border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+                className="mt-5 w-full rounded-full border-[#315846] text-[#d8fff1] hover:bg-[#143326] hover:text-white"
               >
                 Back to sign in
               </Button>
             </Link>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+      </HostikoAuthShell>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
-      <Card className="w-full max-w-md border-slate-800 bg-slate-900">
-        <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/10">
-            <MessageSquare className="h-6 w-6 text-violet-500" />
-          </div>
-          <CardTitle className="text-xl text-white">Create account</CardTitle>
-          <CardDescription className="text-slate-400">
-            {inviteActive ? "Create your agent account with the invited email" : "Get started with CRM Template for WhatsApp"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+    <HostikoAuthShell
+      title="Create Your WhatsApp CRM Workspace"
+      description={
+        inviteActive
+          ? "Create your agent account with the invited email and join the assigned workspace."
+          : "Start managing customer conversations, team agents, broadcasts, contacts, and follow-ups from one organized CRM dashboard."
+      }
+    >
           <form onSubmit={handleSignup} className="flex flex-col gap-4">
             {error && (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+              <div role="alert" className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                 {error}
               </div>
             )}
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="fullName" className="text-slate-300">
+              <Label htmlFor="fullName" className="text-[#d8fff1]">
                 Full name
               </Label>
               <Input
@@ -188,12 +174,12 @@ export default function SignupPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
-                className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
+                className="h-11 rounded-full border-[#315846] bg-[#0d1b15] px-4 text-white placeholder:text-[#7fb9a9] focus-visible:border-[#3ddf84] focus-visible:ring-[#3ddf84]/25"
               />
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="email" className="text-slate-300">
+              <Label htmlFor="email" className="text-[#d8fff1]">
                 Email
               </Label>
               <Input
@@ -204,12 +190,12 @@ export default function SignupPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 readOnly={inviteActive}
                 required
-                className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
+                className="h-11 rounded-full border-[#315846] bg-[#0d1b15] px-4 text-white placeholder:text-[#7fb9a9] focus-visible:border-[#3ddf84] focus-visible:ring-[#3ddf84]/25"
               />
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="password" className="text-slate-300">
+              <Label htmlFor="password" className="text-[#d8fff1]">
                 Password
               </Label>
               <Input
@@ -219,12 +205,12 @@ export default function SignupPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
+                className="h-11 rounded-full border-[#315846] bg-[#0d1b15] px-4 text-white placeholder:text-[#7fb9a9] focus-visible:border-[#3ddf84] focus-visible:ring-[#3ddf84]/25"
               />
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="confirmPassword" className="text-slate-300">
+              <Label htmlFor="confirmPassword" className="text-[#d8fff1]">
                 Confirm password
               </Label>
               <Input
@@ -234,30 +220,28 @@ export default function SignupPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
+                className="h-11 rounded-full border-[#315846] bg-[#0d1b15] px-4 text-white placeholder:text-[#7fb9a9] focus-visible:border-[#3ddf84] focus-visible:ring-[#3ddf84]/25"
               />
             </div>
 
             <Button
               type="submit"
               disabled={loading}
-              className="mt-2 h-10 w-full bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-50"
+              className="mt-2 h-11 w-full rounded-full bg-[#3ddf84] font-semibold text-[#07130e] hover:bg-[#ffbd29] disabled:opacity-50"
             >
               {loading ? "Creating account..." : "Create account"}
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-slate-400">
+          <p className="mt-6 text-center text-sm text-[#b8cfc7]">
             Already have an account?{" "}
             <Link
               href={inviteActive ? inviteAuthPath("/login", inviteToken) : "/login"}
-              className="text-violet-500 hover:text-violet-400"
+              className="font-medium text-[#ffbd29] hover:text-[#ffe29a]"
             >
               Sign in
             </Link>
           </p>
-        </CardContent>
-      </Card>
-    </div>
+    </HostikoAuthShell>
   );
 }

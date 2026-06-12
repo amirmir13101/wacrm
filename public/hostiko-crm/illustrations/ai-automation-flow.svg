@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="520" viewBox="0 0 760 520" role="img" aria-labelledby="title desc">
+  <title id="title">AI automation workflow for customer follow-ups</title>
+  <desc id="desc">Workflow nodes connecting customer messages, AI automation, wait steps, templates, and follow-up actions.</desc>
+  <rect width="760" height="520" rx="36" fill="#0d1b15"/>
+  <g fill="none" stroke="#315846" stroke-width="4">
+    <path d="M182 164h126"/>
+    <path d="M452 164h126"/>
+    <path d="M380 224v78"/>
+    <path d="M278 356h204"/>
+  </g>
+  <g>
+    <rect x="76" y="108" width="150" height="112" rx="28" fill="#10261c" stroke="#315846"/>
+    <rect x="306" y="108" width="150" height="112" rx="28" fill="#143326" stroke="#3ddf84"/>
+    <rect x="536" y="108" width="150" height="112" rx="28" fill="#10261c" stroke="#315846"/>
+    <rect x="216" y="300" width="150" height="112" rx="28" fill="#10261c" stroke="#315846"/>
+    <rect x="464" y="300" width="150" height="112" rx="28" fill="#10261c" stroke="#315846"/>
+  </g>
+  <g fill="#fff">
+    <rect x="110" y="140" width="82" height="12" rx="6"/>
+    <rect x="340" y="140" width="82" height="12" rx="6"/>
+    <rect x="570" y="140" width="82" height="12" rx="6"/>
+    <rect x="250" y="332" width="82" height="12" rx="6"/>
+    <rect x="498" y="332" width="82" height="12" rx="6"/>
+  </g>
+  <g fill="#7fb9a9">
+    <rect x="110" y="170" width="54" height="8" rx="4"/>
+    <rect x="340" y="170" width="54" height="8" rx="4"/>
+    <rect x="570" y="170" width="54" height="8" rx="4"/>
+    <rect x="250" y="362" width="54" height="8" rx="4"/>
+    <rect x="498" y="362" width="54" height="8" rx="4"/>
+  </g>
+  <circle cx="380" cy="164" r="32" fill="#3ddf84"/>
+  <path d="M369 163h22M380 152v22" stroke="#07130e" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="291" cy="356" r="22" fill="#ffbd29"/>
+  <circle cx="539" cy="356" r="22" fill="#3ddf84"/>
+</svg>

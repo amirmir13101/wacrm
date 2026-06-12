@@ -1,22 +1,25 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Poppins } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 
-const inter = Inter({
+const poppins = Poppins({
   variable: "--font-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://vpscoaster.live"),
   title: {
-    default: "wacrm",
-    template: "%s — wacrm",
+    default: "WhatsApp CRM for Teams, Broadcasts, Contacts and AI Automation",
+    template: "%s - WACRM",
   },
-  description: "Self-hostable CRM template for WhatsApp.",
+  description:
+    "Production-ready WhatsApp CRM for team inboxes, contacts, broadcasts, templates, AI workflows, follow-ups, and sales pipelines.",
   robots: {
-    index: false,
-    follow: false,
+    index: true,
+    follow: true,
   },
   icons: {
     icon: [{ url: "/icon" }],
@@ -29,7 +32,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#020617",
+  themeColor: "#0d1b15",
   colorScheme: "dark",
 };
 
@@ -39,16 +42,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full bg-slate-950 text-white font-sans">
+    <html lang="en" className={`${poppins.variable} h-full antialiased`}>
+      <body className="min-h-full bg-slate-950 font-sans text-white">
         {children}
         <Toaster
           theme="dark"
           position="top-right"
           toastOptions={{
             style: {
-              background: "rgb(30 41 59)",
-              border: "1px solid rgb(51 65 85)",
+              background: "rgb(13 27 21)",
+              border: "1px solid rgb(49 88 70)",
               color: "white",
             },
           }}

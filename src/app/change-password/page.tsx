@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, LockKeyhole } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { HostikoAuthShell } from "@/components/auth/hostiko-auth-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
@@ -70,27 +70,20 @@ export default function ForcedPasswordChangePage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
-      <Card className="w-full max-w-md border-slate-800 bg-slate-900">
-        <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/10">
-            <LockKeyhole className="h-6 w-6 text-violet-400" />
-          </div>
-          <CardTitle className="text-xl text-white">Create a new password</CardTitle>
-          <CardDescription className="text-slate-400">
-            Please create a new password before continuing.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+    <HostikoAuthShell
+      title="Secure Your Team Member Account"
+      description="Please create a new password before continuing."
+      eyebrow="First login security"
+    >
           <form onSubmit={submit} className="space-y-4">
             {error ? (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              <div role="alert" className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                 {error}
               </div>
             ) : null}
 
             <div className="space-y-2">
-              <Label htmlFor="newPassword" className="text-slate-300">
+              <Label htmlFor="newPassword" className="text-[#d8fff1]">
                 New password
               </Label>
               <Input
@@ -100,12 +93,12 @@ export default function ForcedPasswordChangePage() {
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
                 required
-                className="border-slate-700 bg-slate-800 text-white"
+                className="h-11 rounded-full border-[#315846] bg-[#0d1b15] px-4 text-white focus-visible:border-[#3ddf84] focus-visible:ring-[#3ddf84]/25"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword" className="text-slate-300">
+              <Label htmlFor="confirmPassword" className="text-[#d8fff1]">
                 Confirm new password
               </Label>
               <Input
@@ -115,18 +108,18 @@ export default function ForcedPasswordChangePage() {
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 required
-                className="border-slate-700 bg-slate-800 text-white"
+                className="h-11 rounded-full border-[#315846] bg-[#0d1b15] px-4 text-white focus-visible:border-[#3ddf84] focus-visible:ring-[#3ddf84]/25"
               />
             </div>
 
-            <p className="text-xs leading-5 text-slate-500">
+            <p className="text-xs leading-5 text-[#7fb9a9]">
               Use at least 8 characters with uppercase, lowercase, and a number.
             </p>
 
             <Button
               type="submit"
               disabled={saving}
-              className="h-10 w-full bg-violet-600 text-white hover:bg-violet-500"
+              className="h-11 w-full rounded-full bg-[#3ddf84] font-semibold text-[#07130e] hover:bg-[#ffbd29]"
             >
               {saving ? (
                 <>
@@ -143,12 +136,10 @@ export default function ForcedPasswordChangePage() {
             type="button"
             variant="ghost"
             onClick={() => void logout()}
-            className="mt-3 w-full text-slate-300 hover:bg-slate-800 hover:text-white"
+            className="mt-3 w-full rounded-full text-[#b8cfc7] hover:bg-[#143326] hover:text-white"
           >
             Logout
           </Button>
-        </CardContent>
-      </Card>
-    </main>
+    </HostikoAuthShell>
   );
 }
