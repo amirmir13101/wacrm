@@ -32,7 +32,7 @@ describe('CRM stale UI refresh patterns', () => {
   it('clears stale auth state and returns to login after first-login password change', () => {
     expect(changePasswordPage).toContain('supabase.auth.signOut()')
     expect(changePasswordPage).toContain('Password changed. Please sign in with your new password.')
-    expect(changePasswordPage).toContain('refreshClientRoute(router, "/login?password_changed=1")')
+    expect(changePasswordPage).toContain('window.location.replace("/login?password_changed=1")')
     expect(changePasswordPage).toContain('setNewPassword("")')
     expect(changePasswordPage).toContain('finally')
     expect(changePasswordPage).toContain('setSaving(false)')

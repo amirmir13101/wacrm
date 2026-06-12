@@ -43,7 +43,7 @@ describe('auth bootstrap after forced password change', () => {
 
   it('signs out after forced password change so the next login starts cleanly', () => {
     expect(changePasswordPage).toContain('supabase.auth.signOut()')
-    expect(changePasswordPage).toContain('/login?password_changed=1')
+    expect(changePasswordPage).toContain('window.location.replace("/login?password_changed=1")')
     expect(loginPage).toContain('Password changed. Please sign in with your new password.')
   })
 
