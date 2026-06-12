@@ -44,7 +44,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
           <div className="flex min-h-[76px] items-center justify-between gap-5 lg:gap-6">
             <Link
               href="/"
-              className="mr-4 flex shrink-0 items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4] lg:mr-8 xl:mr-10"
+              className="mr-4 flex shrink-0 translate-x-8 items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4] sm:translate-x-10 lg:mr-8 lg:translate-x-12 xl:mr-10"
               aria-label="Talk Wagon home"
             >
               <Image
