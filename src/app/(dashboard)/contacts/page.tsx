@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
@@ -46,11 +47,22 @@ import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { getContactConsentStatus } from '@/lib/contacts/consent';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE_OPTIONS = [50, 100, 200] as const;
+const DEFAULT_PAGE_SIZE = 50;
 
 interface ContactWithTags extends Contact {
   tags?: Tag[];
 }
+
+interface ContactsResponse {
+  contacts: ContactWithTags[];
+  total: number;
+  page: number;
+  pageSize: number;
+  error?: string;
+}
+
+type DeleteMode = 'single' | 'bulk';
 
 function ConsentBadge({ contact }: { contact: Contact }) {
   const status = getContactConsentStatus(contact);
@@ -72,16 +84,31 @@ function ConsentBadge({ contact }: { contact: Contact }) {
   );
 }
 
+function parsePageParam(value: string | null) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function parsePageSizeParam(value: string | null) {
+  const parsed = Number(value);
+  return PAGE_SIZE_OPTIONS.includes(parsed as (typeof PAGE_SIZE_OPTIONS)[number])
+    ? parsed
+    : DEFAULT_PAGE_SIZE;
+}
+
 export default function ContactsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
+  const [search, setSearch] = useState(searchParams.get('search') ?? '');
+  const [page, setPage] = useState(parsePageParam(searchParams.get('page')));
+  const [pageSize, setPageSize] = useState(parsePageSizeParam(searchParams.get('pageSize')));
   const [totalCount, setTotalCount] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Modals
   const [formOpen, setFormOpen] = useState(false);
   const [editContact, setEditContact] = useState<Contact | null>(null);
   const [editContactTags, setEditContactTags] = useState<ContactTag[]>([]);
@@ -89,91 +116,72 @@ export default function ContactsPage() {
   const [detailContactId, setDetailContactId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
+  const [deleteMode, setDeleteMode] = useState<DeleteMode>('single');
+  const [deleteTargets, setDeleteTargets] = useState<ContactWithTags[]>([]);
   const [deleting, setDeleting] = useState(false);
 
-  // All tags for display
-  const [tagsMap, setTagsMap] = useState<Record<string, Tag>>({});
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
-  const fetchTags = useCallback(async () => {
-    const { data } = await supabase.from('tags').select('*');
-    if (data) {
-      const map: Record<string, Tag> = {};
-      data.forEach((t) => (map[t.id] = t));
-      setTagsMap(map);
-    }
-  }, [supabase]);
+  const updateUrl = useCallback((next: { page?: number; pageSize?: number; search?: string }) => {
+    const nextPage = next.page ?? page;
+    const nextPageSize = next.pageSize ?? pageSize;
+    const nextSearch = next.search ?? search;
+    const params = new URLSearchParams();
+
+    if (nextPage > 1) params.set('page', String(nextPage));
+    if (nextPageSize !== DEFAULT_PAGE_SIZE) params.set('pageSize', String(nextPageSize));
+    if (nextSearch.trim()) params.set('search', nextSearch.trim());
+
+    const query = params.toString();
+    router.replace(query ? `/contacts?${query}` : '/contacts', { scroll: false });
+  }, [page, pageSize, router, search]);
 
   const fetchContacts = useCallback(async () => {
     setLoading(true);
 
-    const from = page * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-
-    let query = supabase
-      .from('contacts')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(from, to);
-
-    if (search.trim()) {
-      const term = `%${search.trim()}%`;
-      query = query.or(`name.ilike.${term},phone.ilike.${term},email.ilike.${term}`);
-    }
-
-    const { data, count, error } = await query;
-
-    if (error) {
-      toast.error('Failed to load contacts');
-      setLoading(false);
-      return;
-    }
-
-    setTotalCount(count ?? 0);
-
-    if (!data || data.length === 0) {
-      setContacts([]);
-      setLoading(false);
-      return;
-    }
-
-    // Fetch tags for these contacts
-    const contactIds = data.map((c) => c.id);
-    const { data: contactTags } = await supabase
-      .from('contact_tags')
-      .select('contact_id, tag_id')
-      .in('contact_id', contactIds);
-
-    const tagsByContact: Record<string, string[]> = {};
-    contactTags?.forEach((ct) => {
-      if (!tagsByContact[ct.contact_id]) tagsByContact[ct.contact_id] = [];
-      tagsByContact[ct.contact_id].push(ct.tag_id);
+    const params = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
     });
+    if (search.trim()) params.set('search', search.trim());
 
-    const enriched: ContactWithTags[] = data.map((c) => ({
-      ...c,
-      tags: (tagsByContact[c.id] ?? [])
-        .map((tid) => tagsMap[tid])
-        .filter(Boolean),
-    }));
-
-    setContacts(enriched);
-    setLoading(false);
-  }, [supabase, page, search, tagsMap]);
-
-  // Load-once-on-mount-ish data fetches. Each setter inside runs
-  // inside an async promise completion (Supabase await), not
-  // synchronously in the effect body, so the cascade the lint rule
-  // warns about doesn't apply here.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchTags();
-  }, [fetchTags]);
+    try {
+      const response = await fetch(`/api/contacts?${params.toString()}`, { cache: 'no-store' });
+      const payload = (await response.json().catch(() => ({}))) as ContactsResponse;
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to load contacts');
+      }
+      setContacts(payload.contacts ?? []);
+      setTotalCount(payload.total ?? 0);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load contacts');
+      setContacts([]);
+      setTotalCount(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, search]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    const nextPage = parsePageParam(searchParams.get('page'));
+    const nextPageSize = parsePageSizeParam(searchParams.get('pageSize'));
+    const nextSearch = searchParams.get('search') ?? '';
+
+    setPage(nextPage);
+    setPageSize(nextPageSize);
+    setSearch(nextSearch);
+    setSelectedIds(new Set());
+  }, [searchParams]);
+
+  useEffect(() => {
     fetchContacts();
   }, [fetchContacts]);
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate =
+      selectedIds.size > 0 && selectedIds.size < contacts.length;
+  }, [contacts.length, selectedIds]);
 
   function openAddForm() {
     setEditContact(null);
@@ -196,43 +204,114 @@ export default function ContactsPage() {
     setDetailOpen(true);
   }
 
-  function confirmDelete(contact: Contact) {
-    setDeleteTarget(contact);
+  function toggleContactSelection(contactId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(contactId)) next.delete(contactId);
+      else next.add(contactId);
+      return next;
+    });
+  }
+
+  function toggleSelectVisible(checked: boolean) {
+    setSelectedIds(checked ? new Set(contacts.map((contact) => contact.id)) : new Set());
+  }
+
+  function changePage(nextPage: number) {
+    setPage(nextPage);
+    setSelectedIds(new Set());
+    updateUrl({ page: nextPage });
+  }
+
+  function changePageSize(nextPageSize: number) {
+    setPageSize(nextPageSize);
+    setPage(1);
+    setSelectedIds(new Set());
+    updateUrl({ page: 1, pageSize: nextPageSize });
+  }
+
+  function changeSearch(nextSearch: string) {
+    setSearch(nextSearch);
+    setPage(1);
+    setSelectedIds(new Set());
+    updateUrl({ page: 1, search: nextSearch });
+  }
+
+  function confirmDelete(contact: ContactWithTags) {
+    setDeleteMode('single');
+    setDeleteTargets([contact]);
+    setDeleteConfirmOpen(true);
+  }
+
+  function confirmBulkDelete() {
+    const selected = contacts.filter((contact) => selectedIds.has(contact.id));
+    if (selected.length === 0) return;
+    setDeleteMode('bulk');
+    setDeleteTargets(selected);
     setDeleteConfirmOpen(true);
   }
 
   async function handleDelete() {
-    if (!deleteTarget) return;
+    if (deleteTargets.length === 0) return;
     setDeleting(true);
 
-    const { error } = await supabase
-      .from('contacts')
-      .delete()
-      .eq('id', deleteTarget.id);
+    try {
+      const response = await fetch('/api/contacts', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: deleteTargets.map((contact) => contact.id) }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        deleted_count?: number;
+        deleted_ids?: string[];
+      };
+      if (!response.ok) throw new Error(payload.error || 'Failed to delete contacts');
 
-    if (error) {
-      toast.error('Failed to delete contact');
-    } else {
-      toast.success('Contact deleted');
-      fetchContacts();
+      const deletedIds = new Set(payload.deleted_ids ?? []);
+      const deletedOnPage = contacts.filter((contact) => deletedIds.has(contact.id)).length;
+      setContacts((current) => current.filter((contact) => !deletedIds.has(contact.id)));
+      setTotalCount((current) => Math.max(0, current - (payload.deleted_count ?? deletedOnPage)));
+      setSelectedIds(new Set());
+      toast.success(
+        deleteMode === 'bulk'
+          ? `${payload.deleted_count ?? deletedOnPage} selected contacts deleted`
+          : 'Contact deleted',
+      );
+
+      const remainingOnPage = contacts.length - deletedOnPage;
+      if (remainingOnPage <= 0 && page > 1) {
+        changePage(page - 1);
+      } else {
+        await fetchContacts();
+      }
+      setDeleteConfirmOpen(false);
+      setDeleteTargets([]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete contacts');
+    } finally {
+      setDeleting(false);
     }
-
-    setDeleting(false);
-    setDeleteConfirmOpen(false);
-    setDeleteTarget(null);
   }
 
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const hasNext = page < totalPages - 1;
-  const hasPrev = page > 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const hasNext = page < totalPages;
+  const hasPrev = page > 1;
+  const rangeStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = totalCount === 0 ? 0 : Math.min((page - 1) * pageSize + contacts.length, totalCount);
+  const allVisibleSelected = contacts.length > 0 && selectedIds.size === contacts.length;
+  const deleteTitle = deleteMode === 'bulk' ? 'Delete Selected Contacts' : 'Delete Contact';
+  const deleteDescription =
+    deleteMode === 'bulk'
+      ? `Delete ${deleteTargets.length} selected contacts? This action cannot be undone.`
+      : `Are you sure you want to delete ${deleteTargets[0]?.name || deleteTargets[0]?.phone}? This action cannot be undone.`;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Contacts</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="mt-1 text-sm text-slate-400">
             Manage your contact list. {totalCount > 0 && `${totalCount} total contacts.`}
           </p>
         </div>
@@ -247,7 +326,7 @@ export default function ContactsPage() {
           </Button>
           <Button
             onClick={openAddForm}
-            className="bg-violet-600 hover:bg-violet-700 text-white"
+            className="bg-violet-600 text-white hover:bg-violet-700"
           >
             <Plus className="size-4" />
             Add Contact
@@ -255,41 +334,82 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-slate-500" />
-        <Input
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            // Reset pagination when the query changes — the result
-            // set shrinks/grows, page N may no longer be valid.
-            setPage(0);
-          }}
-          placeholder="Search by name, phone, or email..."
-          className="pl-8 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
-        />
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative max-w-sm">
+          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-slate-500" />
+          <Input
+            value={search}
+            onChange={(e) => changeSearch(e.target.value)}
+            placeholder="Search by name, phone, email, or company..."
+            className="border-slate-700 bg-slate-900 pl-8 text-white placeholder:text-slate-500"
+          />
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <span className="text-xs text-slate-500">
+            Showing {rangeStart}-{rangeEnd} of {totalCount} contacts
+          </span>
+          <label className="flex items-center gap-2 text-xs text-slate-400">
+            Rows per page
+            <select
+              value={pageSize}
+              onChange={(e) => changePageSize(Number(e.target.value))}
+              className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200 outline-none hover:bg-slate-800"
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border border-slate-800 overflow-hidden">
+      <div className="flex min-h-9 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-slate-500">
+          Select All applies to the visible page only. Selection clears when the page, search, or page size changes.
+        </p>
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={selectedIds.size === 0 || deleting}
+          onClick={confirmBulkDelete}
+        >
+          {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          Delete Selected{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+        </Button>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-slate-800">
         <Table>
           <TableHeader>
             <TableRow className="border-slate-800 hover:bg-transparent">
+              <TableHead className="w-10 text-slate-400">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  aria-label="Select all visible contacts"
+                  checked={allVisibleSelected}
+                  disabled={contacts.length === 0}
+                  onChange={(e) => toggleSelectVisible(e.target.checked)}
+                  className="size-4 rounded border-slate-700 bg-slate-900 accent-violet-600"
+                />
+              </TableHead>
               <TableHead className="text-slate-400">Name</TableHead>
               <TableHead className="text-slate-400">Phone</TableHead>
-              <TableHead className="text-slate-400 hidden md:table-cell">Email</TableHead>
-              <TableHead className="text-slate-400 hidden lg:table-cell">Company</TableHead>
-              <TableHead className="text-slate-400 hidden md:table-cell">Consent</TableHead>
-              <TableHead className="text-slate-400 hidden md:table-cell">Tags</TableHead>
-              <TableHead className="text-slate-400 hidden lg:table-cell">Created</TableHead>
-              <TableHead className="text-slate-400 w-12" />
+              <TableHead className="hidden text-slate-400 md:table-cell">Email</TableHead>
+              <TableHead className="hidden text-slate-400 lg:table-cell">Company</TableHead>
+              <TableHead className="hidden text-slate-400 md:table-cell">Consent</TableHead>
+              <TableHead className="hidden text-slate-400 md:table-cell">Tags</TableHead>
+              <TableHead className="hidden text-slate-400 lg:table-cell">Created</TableHead>
+              <TableHead className="w-12 text-slate-400" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow className="border-slate-800">
-                <TableCell colSpan={8} className="text-center py-12">
+                <TableCell colSpan={9} className="py-12 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="size-6 animate-spin text-violet-500" />
                     <p className="text-sm text-slate-500">Loading contacts...</p>
@@ -298,7 +418,7 @@ export default function ContactsPage() {
               </TableRow>
             ) : contacts.length === 0 ? (
               <TableRow className="border-slate-800">
-                <TableCell colSpan={8} className="text-center py-12">
+                <TableCell colSpan={9} className="py-12 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <Users className="size-8 text-slate-600" />
                     <p className="text-sm text-slate-500">
@@ -322,19 +442,28 @@ export default function ContactsPage() {
               contacts.map((contact) => (
                 <TableRow
                   key={contact.id}
-                  className="border-slate-800 hover:bg-slate-900/50 cursor-pointer"
+                  className="cursor-pointer border-slate-800 hover:bg-slate-900/50"
                   onClick={() => openDetail(contact.id)}
                 >
-                  <TableCell className="text-white font-medium">
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${contact.name || contact.phone}`}
+                      checked={selectedIds.has(contact.id)}
+                      onChange={() => toggleContactSelection(contact.id)}
+                      className="size-4 rounded border-slate-700 bg-slate-900 accent-violet-600"
+                    />
+                  </TableCell>
+                  <TableCell className="font-medium text-white">
                     {contact.name || <span className="text-slate-500 italic">Unnamed</span>}
                   </TableCell>
-                  <TableCell className="text-slate-300 font-mono text-xs">
+                  <TableCell className="font-mono text-xs text-slate-300">
                     {contact.phone}
                   </TableCell>
-                  <TableCell className="text-slate-400 hidden md:table-cell text-sm">
+                  <TableCell className="hidden text-sm text-slate-400 md:table-cell">
                     {contact.email || <span className="text-slate-600">-</span>}
                   </TableCell>
-                  <TableCell className="text-slate-400 hidden lg:table-cell text-sm">
+                  <TableCell className="hidden text-sm text-slate-400 lg:table-cell">
                     {contact.company || <span className="text-slate-600">-</span>}
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
@@ -356,7 +485,7 @@ export default function ContactsPage() {
                           </span>
                         ))
                       ) : (
-                        <span className="text-slate-600 text-xs">-</span>
+                        <span className="text-xs text-slate-600">-</span>
                       )}
                       {contact.tags && contact.tags.length > 3 && (
                         <span className="text-[10px] text-slate-500">
@@ -365,7 +494,7 @@ export default function ContactsPage() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-slate-500 text-xs hidden lg:table-cell">
+                  <TableCell className="hidden text-xs text-slate-500 lg:table-cell">
                     {new Date(contact.created_at).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
@@ -388,7 +517,7 @@ export default function ContactsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
                         align="end"
-                        className="bg-slate-900 border-slate-700"
+                        className="border-slate-700 bg-slate-900"
                       >
                         <DropdownMenuItem
                           onClick={(e) => {
@@ -421,52 +550,43 @@ export default function ContactsPage() {
         </Table>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-slate-500">
-            Showing {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, totalCount)} of{' '}
-            {totalCount}
-          </p>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={!hasPrev}
-              onClick={() => setPage((p) => p - 1)}
-              className="border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-30"
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <span className="text-xs text-slate-400 px-2">
-              Page {page + 1} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={!hasNext}
-              onClick={() => setPage((p) => p + 1)}
-              className="border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-30"
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-slate-500">
+          Showing {rangeStart}-{rangeEnd} of {totalCount} contacts
+        </p>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            disabled={!hasPrev || loading}
+            onClick={() => changePage(page - 1)}
+            className="border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-30"
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+          <span className="px-2 text-xs text-slate-400">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            disabled={!hasNext || loading}
+            onClick={() => changePage(page + 1)}
+            className="border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-30"
+          >
+            <ChevronRight className="size-4" />
+          </Button>
         </div>
-      )}
+      </div>
 
-      {/* Contact Form Dialog */}
       <ContactForm
         open={formOpen}
         onOpenChange={setFormOpen}
         contact={editContact}
         contactTags={editContactTags}
-        onSaved={() => {
-          fetchContacts();
-          fetchTags();
-        }}
+        onSaved={fetchContacts}
       />
 
-      {/* Contact Detail Sheet */}
       <ContactDetailView
         open={detailOpen}
         onOpenChange={setDetailOpen}
@@ -474,29 +594,29 @@ export default function ContactsPage() {
         onUpdated={fetchContacts}
       />
 
-      {/* Import Modal */}
       <ImportModal
         open={importOpen}
         onOpenChange={setImportOpen}
-        onImported={fetchContacts}
+        onImported={() => {
+          setPage(1);
+          setSelectedIds(new Set());
+          updateUrl({ page: 1 });
+          void fetchContacts();
+        }}
       />
 
-      {/* Delete Confirmation */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent className="bg-slate-900 border-slate-700 text-slate-200 sm:max-w-sm">
+        <DialogContent className="border-slate-700 bg-slate-900 text-slate-200 sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white">Delete Contact</DialogTitle>
+            <DialogTitle className="text-white">{deleteTitle}</DialogTitle>
             <DialogDescription className="text-slate-400">
-              Are you sure you want to delete{' '}
-              <span className="text-slate-200 font-medium">
-                {deleteTarget?.name || deleteTarget?.phone}
-              </span>
-              ? This action cannot be undone.
+              {deleteDescription}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="bg-slate-900 border-slate-700">
+          <DialogFooter className="border-slate-700 bg-slate-900">
             <Button
               variant="outline"
+              disabled={deleting}
               onClick={() => setDeleteConfirmOpen(false)}
               className="border-slate-700 text-slate-300 hover:bg-slate-800"
             >
@@ -508,7 +628,7 @@ export default function ContactsPage() {
               disabled={deleting}
             >
               {deleting && <Loader2 className="size-4 animate-spin" />}
-              Delete
+              {deleting ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>
