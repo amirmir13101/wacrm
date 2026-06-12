@@ -51,11 +51,11 @@ export default function ForcedPasswordChangePage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "Password update failed.");
-      await supabase.auth.refreshSession().catch(() => undefined);
-      toast.success("Password updated successfully.");
+      await supabase.auth.signOut().catch(() => undefined);
+      toast.success("Password changed. Please sign in with your new password.");
       setNewPassword("");
       setConfirmPassword("");
-      refreshClientRoute(router, "/dashboard");
+      refreshClientRoute(router, "/login?password_changed=1");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Password update failed.";
       setError(message);

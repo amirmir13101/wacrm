@@ -15,14 +15,45 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { MessageSquare } from "lucide-react";
-import { authenticatedRedirectPath } from "@/lib/auth/approval";
 import { friendlyAuthError, inviteAcceptPath, inviteAuthPath } from "@/lib/team/invitations";
 import { refreshClientRoute } from "@/lib/ui/post-mutation";
+
+const AUTH_BOOTSTRAP_RETRY_DELAYS = [0, 200, 500, 1000];
+
+async function wait(ms: number) {
+  if (!ms) return;
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function loadAuthBootstrap() {
+  let lastError = "Login succeeded, but your workspace could not be loaded. Please try again.";
+
+  for (const delay of AUTH_BOOTSTRAP_RETRY_DELAYS) {
+    await wait(delay);
+    const res = await fetch("/api/auth/bootstrap", { cache: "no-store" });
+    const body = await res.json().catch(() => ({}));
+
+    if (res.ok && typeof body.redirectTo === "string") {
+      return body.redirectTo as string;
+    }
+
+    if (typeof body.error === "string" && body.error) {
+      lastError = body.error;
+    }
+
+    if (res.status !== 401 && res.status !== 500) {
+      break;
+    }
+  }
+
+  throw new Error(lastError);
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [cookieInviteActive, setCookieInviteActive] = useState(false);
@@ -36,6 +67,10 @@ export default function LoginPage() {
     if (typeof window === "undefined") return false;
     const params = new URLSearchParams(window.location.search);
     return params.get("invite") === "1" || params.get("redirect") === "/invite/accept";
+  });
+  const [passwordChanged] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).get("password_changed") === "1";
   });
   const inviteActive = Boolean(inviteToken || cookieInviteActive);
   const inviteRedirectPath = inviteToken
@@ -68,12 +103,19 @@ export default function LoginPage() {
     };
   }, [inviteRequested, inviteToken]);
 
+  useEffect(() => {
+    if (passwordChanged) {
+      setInfo("Password changed. Please sign in with your new password.");
+    }
+  }, [passwordChanged]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
     try {
+      setInfo(null);
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -84,25 +126,21 @@ export default function LoginPage() {
         return;
       }
 
-      await supabase.auth.refreshSession().catch(() => undefined);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error("Login succeeded, but your session was not ready. Please try again.");
+      }
 
       if (inviteActive) {
         refreshClientRoute(router, inviteRedirectPath);
         return;
       }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      const { data: profile } = user
-        ? await supabase
-            .from("profiles")
-            .select("role, approval_status, account_type, must_change_password")
-            .eq("user_id", user.id)
-            .maybeSingle()
-        : { data: null };
-
-      refreshClientRoute(router, authenticatedRedirectPath(profile));
+      const redirectTo = await loadAuthBootstrap();
+      refreshClientRoute(router, redirectTo);
     } catch (err) {
       setError(err instanceof Error ? friendlyAuthError(err.message) : "Could not sign in.");
     } finally {
@@ -127,6 +165,11 @@ export default function LoginPage() {
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
                 {error}
+              </div>
+            )}
+            {info && (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+                {info}
               </div>
             )}
 

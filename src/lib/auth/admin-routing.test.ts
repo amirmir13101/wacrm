@@ -13,7 +13,8 @@ const sidebar = readFileSync(join(process.cwd(), 'src/components/layout/sidebar.
 
 describe('platform admin routing separation', () => {
   it('uses role-aware destinations after normal login and home redirect', () => {
-    expect(loginPage).toContain('authenticatedRedirectPath(profile)')
+    expect(loginPage).toContain('/api/auth/bootstrap')
+    expect(loginPage).toContain('loadAuthBootstrap()')
     expect(homePage).toContain('authenticatedRedirectPath(profile)')
   })
 

@@ -23,14 +23,16 @@ describe('CRM stale UI refresh patterns', () => {
     expect(loginPage).toContain('try {')
     expect(loginPage).toContain('finally')
     expect(loginPage).toContain('setLoading(false)')
-    expect(loginPage).toContain('supabase.auth.refreshSession()')
-    expect(loginPage).toContain('refreshClientRoute(router, authenticatedRedirectPath(profile))')
+    expect(loginPage).toContain('supabase.auth.getSession()')
+    expect(loginPage).toContain('loadAuthBootstrap()')
+    expect(loginPage).toContain('refreshClientRoute(router, redirectTo)')
     expect(loginPage).toContain('refreshClientRoute(router, inviteRedirectPath)')
   })
 
-  it('refreshes auth session and router after first-login password change', () => {
-    expect(changePasswordPage).toContain('supabase.auth.refreshSession()')
-    expect(changePasswordPage).toContain('refreshClientRoute(router, "/dashboard")')
+  it('clears stale auth state and returns to login after first-login password change', () => {
+    expect(changePasswordPage).toContain('supabase.auth.signOut()')
+    expect(changePasswordPage).toContain('Password changed. Please sign in with your new password.')
+    expect(changePasswordPage).toContain('refreshClientRoute(router, "/login?password_changed=1")')
     expect(changePasswordPage).toContain('setNewPassword("")')
     expect(changePasswordPage).toContain('finally')
     expect(changePasswordPage).toContain('setSaving(false)')
