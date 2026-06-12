@@ -29,6 +29,13 @@ import { createClient } from "@/lib/supabase/server";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/`;
+const homeImages = {
+  hero: "/hostiko-crm/generated/talk-wagon-home-hero-dashboard.webp",
+  teamInbox: "/hostiko-crm/generated/talk-wagon-home-team-inbox.webp",
+  broadcasts: "/hostiko-crm/generated/talk-wagon-home-broadcast-campaigns.webp",
+  automation: "/hostiko-crm/generated/talk-wagon-home-automation-workflows.webp",
+  pipeline: "/hostiko-crm/generated/talk-wagon-home-sales-pipeline.webp",
+} as const;
 
 export const metadata: Metadata = {
   title: "WhatsApp CRM for Teams, Broadcasts, Contacts and AI Automation",
@@ -46,9 +53,9 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/hostiko-crm/illustrations/whatsapp-crm-dashboard.svg",
-        width: 960,
-        height: 700,
+        url: homeImages.hero,
+        width: 2336,
+        height: 1744,
         alt: "WhatsApp CRM dashboard with customer conversations and automation workflows",
       },
     ],
@@ -58,7 +65,7 @@ export const metadata: Metadata = {
     title: "Production-Ready WhatsApp CRM for Teams and Automation",
     description:
       "Manage WhatsApp conversations, contacts, team agents, broadcasts, templates, AI workflows, and sales pipelines from one CRM dashboard.",
-    images: ["/hostiko-crm/illustrations/whatsapp-crm-dashboard.svg"],
+    images: [homeImages.hero],
   },
   robots: {
     index: true,
@@ -83,7 +90,7 @@ const featureCards = [
     description:
       "Manage customer messages in one shared CRM inbox with agents, assignments, conversation history, and permission-based access.",
     icon: MessageSquareText,
-    image: "/hostiko-crm/illustrations/team-inbox-workflow.svg",
+    image: homeImages.teamInbox,
     alt: "Shared WhatsApp team inbox for agents and managers",
     href: "/features/team-inbox",
   },
@@ -92,7 +99,7 @@ const featureCards = [
     description:
       "Import, organize, search, paginate, select, and bulk manage contacts inside secure workspace-based accounts.",
     icon: Users,
-    image: "/hostiko-crm/illustrations/whatsapp-crm-dashboard.svg",
+    image: homeImages.hero,
     alt: "WhatsApp CRM dashboard with customer conversations and automation workflows",
     href: "/features#contact-management",
   },
@@ -101,7 +108,7 @@ const featureCards = [
     description:
       "Send approved WhatsApp template campaigns to selected contacts and track delivery workflow status from the CRM.",
     icon: Radio,
-    image: "/hostiko-crm/illustrations/broadcast-campaigns.svg",
+    image: homeImages.broadcasts,
     alt: "Broadcast campaign CRM for WhatsApp contacts",
     href: "/features/broadcasts",
   },
@@ -110,7 +117,7 @@ const featureCards = [
     description:
       "Automate repetitive follow-ups, lead routing, status updates, webhooks, and customer communication tasks.",
     icon: Bot,
-    image: "/hostiko-crm/illustrations/ai-automation-flow.svg",
+    image: homeImages.automation,
     alt: "AI automation workflow for customer follow-ups",
     href: "/features/automation",
   },
@@ -119,7 +126,7 @@ const featureCards = [
     description:
       "Track leads, deals, follow-ups, and customer stages from one simple sales pipeline CRM connected to conversations.",
     icon: GitBranch,
-    image: "/hostiko-crm/illustrations/sales-pipeline.svg",
+    image: homeImages.pipeline,
     alt: "Sales pipeline dashboard for WhatsApp CRM leads",
     href: "/features#sales-pipeline",
   },
@@ -128,7 +135,7 @@ const featureCards = [
     description:
       "Create team agents, force first-login password changes, assign permissions, and control what each member can view or manage.",
     icon: KeyRound,
-    image: "/hostiko-crm/illustrations/team-inbox-workflow.svg",
+    image: homeImages.teamInbox,
     alt: "Permission-based CRM workspace for team agents",
     href: "/features#permissions",
   },
@@ -297,10 +304,10 @@ export default async function HomePage() {
           <div className="relative">
             <div className="rounded-[34px] border border-white/10 bg-white/8 p-4 shadow-[0_32px_95px_rgba(0,0,0,0.35)] backdrop-blur">
               <Image
-                src="/hostiko-crm/illustrations/whatsapp-crm-dashboard.svg"
+                src={homeImages.hero}
                 alt="WhatsApp CRM dashboard with customer conversations and automation workflows"
-                width={960}
-                height={700}
+                width={2336}
+                height={1744}
                 priority
                 className="h-auto w-full rounded-[26px]"
               />
@@ -449,10 +456,10 @@ export default async function HomePage() {
             </ol>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/ai-automation-flow.svg"
+            src={homeImages.automation}
             alt="AI automation workflow for customer follow-ups"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#0d1b15] shadow-[0_30px_90px_rgba(0,0,0,0.30)]"
           />
@@ -462,10 +469,10 @@ export default async function HomePage() {
       <section className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
-            src="/hostiko-crm/illustrations/team-inbox-workflow.svg"
+            src={homeImages.teamInbox}
             alt="Shared WhatsApp team inbox for agents and managers"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#f4fff9] shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -540,10 +547,10 @@ export default async function HomePage() {
             </div>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/broadcast-campaigns.svg"
+            src={homeImages.broadcasts}
             alt="Broadcast campaign CRM for WhatsApp contacts"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -553,10 +560,10 @@ export default async function HomePage() {
       <section id="pipeline" className="bg-[#1b372b] px-5 py-20 text-white sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
-            src="/hostiko-crm/illustrations/sales-pipeline.svg"
+            src={homeImages.pipeline}
             alt="Sales pipeline dashboard for WhatsApp CRM leads"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#0d1b15] shadow-[0_30px_90px_rgba(0,0,0,0.30)]"
           />
