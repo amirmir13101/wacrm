@@ -153,36 +153,42 @@ const useCases = [
 const detailedFeatures = [
   {
     title: "Conversation Assignment",
+    href: "/features/team-inbox",
     description:
       "Assign customer conversations to the right team member so every lead or support request has a clear owner.",
     icon: UserCheck,
   },
   {
     title: "Contact Context",
+    href: "/features#contact-management",
     description:
       "See customer information, notes, status, and history alongside the conversation workflow.",
     icon: Tags,
   },
   {
     title: "Agent Dashboards",
+    href: "/features#permissions",
     description:
       "Give team members access to the tools they need without showing sensitive owner/admin settings.",
     icon: Users,
   },
   {
     title: "Follow-Up Workflow",
+    href: "/features/automation",
     description:
       "Keep no-reply follow-ups, customer updates, and next actions organized inside the CRM.",
     icon: Clock3,
   },
   {
     title: "Role-Based Permissions",
+    href: "/features#permissions",
     description:
       "Control access to contacts, conversations, broadcasts, settings, and team tools.",
     icon: KeyRound,
   },
   {
     title: "Pipeline Connection",
+    href: "/features#sales-pipeline",
     description:
       "Turn important conversations into deals and track progress through your sales pipeline.",
     icon: GitBranch,
@@ -481,6 +487,13 @@ export default function TeamInboxPage() {
                   <feature.icon className="h-6 w-6 text-[#08bba4]" aria-hidden="true" />
                   <h3 className="mt-4 font-extrabold text-[#07130e]">{feature.title}</h3>
                   <p className="mt-3 text-sm leading-7 text-[#5b7169]">{feature.description}</p>
+                  <Link
+                    href={feature.href}
+                    className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] hover:text-[#07130e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
+                  >
+                    Learn more
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                  </Link>
                 </article>
               ))}
             </div>
@@ -564,6 +577,13 @@ export default function TeamInboxPage() {
               automation. Trigger follow-ups, assign conversations, update contact fields,
               create deals, send webhooks, and keep customer workflows moving.
             </p>
+            <Link
+              href="/features/automation"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] hover:text-[#07130e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
+            >
+              Explore automation workflows
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
             <div className="mt-8 flex flex-wrap gap-3">
               {automationActions.map((action) => (
                 <span key={action} className="inline-flex items-center gap-2 rounded-full bg-[#f7fbf8] px-4 py-3 text-sm font-bold text-[#07130e] ring-1 ring-[#dbe9e2]">

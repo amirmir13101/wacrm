@@ -78,72 +78,84 @@ const featureCards = [
   {
     title: "WhatsApp Team Inbox",
     icon: MessageSquareText,
+    href: "/features/team-inbox",
     description:
       "Manage customer chats in a shared inbox instead of scattered phones. Agents can work assigned conversations, managers can monitor queues, and every customer message stays connected to CRM history.",
   },
   {
     title: "Contact Management",
     icon: Users,
+    href: "/features#contact-management",
     description:
       "Store customer names, phones, tags, consent status, and activity in one searchable workspace. Imports, pagination, selection tools, and safe bulk actions help large lists stay manageable.",
   },
   {
     title: "Broadcast Campaigns",
     icon: Radio,
+    href: "/features/broadcasts",
     description:
       "Prepare WhatsApp template broadcasts with eligibility checks, consent controls, preflight review, queue processing, and live delivery updates. This gives campaigns structure before they reach customers.",
   },
   {
     title: "WhatsApp Templates",
     icon: Tags,
+    href: "/features#templates",
     description:
       "Sync and organize approved Meta WhatsApp templates for compliant outreach. Template-based messaging keeps follow-ups and campaigns aligned with WhatsApp Business Platform rules.",
   },
   {
     title: "AI Workflow Automation",
     icon: Bot,
+    href: "/features/automation",
     description:
       "Automate repetitive customer workflows such as welcome replies, keyword responses, assignment, tagging, follow-ups, webhooks, and deal creation. Automation reduces manual work while keeping agents in control.",
   },
   {
     title: "Sales Pipeline",
     icon: GitBranch,
+    href: "/features#sales-pipeline",
     description:
       "Track WhatsApp leads from first message to quote, payment pending, won, or lost. Deals can be assigned to agents so sales work is visible and follow-ups do not disappear.",
   },
   {
     title: "Team Agents",
     icon: UserCheck,
+    href: "/features#permissions",
     description:
       "Create team member accounts for sales or support agents without sharing the owner password. Agents get their own login, workspace access, and first-login password change flow.",
   },
   {
     title: "Role-Based Permissions",
     icon: KeyRound,
+    href: "/features#permissions",
     description:
       "Control which tabs and actions each member can use, including inbox, contacts, broadcasts, automations, pipeline, settings, and team management. Owners can keep sensitive tools limited.",
   },
   {
     title: "Workspace Security",
     icon: LockKeyhole,
+    href: "/features#permissions",
     description:
       "Each company workspace keeps contacts, conversations, templates, broadcasts, pricing, automations, and agents separated. Team members use workspace data without seeing platform admin areas.",
   },
   {
     title: "Admin Approval Flow",
     icon: ShieldCheck,
+    href: "/features#permissions",
     description:
       "New company owners can sign up, then wait for platform approval before accessing the CRM. This protects production access while keeping the customer onboarding path clean.",
   },
   {
     title: "Reports and Recent Sent",
     icon: Clock3,
+    href: "/features",
     description:
       "Review recent sent activity, broadcast status, recipient outcomes, automation logs, and pipeline progress. These views help owners spot what happened without refreshing pages constantly.",
   },
   {
     title: "Webhooks and Automation Actions",
     icon: Webhook,
+    href: "/features/automation",
     description:
       "Use automation steps that send webhooks, update contacts, close conversations, assign work, and create deals. This connects WhatsApp conversations with wider business workflows.",
   },
@@ -308,7 +320,7 @@ export default function FeaturesPage() {
                 href="/login"
                 className="inline-flex h-12 items-center justify-center rounded-full border border-white/30 px-7 text-sm font-bold text-white hover:bg-white hover:text-[#07130e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
-                Login
+                Login to Dashboard
               </Link>
             </div>
             <HeroBadgeRow items={heroPills} />
@@ -358,6 +370,13 @@ export default function FeaturesPage() {
                 <p className="mt-3 text-sm leading-7 text-[#5b7169]">
                   {feature.description}
                 </p>
+                <Link
+                  href={feature.href}
+                  className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] hover:text-[#07130e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
+                >
+                  Learn more
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
               </article>
             ))}
           </div>
@@ -401,7 +420,7 @@ export default function FeaturesPage() {
         </div>
       </section>
 
-      <section id="contacts" className="bg-white px-5 py-20 sm:px-8 lg:px-10">
+      <section id="contact-management" className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
             src="/hostiko-crm/illustrations/contact-management.svg"
@@ -438,7 +457,7 @@ export default function FeaturesPage() {
         </div>
       </section>
 
-      <section id="broadcasts" className="bg-[#1b372b] px-5 py-20 text-white sm:px-8 lg:px-10">
+      <section id="templates" className="bg-[#1b372b] px-5 py-20 text-white sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1fr_0.95fr]">
           <div>
             <p className="text-sm font-bold uppercase text-[#ffbd29]">Broadcasts</p>
@@ -506,7 +525,7 @@ export default function FeaturesPage() {
         </div>
       </section>
 
-      <section id="pipeline" className="bg-[#f7fbf8] px-5 py-20 sm:px-8 lg:px-10">
+      <section id="sales-pipeline" className="bg-[#f7fbf8] px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1fr_0.95fr]">
           <div>
             <SectionEyebrow>Sales Pipeline</SectionEyebrow>

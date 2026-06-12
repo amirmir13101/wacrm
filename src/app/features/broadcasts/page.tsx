@@ -81,14 +81,14 @@ const problemCards = [
 ] as const;
 
 const solutionCards = [
-  ["Contact-based sending workflow", Users],
-  ["Approved template support", KeyRound],
-  ["Campaign organization", ClipboardCheck],
-  ["Broadcast status tracking", ListChecks],
-  ["Team visibility", ShieldCheck],
-  ["Follow-up connection", GitBranch],
-  ["Customer records", Tags],
-  ["Workspace security", ShieldCheck],
+  ["Contact-based sending workflow", Users, "/features#contact-management"],
+  ["Approved template support", KeyRound, "/features/broadcasts#templates"],
+  ["Campaign organization", ClipboardCheck, "/features/broadcasts"],
+  ["Broadcast status tracking", ListChecks, "/features/broadcasts"],
+  ["Team visibility", ShieldCheck, "/features/team-inbox"],
+  ["Follow-up connection", GitBranch, "/features/automation"],
+  ["Customer records", Tags, "/features#contact-management"],
+  ["Workspace security", ShieldCheck, "/features#permissions"],
 ] as const;
 
 const steps = [
@@ -367,11 +367,15 @@ export default function BroadcastsFeaturePage() {
               organized from planning to reply handling.
             </p>
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              {solutionCards.map(([title, Icon]) => (
-                <div key={title} className="flex gap-3 rounded-[22px] bg-white p-5 ring-1 ring-[#dbe9e2]">
+              {solutionCards.map(([title, Icon, href]) => (
+                <Link
+                  key={title}
+                  href={href}
+                  className="flex gap-3 rounded-[22px] bg-white p-5 ring-1 ring-[#dbe9e2] hover:ring-[#3ddf84] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
+                >
                   <Icon className="mt-0.5 h-5 w-5 shrink-0 text-[#08bba4]" aria-hidden="true" />
                   <span className="text-sm font-bold text-[#07130e]">{title}</span>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
@@ -408,7 +412,7 @@ export default function BroadcastsFeaturePage() {
         </div>
       </section>
 
-      <section className="bg-white px-5 py-20 sm:px-8 lg:px-10">
+      <section id="templates" className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
             src="/hostiko-crm/illustrations/whatsapp-api-key.svg"
@@ -444,7 +448,7 @@ export default function BroadcastsFeaturePage() {
         </div>
       </section>
 
-      <section className="bg-[#f7fbf8] px-5 py-20 sm:px-8 lg:px-10">
+      <section id="contact-selection" className="bg-[#f7fbf8] px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1fr_0.95fr]">
           <div>
             <p className="text-sm font-bold uppercase text-[#08bba4]">Contact selection</p>
@@ -476,7 +480,7 @@ export default function BroadcastsFeaturePage() {
         </div>
       </section>
 
-      <section className="bg-white px-5 py-20 sm:px-8 lg:px-10">
+      <section id="follow-up-workflows" className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
             src="/hostiko-crm/illustrations/sales-pipeline.svg"

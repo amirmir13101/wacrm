@@ -6,31 +6,30 @@ const footerGroups = [
     heading: "Product",
     links: [
       ["Features", "/features"],
-      ["Pricing", "/pricing"],
       ["Team Inbox", "/features/team-inbox"],
-      ["Automation", "/features/automation"],
+      ["Contacts", "/features#contact-management"],
       ["Broadcasts", "/features/broadcasts"],
-      ["Contacts", "/features#contacts"],
-      ["Pipeline", "/features#pipeline"],
+      ["Automation", "/features/automation"],
+      ["Pipeline", "/features#sales-pipeline"],
     ],
   },
   {
     heading: "Company",
     links: [
-      ["About", "/features#overview"],
+      ["About", "/features"],
       ["Pricing", "/pricing"],
       ["FAQ", "/features#faq"],
-      ["Contact", "#footer"],
+      ["Contact", "/pricing#lifetime"],
     ],
   },
   {
     heading: "Resources",
     links: [
-      ["WhatsApp CRM", "/features"],
+      ["WhatsApp CRM", "/"],
       ["WhatsApp Automation", "/features/automation"],
       ["AI CRM Automation", "/features/automation"],
-      ["WhatsApp Broadcasts", "/features/broadcasts"],
-      ["Sales CRM", "/features#pipeline"],
+      ["Sales CRM", "/features#sales-pipeline"],
+      ["WhatsApp Broadcast CRM", "/features/broadcasts"],
     ],
   },
   {
@@ -44,8 +43,8 @@ const footerGroups = [
   {
     heading: "Legal",
     links: [
-      ["Privacy Policy", "#footer"],
-      ["Terms of Service", "#footer"],
+      ["Privacy Policy", null],
+      ["Terms of Service", null],
       ["Security", "/features#permissions"],
     ],
   },
@@ -80,9 +79,13 @@ export function PublicFooter() {
             <ul className="mt-4 space-y-3 text-sm text-[#7fb9a9]">
               {group.links.map(([label, href]) => (
                 <li key={label}>
-                  <Link href={href} className="hover:text-[#3ddf84]">
-                    {label}
-                  </Link>
+                  {href ? (
+                    <Link href={href} className="hover:text-[#3ddf84]">
+                      {label}
+                    </Link>
+                  ) : (
+                    <span className="text-[#7fb9a9]/75">{label}</span>
+                  )}
                 </li>
               ))}
             </ul>

@@ -67,14 +67,14 @@ export const metadata: Metadata = {
 };
 
 const workflowPills = [
-  { label: "Team Inbox", icon: MessageSquareText },
-  { label: "Contacts", icon: Users },
-  { label: "Broadcasts", icon: Radio },
-  { label: "Templates", icon: Tags },
-  { label: "AI Automation", icon: Bot },
-  { label: "Follow-Ups", icon: Clock3 },
-  { label: "Sales Pipeline", icon: GitBranch },
-  { label: "Agent Permissions", icon: ShieldCheck },
+  { label: "Team Inbox", icon: MessageSquareText, href: "/features/team-inbox" },
+  { label: "Contacts", icon: Users, href: "/features#contact-management" },
+  { label: "Broadcasts", icon: Radio, href: "/features/broadcasts" },
+  { label: "Templates", icon: Tags, href: "/features#templates" },
+  { label: "AI Automation", icon: Bot, href: "/features/automation" },
+  { label: "Follow-Ups", icon: Clock3, href: "/features/automation" },
+  { label: "Sales Pipeline", icon: GitBranch, href: "/features#sales-pipeline" },
+  { label: "Agent Permissions", icon: ShieldCheck, href: "/features#permissions" },
 ];
 
 const featureCards = [
@@ -85,7 +85,7 @@ const featureCards = [
     icon: MessageSquareText,
     image: "/hostiko-crm/illustrations/team-inbox-workflow.svg",
     alt: "Shared WhatsApp team inbox for agents and managers",
-    href: "#team-inbox",
+    href: "/features/team-inbox",
   },
   {
     title: "Contact Management",
@@ -94,7 +94,7 @@ const featureCards = [
     icon: Users,
     image: "/hostiko-crm/illustrations/whatsapp-crm-dashboard.svg",
     alt: "WhatsApp CRM dashboard with customer conversations and automation workflows",
-    href: "#features",
+    href: "/features#contact-management",
   },
   {
     title: "Broadcast Campaigns",
@@ -103,7 +103,7 @@ const featureCards = [
     icon: Radio,
     image: "/hostiko-crm/illustrations/broadcast-campaigns.svg",
     alt: "Broadcast campaign CRM for WhatsApp contacts",
-    href: "#broadcasts",
+    href: "/features/broadcasts",
   },
   {
     title: "AI Workflow Automation",
@@ -112,7 +112,7 @@ const featureCards = [
     icon: Bot,
     image: "/hostiko-crm/illustrations/ai-automation-flow.svg",
     alt: "AI automation workflow for customer follow-ups",
-    href: "#automation",
+    href: "/features/automation",
   },
   {
     title: "Sales Pipeline",
@@ -121,7 +121,7 @@ const featureCards = [
     icon: GitBranch,
     image: "/hostiko-crm/illustrations/sales-pipeline.svg",
     alt: "Sales pipeline dashboard for WhatsApp CRM leads",
-    href: "#pipeline",
+    href: "/features#sales-pipeline",
   },
   {
     title: "Role-Based Team Access",
@@ -130,7 +130,7 @@ const featureCards = [
     icon: KeyRound,
     image: "/hostiko-crm/illustrations/team-inbox-workflow.svg",
     alt: "Permission-based CRM workspace for team agents",
-    href: "#team-inbox",
+    href: "/features#permissions",
   },
 ];
 
@@ -322,25 +322,25 @@ export default async function HomePage() {
           <div className="mx-auto mt-8 rounded-[30px] bg-white p-4 shadow-[0_20px_70px_rgba(7,19,14,0.14)] ring-1 ring-[#dbe9e2]">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {workflowPills.map((item) => (
-                <a
+                <Link
                   key={item.label}
-                  href={item.label === "AI Automation" ? "#automation" : item.label === "Broadcasts" ? "#broadcasts" : item.label === "Sales Pipeline" ? "#pipeline" : "#features"}
+                  href={item.href}
                   className="flex items-center gap-3 rounded-full bg-[#f4fff9] px-4 py-4 text-left text-sm font-bold text-[#07130e] ring-1 ring-[#dce9e2] hover:bg-[#eafff3] hover:ring-[#3ddf84] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
                 >
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
                     <item.icon className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <span>{item.label}</span>
-                </a>
+                </Link>
               ))}
             </div>
             <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-              <a
-                href="#features"
+              <Link
+                href="/features"
                 className="inline-flex h-12 items-center justify-center rounded-full bg-[#3ddf84] px-7 text-sm font-bold text-[#07130e] hover:bg-[#1fc86f]"
               >
                 Explore CRM Features
-              </a>
+              </Link>
               <Link
                 href="/signup"
                 className="inline-flex h-12 items-center justify-center rounded-full bg-[#ffbd29] px-7 text-sm font-bold text-[#07130e] hover:bg-[#e9aa1c]"
@@ -402,13 +402,13 @@ export default async function HomePage() {
                     />
                   </div>
                   <p className="text-sm leading-7 text-[#5b7169]">{card.description}</p>
-                  <a
+                  <Link
                     href={card.href}
                     className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] hover:text-[#07130e]"
                   >
                     Learn more
                     <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                  </a>
+                  </Link>
                 </div>
               </article>
             ))}
@@ -430,6 +430,13 @@ export default async function HomePage() {
               contact updates, deal creation, agent assignment, webhooks, and
               customer lifecycle automation.
             </p>
+            <Link
+              href="/features/automation"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#3ddf84] hover:text-[#ffbd29]"
+            >
+              Explore automation features
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
             <ol className="mt-8 grid gap-4 sm:grid-cols-2">
               {automationSteps.map((step, index) => (
                 <li key={step} className="flex gap-4 rounded-[24px] bg-[#0d1b15] p-5">
@@ -474,6 +481,13 @@ export default async function HomePage() {
               conversations, update contacts, follow up with customers, and collaborate
               without exposing sensitive admin settings.
             </p>
+            <Link
+              href="/features/team-inbox"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] hover:text-[#07130e]"
+            >
+              Learn about the team inbox
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
               {[
                 ["My conversations", UserCheck],
@@ -505,6 +519,13 @@ export default async function HomePage() {
               sending workflow, track sent status, and keep customer communication
               organized inside the CRM.
             </p>
+            <Link
+              href="/features/broadcasts"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] hover:text-[#07130e]"
+            >
+              Explore broadcast campaigns
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
             <div className="mt-8 grid gap-4">
               {[
                 "Approved WhatsApp templates",
@@ -551,6 +572,13 @@ export default async function HomePage() {
               lost status. Keep your WhatsApp customer journey visible from contact to
               close.
             </p>
+            <Link
+              href="/features#sales-pipeline"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#3ddf84] hover:text-[#ffbd29]"
+            >
+              See sales pipeline features
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
             <div className="mt-8 grid gap-4">
               {[
                 ["Lead stages", GitBranch],
@@ -608,8 +636,8 @@ export default async function HomePage() {
                     </li>
                   ))}
                 </ul>
-                <a
-                  href="#pricing"
+                <Link
+                  href="/pricing"
                   className={`mt-7 inline-flex h-12 w-full items-center justify-center rounded-full text-sm font-bold ${
                     plan.highlighted
                       ? "bg-[#3ddf84] text-[#07130e] hover:bg-[#ffbd29]"
@@ -617,7 +645,7 @@ export default async function HomePage() {
                   }`}
                 >
                   View Pricing
-                </a>
+                </Link>
               </article>
             ))}
           </div>

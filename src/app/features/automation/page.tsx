@@ -81,14 +81,14 @@ const problemCards = [
 ] as const;
 
 const solutionCards = [
-  ["Follow-up automation", Clock3],
-  ["Contact field updates", Tags],
-  ["Conversation assignment", UserCheck],
-  ["Deal creation", GitBranch],
-  ["Webhook actions", Webhook],
-  ["If/Else conditions", Route],
-  ["Wait steps", Repeat2],
-  ["Template-based messaging", Send],
+  ["Follow-up automation", Clock3, "/features/automation"],
+  ["Contact field updates", Tags, "/features#contact-management"],
+  ["Conversation assignment", UserCheck, "/features/team-inbox"],
+  ["Deal creation", GitBranch, "/features#sales-pipeline"],
+  ["Webhook actions", Webhook, "/features/automation"],
+  ["If/Else conditions", Route, "/features/automation"],
+  ["Wait steps", Repeat2, "/features/automation"],
+  ["Template-based messaging", Send, "/features/broadcasts"],
 ] as const;
 
 const automationActions = [
@@ -394,11 +394,15 @@ export default function AutomationFeaturePage() {
               faster without losing control.
             </p>
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              {solutionCards.map(([title, Icon]) => (
-                <div key={title} className="flex gap-3 rounded-[22px] bg-white p-5 ring-1 ring-[#dbe9e2]">
+              {solutionCards.map(([title, Icon, href]) => (
+                <Link
+                  key={title}
+                  href={href}
+                  className="flex gap-3 rounded-[22px] bg-white p-5 ring-1 ring-[#dbe9e2] hover:ring-[#3ddf84] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
+                >
                   <Icon className="mt-0.5 h-5 w-5 shrink-0 text-[#08bba4]" aria-hidden="true" />
                   <span className="text-sm font-bold text-[#07130e]">{title}</span>
-                </div>
+                </Link>
               ))}
             </div>
           </div>

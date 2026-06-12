@@ -202,7 +202,7 @@ const softwareSchema = {
   offers: plans.map((plan) => ({
     "@type": "Offer",
     name: `Talk Wagon ${plan.name}`,
-    price: plan.name === "Free" ? "0" : plan.name === "Pro" ? "5" : "499",
+    price: plan.name === "Free" ? "0" : plan.name === "Pro" ? "1" : "499",
     priceCurrency: "USD",
     description: plan.description,
     availability: "https://schema.org/InStock",
