@@ -48,16 +48,13 @@ export function PublicHeader({ active }: PublicHeaderProps) {
               aria-label="Talk Wagon home"
             >
               <Image
-                src="/hostiko-crm/brand/talk-wagon-logo.svg"
-                alt="Talk Wagon CRM logo with a wagon and rocket"
-                width={48}
-                height={48}
+                src="/hostiko-crm/brand/talk-wagon-logo-public.webp"
+                alt="Talk Wagon CRM logo"
+                width={520}
+                height={79}
                 priority={active === "home"}
-                className="h-12 w-12"
+                className="h-8 w-auto object-contain sm:h-9 lg:h-10"
               />
-              <span className="text-xl font-extrabold tracking-normal text-[#07130e] sm:text-2xl">
-                Talk Wagon
-              </span>
             </Link>
 
             <div className="hidden min-w-0 flex-1 items-center justify-center lg:flex">

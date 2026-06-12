@@ -56,15 +56,18 @@ export function PublicFooter() {
     <footer id="footer" className="bg-[#0d1b15] px-5 py-16 text-white sm:px-8 lg:px-10">
       <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-2 lg:grid-cols-6">
         <div>
-          <Link href="/" className="inline-flex items-center gap-3">
+          <Link
+            href="/"
+            className="inline-flex rounded-2xl bg-white px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.20)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#3ddf84]"
+            aria-label="Talk Wagon home"
+          >
             <Image
-              src="/hostiko-crm/brand/talk-wagon-logo.svg"
-              alt="Talk Wagon CRM logo with a wagon and rocket"
-              width={44}
-              height={44}
-              className="h-11 w-11"
+              src="/hostiko-crm/brand/talk-wagon-logo-public.webp"
+              alt="Talk Wagon CRM logo"
+              width={520}
+              height={79}
+              className="h-11 w-auto object-contain sm:h-12"
             />
-            <span className="text-lg font-extrabold text-white">Talk Wagon</span>
           </Link>
           <p className="mt-4 text-sm leading-7 text-[#7fb9a9]">
             Copyright 2026 Talk Wagon. Secure customer communication for WhatsApp teams.
