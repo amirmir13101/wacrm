@@ -8,8 +8,8 @@ const navItems = [
   { label: "Home", href: "/" },
   { label: "Features", href: "/features" },
   { label: "Team Inbox", href: "/features/team-inbox" },
-  { label: "Automation", href: "/features#automation" },
-  { label: "Broadcasts", href: "/features#broadcasts" },
+  { label: "Automation", href: "/features/automation" },
+  { label: "Broadcasts", href: "/features/broadcasts" },
   { label: "Pricing", href: "/pricing" },
   { label: "FAQ", href: "/features#faq" },
 ] as const;
@@ -17,7 +17,7 @@ const navItems = [
 const trustItems = ["Team Inbox", "Automation", "Broadcasts", "Secure Workspaces"];
 
 interface PublicHeaderProps {
-  readonly active?: "home" | "features" | "team-inbox" | "pricing";
+  readonly active?: "home" | "features" | "team-inbox" | "automation" | "broadcasts" | "pricing";
 }
 
 export function PublicHeader({ active }: PublicHeaderProps) {
@@ -67,6 +67,8 @@ export function PublicHeader({ active }: PublicHeaderProps) {
                     (active === "home" && item.href === "/") ||
                     (active === "features" && item.href === "/features") ||
                     (active === "team-inbox" && item.href === "/features/team-inbox") ||
+                    (active === "automation" && item.href === "/features/automation") ||
+                    (active === "broadcasts" && item.href === "/features/broadcasts") ||
                     (active === "pricing" && item.href === "/pricing");
 
                   return (
