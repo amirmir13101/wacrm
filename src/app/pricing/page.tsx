@@ -92,7 +92,7 @@ const plans = [
   },
   {
     name: "Pro",
-    price: "$5",
+    price: "$1",
     billing: "/ month · Unlimited CRM usage",
     description:
       "For growing teams that want all Talk Wagon CRM features, unlimited CRM usage, broadcasts, automation, contacts, agents, and pipeline tools.",
