@@ -1,6 +1,5 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
-import { CheckCircle2, MessageSquareText, ShieldCheck, Sparkles } from "lucide-react";
+import { CheckCircle2, MessageSquareText, Sparkles } from "lucide-react";
 
 type HostikoAuthShellProps = {
   title: string;
@@ -24,26 +23,6 @@ export function HostikoAuthShell({
 }: HostikoAuthShellProps) {
   return (
     <main className="min-h-screen overflow-hidden bg-[#07130e] text-white">
-      <div className="border-b border-white/10 bg-[#0d1b15]">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-3 text-xs text-[#7fb9a9] sm:px-8">
-          <Link href="/" className="inline-flex items-center gap-2 font-semibold text-white">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#3ddf84] text-[#07130e]">
-              <MessageSquareText className="h-4 w-4" aria-hidden="true" />
-            </span>
-            WACRM
-          </Link>
-          <div className="hidden items-center gap-4 sm:flex">
-            <span className="inline-flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-[#3ddf84]" aria-hidden="true" />
-              Official Meta Cloud API ready
-            </span>
-            <Link href="/" className="text-white hover:text-[#ffbd29]">
-              Back to homepage
-            </Link>
-          </div>
-        </div>
-      </div>
-
       <section className="relative px-5 py-10 sm:px-8 lg:py-14">
         <div className="absolute inset-0 opacity-30" aria-hidden="true">
           <div className="absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_50%_0%,rgba(61,223,132,0.24),transparent_52%)]" />
