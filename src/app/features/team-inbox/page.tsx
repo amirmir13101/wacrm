@@ -27,6 +27,15 @@ import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/features/team-inbox`;
+const teamInboxImages = {
+  hero: "/hostiko-crm/generated/team-inbox/talk-wagon-team-inbox-hero-overview.webp",
+  sharedWorkflow: "/hostiko-crm/generated/team-inbox/talk-wagon-team-inbox-shared-workflow.webp",
+  agentAssignment: "/hostiko-crm/generated/team-inbox/talk-wagon-team-inbox-agent-assignment.webp",
+  contactHistory: "/hostiko-crm/generated/team-inbox/talk-wagon-team-inbox-contact-history.webp",
+  followups: "/hostiko-crm/generated/team-inbox/talk-wagon-team-inbox-followups.webp",
+  collaboration: "/hostiko-crm/generated/team-inbox/talk-wagon-team-inbox-collaboration.webp",
+  analytics: "/hostiko-crm/generated/team-inbox/talk-wagon-team-inbox-analytics.webp",
+} as const;
 
 export const metadata: Metadata = {
   title: "WhatsApp Team Inbox for Sales and Support Teams | Talk Wagon",
@@ -44,9 +53,9 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/hostiko-crm/illustrations/whatsapp-team-inbox-page.svg",
-        width: 960,
-        height: 700,
+        url: teamInboxImages.hero,
+        width: 1168,
+        height: 880,
         alt: "Shared WhatsApp team inbox for sales and support agents",
       },
     ],
@@ -56,7 +65,7 @@ export const metadata: Metadata = {
     title: "Talk Wagon WhatsApp Team Inbox",
     description:
       "A shared WhatsApp CRM inbox for customer conversations, agent assignments, contact history, and follow-up workflows.",
-    images: ["/hostiko-crm/illustrations/whatsapp-team-inbox-page.svg"],
+    images: [teamInboxImages.hero],
   },
   robots: {
     index: true,
@@ -325,10 +334,10 @@ export default function TeamInboxPage() {
 
           <div className="rounded-[34px] border border-white/10 bg-white/8 p-4 shadow-[0_32px_95px_rgba(0,0,0,0.35)] backdrop-blur">
             <Image
-              src="/hostiko-crm/illustrations/whatsapp-team-inbox-page.svg"
+              src={teamInboxImages.hero}
               alt="Shared WhatsApp team inbox for sales and support agents"
-              width={960}
-              height={700}
+              width={1168}
+              height={880}
               priority
               className="h-auto w-full rounded-[26px]"
             />
@@ -383,13 +392,65 @@ export default function TeamInboxPage() {
             </div>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/team-inbox-workflow.svg"
+            src={teamInboxImages.sharedWorkflow}
             alt="Shared WhatsApp team inbox workflow with agent assignment"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
+        </div>
+      </section>
+
+      <section className="bg-white px-5 py-20 sm:px-8 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-bold uppercase text-[#08bba4]">Customer context and productivity</p>
+            <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
+              Keep History and Team Performance Visible
+            </h2>
+            <p className="mt-4 text-[#5b7169]">
+              A useful team inbox is more than a message list. Agents need customer
+              history, follow-up context, and performance visibility so every reply is
+              easier to prioritize.
+            </p>
+          </div>
+          <div className="mt-10 grid gap-6 lg:grid-cols-2">
+            <article className="rounded-[30px] bg-[#f7fbf8] p-4 ring-1 ring-[#dbe9e2]">
+              <Image
+                src={teamInboxImages.contactHistory}
+                alt="Customer contact history beside a WhatsApp CRM conversation"
+                width={1168}
+                height={880}
+                loading="lazy"
+                className="h-auto w-full rounded-[24px]"
+              />
+              <h3 className="mt-5 px-2 text-xl font-extrabold text-[#07130e]">
+                Contact history beside every conversation
+              </h3>
+              <p className="px-2 pb-2 pt-2 text-sm leading-7 text-[#5b7169]">
+                See previous messages, notes, tags, deals, and follow-up context while
+                your team handles the chat.
+              </p>
+            </article>
+            <article className="rounded-[30px] bg-[#f7fbf8] p-4 ring-1 ring-[#dbe9e2]">
+              <Image
+                src={teamInboxImages.analytics}
+                alt="Team inbox analytics for response times and open conversations"
+                width={1168}
+                height={880}
+                loading="lazy"
+                className="h-auto w-full rounded-[24px]"
+              />
+              <h3 className="mt-5 px-2 text-xl font-extrabold text-[#07130e]">
+                Team inbox productivity signals
+              </h3>
+              <p className="px-2 pb-2 pt-2 text-sm leading-7 text-[#5b7169]">
+                Track open conversations, resolved chats, response activity, and team
+                workload without losing the customer workflow.
+              </p>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -418,10 +479,10 @@ export default function TeamInboxPage() {
       <section className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
-            src="/hostiko-crm/illustrations/permissions-workspace.svg"
-            alt="Workspace permissions and team agents"
-            width={760}
-            height={520}
+            src={teamInboxImages.collaboration}
+            alt="Team collaboration inside a shared WhatsApp CRM inbox"
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#f4fff9] shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -499,10 +560,10 @@ export default function TeamInboxPage() {
             </div>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/conversation-assignment.svg"
+            src={teamInboxImages.agentAssignment}
             alt="WhatsApp conversation assignment workflow"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#f4fff9] shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -560,10 +621,10 @@ export default function TeamInboxPage() {
       <section className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
-            src="/hostiko-crm/illustrations/ai-automation-flow.svg"
-            alt="AI automation workflow for customer follow-ups"
-            width={760}
-            height={520}
+            src={teamInboxImages.followups}
+            alt="Team inbox follow-up workflow with pending replies and reminders"
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#f4fff9] shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
