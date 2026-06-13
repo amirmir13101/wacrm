@@ -26,6 +26,14 @@ import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/features/automation`;
+const automationImages = {
+  hero: "/hostiko-crm/generated/automation/talk-wagon-automation-hero-overview.webp",
+  triggerBuilder: "/hostiko-crm/generated/automation/talk-wagon-automation-trigger-action-builder.webp",
+  smartRouting: "/hostiko-crm/generated/automation/talk-wagon-automation-smart-routing.webp",
+  followUps: "/hostiko-crm/generated/automation/talk-wagon-automation-follow-up-workflows.webp",
+  ifElse: "/hostiko-crm/generated/automation/talk-wagon-automation-if-else-conditions.webp",
+  analytics: "/hostiko-crm/generated/automation/talk-wagon-automation-analytics.webp",
+} as const;
 
 export const metadata: Metadata = {
   title: "WhatsApp Automation and AI CRM Workflows | Talk Wagon",
@@ -43,9 +51,9 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/hostiko-crm/illustrations/ai-automation-flow.svg",
-        width: 960,
-        height: 700,
+        url: automationImages.hero,
+        width: 1168,
+        height: 880,
         alt: "AI WhatsApp automation workflow for customer follow-ups and CRM actions",
       },
     ],
@@ -55,7 +63,7 @@ export const metadata: Metadata = {
     title: "Talk Wagon WhatsApp Automation for CRM Workflows",
     description:
       "AI-assisted WhatsApp automation for follow-ups, contacts, agents, deals, conditions, webhooks, and CRM actions.",
-    images: ["/hostiko-crm/illustrations/ai-automation-flow.svg"],
+    images: [automationImages.hero],
   },
   robots: {
     index: true,
@@ -346,10 +354,10 @@ export default function AutomationFeaturePage() {
 
           <div className="rounded-[34px] border border-white/10 bg-white/8 p-4 shadow-[0_32px_95px_rgba(0,0,0,0.35)] backdrop-blur">
             <Image
-              src="/hostiko-crm/illustrations/ai-automation-flow.svg"
+              src={automationImages.hero}
               alt="AI WhatsApp automation workflow for customer follow-ups and CRM actions"
-              width={960}
-              height={700}
+              width={1168}
+              height={880}
               priority
               className="h-auto w-full rounded-[26px]"
             />
@@ -407,10 +415,10 @@ export default function AutomationFeaturePage() {
             </div>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/whatsapp-crm-dashboard.svg"
-            alt="WhatsApp CRM automation dashboard with workflow actions"
-            width={760}
-            height={520}
+            src={automationImages.triggerBuilder}
+            alt="Talk Wagon automation trigger and action builder workflow"
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -464,16 +472,34 @@ export default function AutomationFeaturePage() {
               </article>
             ))}
           </div>
+          <div className="mt-10 grid gap-6 lg:grid-cols-2">
+            <Image
+              src={automationImages.ifElse}
+              alt="Talk Wagon if else automation condition workflow"
+              width={1168}
+              height={880}
+              loading="lazy"
+              className="h-auto w-full rounded-[30px] bg-[#0d1b15] shadow-[0_20px_60px_rgba(0,0,0,0.22)]"
+            />
+            <Image
+              src={automationImages.analytics}
+              alt="Talk Wagon automation analytics and workflow performance dashboard"
+              width={1168}
+              height={880}
+              loading="lazy"
+              className="h-auto w-full rounded-[30px] bg-[#0d1b15] shadow-[0_20px_60px_rgba(0,0,0,0.22)]"
+            />
+          </div>
         </div>
       </section>
 
       <section className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
-            src="/hostiko-crm/illustrations/self-hosted-crm.svg"
-            alt="AI-assisted CRM automation planning for WhatsApp teams"
-            width={760}
-            height={520}
+            src={automationImages.followUps}
+            alt="Talk Wagon follow-up automation workflow dashboard"
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#f4fff9] shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -533,10 +559,10 @@ export default function AutomationFeaturePage() {
             </ul>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/permissions-workspace.svg"
-            alt="Workspace permissions protecting WhatsApp automation access"
-            width={760}
-            height={520}
+            src={automationImages.smartRouting}
+            alt="Talk Wagon smart conversation routing and team assignment automation"
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
