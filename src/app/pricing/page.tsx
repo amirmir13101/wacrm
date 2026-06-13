@@ -539,12 +539,13 @@ export default function PricingPage() {
               Start with a free CRM workflow, unlock full Pro features, or request a
               lifetime branded self-hosted setup for your business.
             </p>
-            <div className="mt-6">
+            <div className="mt-6 max-w-2xl">
               <PublicCtaButtons
                 primaryLabel="Start For Free"
                 primaryHref="/signup"
                 secondaryLabel="Request Lifetime Setup"
                 secondaryHref="/pricing#lifetime"
+                className="items-stretch sm:justify-start"
               />
             </div>
           </div>
