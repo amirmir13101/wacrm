@@ -102,9 +102,11 @@ const plans = [
   {
     name: "Pro",
     price: "$1",
+    regularPrice: "$5",
+    offerLabel: "Limited-time offer",
     billing: "/ month · Unlimited CRM usage",
     description:
-      "For growing teams that want all Talk Wagon CRM features, unlimited CRM usage, broadcasts, automation, contacts, agents, and pipeline tools.",
+      "For growing teams that want all Talk Wagon CRM features. Pro is normally $5/month, available for a limited time at $1/month.",
     cta: "Upgrade to Pro",
     href: "/signup",
     note:
@@ -335,8 +337,18 @@ export default function PricingPage() {
                     <span className="pb-2 text-sm font-bold text-[#d5e9e2]">/ month</span>
                   ) : null}
                 </div>
+                {"regularPrice" in plan ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                    <span className="rounded-full bg-[#ffbd29] px-3 py-1 font-extrabold uppercase text-[#07130e]">
+                      {plan.offerLabel}
+                    </span>
+                    <span className="font-bold text-[#d5e9e2]">
+                      Regular <span className="line-through">{plan.regularPrice}</span>/month
+                    </span>
+                  </div>
+                ) : null}
                 <p className={`mt-3 text-sm font-bold ${plan.featured ? "text-[#ffbd29]" : "text-[#08bba4]"}`}>
-                  {plan.name === "Pro" ? "Unlimited CRM usage" : plan.billing}
+                  {plan.name === "Pro" ? "Now $1/month, regular $5/month" : plan.billing}
                 </p>
                 <p className={`mt-5 text-sm leading-7 ${plan.featured ? "text-[#d5e9e2]" : "text-[#5b7169]"}`}>
                   {plan.description}
