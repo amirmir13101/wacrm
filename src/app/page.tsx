@@ -285,7 +285,7 @@ export default async function HomePage() {
                 href="/signup"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#3ddf84] px-7 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
-                Start Managing Customers
+                Start Free Trial
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link
