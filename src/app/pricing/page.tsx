@@ -23,13 +23,13 @@ import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/pricing`;
 const pricingImages = {
-  hero: "/hostiko-crm/generated/pricing/talk-wagon-pricing-hero-overview.webp",
-  planComparison: "/hostiko-crm/generated/pricing/talk-wagon-pricing-plan-comparison.webp",
-  apiCosts: "/hostiko-crm/generated/pricing/talk-wagon-pricing-whatsapp-api-costs.webp",
+  hero: "/hostiko-crm/generated/pricing/talk-wagon-pricing-hero-overview-usd.webp",
+  planComparison: "/hostiko-crm/generated/pricing/talk-wagon-pricing-plan-comparison-usd.webp",
+  apiCosts: "/hostiko-crm/generated/pricing/talk-wagon-pricing-whatsapp-api-costs-usd.webp",
   lifetime: "/hostiko-crm/generated/pricing/talk-wagon-pricing-lifetime-self-hosted.webp",
   proValue: "/hostiko-crm/generated/pricing/talk-wagon-pricing-pro-plan-value.webp",
   usageAnalytics: "/hostiko-crm/generated/pricing/talk-wagon-pricing-usage-billing-analytics.webp",
-  upgradeCta: "/hostiko-crm/generated/pricing/talk-wagon-pricing-upgrade-cta.webp",
+  upgradeCta: "/hostiko-crm/generated/pricing/talk-wagon-pricing-upgrade-cta-usd.webp",
 } as const;
 
 export const metadata: Metadata = {
