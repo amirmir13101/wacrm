@@ -56,7 +56,7 @@ export function PublicFooter() {
         <div className="md:col-span-2 lg:col-span-1">
           <Link
             href="/"
-            className="inline-flex max-w-full rounded-[22px] border border-[#3ddf84]/35 bg-[#f4fff9] px-4 py-3 shadow-[0_22px_70px_rgba(0,0,0,0.26)] ring-1 ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#3ddf84]"
+            className="inline-flex max-w-full rounded-[18px] border border-[#3ddf84]/35 bg-[#f4fff9] px-3 py-2 shadow-[0_18px_54px_rgba(0,0,0,0.22)] ring-1 ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#3ddf84]"
             aria-label="Talk Wagon home"
           >
             <Image
@@ -64,7 +64,7 @@ export function PublicFooter() {
               alt="Talk Wagon CRM logo"
               width={520}
               height={79}
-              className="h-9 w-auto max-w-[230px] object-contain sm:h-10 sm:max-w-[265px]"
+              className="h-7 w-auto max-w-[180px] object-contain sm:h-8 sm:max-w-[210px]"
             />
           </Link>
           <p className="mt-4 text-sm leading-7 text-[#7fb9a9]">
