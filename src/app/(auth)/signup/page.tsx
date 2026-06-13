@@ -153,7 +153,7 @@ export default function SignupPage() {
       description={
         inviteActive
           ? "Create your agent account with the invited email and join the assigned workspace."
-          : "Start managing customer conversations, team agents, broadcasts, contacts, and follow-ups from one organized CRM dashboard."
+          : "Start your Talk Wagon workspace for WhatsApp customer conversations, contacts, broadcasts, automation, team agents, and follow-ups."
       }
     >
           <form onSubmit={handleSignup} className="flex flex-col gap-4">

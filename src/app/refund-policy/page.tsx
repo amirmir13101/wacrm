@@ -6,9 +6,9 @@ import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection }
 const canonicalUrl = "https://vpscoaster.live/refund-policy";
 
 export const metadata: Metadata = {
-  title: "Refund Policy | Talk Wagon",
+  title: "Refund Policy | Talk Wagon WhatsApp CRM",
   description:
-    "Review the Talk Wagon refund policy, including the 7-day free trial, subscription refunds, lifetime setup terms, and fair exceptions.",
+    "Review the Talk Wagon refund policy for the 7-day free trial, WhatsApp CRM subscription use, lifetime self-hosted setup, third-party costs, and fair exceptions.",
   alternates: {
     canonical: canonicalUrl,
   },
@@ -31,8 +31,8 @@ export default function RefundPolicyPage() {
     <InfoPageShell>
       <InfoHero
         eyebrow="Refund Policy"
-        title="Refund Rules for Talk Wagon Plans and Setup"
-        description="This policy explains how refunds are handled for Talk Wagon trials, subscriptions, lifetime or self-hosted setup, and related service usage."
+        title="Refund Rules for Talk Wagon CRM Plans and Setup"
+        description="This policy explains how refunds are handled for Talk Wagon trials, subscriptions, lifetime or self-hosted setup, and related CRM service usage."
         badges={["7-day trial", "Fair exceptions", "No hidden contact ownership", "WhatsApp costs separate"]}
       />
 

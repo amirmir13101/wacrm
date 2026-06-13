@@ -38,16 +38,16 @@ const teamInboxImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp Team Inbox for Sales and Support Teams | Talk Wagon",
+  title: "WhatsApp Team Inbox for Sales, Support and Follow-Ups | Talk Wagon",
   description:
-    "Manage WhatsApp customer conversations in a shared team inbox with agents, assignments, contact history, permissions, and follow-up workflows inside Talk Wagon CRM.",
+    "Manage WhatsApp customer conversations in a shared team inbox with agents, assignments, contact history, role-based permissions, and follow-up workflows.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
     title: "Talk Wagon WhatsApp Team Inbox",
     description:
-      "Give your sales and support team a shared WhatsApp CRM inbox for customer conversations, agent assignments, contact history, and follow-up workflows.",
+      "Give your sales and support team a shared WhatsApp CRM inbox for customer conversations, assignments, contact history, and follow-up workflows.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Talk Wagon WhatsApp Team Inbox",
     description:
-      "A shared WhatsApp CRM inbox for customer conversations, agent assignments, contact history, and follow-up workflows.",
+      "A shared WhatsApp CRM inbox for customer conversations, assignments, contact history, and follow-up workflows.",
     images: [teamInboxImages.hero],
   },
   robots: {
@@ -310,16 +310,16 @@ export default function TeamInboxPage() {
               WhatsApp Team Inbox for Sales, Support and Follow-Ups
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Talk Wagon gives your team a shared WhatsApp CRM inbox where customer
-              conversations, contacts, agents, assignments, and follow-up workflows stay
-              organized in one secure dashboard.
+              Give sales and support agents one shared WhatsApp CRM inbox where customer
+              conversations, contact history, assignments, permissions, and follow-up
+              workflows stay organized.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
                 href="/signup"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#3ddf84] px-7 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
-                Start For Free
+                Start Free Trial
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link

@@ -26,7 +26,7 @@ export function HostikoAuthShell({
       <section className="relative px-5 py-10 sm:px-8 lg:py-14">
         <div className="absolute inset-0 opacity-30" aria-hidden="true">
           <div className="absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_50%_0%,rgba(61,223,132,0.24),transparent_52%)]" />
-          <div className="absolute left-1/2 top-20 h-[620px] w-[620px] -translate-x-1/2 rounded-full border border-[#315846]" />
+            <div className="absolute left-1/2 top-20 h-[420px] w-[420px] -translate-x-1/2 rounded-full border border-[#315846] sm:h-[620px] sm:w-[620px]" />
         </div>
 
         <div className="relative mx-auto grid max-w-6xl items-center gap-8 lg:grid-cols-[0.95fr_1.05fr]">
@@ -36,11 +36,11 @@ export function HostikoAuthShell({
               {eyebrow}
             </div>
             <h1 className="max-w-xl text-4xl font-bold leading-tight text-white xl:text-5xl">
-              Manage customers, agents, broadcasts, and automation from one CRM.
+              Secure access for your WhatsApp CRM workspace.
             </h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-[#b8cfc7]">
-              Access a production-ready WhatsApp CRM built for customer conversation
-              management, team permissions, contact workflows, and secure follow-up.
+              Sign in to manage customer conversations, team permissions, contact records,
+              broadcasts, automation workflows, and follow-ups from one protected dashboard.
             </p>
 
             <div className="mt-8 grid gap-3">

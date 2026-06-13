@@ -6,9 +6,9 @@ import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection }
 const canonicalUrl = "https://vpscoaster.live/privacy-policy";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Talk Wagon",
+  title: "Privacy Policy | Talk Wagon WhatsApp CRM",
   description:
-    "Read the Talk Wagon privacy policy for customer data ownership, CRM processing, WhatsApp contact consent, security, and service data practices.",
+    "Read the Talk Wagon privacy policy for customer contact ownership, CRM data processing, WhatsApp opt-in responsibility, workspace security, and service data practices.",
   alternates: {
     canonical: canonicalUrl,
   },
@@ -31,8 +31,8 @@ export default function PrivacyPolicyPage() {
     <InfoPageShell>
       <InfoHero
         eyebrow="Privacy Policy"
-        title="How Talk Wagon Handles Privacy and Customer Data"
-        description="This policy explains how Talk Wagon processes account, workspace, contact, and conversation information for the CRM features customers choose to use."
+        title="How Talk Wagon Handles Privacy and CRM Data"
+        description="This policy explains how Talk Wagon processes account, workspace, contact, and conversation information for the WhatsApp CRM features customers choose to use."
         badges={["Client-owned contacts", "No contact data selling", "CRM service processing", "WhatsApp policy responsibility"]}
       />
 

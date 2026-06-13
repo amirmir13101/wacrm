@@ -6,9 +6,9 @@ import { InfoCard, InfoHero, InfoPageShell, InfoSection } from "@/components/mar
 const canonicalUrl = "https://vpscoaster.live/contact";
 
 export const metadata: Metadata = {
-  title: "Contact Talk Wagon | WhatsApp CRM Support and Sales",
+  title: "Contact Talk Wagon | WhatsApp CRM Sales, Support and Setup",
   description:
-    "Contact Talk Wagon for WhatsApp CRM sales questions, technical support, billing help, partnership, setup, or product questions.",
+    "Contact Talk Wagon for WhatsApp CRM sales questions, technical support, billing help, setup, partnership, automation, broadcasts, or team inbox questions.",
   alternates: {
     canonical: canonicalUrl,
   },
@@ -54,14 +54,14 @@ export default function ContactPage() {
     <InfoPageShell>
       <InfoHero
         eyebrow="Contact Talk Wagon"
-        title="Questions About WhatsApp CRM? Contact Us"
-        description="Use the contact form for sales, support, billing, setup, or partnership questions. The page is ready for future live chat integration without adding a fake chat widget."
+        title="Contact Talk Wagon for WhatsApp CRM Help"
+        description="Use the contact form for sales, support, billing, setup, automation, broadcasts, team inbox, or partnership questions. Live chat can be connected later without adding a fake widget."
         badges={["Sales", "Support", "Billing", "Setup", "Partnerships"]}
       />
 
       <InfoSection
         title="How Can We Help?"
-        description="Choose the topic that fits your question, then send a message through the contact form below."
+        description="Choose the topic that fits your question, then send a message through the contact form below. Do not include passwords, tokens, API secrets, or private keys."
       >
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
           {topics.map((topic) => {

@@ -36,16 +36,16 @@ const automationImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp Automation and AI CRM Workflows | Talk Wagon",
+  title: "WhatsApp Automation for Follow-Ups and CRM Workflows | Talk Wagon",
   description:
-    "Automate WhatsApp follow-ups, customer workflows, agent assignments, contact updates, deal creation, webhooks, and CRM actions with Talk Wagon.",
+    "Automate WhatsApp follow-ups, contact updates, agent assignment, tags, deal creation, webhooks, wait steps, and customer communication workflows in Talk Wagon CRM.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
-    title: "Talk Wagon WhatsApp Automation for CRM Workflows",
+    title: "Talk Wagon WhatsApp Automation for CRM Follow-Ups",
     description:
-      "Build AI-assisted WhatsApp automation workflows for follow-ups, contacts, agents, deals, conditions, webhooks, and customer communication.",
+      "Build WhatsApp automation workflows for follow-ups, contacts, agents, deals, conditions, webhooks, and customer communication.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -60,9 +60,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Talk Wagon WhatsApp Automation for CRM Workflows",
+    title: "Talk Wagon WhatsApp Automation for CRM Follow-Ups",
     description:
-      "AI-assisted WhatsApp automation for follow-ups, contacts, agents, deals, conditions, webhooks, and CRM actions.",
+      "WhatsApp automation for follow-ups, contacts, agents, deals, conditions, webhooks, and CRM actions.",
     images: [automationImages.hero],
   },
   robots: {
@@ -327,19 +327,19 @@ export default function AutomationFeaturePage() {
               WhatsApp automation for sales and support workflows
             </p>
             <h1 className="text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl">
-              WhatsApp Automation for Follow-Ups, Workflows and AI CRM Actions
+              WhatsApp Automation for Follow-Ups and CRM Workflows
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Talk Wagon helps teams automate repetitive WhatsApp CRM tasks such as
-              follow-ups, agent assignment, contact updates, deal creation, webhooks, and
-              customer lifecycle workflows from one organized dashboard.
+              Automate repetitive WhatsApp CRM tasks such as no-reply follow-ups,
+              agent assignment, contact updates, tags, deal creation, webhooks, and
+              customer lifecycle actions from one organized dashboard.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
                 href="/signup"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#3ddf84] px-7 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
-                Start For Free
+                Start Free Trial
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link

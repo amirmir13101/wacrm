@@ -6,9 +6,9 @@ import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection }
 const canonicalUrl = "https://vpscoaster.live/terms-and-conditions";
 
 export const metadata: Metadata = {
-  title: "Terms and Conditions | Talk Wagon",
+  title: "Terms and Conditions | Talk Wagon WhatsApp CRM",
   description:
-    "Review the Talk Wagon terms and conditions for account use, WhatsApp CRM responsibilities, acceptable use, subscriptions, and workspace access.",
+    "Review Talk Wagon terms for WhatsApp CRM account use, workspace access, responsible messaging, contact consent, subscriptions, and acceptable use.",
   alternates: {
     canonical: canonicalUrl,
   },
@@ -31,7 +31,7 @@ export default function TermsAndConditionsPage() {
     <InfoPageShell>
       <InfoHero
         eyebrow="Terms and Conditions"
-        title="Terms for Using Talk Wagon CRM"
+        title="Terms for Using Talk Wagon WhatsApp CRM"
         description="These terms describe the basic rules for using Talk Wagon, managing a workspace, connecting WhatsApp workflows, and keeping customer communication responsible."
         badges={["Workspace accounts", "Responsible messaging", "Client-owned data", "Fair platform use"]}
       />

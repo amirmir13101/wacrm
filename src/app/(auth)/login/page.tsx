@@ -143,11 +143,11 @@ export default function LoginPage() {
 
   return (
     <HostikoAuthShell
-      title="Login to Your WhatsApp CRM Dashboard"
+      title="Sign In to Talk Wagon CRM"
       description={
         inviteActive
           ? "Sign in with the invited email to join the workspace and open your assigned CRM dashboard."
-          : "Access your team inbox, contacts, broadcasts, automation workflows, and customer conversations."
+          : "Access your WhatsApp team inbox, contacts, broadcasts, automation workflows, and customer communication dashboard."
       }
     >
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
@@ -209,7 +209,7 @@ export default function LoginPage() {
               href={inviteActive ? inviteAuthPath("/signup", inviteToken, inviteEmail || email) : "/signup"}
               className="font-medium text-[#ffbd29] hover:text-[#ffe29a]"
             >
-              Create account
+              Create a workspace
             </Link>
           </p>
     </HostikoAuthShell>

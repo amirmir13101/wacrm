@@ -33,16 +33,16 @@ const pricingImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "Talk Wagon Pricing | WhatsApp CRM Plans for Teams and Automation",
+  title: "Talk Wagon Pricing | WhatsApp CRM Plans for Teams",
   description:
-    "Choose a Talk Wagon WhatsApp CRM plan for team inboxes, contact management, broadcasts, AI automation, follow-ups, and self-hosted CRM branding.",
+    "Compare Talk Wagon WhatsApp CRM plans for team inbox, contacts, approved broadcasts, automation, follow-ups, analytics, and self-hosted CRM setup.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
     title: "Talk Wagon WhatsApp CRM Pricing",
     description:
-      "Compare Free, Pro, and Lifetime self-hosted Talk Wagon CRM plans for WhatsApp teams, broadcasts, automation, and customer communication.",
+      "Compare Free, Pro, and Lifetime self-hosted Talk Wagon CRM plans for WhatsApp teams, broadcasts, automation, analytics, and customer communication.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Talk Wagon WhatsApp CRM Pricing",
     description:
-      "Compare WhatsApp CRM plans for team inboxes, broadcasts, automation, customer communication, and self-hosted branding.",
+      "Compare WhatsApp CRM plans for team inboxes, broadcasts, automation, analytics, customer communication, and self-hosted branding.",
     images: [pricingImages.hero],
   },
   robots: {
@@ -262,19 +262,19 @@ export default function PricingPage() {
               WhatsApp CRM pricing for teams and agencies
             </p>
             <h1 className="text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl">
-              Simple Pricing for Your WhatsApp CRM Workflow
+              Simple Pricing for WhatsApp CRM Teams
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Start free with your official WhatsApp API key, upgrade for unlimited CRM
-              usage, or choose a lifetime self-hosted CRM setup with your company
-              branding.
+              Start free with your official WhatsApp API key, upgrade for complete CRM
+              features, or choose a lifetime self-hosted setup with your company branding
+              and workspace control.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
                 href="/signup"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#3ddf84] px-7 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
-                Start For Free
+                Start Free Trial
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link
@@ -309,8 +309,8 @@ export default function PricingPage() {
             </h2>
             <p className="mt-4 text-[#5b7169]">
               Compare Free, Pro, and Lifetime self-hosted options for WhatsApp team
-              inboxes, automation, broadcasts, customer communication, and branded CRM
-              deployment.
+              inboxes, approved broadcasts, automation, analytics, customer communication,
+              and branded CRM deployment.
             </p>
           </div>
 
@@ -541,7 +541,7 @@ export default function PricingPage() {
             </p>
             <div className="mt-6 max-w-2xl">
               <PublicCtaButtons
-                primaryLabel="Start For Free"
+                primaryLabel="Start Free Trial"
                 primaryHref="/signup"
                 secondaryLabel="Request Lifetime Setup"
                 secondaryHref="/pricing#lifetime"

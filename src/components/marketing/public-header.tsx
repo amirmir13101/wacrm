@@ -41,10 +41,10 @@ export function PublicHeader({ active }: PublicHeaderProps) {
 
       <nav className="bg-white shadow-[0_12px_35px_rgba(7,19,14,0.08)]" aria-label="Public navigation">
         <div className="mx-auto max-w-[1600px] px-5 sm:px-8 lg:px-8 xl:px-10">
-          <div className="flex min-h-[76px] items-center justify-between gap-5 lg:gap-6">
+          <div className="flex min-h-[76px] flex-wrap items-center justify-center gap-4 py-3 sm:flex-nowrap sm:justify-between sm:gap-5 sm:py-0 lg:gap-6">
             <Link
               href="/"
-              className="mr-4 flex shrink-0 translate-x-8 items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4] sm:translate-x-10 lg:mr-8 lg:translate-x-12 xl:mr-10"
+              className="flex shrink-0 items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4] sm:mr-4 sm:translate-x-10 lg:mr-8 lg:translate-x-12 xl:mr-10"
               aria-label="Talk Wagon home"
             >
               <Image
@@ -53,7 +53,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
                 width={520}
                 height={79}
                 priority={active === "home"}
-                className="h-8 w-auto max-w-[210px] object-contain sm:h-9 sm:max-w-[240px] lg:h-10 lg:max-w-[265px]"
+                className="h-8 w-auto max-w-[190px] object-contain sm:h-9 sm:max-w-[240px] lg:h-10 lg:max-w-[265px]"
               />
             </Link>
 
@@ -83,7 +83,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <div className="flex shrink-0 items-center justify-center gap-2 sm:gap-3">
               <Link
                 href="/login"
                 className="inline-flex h-11 items-center rounded-full px-3 text-sm font-bold text-[#07130e] hover:bg-[#f4fff9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4] sm:px-4"

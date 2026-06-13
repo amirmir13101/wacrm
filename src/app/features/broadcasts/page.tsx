@@ -37,16 +37,16 @@ const broadcastImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp Broadcast CRM for Campaigns and Templates | Talk Wagon",
+  title: "WhatsApp Broadcast Campaigns With CRM Tracking | Talk Wagon",
   description:
-    "Create WhatsApp broadcast campaigns with selected contacts, approved templates, organized workflows, team permissions, and CRM tracking in Talk Wagon.",
+    "Create opt-in WhatsApp broadcast campaigns with selected contacts, approved templates, preflight checks, team permissions, delivery tracking, and CRM follow-up workflows.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
-    title: "Talk Wagon WhatsApp Broadcast Campaigns",
+    title: "Talk Wagon WhatsApp Broadcast Campaigns With CRM Tracking",
     description:
-      "Manage WhatsApp broadcast workflows with contacts, approved templates, campaign organization, team access, and CRM tracking.",
+      "Manage opt-in WhatsApp broadcast workflows with contacts, approved templates, campaign organization, team access, delivery tracking, and CRM follow-ups.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -61,9 +61,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Talk Wagon WhatsApp Broadcast Campaigns",
+    title: "Talk Wagon WhatsApp Broadcast Campaigns With CRM Tracking",
     description:
-      "WhatsApp broadcast workflows with contacts, approved templates, campaign organization, team access, and CRM tracking.",
+      "Opt-in WhatsApp broadcast workflows with contacts, approved templates, campaign organization, delivery tracking, and CRM follow-ups.",
     images: [broadcastImages.hero],
   },
   robots: {
@@ -301,19 +301,19 @@ export default function BroadcastsFeaturePage() {
               WhatsApp broadcast CRM for organized campaigns
             </p>
             <h1 className="text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl">
-              WhatsApp Broadcast Campaigns Organized Inside Your CRM
+              WhatsApp Broadcast Campaigns With CRM Tracking
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Talk Wagon helps teams prepare, organize, and track WhatsApp broadcast
-              campaigns using selected contacts, approved templates, team permissions,
-              and CRM follow-up workflows.
+              Prepare opt-in WhatsApp campaigns with selected contacts, approved
+              templates, preflight checks, team permissions, delivery status, and
+              follow-up workflows connected to your CRM.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
                 href="/signup"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#3ddf84] px-7 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
-                Start For Free
+                Start Free Trial
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link

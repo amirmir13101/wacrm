@@ -7,9 +7,9 @@ import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection }
 const canonicalUrl = "https://vpscoaster.live/about";
 
 export const metadata: Metadata = {
-  title: "About Talk Wagon | WhatsApp CRM for Teams",
+  title: "About Talk Wagon | WhatsApp CRM for Customer Communication",
   description:
-    "Learn about Talk Wagon, a WhatsApp CRM for team inboxes, contacts, broadcasts, automation, permissions, and customer follow-up workflows.",
+    "Learn about Talk Wagon, a WhatsApp CRM for customer communication, shared inboxes, contacts, broadcasts, automation, permissions, and follow-up workflows.",
   alternates: {
     canonical: canonicalUrl,
   },
@@ -55,14 +55,14 @@ export default function AboutPage() {
     <InfoPageShell>
       <InfoHero
         eyebrow="About Talk Wagon"
-        title="A WhatsApp CRM Built for Teams That Need Control"
-        description="Talk Wagon helps businesses turn WhatsApp customer communication into a secure, organized CRM workspace for sales, support, broadcasts, follow-ups, and team workflows."
+        title="A WhatsApp CRM Built for Customer Communication Teams"
+        description="Talk Wagon helps businesses turn WhatsApp customer conversations into a secure CRM workspace for sales, support, approved broadcasts, follow-ups, automation, and team workflows."
         badges={["Team Inbox", "Contacts", "Broadcasts", "Automation", "Pipeline"]}
       />
 
       <InfoSection
         title="Why Talk Wagon Exists"
-        description="As customer conversations grow, personal phones, scattered spreadsheets, and manual follow-ups stop being enough. Talk Wagon gives teams a cleaner way to manage WhatsApp-oriented customer work."
+        description="As customer conversations grow, personal phones, scattered spreadsheets, and manual follow-ups stop being enough. Talk Wagon gives teams a cleaner way to manage WhatsApp customer communication with CRM context."
       >
         <div className="rounded-[26px] border border-[#dce9e2] bg-white p-6 text-base leading-8 text-[#48675b] shadow-[0_18px_45px_rgba(7,19,14,0.08)]">
           <p>

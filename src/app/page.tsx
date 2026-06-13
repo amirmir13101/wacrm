@@ -38,16 +38,16 @@ const homeImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp CRM for Teams, Broadcasts, Contacts and AI Automation",
+  title: "WhatsApp CRM for Team Inbox, Broadcasts and Automation | Talk Wagon",
   description:
-    "Manage WhatsApp customer conversations, team inboxes, contacts, broadcasts, templates, AI workflows, follow-ups, and sales pipelines from one production-ready CRM dashboard.",
+    "Talk Wagon is a WhatsApp CRM for team inboxes, contacts, approved template broadcasts, automated follow-ups, sales pipelines, and customer communication workflows.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
-    title: "Production-Ready WhatsApp CRM for Teams and Automation",
+    title: "Talk Wagon WhatsApp CRM for Teams and Customer Communication",
     description:
-      "Organize WhatsApp conversations, manage contacts, assign team agents, send broadcasts, automate follow-ups, and track sales pipelines from one CRM platform.",
+      "Manage WhatsApp conversations, contacts, team agents, approved broadcasts, automated follow-ups, and sales pipelines from one CRM workspace.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -62,9 +62,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Production-Ready WhatsApp CRM for Teams and Automation",
+    title: "Talk Wagon WhatsApp CRM for Teams and Customer Communication",
     description:
-      "Manage WhatsApp conversations, contacts, team agents, broadcasts, templates, AI workflows, and sales pipelines from one CRM dashboard.",
+      "Manage WhatsApp conversations, contacts, team agents, approved broadcasts, automated follow-ups, and sales pipelines from one CRM workspace.",
     images: [homeImages.hero],
   },
   robots: {
@@ -270,15 +270,15 @@ export default async function HomePage() {
           <div className="text-center lg:text-left">
             <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-[#d8fff1]">
               <ShieldCheck className="h-4 w-4 text-[#3ddf84]" aria-hidden="true" />
-              Official Meta WhatsApp API style CRM workflows
+              Built for Meta WhatsApp Cloud API style workflows
             </p>
             <h1 className="text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl">
-              WhatsApp CRM for Teams, Broadcasts, Contacts and AI Automation
+              WhatsApp CRM for Team Inbox, Broadcasts and Automation
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Manage customer conversations, contacts, WhatsApp team inboxes,
-              broadcast campaigns, templates, AI workflows, follow-ups, and sales
-              pipelines from one production-ready CRM dashboard.
+              Manage customer conversations, contacts, team agents, approved template
+              broadcasts, automated follow-ups, and sales pipelines from one secure
+              customer communication CRM.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
@@ -296,8 +296,7 @@ export default async function HomePage() {
               </Link>
             </div>
             <p className="mt-6 text-sm text-[#b8cfc7]">
-              Built for businesses that use WhatsApp for sales, support, marketing,
-              and customer follow-ups.
+              Built for opt-in sales, support, marketing, and customer follow-up workflows.
             </p>
           </div>
 
@@ -319,11 +318,11 @@ export default async function HomePage() {
       <section className="bg-white px-5 py-14 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-6xl text-center">
           <h2 className="text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-            Build Your WhatsApp CRM Workflow
+            Build a Complete WhatsApp Customer Communication Workflow
           </h2>
           <p className="mx-auto mt-4 max-w-3xl text-[#5b7169]">
-            Start with your customer conversations, organize contacts, assign agents,
-            send template-based broadcasts, automate follow-ups, and track every lead
+            Start with customer conversations, organize contact records, assign agents,
+            send approved template campaigns, automate follow-ups, and track every lead
             through your sales pipeline.
           </p>
           <div className="mx-auto mt-8 rounded-[30px] bg-white p-4 shadow-[0_20px_70px_rgba(7,19,14,0.14)] ring-1 ring-[#dbe9e2]">

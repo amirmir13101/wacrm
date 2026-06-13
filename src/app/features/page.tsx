@@ -39,16 +39,16 @@ const featureImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "Talk Wagon Features | WhatsApp CRM for Teams, Automation and Broadcasts",
+  title: "WhatsApp CRM Features for Teams, Broadcasts and Automation | Talk Wagon",
   description:
-    "Explore Talk Wagon features for WhatsApp team inboxes, contact management, broadcasts, templates, AI automation, follow-ups, role-based agents, and sales pipeline tracking.",
+    "Explore Talk Wagon WhatsApp CRM features for shared inboxes, contacts, approved broadcasts, templates, automation, agent permissions, analytics, and pipeline tracking.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
-    title: "Talk Wagon WhatsApp CRM Features for Modern Teams",
+    title: "Talk Wagon WhatsApp CRM Features for Growing Teams",
     description:
-      "Discover WhatsApp CRM tools for team inboxes, contacts, broadcasts, templates, automation, agents, permissions, and pipeline tracking.",
+      "Discover WhatsApp CRM tools for shared inboxes, contacts, approved broadcasts, templates, automation, permissions, analytics, and pipeline tracking.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -63,9 +63,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Talk Wagon WhatsApp CRM Features for Modern Teams",
+    title: "Talk Wagon WhatsApp CRM Features for Growing Teams",
     description:
-      "WhatsApp CRM features for team inboxes, contacts, broadcasts, templates, automation, permissions, and pipeline tracking.",
+      "WhatsApp CRM features for shared inboxes, contacts, approved broadcasts, templates, automation, permissions, analytics, and pipeline tracking.",
     images: [featureImages.hero],
   },
   robots: {
@@ -310,19 +310,19 @@ export default function FeaturesPage() {
               WhatsApp CRM features for growing teams
             </p>
             <h1 className="text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl">
-              Talk Wagon Features for WhatsApp Teams, Automation and Growth
+              WhatsApp CRM Features for Teams, Automation and Growth
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Explore WhatsApp CRM features built for team inboxes, contact management,
-              broadcasts, approved templates, AI automation, follow-ups, role-based
-              agents, and sales pipeline tracking.
+              Explore tools for shared inboxes, contact management, approved template
+              broadcasts, automation workflows, follow-ups, role-based agents, analytics,
+              and sales pipeline tracking.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
                 href="/signup"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#3ddf84] px-7 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
-                Start For Free
+                Start Free Trial
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link
@@ -355,7 +355,7 @@ export default function FeaturesPage() {
           <div className="mx-auto max-w-3xl text-center">
             <SectionEyebrow>WhatsApp CRM features</SectionEyebrow>
             <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-              Everything Your WhatsApp Business Needs in One CRM
+              Everything Your WhatsApp Customer Workflow Needs in One CRM
             </h2>
             <p className="mt-4 text-[#5b7169]">
               Talk Wagon combines daily WhatsApp communication, team workflows,
