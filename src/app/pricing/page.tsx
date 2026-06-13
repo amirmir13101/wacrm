@@ -22,6 +22,15 @@ import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/pricing`;
+const pricingImages = {
+  hero: "/hostiko-crm/generated/pricing/talk-wagon-pricing-hero-overview.webp",
+  planComparison: "/hostiko-crm/generated/pricing/talk-wagon-pricing-plan-comparison.webp",
+  apiCosts: "/hostiko-crm/generated/pricing/talk-wagon-pricing-whatsapp-api-costs.webp",
+  lifetime: "/hostiko-crm/generated/pricing/talk-wagon-pricing-lifetime-self-hosted.webp",
+  proValue: "/hostiko-crm/generated/pricing/talk-wagon-pricing-pro-plan-value.webp",
+  usageAnalytics: "/hostiko-crm/generated/pricing/talk-wagon-pricing-usage-billing-analytics.webp",
+  upgradeCta: "/hostiko-crm/generated/pricing/talk-wagon-pricing-upgrade-cta.webp",
+} as const;
 
 export const metadata: Metadata = {
   title: "Talk Wagon Pricing | WhatsApp CRM Plans for Teams and Automation",
@@ -39,9 +48,9 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/hostiko-crm/illustrations/pricing-plans.svg",
-        width: 960,
-        height: 700,
+        url: pricingImages.hero,
+        width: 1168,
+        height: 880,
         alt: "Talk Wagon WhatsApp CRM pricing plans",
       },
     ],
@@ -51,7 +60,7 @@ export const metadata: Metadata = {
     title: "Talk Wagon WhatsApp CRM Pricing",
     description:
       "Compare WhatsApp CRM plans for team inboxes, broadcasts, automation, customer communication, and self-hosted branding.",
-    images: ["/hostiko-crm/illustrations/pricing-plans.svg"],
+    images: [pricingImages.hero],
   },
   robots: {
     index: true,
@@ -278,10 +287,10 @@ export default function PricingPage() {
 
           <div className="rounded-[34px] border border-white/10 bg-white/8 p-4 shadow-[0_32px_95px_rgba(0,0,0,0.35)] backdrop-blur">
             <Image
-              src="/hostiko-crm/illustrations/pricing-plans.svg"
+              src={pricingImages.hero}
               alt="Talk Wagon WhatsApp CRM pricing plans"
-              width={960}
-              height={700}
+              width={1168}
+              height={880}
               priority
               className="h-auto w-full rounded-[26px]"
             />
@@ -359,6 +368,60 @@ export default function PricingPage() {
               </article>
             ))}
           </div>
+
+          <div className="mt-12 grid gap-6 lg:grid-cols-3">
+            <article className="rounded-[30px] bg-[#f7fbf8] p-4 ring-1 ring-[#dbe9e2]">
+              <Image
+                src={pricingImages.planComparison}
+                alt="Free Pro and Lifetime WhatsApp CRM plan comparison"
+                width={1168}
+                height={880}
+                loading="lazy"
+                className="h-auto w-full rounded-[24px]"
+              />
+              <h3 className="mt-5 px-2 text-xl font-extrabold text-[#07130e]">
+                Compare Free, Pro and Lifetime
+              </h3>
+              <p className="px-2 pb-2 pt-2 text-sm leading-7 text-[#5b7169]">
+                See the upgrade path from testing the CRM to running unlimited workflows
+                or requesting a self-hosted setup.
+              </p>
+            </article>
+            <article className="rounded-[30px] bg-[#f7fbf8] p-4 ring-1 ring-[#dbe9e2]">
+              <Image
+                src={pricingImages.proValue}
+                alt="Talk Wagon Pro plan CRM feature value dashboard"
+                width={1168}
+                height={880}
+                loading="lazy"
+                className="h-auto w-full rounded-[24px]"
+              />
+              <h3 className="mt-5 px-2 text-xl font-extrabold text-[#07130e]">
+                Pro includes the full CRM workflow
+              </h3>
+              <p className="px-2 pb-2 pt-2 text-sm leading-7 text-[#5b7169]">
+                Team inbox, contacts, broadcasts, automation, pipeline, and permissions
+                stay together in one workspace.
+              </p>
+            </article>
+            <article className="rounded-[30px] bg-[#f7fbf8] p-4 ring-1 ring-[#dbe9e2]">
+              <Image
+                src={pricingImages.usageAnalytics}
+                alt="Talk Wagon CRM usage and billing analytics dashboard"
+                width={1168}
+                height={880}
+                loading="lazy"
+                className="h-auto w-full rounded-[24px]"
+              />
+              <h3 className="mt-5 px-2 text-xl font-extrabold text-[#07130e]">
+                Understand usage as your team grows
+              </h3>
+              <p className="px-2 pb-2 pt-2 text-sm leading-7 text-[#5b7169]">
+                Track message activity, contacts, team seats, and campaign workflow
+                growth with clean CRM usage signals.
+              </p>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -385,10 +448,10 @@ export default function PricingPage() {
             </div>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/whatsapp-api-key.svg"
-            alt="Official API key connected to CRM workflow"
-            width={760}
-            height={520}
+            src={pricingImages.apiCosts}
+            alt="WhatsApp CRM API cost estimator and billing explanation"
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -418,10 +481,10 @@ export default function PricingPage() {
             </div>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/self-hosted-crm.svg"
+            src={pricingImages.lifetime}
             alt="Self-hosted branded WhatsApp CRM setup"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#0d1b15] shadow-[0_30px_90px_rgba(0,0,0,0.30)]"
           />
@@ -451,7 +514,7 @@ export default function PricingPage() {
       </section>
 
       <section className="bg-[#ffbd29] px-5 py-12 sm:px-8 lg:px-10">
-        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+        <div className="mx-auto grid max-w-7xl items-center gap-8 lg:grid-cols-[1fr_0.54fr]">
           <div>
             <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#07130e]/10 px-3 py-1 text-sm font-bold text-[#07130e]">
               <Sparkles className="h-4 w-4" aria-hidden="true" />
@@ -464,12 +527,22 @@ export default function PricingPage() {
               Start with a free CRM workflow, unlock full Pro features, or request a
               lifetime branded self-hosted setup for your business.
             </p>
+            <div className="mt-6">
+              <PublicCtaButtons
+                primaryLabel="Start For Free"
+                primaryHref="/signup"
+                secondaryLabel="Request Lifetime Setup"
+                secondaryHref="/pricing#lifetime"
+              />
+            </div>
           </div>
-          <PublicCtaButtons
-            primaryLabel="Start For Free"
-            primaryHref="/signup"
-            secondaryLabel="Request Lifetime Setup"
-            secondaryHref="/pricing#lifetime"
+          <Image
+            src={pricingImages.upgradeCta}
+            alt="Talk Wagon CRM upgrade CTA with growth metrics"
+            width={1168}
+            height={880}
+            loading="lazy"
+            className="h-auto w-full rounded-[28px] shadow-[0_20px_55px_rgba(7,19,14,0.18)]"
           />
         </div>
       </section>
