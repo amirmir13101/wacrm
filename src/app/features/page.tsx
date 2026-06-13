@@ -28,6 +28,15 @@ import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/features`;
+const featureImages = {
+  hero: "/hostiko-crm/generated/features/talk-wagon-features-hero-overview.webp",
+  teamInbox: "/hostiko-crm/generated/features/talk-wagon-features-team-inbox.webp",
+  contacts: "/hostiko-crm/generated/features/talk-wagon-features-contact-management.webp",
+  broadcasts: "/hostiko-crm/generated/features/talk-wagon-features-broadcasts.webp",
+  automation: "/hostiko-crm/generated/features/talk-wagon-features-ai-automation.webp",
+  pipeline: "/hostiko-crm/generated/features/talk-wagon-features-sales-pipeline.webp",
+  permissions: "/hostiko-crm/generated/features/talk-wagon-features-permissions.webp",
+} as const;
 
 export const metadata: Metadata = {
   title: "Talk Wagon Features | WhatsApp CRM for Teams, Automation and Broadcasts",
@@ -45,9 +54,9 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/hostiko-crm/illustrations/crm-features-overview.svg",
-        width: 960,
-        height: 700,
+        url: featureImages.hero,
+        width: 1168,
+        height: 880,
         alt: "Talk Wagon CRM features overview dashboard",
       },
     ],
@@ -57,7 +66,7 @@ export const metadata: Metadata = {
     title: "Talk Wagon WhatsApp CRM Features for Modern Teams",
     description:
       "WhatsApp CRM features for team inboxes, contacts, broadcasts, templates, automation, permissions, and pipeline tracking.",
-    images: ["/hostiko-crm/illustrations/crm-features-overview.svg"],
+    images: [featureImages.hero],
   },
   robots: {
     index: true,
@@ -329,10 +338,10 @@ export default function FeaturesPage() {
           <div className="relative">
             <div className="rounded-[34px] border border-white/10 bg-white/8 p-4 shadow-[0_32px_95px_rgba(0,0,0,0.35)] backdrop-blur">
               <Image
-                src="/hostiko-crm/illustrations/crm-features-overview.svg"
+                src={featureImages.hero}
                 alt="Talk Wagon CRM features overview dashboard"
-                width={960}
-                height={700}
+                width={1168}
+                height={880}
                 priority
                 className="h-auto w-full rounded-[26px]"
               />
@@ -410,10 +419,10 @@ export default function FeaturesPage() {
             </ul>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/team-inbox-workflow.svg"
+            src={featureImages.teamInbox}
             alt="Shared WhatsApp team inbox for agents and managers"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -423,10 +432,10 @@ export default function FeaturesPage() {
       <section id="contact-management" className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
-            src="/hostiko-crm/illustrations/contact-management.svg"
+            src={featureImages.contacts}
             alt="Contact management with consent badges and safe bulk actions"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#f4fff9] shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -483,10 +492,10 @@ export default function FeaturesPage() {
             </ul>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/broadcast-campaigns.svg"
+            src={featureImages.broadcasts}
             alt="Broadcast campaign CRM for WhatsApp contacts"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#0d1b15] shadow-[0_30px_90px_rgba(0,0,0,0.30)]"
           />
@@ -496,10 +505,10 @@ export default function FeaturesPage() {
       <section id="automation" className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
-            src="/hostiko-crm/illustrations/ai-automation-flow.svg"
+            src={featureImages.automation}
             alt="AI automation workflow for customer follow-ups"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#f4fff9] shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -547,10 +556,10 @@ export default function FeaturesPage() {
             </div>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/sales-pipeline.svg"
+            src={featureImages.pipeline}
             alt="Sales pipeline dashboard for WhatsApp CRM leads"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -560,10 +569,10 @@ export default function FeaturesPage() {
       <section id="permissions" className="bg-[#1b372b] px-5 py-20 text-white sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
-            src="/hostiko-crm/illustrations/permissions-workspace.svg"
+            src={featureImages.permissions}
             alt="Workspace permissions and team agents"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#0d1b15] shadow-[0_30px_90px_rgba(0,0,0,0.30)]"
           />
