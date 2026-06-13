@@ -26,6 +26,15 @@ import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 
 const siteUrl = "https://vpscoaster.live";
 const canonicalUrl = `${siteUrl}/features/broadcasts`;
+const broadcastImages = {
+  hero: "/hostiko-crm/generated/broadcasts/talk-wagon-broadcasts-hero-overview.webp",
+  approvedTemplates: "/hostiko-crm/generated/broadcasts/talk-wagon-broadcasts-approved-templates.webp",
+  contactSegmentation: "/hostiko-crm/generated/broadcasts/talk-wagon-broadcasts-contact-segmentation.webp",
+  queueProgress: "/hostiko-crm/generated/broadcasts/talk-wagon-broadcasts-queue-progress.webp",
+  deliveryTracking: "/hostiko-crm/generated/broadcasts/talk-wagon-broadcasts-delivery-tracking.webp",
+  retryFailed: "/hostiko-crm/generated/broadcasts/talk-wagon-broadcasts-retry-failed.webp",
+  analytics: "/hostiko-crm/generated/broadcasts/talk-wagon-broadcasts-analytics.webp",
+} as const;
 
 export const metadata: Metadata = {
   title: "WhatsApp Broadcast CRM for Campaigns and Templates | Talk Wagon",
@@ -43,7 +52,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/hostiko-crm/illustrations/broadcast-campaigns.svg",
+        url: broadcastImages.hero,
         width: 960,
         height: 700,
         alt: "WhatsApp broadcast campaign CRM with selected contacts and template messages",
@@ -55,7 +64,7 @@ export const metadata: Metadata = {
     title: "Talk Wagon WhatsApp Broadcast Campaigns",
     description:
       "WhatsApp broadcast workflows with contacts, approved templates, campaign organization, team access, and CRM tracking.",
-    images: ["/hostiko-crm/illustrations/broadcast-campaigns.svg"],
+    images: [broadcastImages.hero],
   },
   robots: {
     index: true,
@@ -319,10 +328,10 @@ export default function BroadcastsFeaturePage() {
 
           <div className="rounded-[34px] border border-white/10 bg-white/8 p-4 shadow-[0_32px_95px_rgba(0,0,0,0.35)] backdrop-blur">
             <Image
-              src="/hostiko-crm/illustrations/broadcast-campaigns.svg"
+              src={broadcastImages.hero}
               alt="WhatsApp broadcast campaign CRM with selected contacts and template messages"
-              width={960}
-              height={700}
+              width={1168}
+              height={880}
               priority
               className="h-auto w-full rounded-[26px]"
             />
@@ -380,10 +389,10 @@ export default function BroadcastsFeaturePage() {
             </div>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/crm-features-overview.svg"
+            src={broadcastImages.queueProgress}
             alt="WhatsApp CRM broadcast workflow dashboard"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -415,10 +424,10 @@ export default function BroadcastsFeaturePage() {
       <section id="templates" className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
-            src="/hostiko-crm/illustrations/whatsapp-api-key.svg"
+            src={broadcastImages.approvedTemplates}
             alt="Approved WhatsApp template campaign workflow"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#f4fff9] shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -470,10 +479,10 @@ export default function BroadcastsFeaturePage() {
             </div>
           </div>
           <Image
-            src="/hostiko-crm/illustrations/contact-management.svg"
+            src={broadcastImages.contactSegmentation}
             alt="WhatsApp CRM contact selection for broadcast campaigns"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -483,10 +492,10 @@ export default function BroadcastsFeaturePage() {
       <section id="follow-up-workflows" className="bg-white px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
           <Image
-            src="/hostiko-crm/illustrations/sales-pipeline.svg"
+            src={broadcastImages.deliveryTracking}
             alt="Broadcast replies moving into WhatsApp CRM follow-up workflows"
-            width={760}
-            height={520}
+            width={1168}
+            height={880}
             loading="lazy"
             className="h-auto w-full rounded-[30px] bg-[#f4fff9] shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
           />
@@ -528,6 +537,24 @@ export default function BroadcastsFeaturePage() {
                 </article>
               ))}
             </div>
+          </div>
+          <div className="mt-10 grid gap-6 lg:grid-cols-2">
+            <Image
+              src={broadcastImages.retryFailed}
+              alt="Broadcast retry failed recipients dashboard"
+              width={1168}
+              height={880}
+              loading="lazy"
+              className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
+            />
+            <Image
+              src={broadcastImages.analytics}
+              alt="Broadcast campaign analytics dashboard"
+              width={1168}
+              height={880}
+              loading="lazy"
+              className="h-auto w-full rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)]"
+            />
           </div>
         </div>
       </section>
