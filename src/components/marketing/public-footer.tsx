@@ -16,10 +16,10 @@ const footerGroups = [
   {
     heading: "Company",
     links: [
-      ["About", "/features"],
+      ["About", "/about"],
       ["Pricing", "/pricing"],
       ["FAQ", "/features#faq"],
-      ["Contact", "/pricing#lifetime"],
+      ["Contact", "/contact"],
     ],
   },
   {
@@ -42,8 +42,9 @@ const footerGroups = [
   {
     heading: "Legal",
     links: [
-      ["Privacy Policy", null],
-      ["Terms of Service", null],
+      ["Privacy Policy", "/privacy-policy"],
+      ["Terms of Service", "/terms-and-conditions"],
+      ["Refund Policy", "/refund-policy"],
       ["Security", "/features#permissions"],
     ],
   },
