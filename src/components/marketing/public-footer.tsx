@@ -37,7 +37,6 @@ const footerGroups = [
     links: [
       ["Login", "/login"],
       ["Start For Free", "/signup"],
-      ["Password Help", "/forgot-password"],
     ],
   },
   {
