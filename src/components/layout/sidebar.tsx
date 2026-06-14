@@ -143,12 +143,12 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       >
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
-        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[#17402f] bg-[#07130e] px-4">
+        <div className="flex h-[72px] shrink-0 items-center justify-between gap-2 border-b border-[#17402f] bg-[#07130e] px-4 lg:justify-center">
           <Link
             href="/dashboard"
             className="flex min-w-0 items-center rounded-2xl px-1.5 py-1 transition-colors hover:bg-[#123226] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3ddf84]"
           >
-            <span className="truncate text-lg font-extrabold tracking-tight text-white">
+            <span className="truncate text-xl font-extrabold tracking-tight text-white">
               <span className="text-[#ffbd29]">Talk</span>{" "}
               <span className="text-white">Wagon</span>
             </span>

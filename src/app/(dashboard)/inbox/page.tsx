@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
-import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -270,18 +270,30 @@ export default function InboxPage() {
   // it back to the list. On lg+ both panes render side-by-side as
   // before, unchanged.
   const hasActiveConv = !!activeConversation;
+  const ownerCanConnectWhatsapp =
+    !whatsappConnectionMessage.toLowerCase().includes("ask the workspace owner") &&
+    !whatsappConnectionMessage.toLowerCase().includes("ask the owner");
 
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
       {whatsappConnected === false && (
-        <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
           <WifiOff className="h-4 w-4 text-amber-400" />
-          <p className="text-xs text-amber-400">
-            {whatsappConnectionMessage ||
-              "Workspace WhatsApp is not connected. Ask the owner to configure it."}
+          <p className="text-center text-xs font-medium text-amber-200">
+            {ownerCanConnectWhatsapp
+              ? "Connect your WhatsApp account in Settings to start using Inbox."
+              : "Workspace WhatsApp is not connected. Ask the owner to connect it."}
           </p>
+          {ownerCanConnectWhatsapp && (
+            <Link
+              href="/settings?tab=whatsapp"
+              className="inline-flex h-7 items-center rounded-full border border-amber-300/30 bg-amber-300/10 px-3 text-xs font-semibold text-amber-100 transition hover:bg-amber-300/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+            >
+              Open Settings
+            </Link>
+          )}
         </div>
       )}
 
