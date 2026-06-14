@@ -54,9 +54,8 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
         payerName,
         payerEmail: signedInEmail ?? payerEmail,
         workspaceName: companyName,
-        requestId: requestId ?? undefined,
       }),
-    [companyName, payerEmail, payerName, plan, requestId, signedInEmail],
+    [companyName, payerEmail, payerName, plan, signedInEmail],
   )
 
   useEffect(() => {
@@ -144,6 +143,34 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
     setChatHint('Live chat is loading. If it does not open, use WhatsApp to send payment proof.')
   }
 
+  if (requestId) {
+    return (
+      <section className="mx-auto flex min-h-[62vh] max-w-2xl items-center justify-center">
+        <div className="w-full rounded-[32px] border border-[#08bba4]/25 bg-white p-6 text-center shadow-[0_24px_70px_rgba(7,19,14,0.12)] sm:p-10">
+          <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-[#e9fff6] text-[#08bba4]">
+            <CheckCircle2 className="size-8" />
+          </div>
+          <h1 className="mt-6 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
+            Form submitted successfully
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-[#31584a] sm:text-base">
+            Please send your payment screenshot or payment proof to us on WhatsApp, or talk to our agent
+            for help.
+          </p>
+          <ProofActions proofUrl={proofUrl} onOpenChat={openTawkChat} />
+          {chatHint ? <p className="mt-3 text-sm text-[#5b7169]">{chatHint}</p> : null}
+          <p className="mt-6 text-sm font-semibold leading-6 text-[#31584a]">
+            If you have sent your payment screenshot, you can{' '}
+            <Link href="/login" className="font-extrabold text-[#08bba4] underline-offset-4 hover:underline">
+              login here
+            </Link>
+            .
+          </p>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
       <aside className="space-y-5">
@@ -209,32 +236,6 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
       </aside>
 
       <section className="rounded-[30px] border border-[#dbe9e2] bg-white p-6 shadow-[0_18px_55px_rgba(7,19,14,0.08)] sm:p-8">
-        {requestId ? (
-          <div className="rounded-2xl border border-[#08bba4]/30 bg-[#e9fff6] p-5">
-            <h2 className="text-xl font-extrabold text-[#07130e]">Form submitted successfully</h2>
-            <p className="mt-2 text-sm leading-7 text-[#31584a]">
-              Send your payment screenshot to our team. After verification, our admin will activate your account.
-            </p>
-            <p className="mt-2 text-xs font-semibold text-[#31584a]">
-              Request ID: <span className="font-bold">{requestId}</span>. Your customer account and workspace are
-              linked to this request.
-            </p>
-            <ProofActions proofUrl={proofUrl} onOpenChat={openTawkChat} />
-            {chatHint ? <p className="mt-3 text-sm text-[#5b7169]">{chatHint}</p> : null}
-            <div className="mt-5 rounded-2xl border border-[#dbe9e2] bg-white/70 p-4">
-              <p className="text-sm font-semibold text-[#31584a]">
-                If you have sent your payment screenshot, you can login here.
-              </p>
-              <Link
-                href="/login"
-                className="mt-3 inline-flex h-11 items-center justify-center rounded-full bg-[#07130e] px-6 text-sm font-bold text-white hover:bg-[#1b372b]"
-              >
-                Login
-              </Link>
-            </div>
-          </div>
-        ) : null}
-
         <div className="mt-6">
           <div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
