@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import type { FormEvent, ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { CheckCircle2, Loader2, MessageCircle, Send, ShieldCheck } from 'lucide-react'
@@ -13,8 +12,6 @@ import {
   type ManualCheckoutPlan,
   type ManualPaymentMethod,
 } from '@/lib/payments/manual-payment-config'
-
-const checkoutImage = '/hostiko-crm/generated/checkout/talk-wagon-manual-checkout-payment.webp'
 
 declare global {
   interface Window {
@@ -103,17 +100,6 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[#3ddf84]" />
             {plan.activationNote}
           </p>
-        </div>
-
-        <div className="overflow-hidden rounded-[30px] border border-[#dbe9e2] bg-white p-3 shadow-[0_18px_55px_rgba(7,19,14,0.08)]">
-          <Image
-            src={checkoutImage}
-            alt="Talk Wagon CRM manual payment checkout and approval workflow"
-            width={1024}
-            height={768}
-            priority
-            className="h-auto w-full rounded-[24px] object-cover"
-          />
         </div>
 
         <div className="rounded-[28px] border border-[#dbe9e2] bg-white p-6">
