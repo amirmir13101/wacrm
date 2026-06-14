@@ -104,9 +104,9 @@ const plans = [
     price: "$1",
     regularPrice: "$5",
     offerLabel: "Limited-time offer",
-    billing: "/ month · Unlimited CRM usage",
+    billing: "Unlimited CRM usage",
     description:
-      "For growing teams that want all Talk Wagon CRM features. Pro is normally $5/month, available for a limited time at $1/month.",
+      "For growing teams that want all Talk Wagon CRM features, unlimited CRM usage, team workflows, broadcasts, automations, and pipeline tools.",
     cta: "Upgrade to Pro",
     href: "/signup",
     note:
@@ -331,24 +331,25 @@ export default function PricingPage() {
                   </span>
                 ) : null}
                 <h3 className="text-2xl font-extrabold">{plan.name}</h3>
-                <div className="mt-6 flex items-end gap-2">
-                  <span className="text-5xl font-extrabold">{plan.price}</span>
-                  {plan.name === "Pro" ? (
-                    <span className="pb-2 text-sm font-bold text-[#d5e9e2]">/ month</span>
-                  ) : null}
-                </div>
-                {"regularPrice" in plan ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                    <span className="rounded-full bg-[#ffbd29] px-3 py-1 font-extrabold uppercase text-[#07130e]">
+                {plan.name === "Pro" && "regularPrice" in plan ? (
+                  <div className="mt-6 space-y-3">
+                    <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+                      <span className="pb-2 text-xl font-bold text-[#d5e9e2]/60 line-through decoration-2">
+                        {plan.regularPrice}/month
+                      </span>
+                      <span className="text-5xl font-extrabold">{plan.price}/month</span>
+                    </div>
+                    <span className="inline-flex rounded-full bg-[#ffbd29] px-3 py-1 text-xs font-extrabold uppercase text-[#07130e]">
                       {plan.offerLabel}
                     </span>
-                    <span className="font-bold text-[#d5e9e2]">
-                      Regular <span className="line-through">{plan.regularPrice}</span>/month
-                    </span>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mt-6 flex items-end gap-2">
+                    <span className="text-5xl font-extrabold">{plan.price}</span>
+                  </div>
+                )}
                 <p className={`mt-3 text-sm font-bold ${plan.featured ? "text-[#ffbd29]" : "text-[#08bba4]"}`}>
-                  {plan.name === "Pro" ? "Now $1/month, regular $5/month" : plan.billing}
+                  {plan.billing}
                 </p>
                 <p className={`mt-5 text-sm leading-7 ${plan.featured ? "text-[#d5e9e2]" : "text-[#5b7169]"}`}>
                   {plan.description}
