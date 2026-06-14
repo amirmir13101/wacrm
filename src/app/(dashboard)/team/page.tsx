@@ -1003,19 +1003,23 @@ function PermissionEditor({
                 onClick={() => applyPreset(preset.id)}
                 className={`min-h-24 rounded-lg border p-3 text-left transition ${
                   active
-                    ? "border-violet-500 bg-violet-500/10"
+                    ? "border-[#3ddf84] bg-[#3ddf84] text-[#07130e] shadow-[0_14px_32px_rgba(61,223,132,0.18)]"
                     : "border-slate-800 bg-slate-900 hover:border-slate-600"
                 } disabled:cursor-not-allowed disabled:opacity-60`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-white">{preset.label}</p>
+                  <p className={`text-sm font-semibold ${active ? "text-[#07130e]" : "text-white"}`}>
+                    {preset.label}
+                  </p>
                   {active && (
-                    <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-medium text-violet-200">
+                    <span className="rounded-full bg-[#07130e]/15 px-2 py-0.5 text-[10px] font-bold text-[#07130e]">
                       selected
                     </span>
                   )}
                 </div>
-                <p className="mt-2 text-xs leading-5 text-slate-400">{preset.helper}</p>
+                <p className={`mt-2 text-xs leading-5 ${active ? "font-medium text-[#0b241c]" : "text-slate-400"}`}>
+                  {preset.helper}
+                </p>
               </button>
             );
           })}

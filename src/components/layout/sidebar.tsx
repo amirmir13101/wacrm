@@ -147,16 +147,20 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[#17402f] bg-[#07130e] px-4">
           <Link
             href="/dashboard"
-            className="flex min-w-0 items-center rounded-2xl bg-[#f7fff9] px-2 py-1 shadow-[0_10px_28px_rgba(0,0,0,0.18)]"
+            className="flex min-w-0 items-center gap-2 rounded-2xl px-1.5 py-1 transition-colors hover:bg-[#123226] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3ddf84]"
           >
             <Image
-              src="/hostiko-crm/brand/talk-wagon-logo-public.webp"
+              src="/hostiko-crm/brand/talk-wagon-logo.svg"
               alt="Talk Wagon CRM logo"
-              width={520}
-              height={79}
+              width={160}
+              height={160}
               priority
-              className="h-8 w-auto max-w-[160px] shrink-0 object-contain"
+              className="h-10 w-10 shrink-0 rounded-xl object-contain"
             />
+            <span className="truncate text-base font-extrabold tracking-tight text-white">
+              <span className="text-[#ffbd29]">Talk</span>{" "}
+              <span className="text-white">Wagon</span>
+            </span>
           </Link>
           <button
             type="button"
