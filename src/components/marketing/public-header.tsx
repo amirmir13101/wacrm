@@ -1,6 +1,9 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Menu, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -14,6 +17,12 @@ const navItems = [
   { label: "FAQ", href: "/features#faq" },
 ] as const;
 
+const mobileNavItems = [
+  ...navItems,
+  { label: "About", href: "/about" },
+  { label: "Contact", href: "/contact" },
+] as const;
+
 const trustItems = ["Team Inbox", "Automation", "Broadcasts", "Secure Workspaces"];
 
 interface PublicHeaderProps {
@@ -21,9 +30,36 @@ interface PublicHeaderProps {
 }
 
 export function PublicHeader({ active }: PublicHeaderProps) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+
+    function onPointerDown(event: PointerEvent) {
+      if (!mobileMenuRef.current?.contains(event.target as Node)) {
+        setMobileMenuOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMobileMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileMenuOpen]);
+
   return (
     <header className="relative z-30">
-      <div className="bg-[#0d1b15] text-white">
+      <div className="hidden bg-[#0d1b15] text-white lg:block">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-3 text-xs sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
           <p className="text-center text-[#d8fff1] lg:text-left">
             Production-ready WhatsApp CRM for sales, support, broadcasts, and AI automation.
@@ -40,11 +76,12 @@ export function PublicHeader({ active }: PublicHeaderProps) {
       </div>
 
       <nav className="bg-white shadow-[0_12px_35px_rgba(7,19,14,0.08)]" aria-label="Public navigation">
-        <div className="mx-auto max-w-[1600px] px-5 sm:px-8 lg:px-8 xl:px-10">
-          <div className="flex min-h-[76px] flex-wrap items-center justify-center gap-4 py-3 sm:flex-nowrap sm:justify-between sm:gap-5 sm:py-0 lg:gap-6">
+        <div ref={mobileMenuRef} className="mx-auto max-w-[1600px] px-5 sm:px-8 lg:px-8 xl:px-10">
+          <div className="flex min-h-[72px] items-center justify-between gap-4 py-3 lg:min-h-[76px] lg:gap-6 lg:py-0">
             <Link
               href="/"
-              className="flex shrink-0 items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4] sm:mr-4 sm:translate-x-10 lg:mr-8 lg:translate-x-12 xl:mr-10"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex shrink-0 items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4] sm:mr-4 lg:translate-x-12 lg:mr-8 xl:mr-10"
               aria-label="Talk Wagon home"
             >
               <Image
@@ -83,7 +120,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center justify-center gap-2 sm:gap-3">
+            <div className="hidden shrink-0 items-center justify-center gap-2 lg:flex xl:gap-3">
               <Link
                 href="/login"
                 className="inline-flex h-11 items-center rounded-full px-3 text-sm font-bold text-[#07130e] hover:bg-[#f4fff9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4] sm:px-4"
@@ -92,23 +129,59 @@ export function PublicHeader({ active }: PublicHeaderProps) {
               </Link>
               <Link href="/signup">
                 <Button className="h-11 rounded-full bg-[#181818] px-4 text-sm font-bold text-white hover:bg-[#ffbd29] hover:text-[#07130e] sm:px-6">
-                  Start For Free
+                  Start Free Trial
                 </Button>
               </Link>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#07130e] text-white shadow-[0_12px_26px_rgba(7,19,14,0.18)] transition-colors hover:bg-[#143326] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4] lg:hidden"
+              aria-expanded={mobileMenuOpen}
+              aria-controls="public-mobile-menu"
+              aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
+            </button>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-2 border-t border-[#e6f0eb] py-3 lg:hidden">
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className="inline-flex h-9 items-center rounded-full bg-[#f4fff9] px-3 text-xs font-bold text-[#07130e] hover:bg-[#eafff3] hover:text-[#08bba4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
+          {mobileMenuOpen ? (
+            <div
+              id="public-mobile-menu"
+              className="border-t border-[#e6f0eb] pb-4 lg:hidden"
+            >
+              <div className="mt-3 grid gap-2 rounded-[26px] bg-[#f4fff9] p-3 ring-1 ring-[#dce9e2]">
+                {mobileNavItems.map((item) => (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex min-h-11 items-center justify-between rounded-2xl px-4 text-sm font-extrabold text-[#07130e] transition-colors hover:bg-white hover:text-[#08bba4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
+                  >
+                    {item.label}
+                    <span className="h-2 w-2 rounded-full bg-[#3ddf84]" aria-hidden="true" />
+                  </Link>
+                ))}
+                <div className="mt-2 grid gap-2 border-t border-[#dce9e2] pt-3">
+                  <Link
+                    href="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-[#07130e] bg-white px-4 text-sm font-extrabold text-[#07130e] hover:bg-[#07130e] hover:text-white"
+                  >
+                    Login
+                  </Link>
+                  <Link
+                    href="/signup"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#07130e] px-4 text-sm font-extrabold text-white hover:bg-[#ffbd29] hover:text-[#07130e]"
+                  >
+                    Start Free Trial
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </nav>
     </header>
