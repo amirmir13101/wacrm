@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://vpscoaster.live"),
   title: {
     default: "WhatsApp CRM for Teams, Broadcasts, Contacts and AI Automation",
-    template: "%s - WACRM",
+    template: "%s - Talk Wagon",
   },
   description:
     "Production-ready WhatsApp CRM for team inboxes, contacts, broadcasts, templates, AI workflows, follow-ups, and sales pipelines.",
@@ -50,7 +50,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${poppins.variable} h-full antialiased`}>
-      <body className="min-h-full bg-slate-950 font-sans text-white">
+      <body className="min-h-full bg-[#07130e] font-sans text-white">
         {children}
         <Toaster
           theme="dark"

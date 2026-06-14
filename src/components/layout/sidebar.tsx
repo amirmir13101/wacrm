@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -133,7 +134,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       <aside
         className={cn(
           // Mobile: fixed drawer that slides in from the left.
-          "fixed inset-y-0 left-0 z-40 flex h-full w-64 flex-col border-r border-slate-800 bg-slate-900",
+          "fixed inset-y-0 left-0 z-40 flex h-full w-64 flex-col border-r border-[#17402f] bg-[#07130e]",
           "transition-transform duration-200 ease-out will-change-transform",
           open ? "translate-x-0" : "-translate-x-full",
           // Desktop: static, always visible — reset all the mobile framing.
@@ -143,20 +144,22 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       >
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-slate-800 px-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500">
-              <MessageSquare className="h-4 w-4 text-white" />
-            </div>
-            <span className="text-sm font-semibold text-white">
-              CRM Template for WhatsApp
-            </span>
+        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[#17402f] bg-[#f8fffb] px-4">
+          <Link href="/dashboard" className="flex min-w-0 items-center">
+            <Image
+              src="/hostiko-crm/brand/talk-wagon-logo-public.webp"
+              alt="Talk Wagon CRM logo"
+              width={265}
+              height={52}
+              priority
+              className="h-9 w-auto max-w-[185px] object-contain"
+            />
           </Link>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close menu"
-            className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-[#315345] hover:bg-[#eafff3] hover:text-[#07130e] lg:hidden"
           >
             <X className="h-5 w-5" />
           </button>
@@ -165,14 +168,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {/* Main navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           {workspace.workspaces.length > 1 && (
-            <div className="mb-3 rounded-lg border border-slate-800 bg-slate-950/40 p-2">
-              <label className="mb-1 block text-[11px] font-medium uppercase text-slate-500">
+            <div className="mb-3 rounded-xl border border-[#214b39] bg-[#0d1b15] p-2">
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-[0.16em] text-[#8bb4a5]">
                 Workspace
               </label>
               <select
                 value={workspace.workspaceId ?? ""}
                 onChange={(event) => switchWorkspace(event.target.value)}
-                className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-2 text-xs text-white"
+                className="h-9 w-full rounded-lg border border-[#315846] bg-[#07130e] px-2 text-xs text-white outline-none focus:border-[#3ddf84] focus:ring-2 focus:ring-[#3ddf84]/20"
               >
                 {workspace.workspaces.map((item) => (
                   <option key={item.workspace_id} value={item.workspace_id}>
@@ -200,8 +203,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                       // Taller on mobile so fingers can hit the row reliably (≥44px).
                       "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
                       isActive
-                        ? "bg-violet-500/10 text-violet-500"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-white",
+                        ? "bg-[#3ddf84] text-[#07130e] shadow-[0_10px_26px_rgba(61,223,132,0.18)]"
+                        : "text-[#c7ddd5] hover:bg-[#123226] hover:text-white",
                     )}
                   >
                     <item.icon className="h-4 w-4" />
@@ -211,8 +214,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                         aria-label={`${totalUnread} unread conversation${totalUnread === 1 ? "" : "s"}`}
                         className="relative flex h-2 w-2"
                       >
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-500" />
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#ffbd29] opacity-75" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-[#ffbd29]" />
                       </span>
                     )}
                   </Link>
@@ -221,7 +224,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             })}
           </ul>
 
-          <div className="my-4 border-t border-slate-800" />
+          <div className="my-4 border-t border-[#17402f]" />
 
           <ul className="flex flex-col gap-1">
             {visibleBottomNavItems.map((item) => {
@@ -233,8 +236,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     className={cn(
                       "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
                       isActive
-                        ? "bg-violet-500/10 text-violet-500"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-white",
+                        ? "bg-[#3ddf84] text-[#07130e] shadow-[0_10px_26px_rgba(61,223,132,0.18)]"
+                        : "text-[#c7ddd5] hover:bg-[#123226] hover:text-white",
                     )}
                   >
                     <item.icon className="h-4 w-4" />
@@ -247,9 +250,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </nav>
 
         {/* User section */}
-        <div className="shrink-0 border-t border-slate-800 p-3">
+        <div className="shrink-0 border-t border-[#17402f] p-3">
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-slate-800/60 focus:bg-slate-800/60 focus:outline-none data-popup-open:bg-slate-800/60">
+            <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[#123226] focus:bg-[#123226] focus:outline-none data-popup-open:bg-[#123226]">
               <Avatar className="size-8 shrink-0">
                 {profile?.avatar_url ? (
                   <AvatarImage
@@ -257,7 +260,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     alt={profile.full_name ?? "Avatar"}
                   />
                 ) : null}
-                <AvatarFallback className="bg-violet-500/10 text-sm font-medium text-violet-500">
+                <AvatarFallback className="bg-[#3ddf84]/15 text-sm font-medium text-[#3ddf84]">
                   {profile?.full_name?.charAt(0)?.toUpperCase() ??
                     profile?.email?.charAt(0)?.toUpperCase() ??
                     "U"}
@@ -267,7 +270,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 <p className="truncate text-sm font-medium text-white">
                   {profile?.full_name ?? "User"}
                 </p>
-                <p className="truncate text-xs text-slate-400">
+                <p className="truncate text-xs text-[#8bb4a5]">
                   {profile?.email ?? ""}
                 </p>
               </div>
@@ -276,14 +279,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               align="end"
               side="top"
               sideOffset={6}
-              className="min-w-56 bg-slate-900 text-slate-100 ring-slate-700"
+              className="min-w-56 border-[#315846] bg-[#07130e] text-[#eafff3] ring-[#315846]"
             >
               <DropdownMenuItem
                 render={
                   <Link
                     href="/settings?tab=profile"
                     onClick={onClose}
-                    className="text-slate-200 focus:bg-slate-800 focus:text-white"
+                    className="text-[#d8fff1] focus:bg-[#123226] focus:text-white"
                   />
                 }
               >
@@ -295,17 +298,17 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                   <Link
                     href="/settings?tab=whatsapp"
                     onClick={onClose}
-                    className="text-slate-200 focus:bg-slate-800 focus:text-white"
+                    className="text-[#d8fff1] focus:bg-[#123226] focus:text-white"
                   />
                 }
               >
                 <Settings className="size-4" />
                 Settings
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-slate-800" />
+              <DropdownMenuSeparator className="bg-[#17402f]" />
               <DropdownMenuItem
                 onClick={signOut}
-                className="text-slate-200 focus:bg-slate-800 focus:text-white"
+                className="text-[#d8fff1] focus:bg-[#123226] focus:text-white"
               >
                 <LogOut className="size-4" />
                 Sign out

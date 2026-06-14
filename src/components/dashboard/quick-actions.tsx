@@ -19,10 +19,10 @@ interface Action {
 }
 
 const ACTIONS: Action[] = [
-  { label: 'New Contact', href: '/contacts', icon: UserPlus, tint: 'text-violet-400', permission: 'create_contacts' },
-  { label: 'New Deal', href: '/pipelines', icon: Briefcase, tint: 'text-blue-400', permission: 'create_deals' },
-  { label: 'New Broadcast', href: '/broadcasts/new', icon: Radio, tint: 'text-amber-400', permission: 'create_broadcasts' },
-  { label: 'New Automation', href: '/automations/new', icon: Zap, tint: 'text-violet-400', permission: 'create_automations' },
+  { label: 'New Contact', href: '/contacts', icon: UserPlus, tint: 'text-[#08bba4]', permission: 'create_contacts' },
+  { label: 'New Deal', href: '/pipelines', icon: Briefcase, tint: 'text-[#3ddf84]', permission: 'create_deals' },
+  { label: 'New Broadcast', href: '/broadcasts/new', icon: Radio, tint: 'text-[#ffbd29]', permission: 'create_broadcasts' },
+  { label: 'New Automation', href: '/automations/new', icon: Zap, tint: 'text-[#08bba4]', permission: 'create_automations' },
 ]
 
 export function QuickActions() {
@@ -38,12 +38,12 @@ export function QuickActions() {
           <Link
             key={a.href}
             href={a.href}
-            className="group flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 transition-colors hover:border-slate-700 hover:bg-slate-800/60"
+            className="group flex items-center gap-3 rounded-2xl border border-[#dce9e2] bg-white px-4 py-3 shadow-[0_12px_32px_rgba(7,19,14,0.05)] transition-colors hover:border-[#3ddf84] hover:bg-[#f4fff9]"
           >
-            <div className={`flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800 ${a.tint}`}>
+            <div className={`flex h-9 w-9 items-center justify-center rounded-xl bg-[#eafff3] ${a.tint}`}>
               <Icon className="h-4 w-4" />
             </div>
-            <span className="text-sm font-medium text-white">{a.label}</span>
+            <span className="text-sm font-medium text-[#07130e]">{a.label}</span>
           </Link>
         )
       })}

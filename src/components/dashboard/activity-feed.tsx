@@ -31,11 +31,11 @@ interface KindTheme {
 }
 
 const KIND_THEME: Record<ActivityKind, KindTheme> = {
-  message: { icon: MessageSquare, badge: 'bg-blue-500/10 text-blue-400' },
-  contact: { icon: UserPlus, badge: 'bg-violet-500/10 text-violet-400' },
-  deal: { icon: Briefcase, badge: 'bg-violet-500/10 text-violet-400' },
-  broadcast: { icon: Radio, badge: 'bg-amber-500/10 text-amber-400' },
-  automation: { icon: Zap, badge: 'bg-rose-500/10 text-rose-400' },
+  message: { icon: MessageSquare, badge: 'bg-[#eafff3] text-[#08bba4]' },
+  contact: { icon: UserPlus, badge: 'bg-[#eafff3] text-[#0f5132]' },
+  deal: { icon: Briefcase, badge: 'bg-[#eafff3] text-[#08bba4]' },
+  broadcast: { icon: Radio, badge: 'bg-[#fff4d7] text-[#b77900]' },
+  automation: { icon: Zap, badge: 'bg-[#eafff3] text-[#08bba4]' },
 }
 
 export function ActivityFeed({ items, loading }: ActivityFeedProps) {
@@ -54,12 +54,12 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
     i === 0 || totalLoaded > PAGE_SIZES[i - 1]
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900">
-      <header className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
-        <h2 className="text-sm font-semibold text-white">Recent Activity</h2>
+    <section className="rounded-2xl border border-[#dce9e2] bg-white shadow-[0_18px_45px_rgba(7,19,14,0.06)]">
+      <header className="flex items-center justify-between border-b border-[#dce9e2] px-5 py-4">
+        <h2 className="text-sm font-semibold text-[#07130e]">Recent Activity</h2>
         <Link
           href="/inbox"
-          className="text-xs font-medium text-violet-400 hover:text-violet-300"
+          className="text-xs font-medium text-[#08bba4] hover:text-[#0f5132]"
         >
           View all →
         </Link>
@@ -81,13 +81,13 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
         </div>
       ) : (
         <>
-          <ul className="divide-y divide-slate-800">
+          <ul className="divide-y divide-[#dce9e2]">
             {visible.map((it, i) => {
               const theme = KIND_THEME[it.kind]
               const Icon = theme.icon
               // Alternating row background for scanability — dark-theme
               // translation of the spec's white / #f9fafb stripes.
-              const stripe = i % 2 === 0 ? 'bg-transparent' : 'bg-slate-900/40'
+              const stripe = i % 2 === 0 ? 'bg-transparent' : 'bg-[#f8fffb]'
               const row = (
                 <div className="flex items-center gap-3 px-5 py-2.5">
                   <span
@@ -98,16 +98,16 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                   >
                     <Icon className="h-3.5 w-3.5" />
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-slate-200">
+                  <span className="min-w-0 flex-1 truncate text-sm text-[#315345]">
                     {it.text}
                   </span>
-                  <span className="flex-shrink-0 text-xs text-slate-500 tabular-nums">
+                  <span className="flex-shrink-0 text-xs text-[#668276] tabular-nums">
                     {relativeTime(it.at)}
                   </span>
                 </div>
               )
               return (
-                <li key={it.id} className={cn(stripe, 'transition-colors hover:bg-slate-800/40')}>
+                <li key={it.id} className={cn(stripe, 'transition-colors hover:bg-[#eafff3]')}>
                   {it.href ? (
                     <Link href={it.href} className="block">
                       {row}
@@ -119,13 +119,13 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
               )
             })}
           </ul>
-          <footer className="flex items-center justify-between border-t border-slate-800 px-5 py-3 text-xs">
-            <span className="text-slate-500 tabular-nums">
+          <footer className="flex items-center justify-between border-t border-[#dce9e2] px-5 py-3 text-xs">
+            <span className="text-[#668276] tabular-nums">
               Showing {visible.length} of {totalLoaded}
               {totalLoaded === 50 ? '+' : ''}
             </span>
             <div className="flex items-center gap-1">
-              <span className="mr-1 text-slate-500">Show</span>
+              <span className="mr-1 text-[#668276]">Show</span>
               {PAGE_SIZES.map((size, i) => {
                 const disabled = !isSizeUseful(size, i)
                 return (
@@ -137,9 +137,9 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                     className={cn(
                       'rounded-md px-2 py-1 font-medium tabular-nums transition-colors',
                       pageSize === size
-                        ? 'bg-slate-700 text-white'
-                        : 'text-slate-400 hover:bg-slate-800 hover:text-white',
-                      disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-slate-400',
+                        ? 'bg-[#07130e] text-white'
+                        : 'text-[#668276] hover:bg-[#eafff3] hover:text-[#07130e]',
+                      disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-[#668276]',
                     )}
                   >
                     {size}
