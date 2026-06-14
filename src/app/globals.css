@@ -49,38 +49,38 @@
 }
 
 :root {
-  --background: oklch(0.13 0.01 260);
+  --background: #07130e;
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.18 0.01 260);
+  --card: #0b241c;
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.18 0.01 260);
+  --popover: #0b241c;
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.526 0.247 293);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.22 0.01 260);
+  --primary: #3ddf84;
+  --primary-foreground: #07130e;
+  --secondary: #102a20;
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.22 0.01 260);
-  --muted-foreground: oklch(0.65 0.01 260);
-  --accent: oklch(0.22 0.01 260);
+  --muted: #102a20;
+  --muted-foreground: #b8cfc7;
+  --accent: #123226;
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.28 0.01 260);
-  --input: oklch(0.28 0.01 260);
-  --ring: oklch(0.526 0.247 293);
-  --chart-1: oklch(0.526 0.247 293);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --border: #17402f;
+  --input: #315846;
+  --ring: #3ddf84;
+  --chart-1: #3ddf84;
+  --chart-2: #ffbd29;
+  --chart-3: #08bba4;
+  --chart-4: #7ee6ad;
+  --chart-5: #d8fff1;
   --radius: 0.625rem;
-  --sidebar: oklch(0.16 0.01 260);
+  --sidebar: #07130e;
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.526 0.247 293);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.22 0.01 260);
+  --sidebar-primary: #3ddf84;
+  --sidebar-primary-foreground: #07130e;
+  --sidebar-accent: #123226;
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.28 0.01 260);
-  --sidebar-ring: oklch(0.526 0.247 293);
+  --sidebar-border: #17402f;
+  --sidebar-ring: #3ddf84;
 }
 
 @layer base {
@@ -92,5 +92,186 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer components {
+  .dashboard-theme {
+    color-scheme: dark;
+    --tw-ring-color: rgba(61, 223, 132, 0.35);
+  }
+
+  .dashboard-theme [class*="bg-slate-950"],
+  .dashboard-theme [class*="bg-slate-900"],
+  .dashboard-theme [class*="bg-slate-800"],
+  .dashboard-theme [class*="bg-gray-950"],
+  .dashboard-theme [class*="bg-gray-900"],
+  .dashboard-theme [class*="bg-gray-800"],
+  .dashboard-theme [class*="bg-zinc-950"],
+  .dashboard-theme [class*="bg-zinc-900"],
+  .dashboard-theme [class*="bg-zinc-800"] {
+    background-color: rgba(7, 31, 24, 0.92) !important;
+  }
+
+  .dashboard-theme [class*="bg-slate-700"],
+  .dashboard-theme [class*="bg-gray-700"],
+  .dashboard-theme [class*="bg-zinc-700"] {
+    background-color: rgba(18, 50, 38, 0.92) !important;
+  }
+
+  .dashboard-theme [class*="bg-white"],
+  .dashboard-theme [class*="bg-slate-50"],
+  .dashboard-theme [class*="bg-gray-50"],
+  .dashboard-theme [class*="from-white"],
+  .dashboard-theme [class*="to-white"] {
+    background-color: rgba(11, 36, 28, 0.96) !important;
+  }
+
+  .dashboard-theme [class*="bg-violet"],
+  .dashboard-theme [class*="bg-purple"],
+  .dashboard-theme [class*="bg-indigo"],
+  .dashboard-theme [class*="bg-blue"],
+  .dashboard-theme [class*="bg-cyan"],
+  .dashboard-theme [class*="from-violet"],
+  .dashboard-theme [class*="from-purple"],
+  .dashboard-theme [class*="from-indigo"],
+  .dashboard-theme [class*="from-blue"],
+  .dashboard-theme [class*="from-cyan"],
+  .dashboard-theme [class*="to-violet"],
+  .dashboard-theme [class*="to-purple"],
+  .dashboard-theme [class*="to-indigo"],
+  .dashboard-theme [class*="to-blue"],
+  .dashboard-theme [class*="to-cyan"],
+  .dashboard-theme [data-checked][class*="data-[checked]:bg-violet"] {
+    background-color: rgba(61, 223, 132, 0.16) !important;
+  }
+
+  .dashboard-theme button[class*="bg-violet"],
+  .dashboard-theme a[class*="bg-violet"],
+  .dashboard-theme [role="button"][class*="bg-violet"],
+  .dashboard-theme button[class*="bg-blue"],
+  .dashboard-theme a[class*="bg-blue"],
+  .dashboard-theme [role="button"][class*="bg-blue"],
+  .dashboard-theme button[class*="bg-purple"],
+  .dashboard-theme a[class*="bg-purple"],
+  .dashboard-theme [role="button"][class*="bg-purple"],
+  .dashboard-theme button[class*="bg-indigo"],
+  .dashboard-theme a[class*="bg-indigo"],
+  .dashboard-theme [role="button"][class*="bg-indigo"] {
+    background-color: #3ddf84 !important;
+    color: #07130e !important;
+  }
+
+  .dashboard-theme button[class*="bg-violet"]:hover,
+  .dashboard-theme a[class*="bg-violet"]:hover,
+  .dashboard-theme button[class*="bg-blue"]:hover,
+  .dashboard-theme a[class*="bg-blue"]:hover,
+  .dashboard-theme button[class*="bg-purple"]:hover,
+  .dashboard-theme a[class*="bg-purple"]:hover,
+  .dashboard-theme button[class*="bg-indigo"]:hover,
+  .dashboard-theme a[class*="bg-indigo"]:hover {
+    background-color: #ffbd29 !important;
+    color: #07130e !important;
+  }
+
+  .dashboard-theme [class*="text-violet"],
+  .dashboard-theme [class*="text-purple"],
+  .dashboard-theme [class*="text-indigo"],
+  .dashboard-theme [class*="text-blue"],
+  .dashboard-theme [class*="text-cyan"] {
+    color: #3ddf84 !important;
+  }
+
+  .dashboard-theme [class*="text-black"],
+  .dashboard-theme [class*="text-slate-900"],
+  .dashboard-theme [class*="text-gray-900"],
+  .dashboard-theme [class*="text-zinc-900"] {
+    color: #ffffff !important;
+  }
+
+  .dashboard-theme [class*="border-slate"],
+  .dashboard-theme [class*="border-gray"],
+  .dashboard-theme [class*="border-zinc"] {
+    border-color: rgba(23, 64, 47, 0.95) !important;
+  }
+
+  .dashboard-theme [class*="border-violet"],
+  .dashboard-theme [class*="border-purple"],
+  .dashboard-theme [class*="border-indigo"],
+  .dashboard-theme [class*="border-blue"],
+  .dashboard-theme [class*="border-cyan"],
+  .dashboard-theme [class*="border-l-violet"],
+  .dashboard-theme [class*="border-l-purple"],
+  .dashboard-theme [class*="border-l-indigo"],
+  .dashboard-theme [class*="border-l-blue"],
+  .dashboard-theme [class*="border-l-cyan"],
+  .dashboard-theme [class*="outline-violet"],
+  .dashboard-theme [class*="outline-purple"],
+  .dashboard-theme [class*="outline-indigo"],
+  .dashboard-theme [class*="outline-blue"],
+  .dashboard-theme [class*="outline-cyan"] {
+    border-color: rgba(61, 223, 132, 0.42) !important;
+    outline-color: rgba(61, 223, 132, 0.56) !important;
+  }
+
+  .dashboard-theme [class*="ring-violet"],
+  .dashboard-theme [class*="ring-purple"],
+  .dashboard-theme [class*="ring-indigo"],
+  .dashboard-theme [class*="ring-blue"],
+  .dashboard-theme [class*="ring-cyan"] {
+    --tw-ring-color: rgba(61, 223, 132, 0.38) !important;
+  }
+
+  .dashboard-theme [class*="focus:border-violet"]:focus,
+  .dashboard-theme [class*="focus:border-blue"]:focus,
+  .dashboard-theme [class*="focus:border-purple"]:focus,
+  .dashboard-theme [class*="focus:border-indigo"]:focus,
+  .dashboard-theme [class*="focus:border-cyan"]:focus {
+    border-color: #3ddf84 !important;
+  }
+
+  .dashboard-theme [class*="focus:ring-violet"]:focus,
+  .dashboard-theme [class*="focus:ring-blue"]:focus,
+  .dashboard-theme [class*="focus:ring-purple"]:focus,
+  .dashboard-theme [class*="focus:ring-indigo"]:focus,
+  .dashboard-theme [class*="focus:ring-cyan"]:focus,
+  .dashboard-theme [class*="focus-visible:ring-violet"]:focus-visible {
+    --tw-ring-color: rgba(61, 223, 132, 0.42) !important;
+  }
+
+  .dashboard-theme input,
+  .dashboard-theme select,
+  .dashboard-theme textarea {
+    background-color: rgba(11, 25, 19, 0.96) !important;
+    border-color: rgba(49, 88, 70, 0.95) !important;
+    color: #ffffff !important;
+  }
+
+  .dashboard-theme input::placeholder,
+  .dashboard-theme textarea::placeholder {
+    color: #8bb4a5 !important;
+  }
+
+  .dashboard-theme [class*="text-slate-500"],
+  .dashboard-theme [class*="text-gray-500"],
+  .dashboard-theme [class*="text-zinc-500"] {
+    color: #8bb4a5 !important;
+  }
+
+  .dashboard-theme [class*="text-slate-400"],
+  .dashboard-theme [class*="text-gray-400"],
+  .dashboard-theme [class*="text-zinc-400"] {
+    color: #b8cfc7 !important;
+  }
+
+  .dashboard-theme [class*="text-slate-300"],
+  .dashboard-theme [class*="text-gray-300"],
+  .dashboard-theme [class*="text-zinc-300"] {
+    color: #d8fff1 !important;
+  }
+
+  .dashboard-theme [class*="divide-slate"] > :not([hidden]) ~ :not([hidden]),
+  .dashboard-theme [class*="divide-gray"] > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgba(23, 64, 47, 0.95) !important;
   }
 }

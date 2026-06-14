@@ -145,18 +145,18 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
         <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[#17402f] bg-[#07130e] px-4">
-          <Link href="/dashboard" className="flex min-w-0 items-center gap-2">
+          <Link
+            href="/dashboard"
+            className="flex min-w-0 items-center rounded-2xl bg-[#f7fff9] px-2 py-1 shadow-[0_10px_28px_rgba(0,0,0,0.18)]"
+          >
             <Image
-              src="/hostiko-crm/brand/talk-wagon-logo.svg"
+              src="/hostiko-crm/brand/talk-wagon-logo-public.webp"
               alt="Talk Wagon CRM logo"
-              width={160}
-              height={160}
+              width={520}
+              height={79}
               priority
-              className="h-9 w-9 shrink-0 rounded-xl object-contain"
+              className="h-8 w-auto max-w-[160px] shrink-0 object-contain"
             />
-            <span className="truncate text-sm font-extrabold tracking-tight text-white">
-              <span className="text-[#ffbd29]">Talk</span> Wagon
-            </span>
           </Link>
           <button
             type="button"
