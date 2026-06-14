@@ -45,6 +45,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
   const [loginSubmitting, setLoginSubmitting] = useState(false)
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null)
   const isSignedInCheckout = checkoutMode === 'signed-in' && Boolean(signedInEmail)
+  const selectedPaymentDetails = MANUAL_PAYMENT_METHODS[paymentMethod]
 
   const proofUrl = useMemo(
     () =>
@@ -189,25 +190,20 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
               ),
             )}
           </div>
-          <div className="mt-5 grid gap-4">
-            {(Object.values(MANUAL_PAYMENT_METHODS) as Array<(typeof MANUAL_PAYMENT_METHODS)[ManualPaymentMethod]>).map(
-              (method) => (
-                <div key={method.id} className="rounded-2xl bg-[#f7fbf8] p-4">
-                  <h3 className="font-extrabold text-[#07130e]">{method.label} details</h3>
-                  <div className="mt-2">
-                    {method.fields.map(([label, value]) => (
-                      <div
-                        key={`${method.id}-${label}`}
-                        className="flex flex-col gap-1 border-b border-[#dbe9e2] py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <span className="text-sm text-[#5b7169]">{label}</span>
-                        <span className="font-bold text-[#07130e]">{value}</span>
-                      </div>
-                    ))}
-                  </div>
+          <div className="mt-5 rounded-2xl bg-[#f7fbf8] p-4">
+            <h3 className="font-extrabold text-[#07130e]">{selectedPaymentDetails.label} details</h3>
+            <p className="mt-1 text-xs leading-5 text-[#5b7169]">{selectedPaymentDetails.helper}</p>
+            <div className="mt-2">
+              {selectedPaymentDetails.fields.map(([label, value]) => (
+                <div
+                  key={`${selectedPaymentDetails.id}-${label}`}
+                  className="flex flex-col gap-1 border-b border-[#dbe9e2] py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <span className="text-sm text-[#5b7169]">{label}</span>
+                  <span className="font-bold text-[#07130e]">{value}</span>
                 </div>
-              ),
-            )}
+              ))}
+            </div>
           </div>
         </div>
       </aside>
@@ -421,20 +417,22 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
                 />
               </Field>
 
-              <button
-                type="submit"
-                disabled={submitting}
-                className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[#3ddf84] px-6 text-sm font-extrabold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  'Submit Payment Request'
-                )}
-              </button>
+              <div className="flex justify-center">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[#3ddf84] px-8 text-sm font-extrabold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    'Submit Payment Request'
+                  )}
+                </button>
+              </div>
             </>
           ) : null}
         </form>
