@@ -27,11 +27,14 @@ interface ManualPaymentRequest {
   payment_method: "easypaisa" | "bank_transfer";
   payer_name: string;
   payer_email: string;
+  phone: string | null;
+  company_name: string | null;
   workspace_name: string | null;
   transaction_reference: string | null;
   note: string | null;
   status: "pending" | "approved" | "rejected";
   admin_note: string | null;
+  auth_user_created: boolean;
   approved_at: string | null;
   rejected_at: string | null;
   created_at: string;
@@ -167,6 +170,7 @@ export default function AdminPaymentsPage() {
                       <TableCell className="align-top text-slate-200">
                         <div className="font-semibold">{request.payer_name}</div>
                         <div className="text-xs text-slate-500">{request.payer_email}</div>
+                        {request.phone ? <div className="text-xs text-slate-500">{request.phone}</div> : null}
                         <div className="mt-1 text-xs text-slate-500">
                           {new Date(request.created_at).toLocaleString()}
                         </div>
@@ -181,10 +185,16 @@ export default function AdminPaymentsPage() {
                         {request.payment_method === "bank_transfer" ? "Bank Transfer" : "Easypaisa"}
                       </TableCell>
                       <TableCell className="align-top text-slate-200">
-                        <div>{request.workspace?.name ?? request.workspace_name ?? "Not linked"}</div>
+                        <div>{request.workspace?.name ?? request.workspace_name ?? request.company_name ?? "Not linked"}</div>
+                        {request.company_name ? (
+                          <div className="mt-1 text-xs text-slate-500">Company: {request.company_name}</div>
+                        ) : null}
+                        {request.auth_user_created ? (
+                          <div className="mt-1 text-xs text-emerald-300">Checkout created customer login</div>
+                        ) : null}
                         {!request.workspace_id ? (
                           <div className="mt-1 text-xs text-amber-300">
-                            Approval will try to match an approved owner by email.
+                            Not linked yet. Ask customer to resubmit checkout if approval fails.
                           </div>
                         ) : null}
                       </TableCell>

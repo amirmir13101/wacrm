@@ -76,18 +76,17 @@ export async function PATCH(
     return NextResponse.json(
       {
         error:
-          'This payment request is not linked to an approved workspace yet. Ask the customer to sign up or login with the same email, then approve again.',
+          'This payment request is not linked to a customer workspace. Ask the customer to resubmit checkout or contact support.',
       },
       { status: 400 },
     )
   }
 
-  const subscriptionStatus = paymentRequest.plan_type === 'lifetime' ? 'manual' : 'active'
   const { error: workspaceError } = await admin
     .from('workspaces')
     .update({
       plan_type: paymentRequest.plan_type,
-      subscription_status: subscriptionStatus,
+      subscription_status: 'active',
       plan_updated_at: new Date().toISOString(),
     })
     .eq('id', workspaceId)
@@ -123,7 +122,7 @@ async function resolveWorkspaceId(paymentRequest: ManualPaymentRequestRow): Prom
       .select('user_id')
       .ilike('email', paymentRequest.payer_email)
       .eq('approval_status', 'approved')
-      .neq('account_type', 'team_member')
+      .or('account_type.is.null,account_type.neq.team_member')
       .maybeSingle()
 
     if (error) throw new Error(error.message)

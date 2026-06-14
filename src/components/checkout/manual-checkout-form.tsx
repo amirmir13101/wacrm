@@ -29,7 +29,9 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
   const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>('easypaisa')
   const [payerName, setPayerName] = useState('')
   const [payerEmail, setPayerEmail] = useState('')
-  const [workspaceName, setWorkspaceName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [password, setPassword] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [transactionReference, setTransactionReference] = useState('')
   const [note, setNote] = useState('')
   const [requestId, setRequestId] = useState<string | null>(null)
@@ -42,10 +44,10 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
         plan,
         payerName,
         payerEmail,
-        workspaceName,
+        workspaceName: companyName,
         requestId: requestId ?? undefined,
       }),
-    [payerEmail, payerName, plan, requestId, workspaceName],
+    [companyName, payerEmail, payerName, plan, requestId],
   )
 
   async function submitRequest(event: FormEvent<HTMLFormElement>) {
@@ -60,7 +62,9 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
           payment_method: paymentMethod,
           payer_name: payerName,
           payer_email: payerEmail,
-          workspace_name: workspaceName,
+          phone,
+          password,
+          company_name: companyName,
           transaction_reference: transactionReference,
           note,
         }),
@@ -68,7 +72,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'Could not submit payment request.')
       setRequestId(payload.request?.id ?? null)
-      toast.success('Payment request submitted.')
+      toast.success('Payment request submitted. Send proof for manual verification.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not submit payment request.')
     } finally {
@@ -104,7 +108,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
 
         <div className="rounded-[28px] border border-[#dbe9e2] bg-white p-6">
           <h2 className="text-lg font-extrabold text-[#07130e]">Payment details</h2>
-          <p className="mt-2 text-sm leading-6 text-[#5b7169]">
+          <p className="mt-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700">
             Pay with Easypaisa or bank transfer, submit this form, then send payment proof to our team.
           </p>
           <div className="mt-5 grid gap-3">
@@ -159,28 +163,40 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
           <div className="rounded-2xl border border-[#08bba4]/30 bg-[#e9fff6] p-5">
             <h2 className="text-xl font-extrabold text-[#07130e]">Request submitted</h2>
             <p className="mt-2 text-sm leading-7 text-[#31584a]">
-              Your request ID is <span className="font-bold">{requestId}</span>. Send your payment proof now so
-              the platform admin can approve your {plan.shortTitle} activation.
+              Your payment request has been submitted. Please send your payment screenshot on WhatsApp or
+              live chat. After verification, our team will activate your account.
+            </p>
+            <p className="mt-2 text-xs font-semibold text-[#31584a]">
+              Request ID: <span className="font-bold">{requestId}</span>. Your customer account and workspace are
+              linked to this request.
             </p>
           </div>
         ) : null}
 
         <form onSubmit={(event) => void submitRequest(event)} className="mt-6 space-y-5">
           <div>
-            <h2 className="text-2xl font-extrabold text-[#07130e]">Submit payment request</h2>
-            <p className="mt-2 text-sm text-[#5b7169]">
-              This does not charge a card. It creates a manual approval request for Talk Wagon admin review.
-            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-extrabold text-[#07130e]">Create account and payment request</h2>
+                <p className="mt-2 text-sm text-[#5b7169]">
+                  This creates your Talk Wagon customer login and a manual approval request. It does not
+                  charge a card or activate a paid plan automatically.
+                </p>
+              </div>
+              <Link href="/login" className="text-sm font-bold text-[#08bba4] hover:text-[#07130e]">
+                Already have an account? Login instead
+              </Link>
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Name">
+            <Field label="Full name">
               <input
                 required
                 value={payerName}
                 onChange={(event) => setPayerName(event.target.value)}
                 className="h-12 w-full rounded-2xl border border-[#dbe9e2] bg-[#f7fbf8] px-4 text-[#07130e] outline-none focus:border-[#08bba4]"
-                placeholder="Your name"
+                placeholder="Your full name"
               />
             </Field>
             <Field label="Email">
@@ -195,15 +211,44 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
             </Field>
           </div>
 
-          <Field label="Workspace / Business Name">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Phone number">
+              <input
+                required
+                type="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                className="h-12 w-full rounded-2xl border border-[#dbe9e2] bg-[#f7fbf8] px-4 text-[#07130e] outline-none focus:border-[#08bba4]"
+                placeholder="+92..."
+              />
+            </Field>
+            <Field label="Password">
+              <input
+                required
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="h-12 w-full rounded-2xl border border-[#dbe9e2] bg-[#f7fbf8] px-4 text-[#07130e] outline-none focus:border-[#08bba4]"
+                placeholder="Create a secure password"
+              />
+            </Field>
+          </div>
+
+          <Field label="Company name (optional)">
             <input
-              required
-              value={workspaceName}
-              onChange={(event) => setWorkspaceName(event.target.value)}
+              value={companyName}
+              onChange={(event) => setCompanyName(event.target.value)}
               className="h-12 w-full rounded-2xl border border-[#dbe9e2] bg-[#f7fbf8] px-4 text-[#07130e] outline-none focus:border-[#08bba4]"
-              placeholder="Your company or workspace"
+              placeholder="Your company or business name"
             />
           </Field>
+
+          <div className="rounded-2xl border border-[#dbe9e2] bg-[#f7fbf8] p-4">
+            <p className="mt-2 text-sm text-[#5b7169]">
+              After submitting, send your payment screenshot with the buttons below. Admin approval is still
+              required before Pro or Lifetime is activated.
+            </p>
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Selected plan">

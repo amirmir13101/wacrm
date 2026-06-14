@@ -9,12 +9,20 @@ describe('manual payment flow wiring', () => {
     join(root, 'supabase/migrations/030_manual_payment_requests.sql'),
     'utf8',
   )
+  const linkingMigration = readFileSync(
+    join(root, 'supabase/migrations/031_manual_payment_customer_linking.sql'),
+    'utf8',
+  )
   const checkoutRoute = readFileSync(
     join(root, 'src/app/api/payments/manual/route.ts'),
     'utf8',
   )
   const adminReviewRoute = readFileSync(
     join(root, 'src/app/api/admin/payments/[id]/route.ts'),
+    'utf8',
+  )
+  const checkoutForm = readFileSync(
+    join(root, 'src/components/checkout/manual-checkout-form.tsx'),
     'utf8',
   )
   const pricingPage = readFileSync(join(root, 'src/app/pricing/page.tsx'), 'utf8')
@@ -31,10 +39,20 @@ describe('manual payment flow wiring', () => {
     expect(migration).toContain('Platform admins manage manual payment requests')
   })
 
+  it('stores checkout customer account fields for linking', () => {
+    expect(linkingMigration).toContain('ADD COLUMN IF NOT EXISTS phone')
+    expect(linkingMigration).toContain('ADD COLUMN IF NOT EXISTS company_name')
+    expect(linkingMigration).toContain('ADD COLUMN IF NOT EXISTS auth_user_created')
+  })
+
   it('validates manual checkout server-side without Stripe or PayPal', () => {
     expect(checkoutRoute).toContain('getManualCheckoutPlan')
     expect(checkoutRoute).toContain('getManualPaymentMethod')
     expect(checkoutRoute).toContain('manual_payment_requests')
+    expect(checkoutRoute).toContain('admin.auth.admin.createUser')
+    expect(checkoutRoute).toContain('ensureCheckoutWorkspace')
+    expect(checkoutRoute).toContain('phone')
+    expect(checkoutRoute).toContain('passwordValidationError')
     expect(checkoutRoute.toLowerCase()).not.toContain('stripe')
     expect(checkoutRoute.toLowerCase()).not.toContain('paypal')
   })
@@ -42,14 +60,25 @@ describe('manual payment flow wiring', () => {
   it('lets platform admins approve requests and activate workspace plans', () => {
     expect(adminReviewRoute).toContain('requirePlatformAdmin')
     expect(adminReviewRoute).toContain("plan_type: paymentRequest.plan_type")
-    expect(adminReviewRoute).toContain("subscription_status: subscriptionStatus")
+    expect(adminReviewRoute).toContain("subscription_status: 'active'")
     expect(adminReviewRoute).toContain('ensureApprovedUserOwnWorkspace')
     expect(adminReviewRoute).toContain("status: 'rejected'")
+    expect(adminReviewRoute).not.toContain('Ask the customer to sign up or login')
   })
 
   it('routes Pro and Lifetime pricing CTAs to manual checkout', () => {
     expect(pricingPage).toContain('href: "/checkout/pro"')
     expect(pricingPage).toContain('href: "/checkout/lifetime"')
     expect(trialCard).toContain('href="/checkout/pro"')
+  })
+
+  it('shows account checkout fields and the red payment instruction', () => {
+    expect(checkoutForm).toContain('Full name')
+    expect(checkoutForm).toContain('Phone number')
+    expect(checkoutForm).toContain('Password')
+    expect(checkoutForm).toContain('Company name (optional)')
+    expect(checkoutForm).toContain('Already have an account? Login instead')
+    expect(checkoutForm).toContain('text-red-700')
+    expect(checkoutForm).toContain('Pay with Easypaisa or bank transfer')
   })
 })
