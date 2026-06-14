@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Poppins } from "next/font/google";
 import { Toaster } from "sonner";
+import { TawkToWidget } from "@/components/marketing/tawk-to-widget";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -52,6 +53,7 @@ export default function RootLayout({
     <html lang="en" className={`${poppins.variable} h-full antialiased`}>
       <body className="min-h-full bg-[#07130e] font-sans text-white">
         {children}
+        <TawkToWidget />
         <Toaster
           theme="dark"
           position="top-right"
