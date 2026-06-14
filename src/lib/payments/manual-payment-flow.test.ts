@@ -25,6 +25,7 @@ describe('manual payment flow wiring', () => {
     join(root, 'src/components/checkout/manual-checkout-form.tsx'),
     'utf8',
   )
+  const checkoutPage = readFileSync(join(root, 'src/app/checkout/[plan]/page.tsx'), 'utf8')
   const pricingPage = readFileSync(join(root, 'src/app/pricing/page.tsx'), 'utf8')
   const trialCard = readFileSync(
     join(root, 'src/components/billing/trial-usage-card.tsx'),
@@ -79,15 +80,26 @@ describe('manual payment flow wiring', () => {
     expect(checkoutForm).toContain('Phone number')
     expect(checkoutForm).toContain('Password')
     expect(checkoutForm).toContain('Company name (optional)')
-    expect(checkoutForm).toContain('Already have an account? Login instead')
+    expect(checkoutForm).toContain('Already registered?')
+    expect(checkoutForm).not.toContain('Already have an account? Login instead')
     expect(checkoutForm).toContain('Login inside checkout')
     expect(checkoutForm).toContain('Need a new account? Continue with checkout signup')
     expect(checkoutForm).toContain('Logged in as')
     expect(checkoutForm).toContain('signInWithPassword')
+    expect(checkoutForm).toContain('Form submitted successfully')
+    expect(checkoutForm).toContain('Send Payment Proof')
+    expect(checkoutForm).toContain('If you have sent your payment screenshot, you can login here.')
+    expect(checkoutForm).toContain('href="/login"')
+    expect(checkoutForm).not.toContain('After submitting, send your payment')
     expect(checkoutForm).toContain('const selectedPaymentDetails = MANUAL_PAYMENT_METHODS[paymentMethod]')
     expect(checkoutForm).toContain('selectedPaymentDetails.fields.map')
     expect(checkoutForm).toContain('flex justify-center')
     expect(checkoutForm).toContain('text-red-700')
     expect(checkoutForm).toContain('Pay with Easypaisa or bank transfer')
+  })
+
+  it('hides the public header on checkout pages only', () => {
+    expect(checkoutPage).toContain('PublicFooter')
+    expect(checkoutPage).not.toContain('PublicHeader')
   })
 })

@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation'
 
 import { ManualCheckoutForm } from '@/components/checkout/manual-checkout-form'
 import { PublicFooter } from '@/components/marketing/public-footer'
-import { PublicHeader } from '@/components/marketing/public-header'
 import { getManualCheckoutPlan } from '@/lib/payments/manual-payment-config'
 
 const siteUrl = 'https://vpscoaster.live'
@@ -44,7 +43,6 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
 
   return (
     <main className="min-h-screen bg-[#f7fbf8] text-[#07130e]">
-      <PublicHeader />
       <section className="px-5 py-14 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-7xl">
           <ManualCheckoutForm plan={plan} />

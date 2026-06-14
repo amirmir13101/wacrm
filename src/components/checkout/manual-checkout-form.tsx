@@ -211,15 +211,27 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
       <section className="rounded-[30px] border border-[#dbe9e2] bg-white p-6 shadow-[0_18px_55px_rgba(7,19,14,0.08)] sm:p-8">
         {requestId ? (
           <div className="rounded-2xl border border-[#08bba4]/30 bg-[#e9fff6] p-5">
-            <h2 className="text-xl font-extrabold text-[#07130e]">Request submitted</h2>
+            <h2 className="text-xl font-extrabold text-[#07130e]">Form submitted successfully</h2>
             <p className="mt-2 text-sm leading-7 text-[#31584a]">
-              Your payment request has been submitted. Please send your payment screenshot on WhatsApp or
-              live chat. After verification, our team will activate your account.
+              Send your payment screenshot to our team. After verification, our admin will activate your account.
             </p>
             <p className="mt-2 text-xs font-semibold text-[#31584a]">
               Request ID: <span className="font-bold">{requestId}</span>. Your customer account and workspace are
               linked to this request.
             </p>
+            <ProofActions proofUrl={proofUrl} onOpenChat={openTawkChat} />
+            {chatHint ? <p className="mt-3 text-sm text-[#5b7169]">{chatHint}</p> : null}
+            <div className="mt-5 rounded-2xl border border-[#dbe9e2] bg-white/70 p-4">
+              <p className="text-sm font-semibold text-[#31584a]">
+                If you have sent your payment screenshot, you can login here.
+              </p>
+              <Link
+                href="/login"
+                className="mt-3 inline-flex h-11 items-center justify-center rounded-full bg-[#07130e] px-6 text-sm font-bold text-white hover:bg-[#1b372b]"
+              >
+                Login
+              </Link>
+            </div>
           </div>
         ) : null}
 
@@ -242,7 +254,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
                   onClick={() => setCheckoutMode('login')}
                   className="text-left text-sm font-bold text-[#08bba4] hover:text-[#07130e] sm:text-right"
                 >
-                  Already have an account? Login instead
+                  Already registered?
                 </button>
               ) : null}
             </div>
@@ -372,13 +384,6 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
 
           {checkoutMode !== 'login' ? (
             <>
-              <div className="rounded-2xl border border-[#dbe9e2] bg-[#f7fbf8] p-4">
-                <p className="mt-2 text-sm text-[#5b7169]">
-                  After submitting, send your payment screenshot with the buttons below. Admin approval is still
-                  required before Pro or Lifetime is activated.
-                </p>
-              </div>
-
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Selected plan">
                   <input
@@ -436,28 +441,31 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
             </>
           ) : null}
         </form>
-
-        <div className="mt-8 grid gap-3 sm:grid-cols-2">
-          <Link
-            href={proofUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-12 items-center justify-center rounded-full bg-[#07130e] px-5 text-sm font-bold text-white hover:bg-[#1b372b]"
-          >
-            <MessageCircle className="mr-2 size-4" />
-            Send Proof on WhatsApp
-          </Link>
-          <button
-            type="button"
-            onClick={openTawkChat}
-            className="inline-flex h-12 items-center justify-center rounded-full border border-[#08bba4] px-5 text-sm font-bold text-[#07130e] hover:bg-[#e9fff6]"
-          >
-            <Send className="mr-2 size-4" />
-            Talk to Agent
-          </button>
-        </div>
-        {chatHint ? <p className="mt-3 text-sm text-[#5b7169]">{chatHint}</p> : null}
       </section>
+    </div>
+  )
+}
+
+function ProofActions({ proofUrl, onOpenChat }: { proofUrl: string; onOpenChat: () => void }) {
+  return (
+    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+      <Link
+        href={proofUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-12 items-center justify-center rounded-full bg-[#07130e] px-5 text-sm font-bold text-white hover:bg-[#1b372b]"
+      >
+        <MessageCircle className="mr-2 size-4" />
+        Send Payment Proof
+      </Link>
+      <button
+        type="button"
+        onClick={onOpenChat}
+        className="inline-flex h-12 items-center justify-center rounded-full border border-[#08bba4] bg-white/60 px-5 text-sm font-bold text-[#07130e] hover:bg-white"
+      >
+        <Send className="mr-2 size-4" />
+        Talk to Agent
+      </button>
     </div>
   )
 }
