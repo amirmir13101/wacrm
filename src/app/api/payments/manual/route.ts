@@ -158,7 +158,7 @@ async function createOrLinkCheckoutCustomer(args: {
       .update({
         full_name: args.fullName,
         approval_status: 'approved',
-        account_type: 'customer',
+        account_type: 'workspace_owner',
         updated_at: now,
       })
       .eq('user_id', existingProfile.user_id)
@@ -177,7 +177,7 @@ async function createOrLinkCheckoutCustomer(args: {
     email_confirm: true,
     user_metadata: {
       full_name: args.fullName,
-      account_type: 'customer',
+      account_type: 'workspace_owner',
     },
   })
 
@@ -197,7 +197,7 @@ async function createOrLinkCheckoutCustomer(args: {
       email: args.email,
       role: 'user',
       approval_status: 'approved',
-      account_type: 'customer',
+      account_type: 'workspace_owner',
       must_change_password: false,
       updated_at: now,
     },
