@@ -2,7 +2,6 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Calculator, Settings, MessageSquare, Tag, User } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
 import { TemplateManager } from '@/components/settings/template-manager';
 import { TagManager } from '@/components/settings/tag-manager';
@@ -11,6 +10,7 @@ import { PasswordForm } from '@/components/settings/password-form';
 import { SessionsCard } from '@/components/settings/sessions-card';
 import { WhatsAppPricingManager } from '@/components/settings/whatsapp-pricing-manager';
 import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions';
+import { cn } from '@/lib/utils';
 
 const TAB_VALUES = ['profile', 'whatsapp', 'templates', 'pricing', 'tags'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
@@ -49,6 +49,19 @@ export default function SettingsPage() {
     router.replace(`/settings?${params.toString()}`, { scroll: false });
   };
 
+  const tabs = [
+    { value: 'profile', label: 'Profile', icon: User, visible: availableTabs.profile },
+    { value: 'whatsapp', label: 'WhatsApp Config', icon: Settings, visible: availableTabs.whatsapp },
+    { value: 'templates', label: 'Templates', icon: MessageSquare, visible: availableTabs.templates },
+    { value: 'pricing', label: 'Pricing', icon: Calculator, visible: availableTabs.pricing },
+    { value: 'tags', label: 'Tags', icon: Tag, visible: availableTabs.tags },
+  ] satisfies Array<{
+    value: TabValue;
+    label: string;
+    icon: typeof User;
+    visible: boolean;
+  }>;
+
   return (
     <div className="space-y-6">
       <div>
@@ -59,67 +72,62 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => onChange(v as TabValue)}>
-        <TabsList className="bg-slate-900 border border-slate-700">
-          {availableTabs.profile && <TabsTrigger
-            value="profile"
-            className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
-          >
-            <User className="size-4" />
-            Profile
-          </TabsTrigger>}
-          {availableTabs.whatsapp && <TabsTrigger
-            value="whatsapp"
-            className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
-          >
-            <Settings className="size-4" />
-            WhatsApp Config
-          </TabsTrigger>}
-          {availableTabs.templates && <TabsTrigger
-            value="templates"
-            className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
-          >
-            <MessageSquare className="size-4" />
-            Templates
-          </TabsTrigger>}
-          {availableTabs.pricing && <TabsTrigger
-            value="pricing"
-            className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
-          >
-            <Calculator className="size-4" />
-            Pricing
-          </TabsTrigger>}
-          {availableTabs.tags && <TabsTrigger
-            value="tags"
-            className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
-          >
-            <Tag className="size-4" />
-            Tags
-          </TabsTrigger>}
-        </TabsList>
+      <div className="space-y-6">
+        <div
+          aria-label="Settings sections"
+          className="flex w-fit max-w-full flex-wrap items-center gap-1 rounded-lg border border-emerald-900/70 bg-emerald-950/40 p-1"
+          role="tablist"
+        >
+          {tabs
+            .filter((item) => item.visible)
+            .map((item) => {
+              const Icon = item.icon;
+              const isActive = item.value === tab;
 
-        <TabsContent value="profile" className="space-y-6">
+              return (
+                <button
+                  key={item.value}
+                  aria-selected={isActive}
+                  className={cn(
+                    'inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950',
+                    isActive
+                      ? 'bg-emerald-400 text-emerald-950 shadow-sm'
+                      : 'text-emerald-100/80 hover:bg-emerald-900/70 hover:text-white',
+                  )}
+                  onClick={() => onChange(item.value)}
+                  role="tab"
+                  type="button"
+                >
+                  <Icon className="size-4" />
+                  {item.label}
+                </button>
+              );
+            })}
+        </div>
+
+        {tab === 'profile' && <div className="space-y-6">
           <ProfileForm />
           <PasswordForm />
           <SessionsCard />
-        </TabsContent>
+        </div>}
 
-        {availableTabs.whatsapp && <TabsContent value="whatsapp">
+        {availableTabs.whatsapp && tab === 'whatsapp' && (
           <WhatsAppConfig />
-        </TabsContent>}
+        )}
 
-        {availableTabs.templates && <TabsContent value="templates">
+        {availableTabs.templates && tab === 'templates' && (
           <TemplateManager />
-        </TabsContent>}
+        )}
 
-        {availableTabs.pricing && <TabsContent value="pricing">
+        {availableTabs.pricing && tab === 'pricing' && (
           <WhatsAppPricingManager />
-        </TabsContent>}
+        )}
 
-        {availableTabs.tags && <TabsContent value="tags">
+        {availableTabs.tags && tab === 'tags' && (
           <TagManager />
-        </TabsContent>}
-      </Tabs>
+        )}
+      </div>
     </div>
   );
 }
