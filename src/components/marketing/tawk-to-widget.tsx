@@ -10,6 +10,8 @@ const TAWK_PUBLIC_PATHS = new Set([
   '/features/broadcasts',
   '/features/automation',
   '/pricing',
+  '/checkout/pro',
+  '/checkout/lifetime',
   '/about',
   '/contact',
   '/privacy-policy',

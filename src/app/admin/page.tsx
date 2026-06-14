@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, ShieldCheck, Upload, Users } from "lucide-react";
+import { BadgeDollarSign, Loader2, ShieldCheck, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +41,7 @@ export default function PlatformAdminDashboard() {
         <p className="text-sm font-medium text-violet-300">Platform admin</p>
         <h1 className="mt-1 text-3xl font-bold text-white">Admin dashboard</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Manage CRM customers, user access, and uploaded contact lists.
+          Manage CRM customers, user access, manual payments, and uploaded contact lists.
         </p>
       </div>
 
@@ -60,7 +60,7 @@ export default function PlatformAdminDashboard() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-slate-800 bg-slate-900">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-white">
@@ -97,6 +97,26 @@ export default function PlatformAdminDashboard() {
               className="mt-4 inline-flex h-9 items-center rounded-md bg-cyan-600 px-4 text-sm font-medium text-white hover:bg-cyan-500"
             >
               Open Contact Lists
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-800 bg-slate-900">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white">
+              <BadgeDollarSign className="h-5 w-5 text-emerald-300" />
+              Manual Payments
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-slate-400">
+              Review Pro and Lifetime manual checkout requests before activating workspaces.
+            </p>
+            <Link
+              href="/admin/payments"
+              className="mt-4 inline-flex h-9 items-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-500"
+            >
+              Open Payments
             </Link>
           </CardContent>
         </Card>

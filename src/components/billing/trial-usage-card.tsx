@@ -99,7 +99,7 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
         </div>
 
         <Link
-          href="/pricing"
+          href="/checkout/pro"
           className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] px-5 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3ddf84]"
         >
           Upgrade to Pro

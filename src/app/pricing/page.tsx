@@ -111,7 +111,7 @@ const plans = [
     description:
       "For growing teams that want all Talk Wagon CRM features, unlimited CRM usage, team workflows, broadcasts, automations, and pipeline tools.",
     cta: "Upgrade to Pro",
-    href: "/signup",
+    href: "/checkout/pro",
     note:
       "Use your own official WhatsApp API key. Any WhatsApp/Meta conversation or API charges are separate from Talk Wagon pricing.",
     featured: true,
@@ -137,7 +137,7 @@ const plans = [
     description:
       "Best for agencies, hosting companies, and businesses that want a branded self-hosted WhatsApp CRM deployed for their own company.",
     cta: "Request Lifetime Setup",
-    href: "/pricing#lifetime",
+    href: "/checkout/lifetime",
     featured: false,
     note:
       "Server, domain, WhatsApp/Meta API, and any third-party provider costs are separate unless included in a custom agreement.",
@@ -548,7 +548,7 @@ export default function PricingPage() {
                 primaryLabel="Start Free Trial"
                 primaryHref="/signup"
                 secondaryLabel="Request Lifetime Setup"
-                secondaryHref="/pricing#lifetime"
+                secondaryHref="/checkout/lifetime"
                 className="items-stretch sm:justify-start"
               />
             </div>

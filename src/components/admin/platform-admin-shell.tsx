@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, ShieldCheck, Upload, User, Users } from "lucide-react";
+import { BadgeDollarSign, LogOut, ShieldCheck, Upload, User, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/contacts", label: "Uploaded Contact Lists", icon: Upload },
+  { href: "/admin/payments", label: "Manual Payments", icon: BadgeDollarSign },
   { href: "/admin/profile", label: "Profile", icon: User },
 ];
 
