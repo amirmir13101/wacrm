@@ -78,25 +78,28 @@ const trustPills = [
 
 const plans = [
   {
-    name: "Free",
+    name: "14-Day Free Trial",
     price: "$0",
-    billing: "First 1,000 messages free",
+    billing: "$0 for 14 days",
     description:
-      "Start using Talk Wagon with your official WhatsApp API key and test the CRM workflow before upgrading.",
-    cta: "Start Free",
+      "Try the complete Talk Wagon CRM workflow with your official WhatsApp API key before upgrading to Pro.",
+    cta: "Start Free Trial",
     href: "/signup",
     featured: false,
     note:
-      "WhatsApp/Meta API charges may still apply separately depending on your own official API account.",
+      "Your trial includes 1,000 broadcast messages from the CRM side. WhatsApp/Meta API charges may still apply separately depending on your own official API account.",
     features: [
-      "First 1,000 messages free",
+      "14-day free trial",
+      "1,000 trial broadcast messages",
+      "Access all CRM features during trial",
       "Use your official WhatsApp API key",
-      "WhatsApp team inbox basics",
+      "WhatsApp team inbox",
       "Contact management",
       "Message templates support",
-      "Basic broadcast workflow",
-      "Basic follow-up workflow",
-      "Good for testing and small teams",
+      "Broadcast workflow",
+      "AI automation workflow",
+      "Sales pipeline",
+      "Upgrade to Pro after trial",
     ],
   },
   {
@@ -170,9 +173,9 @@ const included = [
 
 const faqs = [
   {
-    question: "Does the Free plan include WhatsApp API charges?",
+    question: "Does the 14-day free trial include WhatsApp API charges?",
     answer:
-      "The Free plan gives you Talk Wagon CRM access for your first 1,000 messages using your own official API key. WhatsApp/Meta or provider charges may apply separately depending on your account.",
+      "The free trial gives you Talk Wagon CRM access for 14 days and includes 1,000 trial broadcast messages from the CRM side. WhatsApp/Meta or provider charges may apply separately depending on your account.",
   },
   {
     question: "What does unlimited messages mean in Pro?",
@@ -192,7 +195,7 @@ const faqs = [
   {
     question: "Can I upgrade later?",
     answer:
-      "Yes. You can start with Free, move to Pro when your team grows, or request a Lifetime self-hosted setup.",
+      "Yes. You can start with the 14-day free trial, move to Pro when your team grows, or request a Lifetime self-hosted setup.",
   },
   {
     question: "Is Talk Wagon suitable for agencies?",
@@ -213,7 +216,7 @@ const softwareSchema = {
   offers: plans.map((plan) => ({
     "@type": "Offer",
     name: `Talk Wagon ${plan.name}`,
-    price: plan.name === "Free" ? "0" : plan.name === "Pro" ? "1" : "499",
+    price: plan.name === "14-Day Free Trial" ? "0" : plan.name === "Pro" ? "1" : "499",
     priceCurrency: "USD",
     description: plan.description,
     availability: "https://schema.org/InStock",
@@ -308,7 +311,7 @@ export default function PricingPage() {
               Choose the Plan That Fits Your WhatsApp CRM Workflow
             </h2>
             <p className="mt-4 text-[#5b7169]">
-              Compare Free, Pro, and Lifetime self-hosted options for WhatsApp team
+              Compare 14-day trial, Pro, and Lifetime self-hosted options for WhatsApp team
               inboxes, approved broadcasts, automation, analytics, customer communication,
               and branded CRM deployment.
             </p>
@@ -386,14 +389,14 @@ export default function PricingPage() {
             <article className="rounded-[30px] bg-[#f7fbf8] p-4 ring-1 ring-[#dbe9e2]">
               <Image
                 src={pricingImages.planComparison}
-                alt="Free Pro and Lifetime WhatsApp CRM plan comparison"
+                alt="14-day trial Pro and Lifetime WhatsApp CRM plan comparison"
                 width={1168}
                 height={880}
                 loading="lazy"
                 className="h-auto w-full rounded-[24px]"
               />
               <h3 className="mt-5 px-2 text-xl font-extrabold text-[#07130e]">
-                Compare Free, Pro and Lifetime
+                Compare trial, Pro and Lifetime
               </h3>
               <p className="px-2 pb-2 pt-2 text-sm leading-7 text-[#5b7169]">
                 See the upgrade path from testing the CRM to running unlimited workflows
@@ -481,7 +484,7 @@ export default function PricingPage() {
             <p className="mt-5 text-base leading-8 text-[#d5e9e2]">
               Talk Wagon is the CRM platform. WhatsApp/Meta API or conversation charges
               may be billed separately by Meta or your official WhatsApp API provider.
-              The Free and Pro plans describe Talk Wagon CRM access, not third-party
+              The trial and Pro plans describe Talk Wagon CRM access, not third-party
               WhatsApp provider charges.
             </p>
             <div className="mt-8 rounded-[28px] border border-white/10 bg-[#0d1b15] p-6">
@@ -537,7 +540,7 @@ export default function PricingPage() {
               Choose the Talk Wagon Plan That Fits Your WhatsApp Workflow
             </h2>
             <p className="mt-2 max-w-2xl text-[#214336]">
-              Start with a free CRM workflow, unlock full Pro features, or request a
+              Start with a 14-day free trial, unlock full Pro features, or request a
               lifetime branded self-hosted setup for your business.
             </p>
             <div className="mt-6 max-w-2xl">

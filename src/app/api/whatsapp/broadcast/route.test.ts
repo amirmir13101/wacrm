@@ -23,6 +23,15 @@ describe('/api/whatsapp/broadcast compatibility route', () => {
     expect(source).toContain('evaluateBroadcastRecipients')
   })
 
+  it('reserves trial broadcast usage only when a broadcast is queued', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
+
+    expect(source).toContain('reserveTrialBroadcastUsage')
+    expect(source).toContain('releaseTrialBroadcastUsage')
+    expect(source).toContain('count: eligibleContacts.length')
+    expect(source).toContain('status: 402')
+  })
+
   it('loads shared admin-managed pricing rates for preflight estimates', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
 

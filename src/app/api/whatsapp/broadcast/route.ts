@@ -18,6 +18,10 @@ import { dedupeSharedPricingRates } from '@/lib/whatsapp/pricing-rates'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
+import {
+  releaseTrialBroadcastUsage,
+  reserveTrialBroadcastUsage,
+} from '@/lib/billing/trial'
 import type { Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
 
 interface IncomingRecipient {
@@ -387,64 +391,91 @@ export async function POST(request: Request) {
 
     const recipientResult = evaluateBroadcastRecipients(contacts)
     const eligibleContacts = recipientResult.eligible.map((recipient) => recipient.contact)
+    const usageReservation = await reserveTrialBroadcastUsage({
+      workspaceId: workspace.workspaceId,
+      count: eligibleContacts.length,
+    })
 
-    const { data: broadcast, error: broadcastError } = await supabase
-      .from('broadcasts')
-      .insert({
-        user_id: user.id,
-        workspace_id: workspace.workspaceId,
-        name: body.name?.trim() || `Queued broadcast - ${new Date().toLocaleString()}`,
-        template_name: templateName,
-        template_language: templateLanguage,
-        template_variables: variables,
-        audience_filter: audience,
-        status: 'queued',
-        total_recipients: eligibleContacts.length,
-        sent_count: 0,
-        delivered_count: 0,
-        read_count: 0,
-        replied_count: 0,
-        failed_count: 0,
-        skipped_count: 0,
-        preflight_total_selected: preflight.totalSelected,
-        preflight_eligible_count: preflight.eligibleCount,
-        preflight_skipped_not_opted_in: preflight.skippedNotOptedIn,
-        preflight_skipped_opted_out: preflight.skippedOptedOut,
-        preflight_skipped_invalid_phone: preflight.skippedInvalidPhone,
-        preflight_skipped_duplicate_phone: preflight.skippedDuplicatePhone,
-        estimated_cost_summary: {
-          pricingBreakdown: preflight.pricingBreakdown,
-          currencyTotals: preflight.currencyTotals,
-          missingPricingWarnings: preflight.missingPricingWarnings,
+    if (!usageReservation.allowed) {
+      return NextResponse.json(
+        {
+          error: usageReservation.message,
+          preflight,
+          trial: usageReservation.result,
         },
-        pricing_missing_count: preflight.pricingMissingCount,
-        preflight_acknowledged_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single()
-
-    if (broadcastError || !broadcast) {
-      throw new Error(`Failed to create broadcast: ${broadcastError?.message ?? 'unknown error'}`)
+        { status: 402 },
+      )
     }
 
-    for (let i = 0; i < eligibleContacts.length; i += 200) {
-      const { error } = await supabase
-        .from('broadcast_recipients')
-        .insert(
-          eligibleContacts.slice(i, i + 200).map((contact) => ({
-            broadcast_id: broadcast.id,
-            contact_id: contact.id,
-            status: 'pending',
-          })),
-        )
+    let broadcast: { id: string } | null = null
+    try {
+      const { data: createdBroadcast, error: broadcastError } = await supabase
+        .from('broadcasts')
+        .insert({
+          user_id: user.id,
+          workspace_id: workspace.workspaceId,
+          name: body.name?.trim() || `Queued broadcast - ${new Date().toLocaleString()}`,
+          template_name: templateName,
+          template_language: templateLanguage,
+          template_variables: variables,
+          audience_filter: audience,
+          status: 'queued',
+          total_recipients: eligibleContacts.length,
+          sent_count: 0,
+          delivered_count: 0,
+          read_count: 0,
+          replied_count: 0,
+          failed_count: 0,
+          skipped_count: 0,
+          preflight_total_selected: preflight.totalSelected,
+          preflight_eligible_count: preflight.eligibleCount,
+          preflight_skipped_not_opted_in: preflight.skippedNotOptedIn,
+          preflight_skipped_opted_out: preflight.skippedOptedOut,
+          preflight_skipped_invalid_phone: preflight.skippedInvalidPhone,
+          preflight_skipped_duplicate_phone: preflight.skippedDuplicatePhone,
+          estimated_cost_summary: {
+            pricingBreakdown: preflight.pricingBreakdown,
+            currencyTotals: preflight.currencyTotals,
+            missingPricingWarnings: preflight.missingPricingWarnings,
+          },
+          pricing_missing_count: preflight.pricingMissingCount,
+          preflight_acknowledged_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single()
 
-      if (error) {
-        await supabase
-          .from('broadcasts')
-          .update({ status: 'failed', queue_error: error.message })
-          .eq('id', broadcast.id)
-        throw new Error(`Failed to queue recipients: ${error.message}`)
+      broadcast = createdBroadcast as { id: string } | null
+
+      if (broadcastError || !broadcast) {
+        throw new Error(`Failed to create broadcast: ${broadcastError?.message ?? 'unknown error'}`)
       }
+
+      const broadcastId = broadcast.id
+      for (let i = 0; i < eligibleContacts.length; i += 200) {
+        const { error } = await supabase
+          .from('broadcast_recipients')
+          .insert(
+            eligibleContacts.slice(i, i + 200).map((contact) => ({
+              broadcast_id: broadcastId,
+              contact_id: contact.id,
+              status: 'pending',
+            })),
+          )
+
+        if (error) {
+          await supabase
+            .from('broadcasts')
+            .update({ status: 'failed', queue_error: error.message })
+            .eq('id', broadcastId)
+          throw new Error(`Failed to queue recipients: ${error.message}`)
+        }
+      }
+    } catch (error) {
+      await releaseTrialBroadcastUsage({
+        workspaceId: workspace.workspaceId,
+        count: usageReservation.reserved,
+      })
+      throw error
     }
 
     return NextResponse.json({

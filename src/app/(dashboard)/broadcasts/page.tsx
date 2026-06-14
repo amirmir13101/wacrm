@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/table';
 import { Radio, Plus, Loader2 } from 'lucide-react';
 import { getBroadcastStatus } from '@/lib/broadcast-status';
+import { TrialUsageCard } from '@/components/billing/trial-usage-card';
 
 /**
  * Poll cadence while any broadcast is sending. Kept modest so we don't
@@ -189,6 +190,8 @@ export default function BroadcastsPage() {
           New Broadcast
         </Button>
       </div>
+
+      <TrialUsageCard compact />
 
       {broadcasts.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900">
