@@ -31,11 +31,11 @@ interface KindTheme {
 }
 
 const KIND_THEME: Record<ActivityKind, KindTheme> = {
-  message: { icon: MessageSquare, badge: 'bg-[#eafff3] text-[#08bba4]' },
-  contact: { icon: UserPlus, badge: 'bg-[#eafff3] text-[#0f5132]' },
-  deal: { icon: Briefcase, badge: 'bg-[#eafff3] text-[#08bba4]' },
-  broadcast: { icon: Radio, badge: 'bg-[#fff4d7] text-[#b77900]' },
-  automation: { icon: Zap, badge: 'bg-[#eafff3] text-[#08bba4]' },
+  message: { icon: MessageSquare, badge: 'bg-[#123226] text-[#3ddf84]' },
+  contact: { icon: UserPlus, badge: 'bg-[#123226] text-[#3ddf84]' },
+  deal: { icon: Briefcase, badge: 'bg-[#123226] text-[#3ddf84]' },
+  broadcast: { icon: Radio, badge: 'bg-[#ffbd29]/15 text-[#ffbd29]' },
+  automation: { icon: Zap, badge: 'bg-[#123226] text-[#3ddf84]' },
 }
 
 export function ActivityFeed({ items, loading }: ActivityFeedProps) {
@@ -54,12 +54,12 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
     i === 0 || totalLoaded > PAGE_SIZES[i - 1]
 
   return (
-    <section className="rounded-2xl border border-[#dce9e2] bg-white shadow-[0_18px_45px_rgba(7,19,14,0.06)]">
-      <header className="flex items-center justify-between border-b border-[#dce9e2] px-5 py-4">
-        <h2 className="text-sm font-semibold text-[#07130e]">Recent Activity</h2>
+    <section className="rounded-2xl border border-[#17402f] bg-[#0d1b15]/95 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
+      <header className="flex items-center justify-between border-b border-[#17402f] px-5 py-4">
+        <h2 className="text-sm font-semibold text-white">Recent Activity</h2>
         <Link
           href="/inbox"
-          className="text-xs font-medium text-[#08bba4] hover:text-[#0f5132]"
+          className="text-xs font-medium text-[#3ddf84] hover:text-[#ffbd29]"
         >
           View all →
         </Link>
@@ -81,13 +81,13 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
         </div>
       ) : (
         <>
-          <ul className="divide-y divide-[#dce9e2]">
+          <ul className="divide-y divide-[#17402f]">
             {visible.map((it, i) => {
               const theme = KIND_THEME[it.kind]
               const Icon = theme.icon
               // Alternating row background for scanability — dark-theme
               // translation of the spec's white / #f9fafb stripes.
-              const stripe = i % 2 === 0 ? 'bg-transparent' : 'bg-[#f8fffb]'
+              const stripe = i % 2 === 0 ? 'bg-transparent' : 'bg-[#07130e]/45'
               const row = (
                 <div className="flex items-center gap-3 px-5 py-2.5">
                   <span
@@ -98,16 +98,16 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                   >
                     <Icon className="h-3.5 w-3.5" />
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-[#315345]">
+                  <span className="min-w-0 flex-1 truncate text-sm text-[#d8fff1]">
                     {it.text}
                   </span>
-                  <span className="flex-shrink-0 text-xs text-[#668276] tabular-nums">
+                  <span className="flex-shrink-0 text-xs text-[#8bb4a5] tabular-nums">
                     {relativeTime(it.at)}
                   </span>
                 </div>
               )
               return (
-                <li key={it.id} className={cn(stripe, 'transition-colors hover:bg-[#eafff3]')}>
+                <li key={it.id} className={cn(stripe, 'transition-colors hover:bg-[#123226]')}>
                   {it.href ? (
                     <Link href={it.href} className="block">
                       {row}
@@ -119,13 +119,13 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
               )
             })}
           </ul>
-          <footer className="flex items-center justify-between border-t border-[#dce9e2] px-5 py-3 text-xs">
-            <span className="text-[#668276] tabular-nums">
+          <footer className="flex items-center justify-between border-t border-[#17402f] px-5 py-3 text-xs">
+            <span className="text-[#8bb4a5] tabular-nums">
               Showing {visible.length} of {totalLoaded}
               {totalLoaded === 50 ? '+' : ''}
             </span>
             <div className="flex items-center gap-1">
-              <span className="mr-1 text-[#668276]">Show</span>
+              <span className="mr-1 text-[#8bb4a5]">Show</span>
               {PAGE_SIZES.map((size, i) => {
                 const disabled = !isSizeUseful(size, i)
                 return (
@@ -137,9 +137,9 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                     className={cn(
                       'rounded-md px-2 py-1 font-medium tabular-nums transition-colors',
                       pageSize === size
-                        ? 'bg-[#07130e] text-white'
-                        : 'text-[#668276] hover:bg-[#eafff3] hover:text-[#07130e]',
-                      disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-[#668276]',
+                        ? 'bg-[#3ddf84] text-[#07130e]'
+                        : 'text-[#b8cfc7] hover:bg-[#123226] hover:text-white',
+                      disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-[#8bb4a5]',
                     )}
                   >
                     {size}

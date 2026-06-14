@@ -6,14 +6,14 @@ import { cn } from '@/lib/utils'
  * its data fetches.
  */
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-md bg-[#dce9e2]', className)} />
+  return <div className={cn('animate-pulse rounded-md bg-[#17402f]', className)} />
 }
 
 export function SkeletonCard({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'rounded-2xl border border-[#dce9e2] bg-white p-5 shadow-[0_18px_45px_rgba(7,19,14,0.06)]',
+        'rounded-2xl border border-[#17402f] bg-[#0d1b15]/95 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)]',
         className,
       )}
     >

@@ -22,15 +22,15 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex h-full min-h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#bcd8cc] bg-[#f8fffb] px-4 py-6 text-center',
+        'flex h-full min-h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#315846] bg-[#07130e]/70 px-4 py-6 text-center',
         className,
       )}
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eafff3] text-[#08bba4]">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#123226] text-[#3ddf84]">
         <Icon className="h-5 w-5" />
       </div>
-      <p className="text-sm font-medium text-[#315345]">{title}</p>
-      {hint && <p className="max-w-xs text-xs text-[#668276]">{hint}</p>}
+      <p className="text-sm font-medium text-[#d8fff1]">{title}</p>
+      {hint && <p className="max-w-xs text-xs text-[#8bb4a5]">{hint}</p>}
     </div>
   )
 }

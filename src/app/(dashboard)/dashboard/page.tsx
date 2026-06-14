@@ -121,8 +121,8 @@ export default function DashboardPage() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-[#07130e]">Dashboard</h1>
-        <p className="mt-1 text-sm text-[#668276]">
+        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+        <p className="mt-1 text-sm text-[#b8cfc7]">
           {workspace.role === 'agent'
             ? 'Your assigned conversations, deals, and recent workspace activity.'
             : 'Live analytics across conversations, contacts, deals, broadcasts, and automations.'}

@@ -25,26 +25,26 @@ export function ResponseTimeChart({
   const hasData = data?.buckets.some((b) => b.avgMinutes != null) ?? false
 
   return (
-    <section className="rounded-2xl border border-[#dce9e2] bg-white shadow-[0_18px_45px_rgba(7,19,14,0.06)]">
-      <header className="flex items-center justify-between border-b border-[#dce9e2] px-5 py-4">
+    <section className="rounded-2xl border border-[#17402f] bg-[#0d1b15]/95 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
+      <header className="flex items-center justify-between border-b border-[#17402f] px-5 py-4">
         <div>
-          <h2 className="text-sm font-semibold text-[#07130e]">
+          <h2 className="text-sm font-semibold text-white">
             Average First Response Time
           </h2>
-          <p className="mt-0.5 text-xs text-[#668276]">
+          <p className="mt-0.5 text-xs text-[#8bb4a5]">
             Minutes to reply to a customer&apos;s first unreplied message, by
             weekday
           </p>
         </div>
         {data && (data.thisWeekAvg != null || data.lastWeekAvg != null) && (
           <div className="text-right text-xs">
-            <div className="text-[#668276]">
+            <div className="text-[#8bb4a5]">
               This week:{' '}
-              <span className="font-medium text-[#07130e] tabular-nums">
+              <span className="font-medium text-white tabular-nums">
                 {fmt(data.thisWeekAvg)}
               </span>
             </div>
-            <div className="text-[#8aa79b]">
+            <div className="text-[#6f9688]">
               Last week:{' '}
               <span className="tabular-nums">{fmt(data.lastWeekAvg)}</span>
             </div>
@@ -102,7 +102,7 @@ function Bars({
               x2={VB_W - PADDING.right}
               y1={y}
               y2={y}
-              stroke="#dce9e2"
+              stroke="#17402f"
               strokeDasharray="3 3"
             />
             <text
@@ -110,7 +110,7 @@ function Bars({
               y={y}
               textAnchor="end"
               dominantBaseline="middle"
-              className="fill-[#668276] text-[10px]"
+              className="fill-[#8bb4a5] text-[10px]"
             >
               {t}m
             </text>
@@ -158,7 +158,7 @@ function Bars({
               width={barW}
               height={muted ? 2 : Math.max(1, h)}
               rx={4}
-              fill={muted ? '#bcd8cc' : '#08bba4'}
+              fill={muted ? '#315846' : '#3ddf84'}
               opacity={muted ? 0.6 : 1}
             >
               <title>
@@ -171,7 +171,7 @@ function Bars({
               x={x + barW / 2}
               y={VB_H - 10}
               textAnchor="middle"
-              className="fill-[#668276] text-[11px]"
+              className="fill-[#8bb4a5] text-[11px]"
             >
               {DOW_SHORT_MON_FIRST[i]}
             </text>

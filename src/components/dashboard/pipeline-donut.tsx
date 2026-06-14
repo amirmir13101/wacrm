@@ -12,10 +12,10 @@ interface PipelineDonutProps {
 
 export function PipelineDonut({ data, loading }: PipelineDonutProps) {
   return (
-    <section className="flex h-full flex-col rounded-2xl border border-[#dce9e2] bg-white shadow-[0_18px_45px_rgba(7,19,14,0.06)]">
-      <header className="border-b border-[#dce9e2] px-5 py-4">
-        <h2 className="text-sm font-semibold text-[#07130e]">Pipeline Value</h2>
-        <p className="mt-0.5 text-xs text-[#668276]">
+    <section className="flex h-full flex-col rounded-2xl border border-[#17402f] bg-[#0d1b15]/95 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
+      <header className="border-b border-[#17402f] px-5 py-4">
+        <h2 className="text-sm font-semibold text-white">Pipeline Value</h2>
+        <p className="mt-0.5 text-xs text-[#8bb4a5]">
           Open deals by stage
         </p>
       </header>
@@ -40,11 +40,11 @@ export function PipelineDonut({ data, loading }: PipelineDonutProps) {
                     style={{ background: s.color }}
                     aria-hidden
                   />
-                  <span className="flex-1 truncate text-[#315345]">{s.name}</span>
-                  <span className="text-[#668276] tabular-nums">
+                  <span className="flex-1 truncate text-[#d8fff1]">{s.name}</span>
+                  <span className="text-[#8bb4a5] tabular-nums">
                     {s.dealCount} deal{s.dealCount === 1 ? '' : 's'}
                   </span>
-                  <span className="w-20 text-right text-[#315345] tabular-nums">
+                  <span className="w-20 text-right text-[#d8fff1] tabular-nums">
                     {formatCurrencyShort(s.totalValue)}
                   </span>
                 </li>
@@ -95,7 +95,7 @@ function Donut({ data }: { data: PipelineDonutData }) {
     <div className="flex items-center justify-center">
       <svg viewBox={`0 0 ${size} ${size}`} className="h-48 w-48" role="img" aria-label="Pipeline value by stage">
         {/* background ring */}
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#dce9e2" strokeWidth={ringWidth} />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#17402f" strokeWidth={ringWidth} />
         {segments.map((seg) => (
           <path
             key={seg.id}
@@ -111,7 +111,7 @@ function Donut({ data }: { data: PipelineDonutData }) {
           x={cx}
           y={cy - 6}
           textAnchor="middle"
-          className="fill-[#668276] text-[11px]"
+          className="fill-[#8bb4a5] text-[11px]"
         >
           Total
         </text>
@@ -119,7 +119,7 @@ function Donut({ data }: { data: PipelineDonutData }) {
           x={cx}
           y={cy + 14}
           textAnchor="middle"
-          className="fill-[#07130e] text-[18px] font-semibold tabular-nums"
+          className="fill-white text-[18px] font-semibold tabular-nums"
         >
           {formatCurrencyShort(data.totalValue)}
         </text>

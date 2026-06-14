@@ -38,12 +38,12 @@ export function QuickActions() {
           <Link
             key={a.href}
             href={a.href}
-            className="group flex items-center gap-3 rounded-2xl border border-[#dce9e2] bg-white px-4 py-3 shadow-[0_12px_32px_rgba(7,19,14,0.05)] transition-colors hover:border-[#3ddf84] hover:bg-[#f4fff9]"
+            className="group flex items-center gap-3 rounded-2xl border border-[#17402f] bg-[#0d1b15]/95 px-4 py-3 shadow-[0_18px_55px_rgba(0,0,0,0.18)] transition-colors hover:border-[#3ddf84] hover:bg-[#123226]"
           >
-            <div className={`flex h-9 w-9 items-center justify-center rounded-xl bg-[#eafff3] ${a.tint}`}>
+            <div className={`flex h-9 w-9 items-center justify-center rounded-xl bg-[#123226] ${a.tint}`}>
               <Icon className="h-4 w-4" />
             </div>
-            <span className="text-sm font-medium text-[#07130e]">{a.label}</span>
+            <span className="text-sm font-medium text-white">{a.label}</span>
           </Link>
         )
       })}

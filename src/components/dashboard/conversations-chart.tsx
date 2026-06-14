@@ -46,13 +46,13 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
   }, [data])
 
   return (
-    <section className="flex h-full flex-col rounded-2xl border border-[#dce9e2] bg-white shadow-[0_18px_45px_rgba(7,19,14,0.06)]">
-      <header className="flex items-center justify-between border-b border-[#dce9e2] px-5 py-4">
+    <section className="flex h-full flex-col rounded-2xl border border-[#17402f] bg-[#0d1b15]/95 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
+      <header className="flex items-center justify-between border-b border-[#17402f] px-5 py-4">
         <div>
-          <h2 className="text-sm font-semibold text-[#07130e]">Conversations Over Time</h2>
-          <p className="mt-0.5 text-xs text-[#668276]">Daily message volume by direction</p>
+          <h2 className="text-sm font-semibold text-white">Conversations Over Time</h2>
+          <p className="mt-0.5 text-xs text-[#8bb4a5]">Daily message volume by direction</p>
         </div>
-        <div className="flex items-center gap-1 rounded-xl bg-[#f4fff9] p-1 ring-1 ring-[#dce9e2]">
+        <div className="flex items-center gap-1 rounded-xl bg-[#07130e] p-1 ring-1 ring-[#315846]">
           {[7, 30, 90].map((r) => (
             <button
               key={r}
@@ -61,8 +61,8 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
               className={cn(
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
                 range === r
-                  ? 'bg-[#07130e] text-white'
-                  : 'text-[#668276] hover:text-[#07130e]',
+                  ? 'bg-[#3ddf84] text-[#07130e]'
+                  : 'text-[#b8cfc7] hover:text-white',
               )}
             >
               {r} days
@@ -85,8 +85,8 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
         )}
       </div>
 
-      <footer className="flex items-center gap-4 border-t border-[#dce9e2] px-5 py-3 text-xs text-[#668276]">
-        <LegendDot color="#08bba4" label="Incoming" />
+      <footer className="flex items-center gap-4 border-t border-[#17402f] px-5 py-3 text-xs text-[#8bb4a5]">
+        <LegendDot color="#3ddf84" label="Incoming" />
         <LegendDot color="#ffbd29" label="Outgoing" />
       </footer>
     </section>

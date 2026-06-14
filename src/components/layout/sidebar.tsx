@@ -144,22 +144,25 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       >
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
-        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[#17402f] bg-[#f8fffb] px-4">
-          <Link href="/dashboard" className="flex min-w-0 items-center">
+        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[#17402f] bg-[#07130e] px-4">
+          <Link href="/dashboard" className="flex min-w-0 items-center gap-2">
             <Image
-              src="/hostiko-crm/brand/talk-wagon-logo-public.webp"
+              src="/hostiko-crm/brand/talk-wagon-logo.svg"
               alt="Talk Wagon CRM logo"
-              width={265}
-              height={52}
+              width={160}
+              height={160}
               priority
-              className="h-9 w-auto max-w-[185px] object-contain"
+              className="h-9 w-9 shrink-0 rounded-xl object-contain"
             />
+            <span className="truncate text-sm font-extrabold tracking-tight text-white">
+              <span className="text-[#ffbd29]">Talk</span> Wagon
+            </span>
           </Link>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close menu"
-            className="flex h-9 w-9 items-center justify-center rounded-md text-[#315345] hover:bg-[#eafff3] hover:text-[#07130e] lg:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-[#b8cfc7] hover:bg-[#123226] hover:text-white lg:hidden"
           >
             <X className="h-5 w-5" />
           </button>
