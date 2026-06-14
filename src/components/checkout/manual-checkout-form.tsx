@@ -131,13 +131,25 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
               ),
             )}
           </div>
-          <div className="mt-5 rounded-2xl bg-[#f7fbf8] p-4">
-            {MANUAL_PAYMENT_METHODS[paymentMethod].fields.map(([label, value]) => (
-              <div key={label} className="flex flex-col gap-1 border-b border-[#dbe9e2] py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-sm text-[#5b7169]">{label}</span>
-                <span className="font-bold text-[#07130e]">{value}</span>
-              </div>
-            ))}
+          <div className="mt-5 grid gap-4">
+            {(Object.values(MANUAL_PAYMENT_METHODS) as Array<(typeof MANUAL_PAYMENT_METHODS)[ManualPaymentMethod]>).map(
+              (method) => (
+                <div key={method.id} className="rounded-2xl bg-[#f7fbf8] p-4">
+                  <h3 className="font-extrabold text-[#07130e]">{method.label} details</h3>
+                  <div className="mt-2">
+                    {method.fields.map(([label, value]) => (
+                      <div
+                        key={`${method.id}-${label}`}
+                        className="flex flex-col gap-1 border-b border-[#dbe9e2] py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <span className="text-sm text-[#5b7169]">{label}</span>
+                        <span className="font-bold text-[#07130e]">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ),
+            )}
           </div>
         </div>
       </aside>
