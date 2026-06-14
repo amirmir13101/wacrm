@@ -72,7 +72,14 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
   }
 
   const isUnlimited = !trial.hasTrialBroadcastLimit
+  const isPro = trial.planType === 'pro'
+  const isLifetime = trial.planType === 'lifetime'
   const remaining = trial.trialBroadcastRemaining ?? 0
+  const planMessage = isPro
+    ? 'You are now a Pro user. You can use Talk Wagon CRM with unlimited Pro access.'
+    : isLifetime
+      ? 'Your Lifetime plan is active. You have permanent Talk Wagon CRM access for this workspace.'
+      : `${trial.trialBroadcastUsed.toLocaleString()} / ${trial.trialBroadcastLimit.toLocaleString()} trial broadcast messages used. ${remaining.toLocaleString()} remaining.`
 
   return (
     <section className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
@@ -91,19 +98,21 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
               <span className="text-sm font-semibold text-[#d8fff1]">Unlimited CRM usage</span>
             )}
           </div>
-          <p className="mt-2 text-sm text-[#b8cfc7]">
-            {isUnlimited
-              ? 'Broadcast sending is not limited by the free trial quota.'
-              : `${trial.trialBroadcastUsed.toLocaleString()} / ${trial.trialBroadcastLimit.toLocaleString()} trial broadcast messages used. ${remaining.toLocaleString()} remaining.`}
-          </p>
+          <p className="mt-2 text-sm text-[#b8cfc7]">{planMessage}</p>
         </div>
 
-        <Link
-          href="/checkout/pro"
-          className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] px-5 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3ddf84]"
-        >
-          Upgrade to Pro
-        </Link>
+        {isLifetime ? (
+          <span className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-[#3ddf84]/40 bg-[#3ddf84]/10 px-5 text-sm font-bold text-[#d8fff1]">
+            Lifetime plan active
+          </span>
+        ) : (
+          <Link
+            href={isPro ? '/checkout/lifetime' : '/checkout/pro'}
+            className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] px-5 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3ddf84]"
+          >
+            {isPro ? 'Request Lifetime Setup' : 'Upgrade to Pro'}
+          </Link>
+        )}
       </div>
 
       {!isUnlimited ? (

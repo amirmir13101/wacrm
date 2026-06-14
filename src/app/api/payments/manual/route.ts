@@ -242,7 +242,12 @@ async function ensureCheckoutWorkspace(args: {
   if (!workspaceId) {
     const { data: created, error: createError } = await admin
       .from('workspaces')
-      .insert({ name: args.workspaceName, owner_user_id: args.userId })
+      .insert({
+        name: args.workspaceName,
+        owner_user_id: args.userId,
+        plan_type: 'trial',
+        subscription_status: 'trialing',
+      })
       .select('id')
       .single()
 

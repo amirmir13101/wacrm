@@ -56,6 +56,9 @@ describe('manual payment flow wiring', () => {
     expect(checkoutRoute).toContain('workspaceResult.workspace.workspaceId')
     expect(checkoutRoute).toContain('phone')
     expect(checkoutRoute).toContain('passwordValidationError')
+    expect(checkoutRoute).toContain("plan_type: 'trial'")
+    expect(checkoutRoute).toContain("subscription_status: 'trialing'")
+    expect(checkoutRoute).not.toContain("subscription_status: 'active',")
     expect(checkoutRoute.toLowerCase()).not.toContain('stripe')
     expect(checkoutRoute.toLowerCase()).not.toContain('paypal')
   })
@@ -72,7 +75,11 @@ describe('manual payment flow wiring', () => {
   it('routes Pro and Lifetime pricing CTAs to manual checkout', () => {
     expect(pricingPage).toContain('href: "/checkout/pro"')
     expect(pricingPage).toContain('href: "/checkout/lifetime"')
-    expect(trialCard).toContain('href="/checkout/pro"')
+    expect(trialCard).toContain("href={isPro ? '/checkout/lifetime' : '/checkout/pro'}")
+    expect(trialCard).toContain("isPro ? 'Request Lifetime Setup' : 'Upgrade to Pro'")
+    expect(trialCard).toContain('Lifetime plan active')
+    expect(trialCard).toContain('You are now a Pro user. You can use Talk Wagon CRM with unlimited Pro access.')
+    expect(trialCard).not.toContain('Broadcast sending is not limited by the free trial quota')
   })
 
   it('shows account checkout fields and the red payment instruction', () => {
