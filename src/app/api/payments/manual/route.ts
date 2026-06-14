@@ -36,31 +36,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Choose Easypaisa or Bank Transfer.' }, { status: 400 })
   }
 
-  const payerName = readString(body.payer_name)
-  const payerEmail = readString(body.payer_email).toLowerCase()
+  let payerName = readString(body.payer_name)
+  let payerEmail = readString(body.payer_email).toLowerCase()
   const phone = readString(body.phone)
   const password = readString(body.password)
   const companyName = readString(body.company_name)
   const workspaceName = companyName || `${payerName || 'Customer'} Workspace`
   const transactionReference = readString(body.transaction_reference)
   const note = readString(body.note)
-
-  if (payerName.length < 2) {
-    return NextResponse.json({ error: 'Enter your name.' }, { status: 400 })
-  }
-
-  if (!EMAIL_PATTERN.test(payerEmail)) {
-    return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 })
-  }
-
-  if (phone.length < 7) {
-    return NextResponse.json({ error: 'Enter a valid phone number.' }, { status: 400 })
-  }
-
-  const passwordError = passwordValidationError(password)
-  if (passwordError) {
-    return NextResponse.json({ error: passwordError }, { status: 400 })
-  }
 
   const supabase = await createClient()
   const {
@@ -74,10 +57,36 @@ export async function POST(request: Request) {
   if (user) {
     linkedUserId = user.id
     const workspaceResult = await requireCurrentWorkspace()
-    if (workspaceResult.ok) {
-      workspaceId = workspaceResult.workspace.workspaceId
+    if (!workspaceResult.ok) {
+      return NextResponse.json({ error: 'Login found, but no active workspace was available.' }, { status: 400 })
     }
+    workspaceId = workspaceResult.workspace.workspaceId
+    const admin = supabaseAdmin()
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('full_name, email')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    payerEmail = payerEmail || user.email?.toLowerCase() || String(profile?.email ?? '').toLowerCase()
+    payerName = payerName || String(profile?.full_name ?? '') || payerEmail || 'Existing customer'
   } else {
+    if (payerName.length < 2) {
+      return NextResponse.json({ error: 'Enter your name.' }, { status: 400 })
+    }
+
+    if (!EMAIL_PATTERN.test(payerEmail)) {
+      return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 })
+    }
+
+    if (phone.length < 7) {
+      return NextResponse.json({ error: 'Enter a valid phone number.' }, { status: 400 })
+    }
+
+    const passwordError = passwordValidationError(password)
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 })
+    }
+
     try {
       const linked = await createOrLinkCheckoutCustomer({
         email: payerEmail,
