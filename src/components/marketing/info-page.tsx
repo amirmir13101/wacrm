@@ -41,7 +41,7 @@ export function InfoPageShell({ children }: InfoPageShellProps) {
 
 export function InfoHero({ eyebrow, title, description, badges = [] }: InfoHeroProps) {
   return (
-    <section className="relative isolate overflow-hidden bg-[#0d1b15] px-5 py-20 text-white sm:px-8 lg:px-10">
+    <section className="relative isolate overflow-hidden bg-[#0d1b15] px-5 pb-16 pt-9 text-white sm:px-8 sm:pb-16 sm:pt-12 lg:px-10 lg:py-20">
       <div className="absolute inset-0 -z-10 opacity-25 [background-image:linear-gradient(rgba(61,223,132,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(61,223,132,0.16)_1px,transparent_1px)] [background-size:72px_72px]" />
       <div className="absolute left-1/2 top-10 -z-10 h-72 w-72 -translate-x-1/2 rounded-full bg-[#3ddf84]/20 blur-3xl" />
       <div className="mx-auto max-w-4xl text-center">
