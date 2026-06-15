@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BadgeDollarSign, CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { BadgeDollarSign, CheckCircle2, Loader2, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -90,12 +90,55 @@ export default function AdminPaymentsPage() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Failed to update payment request");
       toast.success(action === "approve" ? "Payment approved and workspace activated." : "Payment request rejected.");
+      const nextStatus = action === "approve" ? "approved" : "rejected";
       setRequests((current) =>
-        status === "pending" ? current.filter((request) => request.id !== id) : current,
+        current.flatMap((request) => {
+          if (request.id !== id) return [request];
+          const updated = {
+            ...request,
+            status: nextStatus,
+            admin_note: notes[id] ?? null,
+            approved_at: action === "approve" ? new Date().toISOString() : request.approved_at,
+            rejected_at: action === "reject" ? new Date().toISOString() : request.rejected_at,
+          } satisfies ManualPaymentRequest;
+          return paymentBelongsInCurrentFilter(updated, status) ? [updated] : [];
+        }),
       );
       if (status !== "pending") void loadRequests();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update payment request");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function deleteRequest(request: ManualPaymentRequest) {
+    if (request.status === "approved") {
+      toast.error("Approved payment requests are kept for audit history and cannot be deleted.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete this ${request.plan_type} payment request from ${request.payer_email}? This removes only the payment request record.`,
+    );
+    if (!confirmed) return;
+
+    setSavingId(request.id);
+    try {
+      const response = await fetch(`/api/admin/payments/${request.id}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Failed to delete payment request");
+      toast.success("Payment request deleted.");
+      setRequests((current) => current.filter((item) => item.id !== request.id));
+      setNotes((current) => {
+        const next = { ...current };
+        delete next[request.id];
+        return next;
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete payment request");
     } finally {
       setSavingId(null);
     }
@@ -241,16 +284,49 @@ export default function AdminPaymentsPage() {
                                 <XCircle className="mr-2 h-4 w-4" />
                                 Reject
                               </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={savingId === request.id}
+                                onClick={() => void deleteRequest(request)}
+                                className="border-slate-700 text-slate-200 hover:bg-slate-800 hover:text-white"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </Button>
                             </div>
                           </div>
                         ) : (
-                          <div className="text-sm text-slate-400">
-                            {request.admin_note || "Reviewed"}
-                            <div className="mt-1 text-xs text-slate-500">
-                              {request.approved_at || request.rejected_at
-                                ? new Date(request.approved_at ?? request.rejected_at ?? "").toLocaleString()
-                                : null}
+                          <div className="space-y-3">
+                            <div className="text-sm text-slate-400">
+                              {request.admin_note || "Reviewed"}
+                              <div className="mt-1 text-xs text-slate-500">
+                                {request.approved_at || request.rejected_at
+                                  ? new Date(request.approved_at ?? request.rejected_at ?? "").toLocaleString()
+                                  : null}
+                              </div>
                             </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={savingId === request.id || request.status === "approved"}
+                              onClick={() => void deleteRequest(request)}
+                              className="border-slate-700 text-slate-200 hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                              title={
+                                request.status === "approved"
+                                  ? "Approved payment requests are kept for audit history."
+                                  : "Delete this payment request record"
+                              }
+                            >
+                              {savingId === request.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="mr-2 h-4 w-4" />
+                              )}
+                              Delete
+                            </Button>
                           </div>
                         )}
                       </TableCell>
@@ -274,4 +350,8 @@ function statusClass(status: ManualPaymentRequest["status"]) {
     return "inline-flex rounded-full bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-300";
   }
   return "inline-flex rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300";
+}
+
+function paymentBelongsInCurrentFilter(request: ManualPaymentRequest, status: PaymentStatus) {
+  return status === "all" || request.status === status;
 }

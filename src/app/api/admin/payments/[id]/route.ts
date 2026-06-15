@@ -169,3 +169,35 @@ async function resolveWorkspaceId(
   if (!userId) return null
   return ensureApprovedUserOwnWorkspace(userId)
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const adminCheck = await requirePlatformAdmin()
+  if ('error' in adminCheck) {
+    return NextResponse.json({ error: adminCheck.error }, { status: adminCheck.status })
+  }
+
+  const { id } = await params
+  const admin = supabaseAdmin()
+  const { data: paymentRequest, error: lookupError } = await admin
+    .from('manual_payment_requests')
+    .select('id, status')
+    .eq('id', id)
+    .maybeSingle<{ id: string; status: 'pending' | 'approved' | 'rejected' }>()
+
+  if (lookupError) return NextResponse.json({ error: lookupError.message }, { status: 500 })
+  if (!paymentRequest) return NextResponse.json({ error: 'Payment request not found.' }, { status: 404 })
+  if (paymentRequest.status === 'approved') {
+    return NextResponse.json(
+      { error: 'Approved payment requests are kept for audit history and cannot be deleted.' },
+      { status: 400 },
+    )
+  }
+
+  const { error } = await admin.from('manual_payment_requests').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ success: true, deleted_id: id })
+}

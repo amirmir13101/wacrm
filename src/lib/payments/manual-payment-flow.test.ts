@@ -25,6 +25,7 @@ describe('manual payment flow wiring', () => {
     join(root, 'src/app/api/admin/payments/[id]/route.ts'),
     'utf8',
   )
+  const adminPaymentsPage = readFileSync(join(root, 'src/app/admin/payments/page.tsx'), 'utf8')
   const checkoutForm = readFileSync(
     join(root, 'src/components/checkout/manual-checkout-form.tsx'),
     'utf8',
@@ -85,6 +86,28 @@ describe('manual payment flow wiring', () => {
     expect(adminReviewRoute).toContain('ensureApprovedUserOwnWorkspace')
     expect(adminReviewRoute).toContain("status: 'rejected'")
     expect(adminReviewRoute).not.toContain('Ask the customer to sign up or login')
+  })
+
+  it('lets platform admins delete non-approved payment request records only', () => {
+    expect(adminReviewRoute).toContain('export async function DELETE')
+    expect(adminReviewRoute).toContain('requirePlatformAdmin')
+    expect(adminReviewRoute).toContain("paymentRequest.status === 'approved'")
+    expect(adminReviewRoute).toContain('manual_payment_requests')
+    expect(adminReviewRoute).toContain('.delete()')
+    expect(adminReviewRoute).toContain('Approved payment requests are kept for audit history')
+    expect(adminReviewRoute).not.toContain('auth.admin.deleteUser')
+    expect(adminReviewRoute).not.toContain(".from('workspaces').delete")
+    expect(adminReviewRoute).not.toContain(".from('profiles').delete")
+  })
+
+  it('updates the admin payment list without requiring a browser refresh', () => {
+    expect(adminPaymentsPage).toContain('paymentBelongsInCurrentFilter')
+    expect(adminPaymentsPage).toContain('setRequests((current) =>')
+    expect(adminPaymentsPage).toContain('deleteRequest')
+    expect(adminPaymentsPage).toContain('method: "DELETE"')
+    expect(adminPaymentsPage).toContain('setRequests((current) => current.filter')
+    expect(adminPaymentsPage).toContain('window.confirm')
+    expect(adminPaymentsPage).toContain('Approved payment requests are kept for audit history')
   })
 
   it('routes Pro and Lifetime pricing CTAs to manual checkout', () => {
