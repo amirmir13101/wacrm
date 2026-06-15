@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { getWorkspaceTrialStatus } from '@/lib/billing/trial'
+import { resolveAiProviderConfig } from '@/lib/ai/provider'
 
 export type AiChatbotTone = 'friendly' | 'professional' | 'concise' | 'supportive'
 export type AiKnowledgeSourceType = 'manual' | 'faq' | 'instructions'
@@ -52,12 +53,10 @@ export const DEFAULT_AI_CHATBOT_SETTINGS = {
   auto_reply_enabled: false,
 } as const
 
-const OPENAI_CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions'
-const DEFAULT_MODEL = 'gpt-4o-mini'
 const MAX_CHUNKS = 5
 
-export function isAiProviderConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY)
+export async function isAiProviderConfigured(workspaceId?: string | null): Promise<boolean> {
+  return Boolean(await resolveAiProviderConfig(workspaceId))
 }
 
 export async function getAiPlanAccess(workspaceId: string): Promise<{
@@ -136,11 +135,13 @@ export async function generateChatbotAnswer(args: {
   readonly question: string
   readonly settings: Pick<AiChatbotSettings, 'tone' | 'fallback_message'>
   readonly chunks: readonly string[]
+  readonly workspaceId?: string | null
   readonly requireProvider?: boolean
 }): Promise<AiAnswerResult> {
   const question = args.question.trim()
   const fallback = args.settings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
-  const providerConfigured = isAiProviderConfigured()
+  const providerConfig = await resolveAiProviderConfig(args.workspaceId)
+  const providerConfigured = Boolean(providerConfig)
 
   if (!question) {
     return { status: 'fallback', answer: fallback, reason: 'empty_question', usedChunks: [], providerConfigured }
@@ -148,7 +149,7 @@ export async function generateChatbotAnswer(args: {
   if (args.chunks.length === 0) {
     return { status: 'fallback', answer: fallback, reason: 'no_relevant_knowledge', usedChunks: [], providerConfigured }
   }
-  if (!providerConfigured) {
+  if (!providerConfig) {
     if (args.requireProvider) {
       return { status: 'skipped', answer: '', reason: 'ai_provider_missing', usedChunks: args.chunks, providerConfigured }
     }
@@ -163,14 +164,14 @@ export async function generateChatbotAnswer(args: {
   }
 
   try {
-    const response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
+    const response = await fetch(`${providerConfig.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        authorization: `Bearer ${providerConfig.apiKey}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.AI_CHATBOT_MODEL || DEFAULT_MODEL,
+        model: providerConfig.model,
         temperature: Number(process.env.AI_CHATBOT_TEMPERATURE ?? 0.2),
         max_tokens: Number(process.env.AI_CHATBOT_MAX_TOKENS ?? 220),
         messages: [

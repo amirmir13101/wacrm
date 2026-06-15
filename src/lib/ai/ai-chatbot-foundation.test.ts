@@ -12,6 +12,7 @@ function read(path: string): string {
 describe('AI chatbot Phase 1 foundation', () => {
   it('creates workspace-scoped chatbot tables with RLS', () => {
     const migration = read('supabase/migrations/033_ai_chatbot.sql')
+    const providerMigration = read('supabase/migrations/034_ai_chatbot_provider_settings.sql')
 
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS ai_chatbot_settings')
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS ai_knowledge_sources')
@@ -22,6 +23,11 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(migration).toContain('ALTER TABLE ai_knowledge_sources ENABLE ROW LEVEL SECURITY')
     expect(migration).toContain('ALTER TABLE ai_knowledge_chunks ENABLE ROW LEVEL SECURITY')
     expect(migration).toContain('ALTER TABLE ai_chatbot_logs ENABLE ROW LEVEL SECURITY')
+    expect(providerMigration).toContain('CREATE TABLE IF NOT EXISTS ai_chatbot_provider_settings')
+    expect(providerMigration).toContain('workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE')
+    expect(providerMigration).toContain('encrypted_api_key TEXT')
+    expect(providerMigration).toContain('api_key_last4 TEXT')
+    expect(providerMigration).toContain('ALTER TABLE ai_chatbot_provider_settings ENABLE ROW LEVEL SECURITY')
   })
 
   it('adds AI chatbot permissions to defaults and RLS policies', () => {
@@ -60,6 +66,18 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(api).toContain('canUseAutoReply')
     expect(api).toContain('isAiProviderConfigured')
     expect(api).toContain('enable_ai_auto_reply')
+  })
+
+  it('keeps provider API keys server-only and masked in public responses', () => {
+    const providerHelper = read('src/lib/ai/provider.ts')
+    const providerRoute = read('src/app/api/ai-chatbot/provider/route.ts')
+
+    expect(providerHelper).toContain('encrypt(apiKey)')
+    expect(providerHelper).toContain('decrypt(data.encrypted_api_key)')
+    expect(providerHelper).toContain('maskApiKey')
+    expect(providerHelper).toContain('apiKeyMasked')
+    expect(providerRoute).not.toContain('encrypted_api_key')
+    expect(providerRoute).not.toContain('decrypt(')
   })
 
   it('does not add website scraping or vector search in Phase 1', () => {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { Bot, BookOpen, Loader2, MessageCircle, ShieldCheck, Trash2 } from "lucide-react"
+import { Bot, BookOpen, KeyRound, Loader2, MessageCircle, ShieldCheck, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 
 type Tone = "friendly" | "professional" | "concise" | "supportive"
 type SourceType = "manual" | "faq" | "instructions"
+type Provider = "openai" | "openrouter" | "groq" | "ollama" | "custom" | "anthropic"
 
 interface ChatbotSettings {
   workspace_id: string
@@ -38,10 +39,25 @@ interface ChatbotState {
     reason: string | null
   }
   providerConfigured: boolean
+  providerSettings: ProviderSettings
   permissions: {
     canManage: boolean
     canEnableAutoReply: boolean
   }
+}
+
+interface ProviderSettings {
+  provider: Provider
+  model: string
+  baseUrl: string | null
+  apiKeyConfigured: boolean
+  apiKeyMasked: string | null
+  apiKeyLast4: string | null
+  apiKeyConfiguredAt: string | null
+  lastTestedAt: string | null
+  lastTestStatus: "success" | "failed" | "not_tested" | null
+  lastTestError: string | null
+  supportedForChat: boolean
 }
 
 interface TestAnswer {
@@ -62,10 +78,14 @@ export default function AiChatbotPage() {
   const [loading, setLoading] = useState(true)
   const [savingSettings, setSavingSettings] = useState(false)
   const [savingSource, setSavingSource] = useState(false)
+  const [savingProvider, setSavingProvider] = useState(false)
+  const [testingProvider, setTestingProvider] = useState(false)
   const [testing, setTesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [draftSettings, setDraftSettings] = useState<ChatbotSettings | null>(null)
+  const [draftProvider, setDraftProvider] = useState<ProviderSettings | null>(null)
+  const [providerApiKey, setProviderApiKey] = useState("")
   const [sourceType, setSourceType] = useState<SourceType>("manual")
   const [sourceTitle, setSourceTitle] = useState("")
   const [sourceContent, setSourceContent] = useState("")
@@ -81,6 +101,8 @@ export default function AiChatbotPage() {
       if (!res.ok) throw new Error(body?.error ?? "Failed to load AI Chatbot")
       setState(body as ChatbotState)
       setDraftSettings((body as ChatbotState).settings)
+      setDraftProvider((body as ChatbotState).providerSettings)
+      setProviderApiKey("")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load AI Chatbot")
     } finally {
@@ -98,6 +120,10 @@ export default function AiChatbotPage() {
     state?.permissions.canEnableAutoReply &&
       state?.planAccess.canUseAutoReply &&
       state?.providerConfigured,
+  )
+  const providerChanged = useMemo(
+    () => JSON.stringify(state?.providerSettings ?? null) !== JSON.stringify(draftProvider ?? null) || providerApiKey.trim().length > 0,
+    [draftProvider, providerApiKey, state?.providerSettings],
   )
   const settingsChanged = useMemo(
     () => JSON.stringify(state?.settings ?? null) !== JSON.stringify(draftSettings ?? null),
@@ -149,6 +175,48 @@ export default function AiChatbotPage() {
     }
   }
 
+  async function saveProviderSettings() {
+    if (!draftProvider) return
+    setSavingProvider(true)
+    try {
+      const res = await fetch("/api/ai-chatbot/provider", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          provider: draftProvider.provider,
+          model: draftProvider.model,
+          base_url: draftProvider.baseUrl,
+          api_key: providerApiKey,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? "Failed to save AI provider")
+      if (body?.warning) toast.message(body.warning)
+      toast.success("AI provider settings saved")
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save AI provider")
+    } finally {
+      setSavingProvider(false)
+    }
+  }
+
+  async function testProviderConnection() {
+    setTestingProvider(true)
+    try {
+      const res = await fetch("/api/ai-chatbot/provider", { method: "POST" })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.message ?? body?.error ?? "Provider test failed")
+      toast.success(body?.message ?? "AI provider connection works")
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Provider test failed")
+      await load()
+    } finally {
+      setTestingProvider(false)
+    }
+  }
+
   async function deleteSource(source: KnowledgeSource) {
     if (!window.confirm(`Delete "${source.title}" from AI knowledge?`)) return
     const res = await fetch(`/api/ai-chatbot/sources/${source.id}`, { method: "DELETE" })
@@ -195,7 +263,7 @@ export default function AiChatbotPage() {
     )
   }
 
-  if (error || !state || !draftSettings) {
+  if (error || !state || !draftSettings || !draftProvider) {
     return (
       <div className="space-y-3">
         <p className="text-sm text-red-300">{error ?? "AI Chatbot could not load."}</p>
@@ -236,13 +304,135 @@ export default function AiChatbotPage() {
         <StatusCard
           icon={ShieldCheck}
           label="AI provider"
-          value={state.providerConfigured ? "Configured" : "Not configured"}
+          value={state.providerConfigured ? "API key configured" : "API key missing"}
           detail={
             state.providerConfigured
-              ? "Server-side AI key is available"
-              : "Testing uses safe knowledge preview; live replies stay off"
+              ? `${state.providerSettings.provider} · ${state.providerSettings.apiKeyMasked ?? "server default"}`
+              : "Add an API key before testing live AI replies"
           }
         />
+      </section>
+
+      <section className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-5">
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <KeyRound className="size-5 text-emerald-300" />
+              <h2 className="text-lg font-bold text-white">AI Provider Settings</h2>
+            </div>
+            <p className="mt-1 text-sm text-[#9dbfb5]">
+              Add a workspace API key first, then save knowledge, test responses, and enable auto-reply.
+            </p>
+          </div>
+          <StatusPill
+            label={
+              state.providerSettings.lastTestStatus === "success"
+                ? "Connection working"
+                : state.providerSettings.apiKeyConfigured
+                  ? "Key saved"
+                  : "Key missing"
+            }
+            tone={state.providerSettings.lastTestStatus === "success" ? "success" : "warning"}
+          />
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-emerald-50">Provider</span>
+            <select
+              className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+              disabled={!canManage}
+              value={draftProvider.provider}
+              onChange={(event) => {
+                const next = event.target.value as Provider
+                const defaults: Record<Provider, { model: string; baseUrl: string | null }> = {
+                  openai: { model: "gpt-4o-mini", baseUrl: "https://api.openai.com/v1" },
+                  openrouter: { model: "openai/gpt-4o-mini", baseUrl: "https://openrouter.ai/api/v1" },
+                  groq: { model: "llama-3.1-8b-instant", baseUrl: "https://api.groq.com/openai/v1" },
+                  ollama: { model: "llama3.1", baseUrl: "http://localhost:11434/v1" },
+                  custom: { model: "gpt-4o-mini", baseUrl: "" },
+                  anthropic: { model: "claude-3-5-haiku-latest", baseUrl: "https://api.anthropic.com" },
+                }
+                setDraftProvider({
+                  ...draftProvider,
+                  provider: next,
+                  model: defaults[next].model,
+                  baseUrl: defaults[next].baseUrl,
+                  supportedForChat: next !== "anthropic",
+                })
+              }}
+            >
+              <option value="openai">OpenAI</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="groq">Groq</option>
+              <option value="ollama">Ollama / OpenAI-compatible</option>
+              <option value="custom">Custom OpenAI-compatible API</option>
+              <option value="anthropic">Anthropic Claude (saved only)</option>
+            </select>
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-emerald-50">Model</span>
+            <input
+              className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+              disabled={!canManage}
+              value={draftProvider.model}
+              onChange={(event) => setDraftProvider({ ...draftProvider, model: event.target.value })}
+              placeholder="gpt-4o-mini"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-emerald-50">API key</span>
+            <input
+              className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+              disabled={!canManage}
+              value={providerApiKey}
+              onChange={(event) => setProviderApiKey(event.target.value)}
+              placeholder={draftProvider.apiKeyMasked ?? "Paste API key. It will not be shown again."}
+              type="password"
+            />
+            <p className="text-xs text-[#9dbfb5]">
+              {draftProvider.apiKeyConfigured
+                ? `Saved key: ${draftProvider.apiKeyMasked}. Leave blank to keep it.`
+                : "Your key is encrypted on the server and never returned to the browser."}
+            </p>
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-emerald-50">Base URL</span>
+            <input
+              className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+              disabled={!canManage}
+              value={draftProvider.baseUrl ?? ""}
+              onChange={(event) => setDraftProvider({ ...draftProvider, baseUrl: event.target.value })}
+              placeholder="https://api.openai.com/v1"
+            />
+          </label>
+        </div>
+
+        {draftProvider.provider === "anthropic" && (
+          <div className="mt-4 rounded-xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-sm text-yellow-100">
+            Anthropic Claude can be saved for future support, but Phase 1 live chat currently supports OpenAI-compatible chat APIs only.
+          </div>
+        )}
+
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <Button
+            className="border border-emerald-500/50 bg-[#0b241c] text-white hover:bg-emerald-900"
+            disabled={!canManage || testingProvider || !draftProvider.apiKeyConfigured}
+            onClick={() => void testProviderConnection()}
+            variant="outline"
+          >
+            {testingProvider && <Loader2 className="size-4 animate-spin" />}
+            Test Connection
+          </Button>
+          <Button
+            className="bg-white text-emerald-950 hover:bg-emerald-100"
+            disabled={!canManage || savingProvider || !providerChanged}
+            onClick={() => void saveProviderSettings()}
+          >
+            {savingProvider && <Loader2 className="size-4 animate-spin" />}
+            Save API Settings
+          </Button>
+        </div>
       </section>
 
       {!state.planAccess.canUseAutoReply && (
@@ -259,9 +449,10 @@ export default function AiChatbotPage() {
               These settings control the test chatbot and guarded WhatsApp auto-replies.
             </p>
           </div>
-          <Switch
+          <ToggleControl
             checked={draftSettings.enabled}
             disabled={!canManage}
+            label={draftSettings.enabled ? "Enabled" : "Disabled"}
             onCheckedChange={(checked) => setDraftSettings({ ...draftSettings, enabled: checked })}
           />
         </div>
@@ -284,14 +475,15 @@ export default function AiChatbotPage() {
             </select>
           </label>
 
-          <label className="flex items-center justify-between gap-4 rounded-lg border border-emerald-900 bg-[#07130e]/70 px-4 py-3">
+          <label className="flex items-center justify-between gap-4 rounded-lg border border-emerald-800 bg-[#07130e]/70 px-4 py-3">
             <span>
               <span className="block text-sm font-semibold text-emerald-50">Handover enabled</span>
               <span className="text-xs text-[#9dbfb5]">Use a human handover message when needed.</span>
             </span>
-            <Switch
+            <ToggleControl
               checked={draftSettings.handover_enabled}
               disabled={!canManage}
+              label={draftSettings.handover_enabled ? "On" : "Off"}
               onCheckedChange={(checked) =>
                 setDraftSettings({ ...draftSettings, handover_enabled: checked })
               }
@@ -321,9 +513,10 @@ export default function AiChatbotPage() {
               Only active Pro workspaces can turn this on. Assigned human conversations are skipped.
             </p>
           </div>
-          <Switch
+          <ToggleControl
             checked={draftSettings.auto_reply_enabled}
             disabled={!canManage || !canTurnOnAutoReply}
+            label={draftSettings.auto_reply_enabled ? "On" : "Off"}
             onCheckedChange={(checked) =>
               setDraftSettings({ ...draftSettings, auto_reply_enabled: checked })
             }
@@ -333,7 +526,7 @@ export default function AiChatbotPage() {
         {canManage && (
           <div className="mt-5 flex justify-end">
             <Button
-              className="bg-emerald-400 text-emerald-950 hover:bg-emerald-300"
+              className="bg-white text-emerald-950 hover:bg-emerald-100"
               disabled={!settingsChanged || savingSettings}
               onClick={() => void saveSettings()}
             >
@@ -385,7 +578,7 @@ export default function AiChatbotPage() {
             />
             {canManage && (
               <Button
-                className="w-fit bg-emerald-400 text-emerald-950 hover:bg-emerald-300"
+                className="w-fit bg-white text-emerald-950 hover:bg-emerald-100"
                 disabled={savingSource || !sourceTitle.trim() || !sourceContent.trim()}
                 onClick={() => void saveSource()}
               >
@@ -408,7 +601,7 @@ export default function AiChatbotPage() {
             placeholder="Example: What are your support hours?"
           />
           <Button
-            className="mt-3 bg-emerald-400 text-emerald-950 hover:bg-emerald-300"
+            className="mt-3 bg-white text-emerald-950 hover:bg-emerald-100"
             disabled={testing || !question.trim()}
             onClick={() => void testChatbot()}
           >
@@ -498,6 +691,60 @@ function StatusCard({
       </div>
       <p className="mt-3 text-2xl font-bold text-white">{value}</p>
       <p className="mt-1 text-sm text-[#9dbfb5]">{detail}</p>
+    </div>
+  )
+}
+
+function StatusPill({
+  label,
+  tone,
+}: {
+  label: string
+  tone: "success" | "warning"
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-bold",
+        tone === "success"
+          ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-100"
+          : "border-yellow-400/40 bg-yellow-400/15 text-yellow-100",
+      )}
+    >
+      {label}
+    </span>
+  )
+}
+
+function ToggleControl({
+  checked,
+  disabled,
+  label,
+  onCheckedChange,
+}: {
+  checked: boolean
+  disabled?: boolean
+  label: string
+  onCheckedChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex min-w-28 items-center justify-end gap-3">
+      <span
+        className={cn(
+          "rounded-full px-2.5 py-1 text-xs font-bold",
+          checked
+            ? "bg-emerald-300 text-emerald-950"
+            : "bg-slate-800 text-slate-100",
+          disabled && "opacity-60",
+        )}
+      >
+        {label}
+      </span>
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+      />
     </div>
   )
 }

@@ -110,6 +110,7 @@ export async function maybeHandleAiAutoReply(args: {
     question: customerText,
     settings: chatbotSettings,
     chunks: relevantChunks,
+    workspaceId: args.workspaceId,
     requireProvider: true,
   })
 

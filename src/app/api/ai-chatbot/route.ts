@@ -9,6 +9,7 @@ import {
   type AiChatbotTone,
   type AiKnowledgeSourceType,
 } from '@/lib/ai/chatbot'
+import { getPublicProviderSettings } from '@/lib/ai/provider'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
@@ -28,7 +29,7 @@ export async function GET() {
   }
 
   const admin = supabaseAdmin()
-  const [{ data: settings }, { data: sources }, planAccess] = await Promise.all([
+  const [{ data: settings }, { data: sources }, planAccess, providerSettings, providerConfigured] = await Promise.all([
     admin
       .from('ai_chatbot_settings')
       .select('*')
@@ -40,6 +41,8 @@ export async function GET() {
       .eq('workspace_id', workspace.workspaceId)
       .order('created_at', { ascending: false }),
     getAiPlanAccess(workspace.workspaceId),
+    getPublicProviderSettings(workspace.workspaceId),
+    isAiProviderConfigured(workspace.workspaceId),
   ])
 
   return NextResponse.json({
@@ -51,7 +54,8 @@ export async function GET() {
       } satisfies Omit<AiChatbotSettings, 'id'>),
     sources: sources ?? [],
     planAccess,
-    providerConfigured: isAiProviderConfigured(),
+    providerConfigured,
+    providerSettings,
     permissions: {
       canManage: hasWorkspacePermission(workspace, 'manage_ai_chatbot'),
       canEnableAutoReply: hasWorkspacePermission(workspace, 'enable_ai_auto_reply'),
@@ -80,8 +84,8 @@ export async function PUT(request: Request) {
   if (autoReplyEnabled && !planAccess.canUseAutoReply) {
     return NextResponse.json({ error: planAccess.reason ?? 'Active Pro plan required' }, { status: 402 })
   }
-  if (autoReplyEnabled && !isAiProviderConfigured()) {
-    return NextResponse.json({ error: 'AI provider is not configured on the server yet.' }, { status: 503 })
+  if (autoReplyEnabled && !(await isAiProviderConfigured(workspace.workspaceId))) {
+    return NextResponse.json({ error: 'AI provider is not configured. Add an API key before enabling auto-reply.' }, { status: 503 })
   }
 
   const tone = typeof body.tone === 'string' && TONES.has(body.tone)

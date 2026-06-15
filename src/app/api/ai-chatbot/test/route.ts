@@ -55,6 +55,7 @@ export async function POST(request: Request) {
     question,
     settings: effectiveSettings,
     chunks: relevantChunks,
+    workspaceId: workspace.workspaceId,
   })
 
   await logAiChatbotEvent({
