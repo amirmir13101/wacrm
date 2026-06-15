@@ -74,9 +74,9 @@ const sourceTypeLabels: Record<SourceType, string> = {
 }
 
 const primaryActionClass =
-  "bg-[#3ddf84] text-[#07130e] shadow-[0_10px_26px_rgba(61,223,132,0.18)] hover:bg-[#35c975]"
-const secondaryActionClass =
-  "border border-[#3ddf84]/50 bg-[#0b241c] text-[#dfffee] hover:bg-[#3ddf84] hover:text-[#07130e]"
+  "border border-[#3ddf84] bg-[#3ddf84] text-[#07130e] shadow-[0_10px_26px_rgba(61,223,132,0.22)] hover:bg-[#35c975] disabled:border-[#f6c94a]/55 disabled:bg-[#f6c94a]/25 disabled:text-[#f9e7a0] disabled:opacity-100"
+const activeStateClass = "border-[#3ddf84]/70 bg-[#3ddf84] text-[#07130e]"
+const inactiveStateClass = "border-[#f6c94a]/70 bg-[#f6c94a] text-[#07130e]"
 
 export default function AiChatbotPage() {
   const [state, setState] = useState<ChatbotState | null>(null)
@@ -288,7 +288,12 @@ export default function AiChatbotPage() {
             Add workspace knowledge, test answers, and control safe AI replies for customer messages.
           </p>
         </div>
-        <div className="rounded-full border border-emerald-500/30 bg-emerald-950/50 px-4 py-2 text-sm font-semibold text-emerald-100">
+        <div
+          className={cn(
+            "rounded-full border px-4 py-2 text-sm font-semibold",
+            state.planAccess.canUseAutoReply ? activeStateClass : inactiveStateClass,
+          )}
+        >
           {state.planAccess.canUseAutoReply ? "Active Pro: auto-reply available" : "Draft mode only"}
         </div>
       </div>
@@ -299,12 +304,14 @@ export default function AiChatbotPage() {
           label="Chatbot"
           value={draftSettings.enabled ? "Enabled" : "Disabled"}
           detail={`${knowledgeCount} active knowledge source${knowledgeCount === 1 ? "" : "s"}`}
+          tone={draftSettings.enabled ? "active" : "inactive"}
         />
         <StatusCard
           icon={MessageCircle}
           label="Auto-reply"
           value={draftSettings.auto_reply_enabled ? "On" : "Off"}
           detail={state.planAccess.reason ?? "Allowed on this workspace"}
+          tone={draftSettings.auto_reply_enabled ? "active" : "inactive"}
         />
         <StatusCard
           icon={ShieldCheck}
@@ -315,10 +322,11 @@ export default function AiChatbotPage() {
               ? `${state.providerSettings.provider} · ${state.providerSettings.apiKeyMasked ?? "server default"}`
               : "Add an API key before testing live AI replies"
           }
+          tone={state.providerConfigured ? "active" : "inactive"}
         />
       </section>
 
-      <section className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-5">
+      <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
         <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="flex items-center gap-2">
@@ -337,7 +345,7 @@ export default function AiChatbotPage() {
                   ? "Key saved"
                   : "Key missing"
             }
-            tone={state.providerSettings.lastTestStatus === "success" ? "success" : "warning"}
+            tone={state.providerSettings.apiKeyConfigured ? "success" : "warning"}
           />
         </div>
 
@@ -414,17 +422,16 @@ export default function AiChatbotPage() {
         </div>
 
         {draftProvider.provider === "anthropic" && (
-          <div className="mt-4 rounded-xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-sm text-yellow-100">
+          <div className={cn("mt-4 rounded-xl border p-4 text-sm font-semibold", inactiveStateClass)}>
             Anthropic Claude can be saved for future support, but Phase 1 live chat currently supports OpenAI-compatible chat APIs only.
           </div>
         )}
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
           <Button
-            className={secondaryActionClass}
+            className={primaryActionClass}
             disabled={!canManage || testingProvider || !draftProvider.apiKeyConfigured}
             onClick={() => void testProviderConnection()}
-            variant="outline"
           >
             {testingProvider && <Loader2 className="size-4 animate-spin" />}
             Test Connection
@@ -441,12 +448,12 @@ export default function AiChatbotPage() {
       </section>
 
       {!state.planAccess.canUseAutoReply && (
-        <div className="rounded-xl border border-yellow-400/30 bg-yellow-500/10 p-4 text-sm text-yellow-100">
+        <div className={cn("rounded-xl border p-4 text-sm font-semibold", inactiveStateClass)}>
           {state.planAccess.reason}
         </div>
       )}
 
-      <section className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-5">
+      <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-white">Chatbot Instructions</h2>
@@ -543,7 +550,7 @@ export default function AiChatbotPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-5">
+        <div className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
           <h2 className="text-lg font-bold text-white">Business Knowledge</h2>
           <p className="mt-1 text-sm text-[#9dbfb5]">
             Add FAQs, business rules, service details, pricing notes, and support instructions manually.
@@ -594,7 +601,7 @@ export default function AiChatbotPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-5">
+        <div className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
           <h2 className="text-lg font-bold text-white">Test Chatbot</h2>
           <p className="mt-1 text-sm text-[#9dbfb5]">
             Ask a test question. Answers are restricted to this workspace knowledge.
@@ -618,8 +625,8 @@ export default function AiChatbotPage() {
               className={cn(
                 "mt-4 rounded-xl border p-4 text-sm",
                 testAnswer.status === "answered"
-                  ? "border-[#3ddf84]/35 bg-[#3ddf84]/10 text-[#dfffee]"
-                  : "border-yellow-500/30 bg-yellow-500/10 text-yellow-50",
+                  ? "border-[#3ddf84]/70 bg-[#3ddf84]/15 text-[#eafff4]"
+                  : "border-[#f6c94a]/70 bg-[#f6c94a]/20 text-[#fff0b8]",
               )}
             >
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide opacity-80">
@@ -631,7 +638,7 @@ export default function AiChatbotPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-5">
+      <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
         <div className="flex items-center gap-2">
           <BookOpen className="size-5 text-emerald-300" />
           <h2 className="text-lg font-bold text-white">Knowledge Preview</h2>
@@ -682,20 +689,43 @@ function StatusCard({
   label,
   value,
   detail,
+  tone,
 }: {
   icon: typeof Bot
   label: string
   value: string
   detail: string
+  tone: "active" | "inactive"
 }) {
   return (
-    <div className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-5">
-      <div className="flex items-center gap-3 text-emerald-200">
-        <Icon className="size-5" />
-        <span className="text-sm font-medium">{label}</span>
+    <div
+      className={cn(
+        "rounded-2xl border p-5",
+        tone === "active"
+          ? "border-[#3ddf84]/45 bg-[#3ddf84]/10"
+          : "border-[#f6c94a]/45 bg-[#f6c94a]/10",
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center gap-3",
+          tone === "active" ? "text-[#a7ffd0]" : "text-[#fff0b8]",
+        )}
+      >
+        <span
+          className={cn(
+            "flex size-8 items-center justify-center rounded-full border",
+            tone === "active" ? activeStateClass : inactiveStateClass,
+          )}
+        >
+          <Icon className="size-4" />
+        </span>
+        <span className="text-sm font-semibold">{label}</span>
       </div>
       <p className="mt-3 text-2xl font-bold text-white">{value}</p>
-      <p className="mt-1 text-sm text-[#9dbfb5]">{detail}</p>
+      <p className={cn("mt-1 text-sm", tone === "active" ? "text-[#c8f7df]" : "text-[#fff0b8]")}>
+        {detail}
+      </p>
     </div>
   )
 }
@@ -711,9 +741,7 @@ function StatusPill({
     <span
       className={cn(
         "inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-bold",
-        tone === "success"
-          ? "border-[#3ddf84]/40 bg-[#3ddf84]/15 text-[#dfffee]"
-          : "border-yellow-400/40 bg-yellow-400/15 text-yellow-100",
+        tone === "success" ? activeStateClass : inactiveStateClass,
       )}
     >
       {label}
@@ -736,10 +764,8 @@ function ToggleControl({
     <div className="flex min-w-28 items-center justify-end gap-3">
       <span
         className={cn(
-          "rounded-full px-2.5 py-1 text-xs font-bold",
-          checked
-            ? "bg-[#3ddf84] text-[#07130e]"
-            : "border border-[#17402f] bg-[#0b241c] text-[#c7ddd5]",
+          "rounded-full border px-2.5 py-1 text-xs font-bold",
+          checked ? activeStateClass : inactiveStateClass,
           disabled && "opacity-60",
         )}
       >
@@ -747,7 +773,7 @@ function ToggleControl({
       </span>
       <Switch
         checked={checked}
-        className="data-[checked]:bg-[#3ddf84] data-[unchecked]:bg-[#17402f] focus-visible:ring-[#3ddf84]"
+        className="data-[checked]:bg-[#3ddf84] data-[unchecked]:bg-[#f6c94a] focus-visible:ring-[#3ddf84] disabled:opacity-70"
         disabled={disabled}
         onCheckedChange={onCheckedChange}
       />
