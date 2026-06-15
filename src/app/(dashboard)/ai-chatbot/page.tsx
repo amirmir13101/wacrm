@@ -74,7 +74,7 @@ const sourceTypeLabels: Record<SourceType, string> = {
 }
 
 const primaryActionClass =
-  "border border-[#3ddf84] bg-[#3ddf84] text-[#07130e] shadow-[0_10px_26px_rgba(61,223,132,0.22)] hover:bg-[#35c975] disabled:border-[#8fe7b4] disabled:bg-[#8fe7b4] disabled:text-[#163325] disabled:opacity-80"
+  "border border-[#3ddf84] bg-[#3ddf84] text-[#07130e] shadow-[0_10px_26px_rgba(61,223,132,0.18)] hover:bg-[#35c975] disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-100"
 const controlActionClass = "border-[#3ddf84]/70 bg-[#3ddf84] text-[#07130e]"
 const activeStateClass = "border-[#3ddf84]/70 bg-[#3ddf84] text-[#07130e]"
 const inactiveStateClass = "border-[#f6c94a]/70 bg-[#f6c94a] text-[#07130e]"
