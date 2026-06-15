@@ -1,7 +1,20 @@
 'use client';
 
+import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import Script from 'next/script';
+
+declare global {
+  interface Window {
+    __talkWagonTawkAllowed?: boolean;
+    Tawk_API?: {
+      hideWidget?: () => void;
+      showWidget?: () => void;
+      maximize?: () => void;
+      onLoad?: () => void;
+    };
+  }
+}
 
 const TAWK_PUBLIC_PATHS = new Set([
   '/',
@@ -21,8 +34,30 @@ const TAWK_PUBLIC_PATHS = new Set([
 
 export function TawkToWidget() {
   const pathname = usePathname();
+  const shouldShowTawk = TAWK_PUBLIC_PATHS.has(pathname);
 
-  if (!TAWK_PUBLIC_PATHS.has(pathname)) {
+  useEffect(() => {
+    window.__talkWagonTawkAllowed = shouldShowTawk;
+    const tawk = window.Tawk_API;
+    if (!tawk) return;
+
+    tawk.onLoad = () => {
+      if (window.__talkWagonTawkAllowed) {
+        tawk.showWidget?.();
+      } else {
+        tawk.hideWidget?.();
+      }
+    };
+
+    if (shouldShowTawk) {
+      tawk.showWidget?.();
+      return;
+    }
+
+    tawk.hideWidget?.();
+  }, [shouldShowTawk]);
+
+  if (!shouldShowTawk) {
     return null;
   }
 
@@ -33,6 +68,11 @@ export function TawkToWidget() {
       dangerouslySetInnerHTML={{
         __html: `
           var Tawk_API = Tawk_API || {}, Tawk_LoadStart = new Date();
+          Tawk_API.onLoad = function() {
+            if (window.__talkWagonTawkAllowed === false && Tawk_API.hideWidget) {
+              Tawk_API.hideWidget();
+            }
+          };
           (function(){
             var s1 = document.createElement("script"), s0 = document.getElementsByTagName("script")[0];
             s1.async = true;
