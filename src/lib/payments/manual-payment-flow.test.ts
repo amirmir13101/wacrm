@@ -113,8 +113,9 @@ describe('manual payment flow wiring', () => {
   it('routes Pro and Lifetime pricing CTAs to manual checkout', () => {
     expect(pricingPage).toContain('href: "/checkout/pro"')
     expect(pricingPage).toContain('href: "/checkout/lifetime"')
-    expect(trialCard).toContain("href={isPro ? '/checkout/lifetime' : '/checkout/pro'}")
-    expect(trialCard).toContain("isPro ? 'Request Lifetime Setup' : 'Upgrade to Pro'")
+    expect(trialCard).toContain('href="/checkout/pro"')
+    expect(trialCard).toContain('isPro ? null')
+    expect(trialCard).not.toContain('Request Lifetime Setup')
     expect(trialCard).toContain('Lifetime plan active')
     expect(trialCard).toContain('You are now a Pro user. You can use Talk Wagon CRM with unlimited Pro access.')
     expect(trialCard).not.toContain('Broadcast sending is not limited by the free trial quota')

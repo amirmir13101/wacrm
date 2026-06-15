@@ -105,12 +105,12 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
           <span className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-[#3ddf84]/40 bg-[#3ddf84]/10 px-5 text-sm font-bold text-[#d8fff1]">
             Lifetime plan active
           </span>
-        ) : (
+        ) : isPro ? null : (
           <Link
-            href={isPro ? '/checkout/lifetime' : '/checkout/pro'}
+            href="/checkout/pro"
             className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] px-5 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3ddf84]"
           >
-            {isPro ? 'Request Lifetime Setup' : 'Upgrade to Pro'}
+            Upgrade to Pro
           </Link>
         )}
       </div>
