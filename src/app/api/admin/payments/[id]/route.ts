@@ -71,7 +71,8 @@ export async function PATCH(
     return NextResponse.json({ request: data })
   }
 
-  const workspaceId = await resolveWorkspaceId(paymentRequest)
+  const customerUserId = await approvePaymentCustomer(paymentRequest, adminCheck.profile.id)
+  const workspaceId = await resolveWorkspaceId(paymentRequest, customerUserId)
   if (!workspaceId) {
     return NextResponse.json(
       {
@@ -110,9 +111,10 @@ export async function PATCH(
   return NextResponse.json({ request: data })
 }
 
-async function resolveWorkspaceId(paymentRequest: ManualPaymentRequestRow): Promise<string | null> {
-  if (paymentRequest.workspace_id) return paymentRequest.workspace_id
-
+async function approvePaymentCustomer(
+  paymentRequest: ManualPaymentRequestRow,
+  approvedByProfileId: string,
+): Promise<string | null> {
   const admin = supabaseAdmin()
   let userId = paymentRequest.user_id
 
@@ -121,7 +123,42 @@ async function resolveWorkspaceId(paymentRequest: ManualPaymentRequestRow): Prom
       .from('profiles')
       .select('user_id')
       .ilike('email', paymentRequest.payer_email)
-      .eq('approval_status', 'approved')
+      .or('account_type.is.null,account_type.neq.team_member')
+      .maybeSingle()
+
+    if (error) throw new Error(error.message)
+    userId = profile?.user_id ?? null
+  }
+
+  if (!userId) return null
+
+  const { error } = await admin
+    .from('profiles')
+    .update({
+      approval_status: 'approved',
+      approved_at: new Date().toISOString(),
+      approved_by: approvedByProfileId,
+    })
+    .eq('user_id', userId)
+
+  if (error) throw new Error(error.message)
+  return userId
+}
+
+async function resolveWorkspaceId(
+  paymentRequest: ManualPaymentRequestRow,
+  approvedUserId: string | null,
+): Promise<string | null> {
+  if (paymentRequest.workspace_id) return paymentRequest.workspace_id
+
+  const admin = supabaseAdmin()
+  let userId = approvedUserId ?? paymentRequest.user_id
+
+  if (!userId) {
+    const { data: profile, error } = await admin
+      .from('profiles')
+      .select('user_id')
+      .ilike('email', paymentRequest.payer_email)
       .or('account_type.is.null,account_type.neq.team_member')
       .maybeSingle()
 

@@ -13,6 +13,10 @@ describe('manual payment flow wiring', () => {
     join(root, 'supabase/migrations/031_manual_payment_customer_linking.sql'),
     'utf8',
   )
+  const approvalMigration = readFileSync(
+    join(root, 'supabase/migrations/014_account_approval.sql'),
+    'utf8',
+  )
   const checkoutRoute = readFileSync(
     join(root, 'src/app/api/payments/manual/route.ts'),
     'utf8',
@@ -46,6 +50,12 @@ describe('manual payment flow wiring', () => {
     expect(linkingMigration).toContain('ADD COLUMN IF NOT EXISTS auth_user_created')
   })
 
+  it('keeps normal signup profiles pending until admin approval', () => {
+    expect(approvalMigration).toContain('CREATE OR REPLACE FUNCTION public.handle_new_user()')
+    expect(approvalMigration).toContain("'pending'")
+    expect(approvalMigration).toContain('pending approval status')
+  })
+
   it('validates manual checkout server-side without Stripe or PayPal', () => {
     expect(checkoutRoute).toContain('getManualCheckoutPlan')
     expect(checkoutRoute).toContain('getManualPaymentMethod')
@@ -56,15 +66,20 @@ describe('manual payment flow wiring', () => {
     expect(checkoutRoute).toContain('workspaceResult.workspace.workspaceId')
     expect(checkoutRoute).toContain('phone')
     expect(checkoutRoute).toContain('passwordValidationError')
+    expect(checkoutRoute).toContain("approval_status: 'pending'")
     expect(checkoutRoute).toContain("plan_type: 'trial'")
     expect(checkoutRoute).toContain("subscription_status: 'trialing'")
+    expect(checkoutRoute).not.toContain("approval_status: 'approved'")
     expect(checkoutRoute).not.toContain("subscription_status: 'active',")
     expect(checkoutRoute.toLowerCase()).not.toContain('stripe')
     expect(checkoutRoute.toLowerCase()).not.toContain('paypal')
   })
 
-  it('lets platform admins approve requests and activate workspace plans', () => {
+  it('lets platform admins approve customers from payment review and activate workspace plans', () => {
     expect(adminReviewRoute).toContain('requirePlatformAdmin')
+    expect(adminReviewRoute).toContain('approvePaymentCustomer')
+    expect(adminReviewRoute).toContain("approval_status: 'approved'")
+    expect(adminReviewRoute).toContain('approved_by: approvedByProfileId')
     expect(adminReviewRoute).toContain("plan_type: paymentRequest.plan_type")
     expect(adminReviewRoute).toContain("subscription_status: 'active'")
     expect(adminReviewRoute).toContain('ensureApprovedUserOwnWorkspace')

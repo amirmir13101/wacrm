@@ -166,7 +166,6 @@ async function createOrLinkCheckoutCustomer(args: {
       .from('profiles')
       .update({
         full_name: args.fullName,
-        approval_status: 'approved',
         account_type: 'workspace_owner',
         updated_at: now,
       })
@@ -205,7 +204,7 @@ async function createOrLinkCheckoutCustomer(args: {
       full_name: args.fullName,
       email: args.email,
       role: 'user',
-      approval_status: 'approved',
+      approval_status: 'pending',
       account_type: 'workspace_owner',
       must_change_password: false,
       updated_at: now,
