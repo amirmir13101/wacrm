@@ -206,12 +206,6 @@ export async function DELETE(
 
   if (lookupError) return NextResponse.json({ error: lookupError.message }, { status: 500 })
   if (!paymentRequest) return NextResponse.json({ error: 'Payment request not found.' }, { status: 404 })
-  if (paymentRequest.status === 'approved') {
-    return NextResponse.json(
-      { error: 'Approved payment requests are kept for audit history and cannot be deleted.' },
-      { status: 400 },
-    )
-  }
 
   const { error } = await admin.from('manual_payment_requests').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

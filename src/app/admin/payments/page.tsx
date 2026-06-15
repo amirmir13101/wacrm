@@ -120,13 +120,10 @@ export default function AdminPaymentsPage() {
   }
 
   async function deleteRequest(request: ManualPaymentRequest) {
-    if (request.status === "approved") {
-      toast.error("Approved payment requests are kept for audit history and cannot be deleted.");
-      return;
-    }
-
     const confirmed = window.confirm(
-      `Delete this ${request.plan_type} payment request from ${request.payer_email}? This removes only the payment request record.`,
+      request.status === "approved"
+        ? "Are you sure you want to delete this approved manual payment record?"
+        : `Delete this ${request.plan_type} payment request from ${request.payer_email}? This removes only the payment request record.`,
     );
     if (!confirmed) return;
 
@@ -327,14 +324,10 @@ export default function AdminPaymentsPage() {
                               type="button"
                               size="sm"
                               variant="outline"
-                              disabled={savingId === request.id || request.status === "approved"}
+                              disabled={savingId === request.id}
                               onClick={() => void deleteRequest(request)}
                               className="border-slate-700 text-slate-200 hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                              title={
-                                request.status === "approved"
-                                  ? "Approved payment requests are kept for audit history."
-                                  : "Delete this payment request record"
-                              }
+                              title="Delete this payment request record"
                             >
                               {savingId === request.id ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -115,13 +115,13 @@ describe('manual payment flow wiring', () => {
     expect(adminReviewRoute).not.toContain('Lifetime plan active')
   })
 
-  it('lets platform admins delete non-approved payment request records only', () => {
+  it('lets platform admins delete manual payment request records without deleting users or workspaces', () => {
     expect(adminReviewRoute).toContain('export async function DELETE')
     expect(adminReviewRoute).toContain('requirePlatformAdmin')
-    expect(adminReviewRoute).toContain("paymentRequest.status === 'approved'")
     expect(adminReviewRoute).toContain('manual_payment_requests')
     expect(adminReviewRoute).toContain('.delete()')
-    expect(adminReviewRoute).toContain('Approved payment requests are kept for audit history')
+    expect(adminReviewRoute).not.toContain("paymentRequest.status === 'approved'")
+    expect(adminReviewRoute).not.toContain('Approved payment requests are kept for audit history')
     expect(adminReviewRoute).not.toContain('auth.admin.deleteUser')
     expect(adminReviewRoute).not.toContain(".from('workspaces').delete")
     expect(adminReviewRoute).not.toContain(".from('profiles').delete")
@@ -134,7 +134,9 @@ describe('manual payment flow wiring', () => {
     expect(adminPaymentsPage).toContain('method: "DELETE"')
     expect(adminPaymentsPage).toContain('setRequests((current) => current.filter')
     expect(adminPaymentsPage).toContain('window.confirm')
-    expect(adminPaymentsPage).toContain('Approved payment requests are kept for audit history')
+    expect(adminPaymentsPage).toContain('Are you sure you want to delete this approved manual payment record?')
+    expect(adminPaymentsPage).not.toContain('Approved payment requests are kept for audit history')
+    expect(adminPaymentsPage).not.toContain('disabled={savingId === request.id || request.status === "approved"}')
   })
 
   it('routes Pro monthly, Pro yearly, and Lifetime setup pricing CTAs to manual checkout', () => {
