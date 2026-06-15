@@ -22,6 +22,7 @@ interface ManualPaymentRequest {
   workspace_id: string | null;
   user_id: string | null;
   plan_type: "pro" | "lifetime";
+  billing_period: "monthly" | "yearly" | "lifetime_setup" | null;
   amount: number;
   currency: string;
   payment_method: "easypaisa" | "bank_transfer";
@@ -38,7 +39,13 @@ interface ManualPaymentRequest {
   approved_at: string | null;
   rejected_at: string | null;
   created_at: string;
-  workspace?: { name?: string | null; plan_type?: string | null; subscription_status?: string | null } | null;
+  workspace?: {
+    name?: string | null;
+    plan_type?: string | null;
+    subscription_status?: string | null;
+    billing_period?: string | null;
+    subscription_ends_at?: string | null;
+  } | null;
   profile?: { full_name?: string | null; email?: string | null } | null;
 }
 
@@ -89,7 +96,7 @@ export default function AdminPaymentsPage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Failed to update payment request");
-      toast.success(action === "approve" ? "Payment approved and workspace activated." : "Payment request rejected.");
+      toast.success(action === "approve" ? "Payment request approved." : "Payment request rejected.");
       const nextStatus = action === "approve" ? "approved" : "rejected";
       setRequests((current) =>
         current.flatMap((request) => {
@@ -219,7 +226,16 @@ export default function AdminPaymentsPage() {
                         </div>
                       </TableCell>
                       <TableCell className="align-top text-slate-200">
-                        <div className="font-semibold capitalize">{request.plan_type}</div>
+                        <div className="font-semibold capitalize">
+                          {request.plan_type === "lifetime" ? "Lifetime setup" : "Pro"}
+                        </div>
+                        {request.billing_period ? (
+                          <div className="text-xs text-slate-500">
+                            {request.billing_period === "lifetime_setup"
+                              ? "Self-hosted setup"
+                              : `${request.billing_period} billing`}
+                          </div>
+                        ) : null}
                         <div className="text-xs text-slate-500">
                           {request.currency} {request.amount}
                         </div>

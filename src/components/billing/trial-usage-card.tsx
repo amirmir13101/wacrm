@@ -12,8 +12,17 @@ interface TrialUsageCardProps {
 
 function planLabel(planType?: string | null) {
   if (planType === 'pro') return 'Pro'
-  if (planType === 'lifetime') return 'Lifetime'
+  if (planType === 'lifetime') return 'Lifetime setup'
   return 'Free Trial'
+}
+
+function formatPlanDate(value?: string | null) {
+  if (!value) return null
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(value))
 }
 
 export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
@@ -71,15 +80,24 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
     )
   }
 
-  const isUnlimited = !trial.hasTrialBroadcastLimit
-  const isPro = trial.planType === 'pro'
-  const isLifetime = trial.planType === 'lifetime'
+  const isPro = trial.isActivePro
+  const isProExpired = trial.isProExpired
+  const isLifetimeSetup = trial.isLifetimeSetup
   const remaining = trial.trialBroadcastRemaining ?? 0
+  const expiryDate = formatPlanDate(trial.subscriptionEndsAt)
+  const proPeriodLabel = trial.billingPeriod === 'yearly' ? 'yearly' : 'monthly'
   const planMessage = isPro
-    ? 'You are now a Pro user. You can use Talk Wagon CRM with unlimited Pro access.'
-    : isLifetime
-      ? 'Your Lifetime plan is active. You have permanent Talk Wagon CRM access for this workspace.'
-      : `${trial.trialBroadcastUsed.toLocaleString()} / ${trial.trialBroadcastLimit.toLocaleString()} trial broadcast messages used. ${remaining.toLocaleString()} remaining.`
+    ? [
+        'You are now a Pro user. You can use Talk Wagon CRM with unlimited Pro access.',
+        expiryDate ? `Your Pro ${proPeriodLabel} plan is active until ${expiryDate}.` : null,
+      ]
+        .filter(Boolean)
+        .join(' ')
+    : isProExpired
+      ? 'Your Pro plan has expired. Renew your Pro plan to continue using Pro features.'
+      : isLifetimeSetup
+        ? 'Lifetime is a self-hosted setup request. Hosted CRM access continues through Trial or Pro.'
+        : `${trial.trialBroadcastUsed.toLocaleString()} / ${trial.trialBroadcastLimit.toLocaleString()} trial broadcast messages used. ${remaining.toLocaleString()} remaining.`
 
   return (
     <section className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
@@ -94,18 +112,25 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
               <span className="text-sm font-semibold text-[#d8fff1]">
                 {trial.trialDaysRemaining} day{trial.trialDaysRemaining === 1 ? '' : 's'} left
               </span>
+            ) : isProExpired ? (
+              <span className="text-sm font-semibold text-amber-200">Expired</span>
             ) : (
-              <span className="text-sm font-semibold text-[#d8fff1]">Unlimited CRM usage</span>
+              <span className="text-sm font-semibold text-[#d8fff1]">
+                {isPro ? 'Unlimited CRM usage' : 'Self-hosted setup request'}
+              </span>
             )}
           </div>
           <p className="mt-2 text-sm text-[#b8cfc7]">{planMessage}</p>
         </div>
 
-        {isLifetime ? (
-          <span className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-[#3ddf84]/40 bg-[#3ddf84]/10 px-5 text-sm font-bold text-[#d8fff1]">
-            Lifetime plan active
-          </span>
-        ) : isPro ? null : (
+        {isProExpired ? (
+          <Link
+            href="/checkout/pro"
+            className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] px-5 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3ddf84]"
+          >
+            Renew Pro
+          </Link>
+        ) : isLifetimeSetup || isPro ? null : (
           <Link
             href="/checkout/pro"
             className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] px-5 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3ddf84]"
@@ -115,7 +140,7 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
         )}
       </div>
 
-      {!isUnlimited ? (
+      {trial.hasTrialBroadcastLimit ? (
         <div className={compact ? 'mt-3' : 'mt-4'}>
           <div className="h-2 overflow-hidden rounded-full bg-emerald-950">
             <div

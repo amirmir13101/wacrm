@@ -13,6 +13,10 @@ describe('manual payment flow wiring', () => {
     join(root, 'supabase/migrations/031_manual_payment_customer_linking.sql'),
     'utf8',
   )
+  const subscriptionMigration = readFileSync(
+    join(root, 'supabase/migrations/032_workspace_subscription_expiry.sql'),
+    'utf8',
+  )
   const approvalMigration = readFileSync(
     join(root, 'supabase/migrations/014_account_approval.sql'),
     'utf8',
@@ -51,6 +55,14 @@ describe('manual payment flow wiring', () => {
     expect(linkingMigration).toContain('ADD COLUMN IF NOT EXISTS auth_user_created')
   })
 
+  it('stores hosted Pro billing periods separately from lifetime setup requests', () => {
+    expect(subscriptionMigration).toContain('ALTER TABLE manual_payment_requests')
+    expect(subscriptionMigration).toContain('ADD COLUMN IF NOT EXISTS billing_period')
+    expect(subscriptionMigration).toContain("billing_period IS NULL OR billing_period IN ('monthly', 'yearly', 'lifetime_setup')")
+    expect(subscriptionMigration).toContain("WHEN plan_type = 'pro' THEN 'monthly'")
+    expect(subscriptionMigration).toContain("WHEN plan_type = 'lifetime' THEN 'lifetime_setup'")
+  })
+
   it('keeps normal signup profiles pending until admin approval', () => {
     expect(approvalMigration).toContain('CREATE OR REPLACE FUNCTION public.handle_new_user()')
     expect(approvalMigration).toContain("'pending'")
@@ -61,6 +73,9 @@ describe('manual payment flow wiring', () => {
     expect(checkoutRoute).toContain('getManualCheckoutPlan')
     expect(checkoutRoute).toContain('getManualPaymentMethod')
     expect(checkoutRoute).toContain('manual_payment_requests')
+    expect(checkoutRoute).toContain('requestedBillingPeriod')
+    expect(checkoutRoute).toContain("requestedBillingPeriod === 'yearly'")
+    expect(checkoutRoute).toContain('billing_period: plan.billingPeriod')
     expect(checkoutRoute).toContain('admin.auth.admin.createUser')
     expect(checkoutRoute).toContain('ensureCheckoutWorkspace')
     expect(checkoutRoute).toContain('requireCurrentWorkspace')
@@ -76,16 +91,28 @@ describe('manual payment flow wiring', () => {
     expect(checkoutRoute.toLowerCase()).not.toContain('paypal')
   })
 
-  it('lets platform admins approve customers from payment review and activate workspace plans', () => {
+  it('lets platform admins approve Pro customers and activate monthly or yearly workspace plans', () => {
     expect(adminReviewRoute).toContain('requirePlatformAdmin')
     expect(adminReviewRoute).toContain('approvePaymentCustomer')
     expect(adminReviewRoute).toContain("approval_status: 'approved'")
     expect(adminReviewRoute).toContain('approved_by: approvedByProfileId')
-    expect(adminReviewRoute).toContain("plan_type: paymentRequest.plan_type")
+    expect(adminReviewRoute).toContain("paymentRequest.plan_type === 'pro'")
+    expect(adminReviewRoute).toContain("billing_period: billingPeriod")
+    expect(adminReviewRoute).toContain("endsAt.setMonth(endsAt.getMonth() + 1)")
+    expect(adminReviewRoute).toContain("endsAt.setFullYear(endsAt.getFullYear() + 1)")
+    expect(adminReviewRoute).toContain('subscription_started_at')
+    expect(adminReviewRoute).toContain('subscription_ends_at')
     expect(adminReviewRoute).toContain("subscription_status: 'active'")
     expect(adminReviewRoute).toContain('ensureApprovedUserOwnWorkspace')
     expect(adminReviewRoute).toContain("status: 'rejected'")
     expect(adminReviewRoute).not.toContain('Ask the customer to sign up or login')
+  })
+
+  it('keeps Lifetime approval as a self-hosted setup request instead of hosted lifetime access', () => {
+    expect(adminReviewRoute).toContain("paymentRequest.plan_type === 'pro'")
+    expect(adminReviewRoute).not.toContain("plan_type: paymentRequest.plan_type")
+    expect(adminReviewRoute).not.toContain("plan_type: 'lifetime'")
+    expect(adminReviewRoute).not.toContain('Lifetime plan active')
   })
 
   it('lets platform admins delete non-approved payment request records only', () => {
@@ -110,13 +137,16 @@ describe('manual payment flow wiring', () => {
     expect(adminPaymentsPage).toContain('Approved payment requests are kept for audit history')
   })
 
-  it('routes Pro and Lifetime pricing CTAs to manual checkout', () => {
+  it('routes Pro monthly, Pro yearly, and Lifetime setup pricing CTAs to manual checkout', () => {
     expect(pricingPage).toContain('href: "/checkout/pro"')
+    expect(pricingPage).toContain('yearlyHref: "/checkout/pro-yearly"')
     expect(pricingPage).toContain('href: "/checkout/lifetime"')
     expect(trialCard).toContain('href="/checkout/pro"')
-    expect(trialCard).toContain('isPro ? null')
+    expect(trialCard).toContain('Renew Pro')
+    expect(trialCard).toContain('isProExpired')
     expect(trialCard).not.toContain('Request Lifetime Setup')
-    expect(trialCard).toContain('Lifetime plan active')
+    expect(trialCard).not.toContain('Lifetime plan active')
+    expect(trialCard).toContain('Lifetime is a self-hosted setup request')
     expect(trialCard).toContain('You are now a Pro user. You can use Talk Wagon CRM with unlimited Pro access.')
     expect(trialCard).not.toContain('Broadcast sending is not limited by the free trial quota')
   })
@@ -145,6 +175,7 @@ describe('manual payment flow wiring', () => {
     expect(checkoutForm).not.toContain('>Login</Link>')
     expect(checkoutForm).not.toContain('After submitting, send your payment')
     expect(checkoutForm).toContain('const selectedPaymentDetails = MANUAL_PAYMENT_METHODS[paymentMethod]')
+    expect(checkoutForm).toContain('billing_period: plan.billingPeriod')
     expect(checkoutForm).toContain('selectedPaymentDetails.fields.map')
     expect(checkoutForm).toContain('flex justify-center')
     expect(checkoutForm).toContain('text-red-700')

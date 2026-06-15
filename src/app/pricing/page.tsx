@@ -112,8 +112,11 @@ const plans = [
       "For growing teams that want all Talk Wagon CRM features, unlimited CRM usage, team workflows, broadcasts, automations, and pipeline tools.",
     cta: "Upgrade to Pro",
     href: "/checkout/pro",
+    yearlyCta: "Choose Yearly",
+    yearlyHref: "/checkout/pro-yearly",
+    yearlyPrice: "$12/year",
     note:
-      "Use your own official WhatsApp API key. Any WhatsApp/Meta conversation or API charges are separate from Talk Wagon pricing.",
+      "Choose monthly or yearly manual Pro activation. Use your own official WhatsApp API key; WhatsApp/Meta charges are separate.",
     featured: true,
     features: [
       "Unlimited messages inside Talk Wagon CRM",
@@ -133,16 +136,16 @@ const plans = [
   {
     name: "Lifetime",
     price: "$499",
-    billing: "Self-hosted CRM with your company branding",
+    billing: "Self-hosted CRM setup request",
     description:
       "Best for agencies, hosting companies, and businesses that want a branded self-hosted WhatsApp CRM deployed for their own company.",
     cta: "Request Lifetime Setup",
     href: "/checkout/lifetime",
     featured: false,
     note:
-      "Server, domain, WhatsApp/Meta API, and any third-party provider costs are separate unless included in a custom agreement.",
+      "Lifetime is a self-hosted setup service request, not a hosted SaaS subscription. Server, domain, WhatsApp/Meta API, and any third-party provider costs are separate unless included in a custom agreement.",
     features: [
-      "One-time lifetime setup",
+      "One-time self-hosted setup request",
       "Self-hosted CRM deployment",
       "Your company branding",
       "Custom logo and public frontend branding",
@@ -153,7 +156,7 @@ const plans = [
       "AI automation workflows",
       "Sales pipeline",
       "Admin approval system",
-      "Production deployment support",
+      "Production deployment follow-up",
       "Good for agencies and white-label use",
     ],
   },
@@ -378,6 +381,14 @@ export default function PricingPage() {
                 >
                   {plan.cta}
                 </Link>
+                {plan.name === "Pro" && "yearlyHref" in plan ? (
+                  <Link
+                    href={plan.yearlyHref}
+                    className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-full border border-[#3ddf84]/70 text-sm font-bold text-white transition-colors hover:bg-[#ffbd29] hover:text-[#07130e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                  >
+                    {plan.yearlyCta} - {plan.yearlyPrice}
+                  </Link>
+                ) : null}
                 <p className={`mt-5 text-xs leading-6 ${plan.featured ? "text-[#b8cfc7]" : "text-[#5b7169]"}`}>
                   {plan.note}
                 </p>

@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: CheckoutPageProps): Promise<M
     title: `${plan.shortTitle} Manual Checkout | Talk Wagon`,
     description: `Submit a manual payment request for ${plan.title}. Send payment proof by WhatsApp or live chat for admin approval.`,
     alternates: {
-      canonical: `${siteUrl}/checkout/${plan.planType}`,
+      canonical: `${siteUrl}/checkout/${plan.checkoutSlug}`,
     },
     robots: {
       index: false,

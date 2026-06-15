@@ -11,6 +11,7 @@ interface ManualPaymentRequestRow {
   readonly workspace_id: string | null
   readonly user_id: string | null
   readonly plan_type: 'pro' | 'lifetime'
+  readonly billing_period: 'monthly' | 'yearly' | 'lifetime_setup' | null
   readonly payer_email: string
   readonly status: 'pending' | 'approved' | 'rejected'
 }
@@ -44,7 +45,7 @@ export async function PATCH(
   const admin = supabaseAdmin()
   const { data: paymentRequest, error: lookupError } = await admin
     .from('manual_payment_requests')
-    .select('id, workspace_id, user_id, plan_type, payer_email, status')
+    .select('id, workspace_id, user_id, plan_type, billing_period, payer_email, status')
     .eq('id', id)
     .maybeSingle<ManualPaymentRequestRow>()
 
@@ -71,28 +72,44 @@ export async function PATCH(
     return NextResponse.json({ request: data })
   }
 
-  const customerUserId = await approvePaymentCustomer(paymentRequest, adminCheck.profile.id)
-  const workspaceId = await resolveWorkspaceId(paymentRequest, customerUserId)
-  if (!workspaceId) {
-    return NextResponse.json(
-      {
-        error:
-          'This payment request is not linked to a customer workspace. Ask the customer to resubmit checkout or contact support.',
-      },
-      { status: 400 },
-    )
+  let workspaceId = paymentRequest.workspace_id
+
+  if (paymentRequest.plan_type === 'pro') {
+    const customerUserId = await approvePaymentCustomer(paymentRequest, adminCheck.profile.id)
+    workspaceId = await resolveWorkspaceId(paymentRequest, customerUserId)
+    if (!workspaceId) {
+      return NextResponse.json(
+        {
+          error:
+            'This payment request is not linked to a customer workspace. Ask the customer to resubmit checkout or contact support.',
+        },
+        { status: 400 },
+      )
+    }
+
+    const billingPeriod = paymentRequest.billing_period === 'yearly' ? 'yearly' : 'monthly'
+    const now = new Date()
+    const endsAt = new Date(now)
+    if (billingPeriod === 'yearly') {
+      endsAt.setFullYear(endsAt.getFullYear() + 1)
+    } else {
+      endsAt.setMonth(endsAt.getMonth() + 1)
+    }
+
+    const { error: workspaceError } = await admin
+      .from('workspaces')
+      .update({
+        plan_type: 'pro',
+        subscription_status: 'active',
+        billing_period: billingPeriod,
+        subscription_started_at: now.toISOString(),
+        subscription_ends_at: endsAt.toISOString(),
+        plan_updated_at: now.toISOString(),
+      })
+      .eq('id', workspaceId)
+
+    if (workspaceError) return NextResponse.json({ error: workspaceError.message }, { status: 500 })
   }
-
-  const { error: workspaceError } = await admin
-    .from('workspaces')
-    .update({
-      plan_type: paymentRequest.plan_type,
-      subscription_status: 'active',
-      plan_updated_at: new Date().toISOString(),
-    })
-    .eq('id', workspaceId)
-
-  if (workspaceError) return NextResponse.json({ error: workspaceError.message }, { status: 500 })
 
   const { data, error } = await admin
     .from('manual_payment_requests')

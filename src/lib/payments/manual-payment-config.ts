@@ -1,8 +1,11 @@
 export type ManualCheckoutPlanType = 'pro' | 'lifetime'
+export type ManualCheckoutBillingPeriod = 'monthly' | 'yearly' | 'lifetime_setup'
 export type ManualPaymentMethod = 'easypaisa' | 'bank_transfer'
 
 export interface ManualCheckoutPlan {
   readonly planType: ManualCheckoutPlanType
+  readonly checkoutSlug: string
+  readonly billingPeriod: ManualCheckoutBillingPeriod
   readonly title: string
   readonly shortTitle: string
   readonly amount: number
@@ -22,9 +25,11 @@ export interface ManualPaymentMethodDetails {
 
 export const MANUAL_PAYMENT_WHATSAPP_NUMBER = '447882756946'
 
-export const MANUAL_CHECKOUT_PLANS: Record<ManualCheckoutPlanType, ManualCheckoutPlan> = {
+export const MANUAL_CHECKOUT_PLANS = {
   pro: {
     planType: 'pro',
+    checkoutSlug: 'pro',
+    billingPeriod: 'monthly',
     title: 'Talk Wagon Pro Monthly',
     shortTitle: 'Pro Monthly',
     amount: 1,
@@ -36,8 +41,25 @@ export const MANUAL_CHECKOUT_PLANS: Record<ManualCheckoutPlanType, ManualCheckou
     activationNote:
       'Your Pro workspace is activated by the platform admin after payment proof is confirmed.',
   },
+  pro_yearly: {
+    planType: 'pro',
+    checkoutSlug: 'pro-yearly',
+    billingPeriod: 'yearly',
+    title: 'Talk Wagon Pro Yearly',
+    shortTitle: 'Pro Yearly',
+    amount: 12,
+    currency: 'USD',
+    priceLabel: '$12/year',
+    billingLabel: 'Manual yearly activation',
+    description:
+      'Unlock full Talk Wagon CRM features for one year with team inbox, broadcasts, automations, and pipeline tools.',
+    activationNote:
+      'Your yearly Pro workspace is activated by the platform admin after payment proof is confirmed.',
+  },
   lifetime: {
     planType: 'lifetime',
+    checkoutSlug: 'lifetime',
+    billingPeriod: 'lifetime_setup',
     title: 'Talk Wagon Lifetime Self-Hosted Setup',
     shortTitle: 'Lifetime',
     amount: 499,
@@ -47,9 +69,9 @@ export const MANUAL_CHECKOUT_PLANS: Record<ManualCheckoutPlanType, ManualCheckou
     description:
       'Request a branded self-hosted CRM setup for your company with Talk Wagon workspace features.',
     activationNote:
-      'Your lifetime setup is reviewed and activated manually after payment proof is confirmed.',
+      'Your lifetime self-hosted setup request is reviewed manually after payment proof is confirmed.',
   },
-}
+} as const satisfies Record<string, ManualCheckoutPlan>
 
 export const MANUAL_PAYMENT_METHODS: Record<ManualPaymentMethod, ManualPaymentMethodDetails> = {
   easypaisa: {
@@ -75,7 +97,9 @@ export const MANUAL_PAYMENT_METHODS: Record<ManualPaymentMethod, ManualPaymentMe
 }
 
 export function getManualCheckoutPlan(plan: string): ManualCheckoutPlan | null {
-  if (plan === 'pro' || plan === 'lifetime') return MANUAL_CHECKOUT_PLANS[plan]
+  if (plan === 'pro') return MANUAL_CHECKOUT_PLANS.pro
+  if (plan === 'pro-yearly' || plan === 'pro_yearly') return MANUAL_CHECKOUT_PLANS.pro_yearly
+  if (plan === 'lifetime') return MANUAL_CHECKOUT_PLANS.lifetime
   return null
 }
 

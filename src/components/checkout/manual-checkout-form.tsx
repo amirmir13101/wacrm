@@ -84,6 +84,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           plan_type: plan.planType,
+          billing_period: plan.billingPeriod,
           payment_method: paymentMethod,
           ...(isSignedInCheckout
             ? { payer_email: signedInEmail }

@@ -26,9 +26,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid checkout request.' }, { status: 400 })
   }
 
-  const plan = getManualCheckoutPlan(readString(body.plan_type))
+  const requestedPlanType = readString(body.plan_type)
+  const requestedBillingPeriod = readString(body.billing_period)
+  const planSlug =
+    requestedPlanType === 'pro' && requestedBillingPeriod === 'yearly'
+      ? 'pro-yearly'
+      : requestedPlanType
+  const plan = getManualCheckoutPlan(planSlug)
   if (!plan) {
     return NextResponse.json({ error: 'Choose a valid checkout plan.' }, { status: 400 })
+  }
+
+  const billingPeriod = requestedBillingPeriod || plan.billingPeriod
+  if (billingPeriod !== plan.billingPeriod) {
+    return NextResponse.json({ error: 'Choose a valid billing period for this plan.' }, { status: 400 })
   }
 
   const paymentMethod = getManualPaymentMethod(readString(body.payment_method))
@@ -113,6 +124,7 @@ export async function POST(request: Request) {
       workspace_id: workspaceId,
       user_id: linkedUserId,
       plan_type: plan.planType,
+      billing_period: plan.billingPeriod,
       amount: plan.amount,
       currency: plan.currency,
       payment_method: paymentMethod.id,
