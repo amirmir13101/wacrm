@@ -12,6 +12,7 @@ export type PermissionGroupId =
   | 'broadcasts'
   | 'templates'
   | 'automations'
+  | 'ai_chatbot'
   | 'pipeline'
   | 'reports'
   | 'pricing'
@@ -113,6 +114,17 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'create_automations', label: 'Create automations' },
       { key: 'edit_automations', label: 'Edit automations' },
       { key: 'activate_deactivate_automations', label: 'Activate/deactivate automations' },
+    ],
+  },
+  {
+    id: 'ai_chatbot',
+    title: 'AI Chatbot',
+    helper: 'Manual knowledge base, chatbot testing, and live AI reply controls.',
+    section: 'main',
+    items: [
+      { key: 'view_ai_chatbot', label: 'View AI chatbot' },
+      { key: 'manage_ai_chatbot', label: 'Manage AI chatbot knowledge' },
+      { key: 'enable_ai_auto_reply', label: 'Enable AI auto-reply', danger: true },
     ],
   },
   {
@@ -240,7 +252,7 @@ export const ADVANCED_PERMISSION_SECTIONS = [
   {
     id: 'main',
     title: 'Main access',
-    groupIds: ['dashboard', 'inbox', 'contacts', 'pipeline', 'broadcasts', 'automations', 'reports'],
+    groupIds: ['dashboard', 'inbox', 'contacts', 'pipeline', 'broadcasts', 'automations', 'ai_chatbot', 'reports'],
   },
   {
     id: 'conversation',
@@ -285,6 +297,7 @@ export const MAIN_ACCESS_PERMISSIONS: Array<{
   { key: 'view_pipeline', label: 'Pipeline' },
   { key: 'view_broadcasts', label: 'Broadcasts' },
   { key: 'view_automations', label: 'Automations' },
+  { key: 'view_ai_chatbot', label: 'AI Chatbot' },
   { key: 'view_reports', label: 'Reports' },
 ]
 

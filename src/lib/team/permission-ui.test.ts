@@ -38,6 +38,7 @@ describe('team permission UI helpers', () => {
       'Pipeline',
       'Broadcasts',
       'Automations',
+      'AI Chatbot',
       'Reports',
     ])
   })

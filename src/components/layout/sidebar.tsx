@@ -16,6 +16,7 @@ import {
   GitBranch,
   Radio,
   Zap,
+  Bot,
   Settings,
   LogOut,
   User,
@@ -47,6 +48,7 @@ const navItems: Array<{
   { href: "/pipelines", label: "Pipelines", icon: GitBranch, permission: "view_pipeline" },
   { href: "/broadcasts", label: "Broadcasts", icon: Radio, permission: "view_broadcasts" },
   { href: "/automations", label: "Automations", icon: Zap, permission: "view_automations" },
+  { href: "/ai-chatbot", label: "AI Chatbot", icon: Bot, permission: "view_ai_chatbot" },
   { href: "/team", label: "Team", icon: UserCheck, permission: "view_team" },
 ];
 
