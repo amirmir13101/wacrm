@@ -74,7 +74,8 @@ const sourceTypeLabels: Record<SourceType, string> = {
 }
 
 const primaryActionClass =
-  "border border-[#3ddf84] bg-[#3ddf84] text-[#07130e] shadow-[0_10px_26px_rgba(61,223,132,0.22)] hover:bg-[#35c975] disabled:border-[#f6c94a]/55 disabled:bg-[#f6c94a]/25 disabled:text-[#f9e7a0] disabled:opacity-100"
+  "border border-[#3ddf84] bg-[#3ddf84] text-[#07130e] shadow-[0_10px_26px_rgba(61,223,132,0.22)] hover:bg-[#35c975] disabled:border-[#8fe7b4] disabled:bg-[#8fe7b4] disabled:text-[#163325] disabled:opacity-80"
+const controlActionClass = "border-[#3ddf84]/70 bg-[#3ddf84] text-[#07130e]"
 const activeStateClass = "border-[#3ddf84]/70 bg-[#3ddf84] text-[#07130e]"
 const inactiveStateClass = "border-[#f6c94a]/70 bg-[#f6c94a] text-[#07130e]"
 
@@ -765,7 +766,7 @@ function ToggleControl({
       <span
         className={cn(
           "rounded-full border px-2.5 py-1 text-xs font-bold",
-          checked ? activeStateClass : inactiveStateClass,
+          controlActionClass,
           disabled && "opacity-60",
         )}
       >
@@ -773,7 +774,7 @@ function ToggleControl({
       </span>
       <Switch
         checked={checked}
-        className="data-[checked]:bg-[#3ddf84] data-[unchecked]:bg-[#f6c94a] focus-visible:ring-[#3ddf84] disabled:opacity-70"
+        className="data-[checked]:bg-[#3ddf84] data-[unchecked]:bg-[#8fe7b4] focus-visible:ring-[#3ddf84] disabled:opacity-70"
         disabled={disabled}
         onCheckedChange={onCheckedChange}
       />
