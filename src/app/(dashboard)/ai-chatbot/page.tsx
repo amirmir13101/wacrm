@@ -73,6 +73,11 @@ const sourceTypeLabels: Record<SourceType, string> = {
   instructions: "Instructions",
 }
 
+const primaryActionClass =
+  "bg-[#3ddf84] text-[#07130e] shadow-[0_10px_26px_rgba(61,223,132,0.18)] hover:bg-[#35c975]"
+const secondaryActionClass =
+  "border border-[#3ddf84]/50 bg-[#0b241c] text-[#dfffee] hover:bg-[#3ddf84] hover:text-[#07130e]"
+
 export default function AiChatbotPage() {
   const [state, setState] = useState<ChatbotState | null>(null)
   const [loading, setLoading] = useState(true)
@@ -416,7 +421,7 @@ export default function AiChatbotPage() {
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
           <Button
-            className="border border-emerald-500/50 bg-[#0b241c] text-white hover:bg-emerald-900"
+            className={secondaryActionClass}
             disabled={!canManage || testingProvider || !draftProvider.apiKeyConfigured}
             onClick={() => void testProviderConnection()}
             variant="outline"
@@ -425,7 +430,7 @@ export default function AiChatbotPage() {
             Test Connection
           </Button>
           <Button
-            className="bg-white text-emerald-950 hover:bg-emerald-100"
+            className={primaryActionClass}
             disabled={!canManage || savingProvider || !providerChanged}
             onClick={() => void saveProviderSettings()}
           >
@@ -526,7 +531,7 @@ export default function AiChatbotPage() {
         {canManage && (
           <div className="mt-5 flex justify-end">
             <Button
-              className="bg-white text-emerald-950 hover:bg-emerald-100"
+              className={primaryActionClass}
               disabled={!settingsChanged || savingSettings}
               onClick={() => void saveSettings()}
             >
@@ -578,7 +583,7 @@ export default function AiChatbotPage() {
             />
             {canManage && (
               <Button
-                className="w-fit bg-white text-emerald-950 hover:bg-emerald-100"
+                className={cn("w-fit", primaryActionClass)}
                 disabled={savingSource || !sourceTitle.trim() || !sourceContent.trim()}
                 onClick={() => void saveSource()}
               >
@@ -601,7 +606,7 @@ export default function AiChatbotPage() {
             placeholder="Example: What are your support hours?"
           />
           <Button
-            className="mt-3 bg-white text-emerald-950 hover:bg-emerald-100"
+            className={cn("mt-3", primaryActionClass)}
             disabled={testing || !question.trim()}
             onClick={() => void testChatbot()}
           >
@@ -613,7 +618,7 @@ export default function AiChatbotPage() {
               className={cn(
                 "mt-4 rounded-xl border p-4 text-sm",
                 testAnswer.status === "answered"
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-50"
+                  ? "border-[#3ddf84]/35 bg-[#3ddf84]/10 text-[#dfffee]"
                   : "border-yellow-500/30 bg-yellow-500/10 text-yellow-50",
               )}
             >
@@ -707,7 +712,7 @@ function StatusPill({
       className={cn(
         "inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-bold",
         tone === "success"
-          ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-100"
+          ? "border-[#3ddf84]/40 bg-[#3ddf84]/15 text-[#dfffee]"
           : "border-yellow-400/40 bg-yellow-400/15 text-yellow-100",
       )}
     >
@@ -733,8 +738,8 @@ function ToggleControl({
         className={cn(
           "rounded-full px-2.5 py-1 text-xs font-bold",
           checked
-            ? "bg-emerald-300 text-emerald-950"
-            : "bg-slate-800 text-slate-100",
+            ? "bg-[#3ddf84] text-[#07130e]"
+            : "border border-[#17402f] bg-[#0b241c] text-[#c7ddd5]",
           disabled && "opacity-60",
         )}
       >
@@ -742,6 +747,7 @@ function ToggleControl({
       </span>
       <Switch
         checked={checked}
+        className="data-[checked]:bg-[#3ddf84] data-[unchecked]:bg-[#17402f] focus-visible:ring-[#3ddf84]"
         disabled={disabled}
         onCheckedChange={onCheckedChange}
       />
