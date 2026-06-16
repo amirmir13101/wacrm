@@ -100,6 +100,63 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(autoReply).toContain('recordAiSkippedReason')
   })
 
+  it('renders inbox conversation AI controls and readable skipped reasons', () => {
+    const thread = read('src/components/inbox/message-thread.tsx')
+
+    expect(thread).toContain('/api/ai-chatbot/conversations/${conversationId}')
+    expect(thread).toContain('/api/ai-chatbot/conversations/${conversation.id}')
+    expect(thread).toContain('Pause AI')
+    expect(thread).toContain('Resume AI')
+    expect(thread).toContain('Mark Needs Human')
+    expect(thread).toContain('lastSkippedMessage')
+    expect(thread).toContain('AI active')
+    expect(thread).toContain('AI paused')
+    expect(thread).toContain('Needs human')
+  })
+
+  it('lets owners edit knowledge sources and refreshes chunks safely', () => {
+    const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
+    const route = read('src/app/api/ai-chatbot/sources/[id]/route.ts')
+
+    expect(page).toContain('Edit Business Knowledge')
+    expect(page).toContain('Update Knowledge')
+    expect(page).toContain('Cancel edit')
+    expect(page).toContain('editSource(source)')
+    expect(route).toContain('export async function PUT')
+    expect(route).toContain("hasWorkspacePermission(workspace, 'manage_ai_chatbot')")
+    expect(route).toContain(".eq('workspace_id', workspace.workspaceId)")
+    expect(route).toContain(".from('ai_knowledge_chunks')")
+    expect(route).toContain('.delete()')
+    expect(route).toContain('chunkKnowledgeText(content)')
+    expect(route).toContain("source_id: id")
+  })
+
+  it('shows the owner AI chatbot testing checklist', () => {
+    const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
+
+    expect(page).toContain('AI Chatbot Testing Checklist')
+    expect(page).toContain('Add AI provider API key')
+    expect(page).toContain('Confirm AI replies only once')
+    expect(page).toContain('Pause AI in one conversation and confirm AI stops replying')
+    expect(page).toContain('Resume AI and confirm replies work again')
+  })
+
+  it('keeps duplicate and recent-human guardrails visible without touching manual replies', () => {
+    const autoReply = read('src/lib/ai/auto-reply.ts')
+    const controls = read('src/lib/ai/conversation-controls.ts')
+    const sendRoute = read('src/app/api/whatsapp/send/route.ts')
+
+    expect(autoReply).toContain('duplicate_inbound_message')
+    expect(autoReply).toContain('AI_HUMAN_REPLY_PAUSE_SECONDS')
+    expect(autoReply).toContain(".eq('sender_type', 'agent')")
+    expect(autoReply).toContain('human_replied_recently')
+    expect(controls).toContain('AI_CHATBOT_HUMAN_REPLY_PAUSE_SECONDS ?? 300')
+    expect(controls).toContain('AI did not reply because this inbound message was already processed.')
+    expect(controls).toContain('AI did not reply because a human agent replied recently.')
+    expect(sendRoute).toContain("sender_type: 'agent'")
+    expect(sendRoute).not.toContain('maybeHandleAiAutoReply')
+  })
+
   it('keeps provider API keys server-only and masked in public responses', () => {
     const providerHelper = read('src/lib/ai/provider.ts')
     const providerRoute = read('src/app/api/ai-chatbot/provider/route.ts')

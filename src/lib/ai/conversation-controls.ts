@@ -22,6 +22,9 @@ export interface AiConversationControl {
 
 export const AI_COOLDOWN_SECONDS = Number(process.env.AI_CHATBOT_COOLDOWN_SECONDS ?? 45)
 export const AI_DAILY_REPLY_LIMIT = Number(process.env.AI_CHATBOT_DAILY_REPLY_LIMIT ?? 200)
+export const AI_HUMAN_REPLY_PAUSE_SECONDS = Number(
+  process.env.AI_CHATBOT_HUMAN_REPLY_PAUSE_SECONDS ?? 300,
+)
 
 export function humanizeAiSkipReason(reason?: string | null): string {
   const reasons: Record<string, string> = {
@@ -35,6 +38,7 @@ export function humanizeAiSkipReason(reason?: string | null): string {
     conversation_closed: 'AI did not reply because this conversation is closed.',
     daily_reply_limit_reached: 'AI did not reply because the workspace daily auto-reply limit was reached.',
     duplicate_inbound_message: 'AI did not reply because this inbound message was already processed.',
+    human_reply_lookup_failed: 'AI did not reply because it could not verify recent human replies safely.',
     human_replied_recently: 'AI did not reply because a human agent replied recently.',
     knowledge_empty: 'AI did not reply because no active knowledge has been added yet.',
     no_relevant_knowledge: 'AI paused this conversation because no matching knowledge was found.',

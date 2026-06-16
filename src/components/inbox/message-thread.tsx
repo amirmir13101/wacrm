@@ -16,11 +16,15 @@ import type {
 import type { WorkspaceMemberOption } from "@/lib/team/assignment";
 import {
   MessageSquare,
+  Bot,
   ChevronDown,
   UserPlus,
   Check,
   Clock,
   ArrowLeft,
+  PauseCircle,
+  PlayCircle,
+  Hand,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +35,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./message-bubble";
 import { MessageActions } from "./message-actions";
 import { MessageComposer } from "./message-composer";
@@ -51,6 +54,22 @@ interface AssignmentHistoryRow {
   assigned_by_user_id: string | null;
   reason: string | null;
   created_at: string;
+}
+
+type AiConversationStatus = "ai_active" | "ai_paused" | "needs_human";
+
+interface AiConversationControl {
+  status: AiConversationStatus;
+  last_skipped_reason?: string | null;
+  last_skipped_at?: string | null;
+  last_ai_reply_at?: string | null;
+  handoff_reason?: string | null;
+}
+
+interface AiConversationControlResponse {
+  control: AiConversationControl;
+  lastSkippedMessage?: string | null;
+  canManage: boolean;
 }
 
 function renderTemplateBody(body: string, params: string[]): string {
@@ -131,6 +150,11 @@ export function MessageThread({
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistoryRow[]>([]);
+  const [aiControl, setAiControl] = useState<AiConversationControl | null>(null);
+  const [aiSkippedMessage, setAiSkippedMessage] = useState<string | null>(null);
+  const [canManageAiControl, setCanManageAiControl] = useState(false);
+  const [aiControlLoading, setAiControlLoading] = useState(false);
+  const [aiControlSaving, setAiControlSaving] = useState<AiConversationStatus | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -244,6 +268,47 @@ export function MessageThread({
       .then(({ data }) => {
         if (!cancelled) setAssignmentHistory((data as AssignmentHistoryRow[]) ?? []);
       });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) {
+      setAiControl(null);
+      setAiSkippedMessage(null);
+      setCanManageAiControl(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAiControlLoading(true);
+    fetch(`/api/ai-chatbot/conversations/${conversationId}`)
+      .then(async (res) => {
+        const body = (await res.json().catch(() => ({}))) as Partial<AiConversationControlResponse> & {
+          error?: string;
+        };
+        if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+        return body as AiConversationControlResponse;
+      })
+      .then((body) => {
+        if (cancelled) return;
+        setAiControl(body.control);
+        setAiSkippedMessage(body.lastSkippedMessage ?? null);
+        setCanManageAiControl(Boolean(body.canManage));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error("Failed to fetch AI conversation control:", error);
+          setAiControl(null);
+          setAiSkippedMessage(null);
+          setCanManageAiControl(false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAiControlLoading(false);
+      });
+
     return () => {
       cancelled = true;
     };
@@ -649,6 +714,38 @@ export function MessageThread({
     [conversation, onAssignChange, user?.id],
   );
 
+  const updateAiConversationStatus = useCallback(
+    async (status: AiConversationStatus) => {
+      if (!conversation) return;
+      setAiControlSaving(status);
+      try {
+        const res = await fetch(`/api/ai-chatbot/conversations/${conversation.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+        const body = (await res.json().catch(() => ({}))) as Partial<AiConversationControlResponse> & {
+          error?: string;
+        };
+        if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+        if (body.control) setAiControl(body.control);
+        setAiSkippedMessage(body.lastSkippedMessage ?? null);
+        toast.success(
+          status === "ai_active"
+            ? "AI resumed for this conversation"
+            : status === "ai_paused"
+              ? "AI paused for this conversation"
+              : "Conversation marked for human handoff",
+        );
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to update AI conversation control");
+      } finally {
+        setAiControlSaving(null);
+      }
+    },
+    [conversation],
+  );
+
   // Empty state
   if (!conversation || !contact) {
     return (
@@ -809,6 +906,15 @@ export function MessageThread({
         </div>
       )}
 
+      <AiConversationPanel
+        control={aiControl}
+        lastSkippedMessage={aiSkippedMessage}
+        loading={aiControlLoading}
+        savingStatus={aiControlSaving}
+        canManage={canManageAiControl}
+        onChangeStatus={updateAiConversationStatus}
+      />
+
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {loading ? (
@@ -899,5 +1005,104 @@ export function MessageThread({
         onSelect={handleSendTemplate}
       />
     </div>
+  );
+}
+
+function AiConversationPanel({
+  control,
+  lastSkippedMessage,
+  loading,
+  savingStatus,
+  canManage,
+  onChangeStatus,
+}: {
+  control: AiConversationControl | null;
+  lastSkippedMessage: string | null;
+  loading: boolean;
+  savingStatus: AiConversationStatus | null;
+  canManage: boolean;
+  onChangeStatus: (status: AiConversationStatus) => void;
+}) {
+  const status = control?.status ?? "ai_active";
+  const statusLabel =
+    status === "ai_active" ? "AI active" : status === "ai_paused" ? "AI paused" : "Needs human";
+  const lastReplyLabel = control?.last_ai_reply_at
+    ? `Last AI reply ${format(new Date(control.last_ai_reply_at), "MMM d, h:mm a")}`
+    : "No AI reply recorded yet";
+
+  return (
+    <div className="border-b border-emerald-900/70 bg-[#061d15] px-4 py-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Bot className="h-4 w-4 text-emerald-300" />
+            <span className="text-xs font-bold uppercase tracking-wide text-emerald-100">
+              Conversation AI
+            </span>
+            <span
+              className={cn(
+                "rounded-full border px-2.5 py-1 text-[11px] font-bold",
+                status === "ai_active"
+                  ? "border-emerald-400/50 bg-emerald-400/15 text-emerald-100"
+                  : "border-amber-300/50 bg-amber-300/15 text-amber-100",
+              )}
+            >
+              {loading ? "Checking..." : statusLabel}
+            </span>
+            <span className="text-[11px] text-slate-400">{lastReplyLabel}</span>
+          </div>
+          {lastSkippedMessage && (
+            <p className="mt-1 text-xs text-slate-300">{lastSkippedMessage}</p>
+          )}
+        </div>
+
+        {canManage && (
+          <div className="flex flex-wrap gap-2">
+            <AiControlButton
+              disabled={status === "ai_paused" || savingStatus !== null}
+              icon={PauseCircle}
+              label={savingStatus === "ai_paused" ? "Pausing..." : "Pause AI"}
+              onClick={() => onChangeStatus("ai_paused")}
+            />
+            <AiControlButton
+              disabled={status === "ai_active" || savingStatus !== null}
+              icon={PlayCircle}
+              label={savingStatus === "ai_active" ? "Resuming..." : "Resume AI"}
+              onClick={() => onChangeStatus("ai_active")}
+            />
+            <AiControlButton
+              disabled={status === "needs_human" || savingStatus !== null}
+              icon={Hand}
+              label={savingStatus === "needs_human" ? "Marking..." : "Mark Needs Human"}
+              onClick={() => onChangeStatus("needs_human")}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AiControlButton({
+  disabled,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  disabled: boolean;
+  icon: typeof PauseCircle;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-400 px-3 text-xs font-bold text-[#07130e] transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-55"
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </button>
   );
 }

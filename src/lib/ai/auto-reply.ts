@@ -9,6 +9,7 @@ import {
   type AiKnowledgeChunk,
 } from '@/lib/ai/chatbot'
 import {
+  AI_HUMAN_REPLY_PAUSE_SECONDS,
   AI_DAILY_REPLY_LIMIT,
   getAiConversationControl,
   isInCooldown,
@@ -45,7 +46,15 @@ export async function maybeHandleAiAutoReply(args: {
     .select('id')
     .eq('message_id', args.inboundMessageId)
     .maybeSingle()
-  if (existingLog) return
+  if (existingLog) {
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: 'duplicate_inbound_message',
+      client: admin,
+    })
+    return
+  }
 
   const control = await getAiConversationControl({
     workspaceId: args.workspaceId,
@@ -120,6 +129,24 @@ export async function maybeHandleAiAutoReply(args: {
   }
   if (conversation.assigned_agent_id) {
     await logSkip(args, 'conversation_assigned_to_human')
+    return
+  }
+
+  const humanReplyCutoff = new Date(Date.now() - AI_HUMAN_REPLY_PAUSE_SECONDS * 1000).toISOString()
+  const { data: recentHumanMessages, error: recentHumanError } = await admin
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', args.conversationId)
+    .eq('sender_type', 'agent')
+    .gte('created_at', humanReplyCutoff)
+    .limit(1)
+
+  if (recentHumanError) {
+    await logSkip(args, 'human_reply_lookup_failed')
+    return
+  }
+  if ((recentHumanMessages ?? []).length > 0) {
+    await logSkip(args, 'human_replied_recently')
     return
   }
 

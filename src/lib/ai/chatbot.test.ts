@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  AI_HUMAN_REPLY_PAUSE_SECONDS,
+  humanizeAiSkipReason,
   isInCooldown,
   isSimilarAiResponse,
 } from './conversation-controls'
@@ -98,5 +100,12 @@ describe('AI chatbot knowledge helpers', () => {
   it('detects repeated AI responses despite casing and punctuation', () => {
     expect(isSimilarAiResponse('Support hours are 9 AM - 6 PM.', 'support hours are 9 am 6 pm')).toBe(true)
     expect(isSimilarAiResponse('Support hours are 9 AM.', 'Delivery takes 3 days.')).toBe(false)
+  })
+
+  it('uses readable Phase 2 skipped reasons', () => {
+    expect(AI_HUMAN_REPLY_PAUSE_SECONDS).toBe(300)
+    expect(humanizeAiSkipReason('duplicate_inbound_message')).toContain('already processed')
+    expect(humanizeAiSkipReason('human_replied_recently')).toContain('human agent replied recently')
+    expect(humanizeAiSkipReason('conversation_ai_paused')).toContain('paused')
   })
 })
