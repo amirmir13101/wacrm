@@ -3,6 +3,7 @@ import {
   DEFAULT_AI_CHATBOT_SETTINGS,
   generateChatbotAnswer,
   getAiPlanAccess,
+  isHumanHandoffRequest,
   isOptOutMessage,
   logAiChatbotEvent,
   retrieveRelevantChunks,
@@ -14,7 +15,6 @@ import {
   AI_DAILY_REPLY_LIMIT,
   getAiConversationControl,
   isInCooldown,
-  isSimilarAiResponse,
   recordAiReply,
   recordAiSkippedReason,
 } from '@/lib/ai/conversation-controls'
@@ -57,33 +57,91 @@ export async function maybeHandleAiAutoReply(args: {
     return
   }
 
-  const control = await getAiConversationControl({
-    workspaceId: args.workspaceId,
-    conversationId: args.conversationId,
-    client: admin,
-  })
-  if (control?.status === 'ai_paused' || control?.status === 'needs_human') {
-    await logSkip(args, 'conversation_ai_paused')
-    return
-  }
-  if (isInCooldown(control?.last_ai_reply_at)) {
-    await logSkip(args, 'rapid_reply_cooldown')
-    return
-  }
-
   const { data: settings, error: settingsError } = await admin
     .from('ai_chatbot_settings')
     .select('*')
     .eq('workspace_id', args.workspaceId)
     .maybeSingle()
 
+  const chatbotSettings = settings as AiChatbotSettings | null
+  const control = await getAiConversationControl({
+    workspaceId: args.workspaceId,
+    conversationId: args.conversationId,
+    client: admin,
+  })
+  if (control?.status === 'ai_paused') {
+    await logSkip(args, 'conversation_ai_paused', 'ai_paused')
+    return
+  }
+  if (control?.status === 'needs_human') {
+    await logSkip(args, 'conversation_needs_human', 'needs_human')
+    return
+  }
+
+  const humanRequest = isHumanHandoffRequest(customerText)
+  if (humanRequest) {
+    const handoffMessage =
+      chatbotSettings?.handover_message?.trim() ||
+      "I'll connect you with our team so they can help you better."
+
+    const { data: conversation } = await admin
+      .from('conversations')
+      .select('id, contact:contacts(phone)')
+      .eq('id', args.conversationId)
+      .eq('workspace_id', args.workspaceId)
+      .maybeSingle()
+    const contact = Array.isArray(conversation?.contact)
+      ? conversation?.contact[0]
+      : conversation?.contact
+    const phone = typeof contact?.phone === 'string' ? contact.phone : ''
+
+    if (phone) {
+      await sendConfiguredAiMessage({
+        workspaceId: args.workspaceId,
+        conversationId: args.conversationId,
+        inboundMessageId: args.inboundMessageId,
+        customerText,
+        phone,
+        text: handoffMessage,
+        status: 'fallback',
+        reason: 'human_handoff_requested',
+        controlStatus: 'needs_human',
+        controlReason: 'human_handoff_requested',
+        client: admin,
+      })
+      return
+    }
+
+    await logAiChatbotEvent({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      messageId: args.inboundMessageId,
+      userMessage: customerText,
+      status: 'skipped',
+      reason: 'human_handoff_requested',
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: 'human_handoff_requested',
+      status: 'needs_human',
+      client: admin,
+    })
+    return
+  }
+
+  if (isInCooldown(control?.last_ai_reply_at)) {
+    await logSkip(args, 'rapid_reply_cooldown')
+    return
+  }
+
   if (settingsError || !settings) {
     await logSkip(args, settingsError ? 'settings_lookup_failed' : 'settings_missing')
     return
   }
 
-  const chatbotSettings = settings as AiChatbotSettings
-  if (!chatbotSettings.enabled || !chatbotSettings.auto_reply_enabled) {
+  const activeChatbotSettings = settings as AiChatbotSettings
+  if (!activeChatbotSettings.enabled || !activeChatbotSettings.auto_reply_enabled) {
     await logSkip(args, 'chatbot_disabled')
     return
   }
@@ -176,7 +234,7 @@ export async function maybeHandleAiAutoReply(args: {
   )
   if (relevantChunks.length === 0) {
     const fallbackMessage =
-      chatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
+      activeChatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
     await sendConfiguredAiMessage({
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
@@ -186,10 +244,8 @@ export async function maybeHandleAiAutoReply(args: {
       text: fallbackMessage,
       status: 'fallback',
       reason: 'no_relevant_knowledge',
-      controlStatus: chatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
+      controlStatus: activeChatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
       controlReason: 'no_relevant_knowledge',
-      previousResponse: control?.last_ai_response,
-      repeatedReason: 'same_response_repeated',
       client: admin,
     })
     return
@@ -197,15 +253,15 @@ export async function maybeHandleAiAutoReply(args: {
 
   const answer = await generateChatbotAnswer({
     question: customerText,
-    settings: chatbotSettings,
+    settings: activeChatbotSettings,
     chunks: relevantChunks,
     workspaceId: args.workspaceId,
     requireProvider: true,
   })
 
   if (answer.status === 'skipped' || answer.status === 'failed' || !answer.answer) {
-    const handoffMessage = chatbotSettings.handover_message.trim()
-    if (chatbotSettings.handover_enabled && handoffMessage) {
+    const handoffMessage = activeChatbotSettings.handover_message.trim()
+    if (activeChatbotSettings.handover_enabled && handoffMessage) {
       await sendConfiguredAiMessage({
         workspaceId: args.workspaceId,
         conversationId: args.conversationId,
@@ -217,8 +273,6 @@ export async function maybeHandleAiAutoReply(args: {
         reason: answer.reason || 'human_handoff',
         controlStatus: 'needs_human',
         controlReason: answer.reason || 'human_handoff',
-        previousResponse: control?.last_ai_response,
-        repeatedReason: 'same_response_repeated',
         client: admin,
       })
       return
@@ -250,28 +304,8 @@ export async function maybeHandleAiAutoReply(args: {
       text: answer.answer,
       status: 'fallback',
       reason: answer.reason || 'answer_not_found',
-      controlStatus: chatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
+      controlStatus: activeChatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
       controlReason: answer.reason || 'answer_not_found',
-      previousResponse: control?.last_ai_response,
-      repeatedReason: 'same_response_repeated',
-      client: admin,
-    })
-    return
-  }
-  if (isSimilarAiResponse(control?.last_ai_response, answer.answer)) {
-    await logAiChatbotEvent({
-      workspaceId: args.workspaceId,
-      conversationId: args.conversationId,
-      messageId: args.inboundMessageId,
-      userMessage: customerText,
-      aiResponse: answer.answer,
-      status: 'skipped',
-      reason: 'same_response_repeated',
-    })
-    await recordAiSkippedReason({
-      workspaceId: args.workspaceId,
-      conversationId: args.conversationId,
-      reason: 'same_response_repeated',
       client: admin,
     })
     return
@@ -398,31 +432,10 @@ async function sendConfiguredAiMessage(args: {
   readonly reason: string
   readonly controlStatus: 'ai_active' | 'needs_human'
   readonly controlReason: string
-  readonly previousResponse?: string | null
-  readonly repeatedReason: string
   readonly client: ReturnType<typeof supabaseAdmin>
 }): Promise<boolean> {
   const text = args.text.trim()
   if (!text) return false
-
-  if (isSimilarAiResponse(args.previousResponse, text)) {
-    await logAiChatbotEvent({
-      workspaceId: args.workspaceId,
-      conversationId: args.conversationId,
-      messageId: args.inboundMessageId,
-      userMessage: args.customerText,
-      aiResponse: text,
-      status: 'skipped',
-      reason: args.repeatedReason,
-    })
-    await recordAiSkippedReason({
-      workspaceId: args.workspaceId,
-      conversationId: args.conversationId,
-      reason: args.repeatedReason,
-      client: args.client,
-    })
-    return false
-  }
 
   const { config, error: configError } = await findWorkspaceWhatsAppConfig<{
     id: string
@@ -552,6 +565,7 @@ async function logSkip(
     readonly customerText: string
   },
   reason: string,
+  status?: 'ai_active' | 'ai_paused' | 'needs_human',
 ): Promise<void> {
   if (!args.workspaceId) return
   await logAiChatbotEvent({
@@ -566,5 +580,6 @@ async function logSkip(
     workspaceId: args.workspaceId,
     conversationId: args.conversationId,
     reason,
+    status,
   })
 }

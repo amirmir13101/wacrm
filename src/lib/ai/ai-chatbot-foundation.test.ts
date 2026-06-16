@@ -85,17 +85,20 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(middleware).toContain("path.startsWith('/api/ai-chatbot')")
   })
 
-  it('guards Phase 2 auto-replies against paused AI, cooldowns, repeats, and daily caps', () => {
+  it('guards Phase 2 auto-replies against paused AI, cooldowns, exact duplicates, and daily caps', () => {
     const autoReply = read('src/lib/ai/auto-reply.ts')
 
+    expect(autoReply).toContain('isHumanHandoffRequest')
+    expect(autoReply.indexOf('isHumanHandoffRequest')).toBeLessThan(autoReply.indexOf('isInCooldown'))
     expect(autoReply).toContain('getAiConversationControl')
     expect(autoReply).toContain("control?.status === 'ai_paused'")
     expect(autoReply).toContain("control?.status === 'needs_human'")
     expect(autoReply).toContain('isInCooldown')
     expect(autoReply).toContain('AI_DAILY_REPLY_LIMIT')
     expect(autoReply).toContain('daily_reply_limit_reached')
-    expect(autoReply).toContain('isSimilarAiResponse')
-    expect(autoReply).toContain('same_response_repeated')
+    expect(autoReply).toContain('duplicate_inbound_message')
+    expect(autoReply).not.toContain('isSimilarAiResponse')
+    expect(autoReply).not.toContain('same_response_repeated')
     expect(autoReply).toContain('recordAiReply')
     expect(autoReply).toContain('recordAiSkippedReason')
   })
@@ -105,9 +108,11 @@ describe('AI chatbot Phase 1 foundation', () => {
     const chatbot = read('src/lib/ai/chatbot.ts')
 
     expect(autoReply).toContain('sendConfiguredAiMessage')
-    expect(autoReply).toContain('chatbotSettings.fallback_message.trim()')
+    expect(autoReply).toContain('activeChatbotSettings.fallback_message.trim()')
     expect(autoReply).toContain('DEFAULT_AI_CHATBOT_SETTINGS.fallback_message')
-    expect(autoReply).toContain('chatbotSettings.handover_message.trim()')
+    expect(autoReply).toContain('activeChatbotSettings.handover_message.trim()')
+    expect(autoReply).toContain('human_handoff_requested')
+    expect(autoReply).toContain("I'll connect you with our team so they can help you better.")
     expect(autoReply).toContain("status: 'fallback'")
     expect(autoReply).toContain("sender_type: 'bot'")
     expect(autoReply).toContain('sendTextMessage')

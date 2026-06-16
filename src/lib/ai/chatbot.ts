@@ -111,6 +111,40 @@ export function isOptOutMessage(text: string): boolean {
   return ['stop', 'unsubscribe', 'cancel', 'opt out', 'opt-out', 'remove me'].includes(normalized)
 }
 
+export function isHumanHandoffRequest(text: string): boolean {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+
+  if (!normalized) return false
+
+  const phrases = [
+    'want to talk to real human',
+    'talk to human',
+    'real human',
+    'real person',
+    'talk to agent',
+    'connect me to agent',
+    'connect me with agent',
+    'human support',
+    'customer support',
+    'support agent',
+    'representative',
+    'operator',
+    'i need help from team',
+    'need help from team',
+    'please help me',
+    'can someone help me',
+    'speak to someone',
+    'speak with someone',
+    'talk to someone',
+  ]
+
+  return phrases.some((phrase) => normalized.includes(phrase))
+}
+
 export function retrieveRelevantChunks(
   question: string,
   chunks: ReadonlyArray<Pick<AiKnowledgeChunk, 'chunk_text'>>,

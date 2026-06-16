@@ -10,6 +10,7 @@ import {
   DEFAULT_AI_CHATBOT_SETTINGS,
   chunkKnowledgeText,
   generateChatbotAnswer,
+  isHumanHandoffRequest,
   isOptOutMessage,
   retrieveRelevantChunks,
 } from './chatbot'
@@ -91,6 +92,13 @@ describe('AI chatbot knowledge helpers', () => {
     expect(isOptOutMessage('Tell me your support hours')).toBe(false)
   })
 
+  it('detects human handoff requests before cooldown handling', () => {
+    expect(isHumanHandoffRequest('want to talk to real human')).toBe(true)
+    expect(isHumanHandoffRequest('connect me to agent')).toBe(true)
+    expect(isHumanHandoffRequest('can someone help me')).toBe(true)
+    expect(isHumanHandoffRequest('What is your support hours?')).toBe(false)
+  })
+
   it('detects recent AI replies for cooldown protection', () => {
     expect(isInCooldown(new Date().toISOString(), 60)).toBe(true)
     expect(isInCooldown(new Date(Date.now() - 120_000).toISOString(), 60)).toBe(false)
@@ -107,5 +115,7 @@ describe('AI chatbot knowledge helpers', () => {
     expect(humanizeAiSkipReason('duplicate_inbound_message')).toContain('already processed')
     expect(humanizeAiSkipReason('human_replied_recently')).toContain('human agent replied recently')
     expect(humanizeAiSkipReason('conversation_ai_paused')).toContain('paused')
+    expect(humanizeAiSkipReason('conversation_needs_human')).toContain('waiting for a human agent')
+    expect(humanizeAiSkipReason('human_handoff_requested')).toBe('Customer asked to speak with a human.')
   })
 })
