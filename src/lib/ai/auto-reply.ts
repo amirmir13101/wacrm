@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import {
+  DEFAULT_AI_CHATBOT_SETTINGS,
   generateChatbotAnswer,
   getAiPlanAccess,
   isOptOutMessage,
@@ -174,19 +175,21 @@ export async function maybeHandleAiAutoReply(args: {
     (chunks ?? []) as Array<Pick<AiKnowledgeChunk, 'chunk_text'>>,
   )
   if (relevantChunks.length === 0) {
-    await logAiChatbotEvent({
+    const fallbackMessage =
+      chatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
+    await sendConfiguredAiMessage({
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
-      messageId: args.inboundMessageId,
-      userMessage: customerText,
-      status: 'skipped',
+      inboundMessageId: args.inboundMessageId,
+      customerText,
+      phone,
+      text: fallbackMessage,
+      status: 'fallback',
       reason: 'no_relevant_knowledge',
-    })
-    await recordAiSkippedReason({
-      workspaceId: args.workspaceId,
-      conversationId: args.conversationId,
-      reason: 'no_relevant_knowledge',
-      status: 'needs_human',
+      controlStatus: chatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
+      controlReason: 'no_relevant_knowledge',
+      previousResponse: control?.last_ai_response,
+      repeatedReason: 'same_response_repeated',
       client: admin,
     })
     return
@@ -201,6 +204,25 @@ export async function maybeHandleAiAutoReply(args: {
   })
 
   if (answer.status === 'skipped' || answer.status === 'failed' || !answer.answer) {
+    const handoffMessage = chatbotSettings.handover_message.trim()
+    if (chatbotSettings.handover_enabled && handoffMessage) {
+      await sendConfiguredAiMessage({
+        workspaceId: args.workspaceId,
+        conversationId: args.conversationId,
+        inboundMessageId: args.inboundMessageId,
+        customerText,
+        phone,
+        text: handoffMessage,
+        status: 'fallback',
+        reason: answer.reason || 'human_handoff',
+        controlStatus: 'needs_human',
+        controlReason: answer.reason || 'human_handoff',
+        previousResponse: control?.last_ai_response,
+        repeatedReason: 'same_response_repeated',
+        client: admin,
+      })
+      return
+    }
     await logAiChatbotEvent({
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
@@ -219,20 +241,19 @@ export async function maybeHandleAiAutoReply(args: {
     return
   }
   if (answer.status === 'fallback') {
-    await logAiChatbotEvent({
+    await sendConfiguredAiMessage({
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
-      messageId: args.inboundMessageId,
-      userMessage: customerText,
-      aiResponse: answer.answer,
-      status: 'skipped',
-      reason: answer.reason,
-    })
-    await recordAiSkippedReason({
-      workspaceId: args.workspaceId,
-      conversationId: args.conversationId,
+      inboundMessageId: args.inboundMessageId,
+      customerText,
+      phone,
+      text: answer.answer,
+      status: 'fallback',
       reason: answer.reason || 'answer_not_found',
-      status: chatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
+      controlStatus: chatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
+      controlReason: answer.reason || 'answer_not_found',
+      previousResponse: control?.last_ai_response,
+      repeatedReason: 'same_response_repeated',
       client: admin,
     })
     return
@@ -363,6 +384,163 @@ export async function maybeHandleAiAutoReply(args: {
       status: 'needs_human',
       client: admin,
     })
+  }
+}
+
+async function sendConfiguredAiMessage(args: {
+  readonly workspaceId: string
+  readonly conversationId: string
+  readonly inboundMessageId: string
+  readonly customerText: string
+  readonly phone: string
+  readonly text: string
+  readonly status: 'answered' | 'fallback'
+  readonly reason: string
+  readonly controlStatus: 'ai_active' | 'needs_human'
+  readonly controlReason: string
+  readonly previousResponse?: string | null
+  readonly repeatedReason: string
+  readonly client: ReturnType<typeof supabaseAdmin>
+}): Promise<boolean> {
+  const text = args.text.trim()
+  if (!text) return false
+
+  if (isSimilarAiResponse(args.previousResponse, text)) {
+    await logAiChatbotEvent({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      messageId: args.inboundMessageId,
+      userMessage: args.customerText,
+      aiResponse: text,
+      status: 'skipped',
+      reason: args.repeatedReason,
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: args.repeatedReason,
+      client: args.client,
+    })
+    return false
+  }
+
+  const { config, error: configError } = await findWorkspaceWhatsAppConfig<{
+    id: string
+    phone_number_id: string
+    access_token: string
+  }>({
+    workspaceId: args.workspaceId,
+    columns: '*',
+  })
+
+  if (configError || !config) {
+    const reason = configError ? 'whatsapp_config_error' : 'whatsapp_config_missing'
+    await logAiChatbotEvent({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      messageId: args.inboundMessageId,
+      userMessage: args.customerText,
+      aiResponse: text,
+      status: 'skipped',
+      reason,
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason,
+      status: 'needs_human',
+      client: args.client,
+    })
+    return false
+  }
+
+  try {
+    const result = await sendTextMessage({
+      phoneNumberId: config.phone_number_id,
+      accessToken: decrypt(config.access_token),
+      to: args.phone,
+      text,
+    })
+
+    const { error: insertError } = await args.client.from('messages').insert({
+      conversation_id: args.conversationId,
+      sender_type: 'bot',
+      content_type: 'text',
+      content_text: text,
+      message_id: result.messageId,
+      status: 'sent',
+    })
+
+    if (insertError) {
+      await logAiChatbotEvent({
+        workspaceId: args.workspaceId,
+        conversationId: args.conversationId,
+        messageId: args.inboundMessageId,
+        userMessage: args.customerText,
+        aiResponse: text,
+        status: 'failed',
+        reason: 'message_insert_failed',
+      })
+      await recordAiSkippedReason({
+        workspaceId: args.workspaceId,
+        conversationId: args.conversationId,
+        reason: 'message_insert_failed',
+        status: 'needs_human',
+        client: args.client,
+      })
+      return false
+    }
+
+    await args.client
+      .from('conversations')
+      .update({
+        last_message_text: text,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', args.conversationId)
+
+    await logAiChatbotEvent({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      messageId: args.inboundMessageId,
+      userMessage: args.customerText,
+      aiResponse: text,
+      status: args.status,
+      reason: args.reason,
+    })
+    await recordAiReply({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      response: text,
+      client: args.client,
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: args.controlReason,
+      status: args.controlStatus,
+      client: args.client,
+    })
+    return true
+  } catch {
+    await logAiChatbotEvent({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      messageId: args.inboundMessageId,
+      userMessage: args.customerText,
+      aiResponse: text,
+      status: 'failed',
+      reason: 'whatsapp_send_failed',
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: 'whatsapp_send_failed',
+      status: 'needs_human',
+      client: args.client,
+    })
+    return false
   }
 }
 

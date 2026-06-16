@@ -100,14 +100,32 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(autoReply).toContain('recordAiSkippedReason')
   })
 
+  it('sends configured fallback and handoff messages for live AI misses', () => {
+    const autoReply = read('src/lib/ai/auto-reply.ts')
+
+    expect(autoReply).toContain('sendConfiguredAiMessage')
+    expect(autoReply).toContain('chatbotSettings.fallback_message.trim()')
+    expect(autoReply).toContain('DEFAULT_AI_CHATBOT_SETTINGS.fallback_message')
+    expect(autoReply).toContain('chatbotSettings.handover_message.trim()')
+    expect(autoReply).toContain("status: 'fallback'")
+    expect(autoReply).toContain("sender_type: 'bot'")
+    expect(autoReply).toContain('sendTextMessage')
+    expect(autoReply).toContain('recordAiReply')
+    expect(autoReply).toContain('recordAiSkippedReason')
+  })
+
   it('renders inbox conversation AI controls and readable skipped reasons', () => {
     const thread = read('src/components/inbox/message-thread.tsx')
 
     expect(thread).toContain('/api/ai-chatbot/conversations/${conversationId}')
     expect(thread).toContain('/api/ai-chatbot/conversations/${conversation.id}')
+    expect(thread).toContain('fetchAiConversationControl')
+    expect(thread).toContain('ai-conversation-control:${conversationId}')
+    expect(thread).toContain('table: "ai_conversation_controls"')
     expect(thread).toContain('Pause AI')
     expect(thread).toContain('Resume AI')
     expect(thread).toContain('Mark Needs Human')
+    expect(thread).toContain('sm:flex-nowrap')
     expect(thread).toContain('lastSkippedMessage')
     expect(thread).toContain('AI active')
     expect(thread).toContain('AI paused')

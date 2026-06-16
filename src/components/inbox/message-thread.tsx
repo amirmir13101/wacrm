@@ -155,6 +155,41 @@ export function MessageThread({
   const [canManageAiControl, setCanManageAiControl] = useState(false);
   const [aiControlLoading, setAiControlLoading] = useState(false);
   const [aiControlSaving, setAiControlSaving] = useState<AiConversationStatus | null>(null);
+  const conversationId = conversation?.id;
+  const hasUnread = (conversation?.unread_count ?? 0) > 0;
+
+  const fetchAiConversationControl = useCallback(
+    async (options: { showLoading?: boolean } = {}) => {
+      if (!conversationId) {
+        setAiControl(null);
+        setAiSkippedMessage(null);
+        setCanManageAiControl(false);
+        return;
+      }
+
+      if (options.showLoading) setAiControlLoading(true);
+      try {
+        const res = await fetch(`/api/ai-chatbot/conversations/${conversationId}`, {
+          cache: "no-store",
+        });
+        const body = (await res.json().catch(() => ({}))) as Partial<AiConversationControlResponse> & {
+          error?: string;
+        };
+        if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+        setAiControl(body.control ?? null);
+        setAiSkippedMessage(body.lastSkippedMessage ?? null);
+        setCanManageAiControl(Boolean(body.canManage));
+      } catch (error) {
+        console.error("Failed to fetch AI conversation control:", error);
+        setAiControl(null);
+        setAiSkippedMessage(null);
+        setCanManageAiControl(false);
+      } finally {
+        if (options.showLoading) setAiControlLoading(false);
+      }
+    },
+    [conversationId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -213,9 +248,6 @@ export function MessageThread({
   useEffect(() => {
     onMessagesLoadedRef.current = onMessagesLoaded;
   });
-
-  const conversationId = conversation?.id;
-  const hasUnread = (conversation?.unread_count ?? 0) > 0;
 
   // Fetch messages whenever the selected conversation changes. Kept
   // separate from the unread-reset effect so that incoming messages
@@ -281,38 +313,38 @@ export function MessageThread({
       return;
     }
 
-    let cancelled = false;
-    setAiControlLoading(true);
-    fetch(`/api/ai-chatbot/conversations/${conversationId}`)
-      .then(async (res) => {
-        const body = (await res.json().catch(() => ({}))) as Partial<AiConversationControlResponse> & {
-          error?: string;
-        };
-        if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-        return body as AiConversationControlResponse;
-      })
-      .then((body) => {
-        if (cancelled) return;
-        setAiControl(body.control);
-        setAiSkippedMessage(body.lastSkippedMessage ?? null);
-        setCanManageAiControl(Boolean(body.canManage));
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.error("Failed to fetch AI conversation control:", error);
-          setAiControl(null);
-          setAiSkippedMessage(null);
-          setCanManageAiControl(false);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setAiControlLoading(false);
-      });
+    void fetchAiConversationControl({ showLoading: true });
+  }, [conversationId, fetchAiConversationControl]);
+
+  useEffect(() => {
+    if (!conversationId || messages.length === 0) return;
+    void fetchAiConversationControl();
+  }, [conversationId, messages.length, fetchAiConversationControl]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`ai-conversation-control:${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "ai_conversation_controls",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        () => {
+          void fetchAiConversationControl();
+        },
+      )
+      .subscribe();
 
     return () => {
-      cancelled = true;
+      supabase.removeChannel(channel);
     };
-  }, [conversationId]);
+  }, [conversationId, fetchAiConversationControl]);
 
   // Reactions: fetch + realtime per conversation. Subscribing here (not at
   // the page level) keeps the channel scoped to the visible conversation,
@@ -730,6 +762,7 @@ export function MessageThread({
         if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
         if (body.control) setAiControl(body.control);
         setAiSkippedMessage(body.lastSkippedMessage ?? null);
+        void fetchAiConversationControl();
         toast.success(
           status === "ai_active"
             ? "AI resumed for this conversation"
@@ -743,7 +776,7 @@ export function MessageThread({
         setAiControlSaving(null);
       }
     },
-    [conversation],
+    [conversation, fetchAiConversationControl],
   );
 
   // Empty state
@@ -1057,7 +1090,7 @@ function AiConversationPanel({
         </div>
 
         {canManage && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex w-full flex-row flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
             <AiControlButton
               disabled={status === "ai_paused" || savingStatus !== null}
               icon={PauseCircle}
@@ -1099,7 +1132,7 @@ function AiControlButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-400 px-3 text-xs font-bold text-[#07130e] transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-55"
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-400/40 bg-emerald-400 px-3 text-xs font-bold text-[#07130e] transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-55"
     >
       <Icon className="h-3.5 w-3.5" />
       {label}
