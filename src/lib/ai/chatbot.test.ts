@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  isInCooldown,
+  isSimilarAiResponse,
+} from './conversation-controls'
+import {
   DEFAULT_AI_CHATBOT_SETTINGS,
   chunkKnowledgeText,
   generateChatbotAnswer,
@@ -83,5 +87,16 @@ describe('AI chatbot knowledge helpers', () => {
     expect(isOptOutMessage('STOP')).toBe(true)
     expect(isOptOutMessage('unsubscribe')).toBe(true)
     expect(isOptOutMessage('Tell me your support hours')).toBe(false)
+  })
+
+  it('detects recent AI replies for cooldown protection', () => {
+    expect(isInCooldown(new Date().toISOString(), 60)).toBe(true)
+    expect(isInCooldown(new Date(Date.now() - 120_000).toISOString(), 60)).toBe(false)
+    expect(isInCooldown(null, 60)).toBe(false)
+  })
+
+  it('detects repeated AI responses despite casing and punctuation', () => {
+    expect(isSimilarAiResponse('Support hours are 9 AM - 6 PM.', 'support hours are 9 am 6 pm')).toBe(true)
+    expect(isSimilarAiResponse('Support hours are 9 AM.', 'Delivery takes 3 days.')).toBe(false)
   })
 })

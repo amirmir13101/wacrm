@@ -68,6 +68,38 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(api).toContain('enable_ai_auto_reply')
   })
 
+  it('adds Phase 2 conversation controls with RLS and API protection', () => {
+    const migration = read('supabase/migrations/035_ai_chatbot_conversation_controls.sql')
+    const route = read('src/app/api/ai-chatbot/conversations/[id]/route.ts')
+    const middleware = read('src/middleware.ts')
+
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS ai_conversation_controls')
+    expect(migration).toContain('UNIQUE(workspace_id, conversation_id)')
+    expect(migration).toContain("status IN ('ai_active', 'ai_paused', 'needs_human')")
+    expect(migration).toContain('ALTER TABLE ai_conversation_controls ENABLE ROW LEVEL SECURITY')
+    expect(migration).toContain('workspace_has_permission(workspace_id,')
+    expect(migration).toContain('can_view_workspace_conversation')
+    expect(route).toContain('getAiConversationControl')
+    expect(route).toContain('upsertAiConversationControl')
+    expect(route).toContain("'manage_ai_chatbot'")
+    expect(middleware).toContain("path.startsWith('/api/ai-chatbot')")
+  })
+
+  it('guards Phase 2 auto-replies against paused AI, cooldowns, repeats, and daily caps', () => {
+    const autoReply = read('src/lib/ai/auto-reply.ts')
+
+    expect(autoReply).toContain('getAiConversationControl')
+    expect(autoReply).toContain("control?.status === 'ai_paused'")
+    expect(autoReply).toContain("control?.status === 'needs_human'")
+    expect(autoReply).toContain('isInCooldown')
+    expect(autoReply).toContain('AI_DAILY_REPLY_LIMIT')
+    expect(autoReply).toContain('daily_reply_limit_reached')
+    expect(autoReply).toContain('isSimilarAiResponse')
+    expect(autoReply).toContain('same_response_repeated')
+    expect(autoReply).toContain('recordAiReply')
+    expect(autoReply).toContain('recordAiSkippedReason')
+  })
+
   it('keeps provider API keys server-only and masked in public responses', () => {
     const providerHelper = read('src/lib/ai/provider.ts')
     const providerRoute = read('src/app/api/ai-chatbot/provider/route.ts')

@@ -8,6 +8,14 @@ import {
   type AiChatbotSettings,
   type AiKnowledgeChunk,
 } from '@/lib/ai/chatbot'
+import {
+  AI_DAILY_REPLY_LIMIT,
+  getAiConversationControl,
+  isInCooldown,
+  isSimilarAiResponse,
+  recordAiReply,
+  recordAiSkippedReason,
+} from '@/lib/ai/conversation-controls'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { sendTextMessage } from '@/lib/whatsapp/meta-api'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
@@ -39,6 +47,20 @@ export async function maybeHandleAiAutoReply(args: {
     .maybeSingle()
   if (existingLog) return
 
+  const control = await getAiConversationControl({
+    workspaceId: args.workspaceId,
+    conversationId: args.conversationId,
+    client: admin,
+  })
+  if (control?.status === 'ai_paused' || control?.status === 'needs_human') {
+    await logSkip(args, 'conversation_ai_paused')
+    return
+  }
+  if (isInCooldown(control?.last_ai_reply_at)) {
+    await logSkip(args, 'rapid_reply_cooldown')
+    return
+  }
+
   const { data: settings, error: settingsError } = await admin
     .from('ai_chatbot_settings')
     .select('*')
@@ -59,6 +81,25 @@ export async function maybeHandleAiAutoReply(args: {
   const plan = await getAiPlanAccess(args.workspaceId)
   if (!plan.canUseAutoReply) {
     await logSkip(args, 'plan_not_active_pro')
+    return
+  }
+
+  const dayStart = new Date()
+  dayStart.setUTCHours(0, 0, 0, 0)
+  const { count: dailyReplyCount, error: dailyReplyError } = await admin
+    .from('ai_chatbot_logs')
+    .select('id', { count: 'exact', head: true })
+    .eq('workspace_id', args.workspaceId)
+    .in('status', ['answered', 'fallback'])
+    .not('conversation_id', 'is', null)
+    .gte('created_at', dayStart.toISOString())
+
+  if (dailyReplyError) {
+    await logSkip(args, 'daily_reply_limit_lookup_failed')
+    return
+  }
+  if ((dailyReplyCount ?? 0) >= AI_DAILY_REPLY_LIMIT) {
+    await logSkip(args, 'daily_reply_limit_reached')
     return
   }
 
@@ -105,6 +146,24 @@ export async function maybeHandleAiAutoReply(args: {
     customerText,
     (chunks ?? []) as Array<Pick<AiKnowledgeChunk, 'chunk_text'>>,
   )
+  if (relevantChunks.length === 0) {
+    await logAiChatbotEvent({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      messageId: args.inboundMessageId,
+      userMessage: customerText,
+      status: 'skipped',
+      reason: 'no_relevant_knowledge',
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: 'no_relevant_knowledge',
+      status: 'needs_human',
+      client: admin,
+    })
+    return
+  }
 
   const answer = await generateChatbotAnswer({
     question: customerText,
@@ -114,7 +173,7 @@ export async function maybeHandleAiAutoReply(args: {
     requireProvider: true,
   })
 
-  if (answer.status === 'skipped' || !answer.answer) {
+  if (answer.status === 'skipped' || answer.status === 'failed' || !answer.answer) {
     await logAiChatbotEvent({
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
@@ -122,6 +181,50 @@ export async function maybeHandleAiAutoReply(args: {
       userMessage: customerText,
       status: answer.status,
       reason: answer.reason,
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: answer.reason,
+      status: answer.reason === 'ai_provider_missing' ? 'ai_active' : 'needs_human',
+      client: admin,
+    })
+    return
+  }
+  if (answer.status === 'fallback') {
+    await logAiChatbotEvent({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      messageId: args.inboundMessageId,
+      userMessage: customerText,
+      aiResponse: answer.answer,
+      status: 'skipped',
+      reason: answer.reason,
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: answer.reason || 'answer_not_found',
+      status: chatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
+      client: admin,
+    })
+    return
+  }
+  if (isSimilarAiResponse(control?.last_ai_response, answer.answer)) {
+    await logAiChatbotEvent({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      messageId: args.inboundMessageId,
+      userMessage: customerText,
+      aiResponse: answer.answer,
+      status: 'skipped',
+      reason: 'same_response_repeated',
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: 'same_response_repeated',
+      client: admin,
     })
     return
   }
@@ -144,6 +247,13 @@ export async function maybeHandleAiAutoReply(args: {
       aiResponse: answer.answer,
       status: 'skipped',
       reason: configError ? 'whatsapp_config_error' : 'whatsapp_config_missing',
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: configError ? 'whatsapp_config_error' : 'whatsapp_config_missing',
+      status: 'needs_human',
+      client: admin,
     })
     return
   }
@@ -175,6 +285,13 @@ export async function maybeHandleAiAutoReply(args: {
         status: 'failed',
         reason: 'message_insert_failed',
       })
+      await recordAiSkippedReason({
+        workspaceId: args.workspaceId,
+        conversationId: args.conversationId,
+        reason: 'message_insert_failed',
+        status: 'needs_human',
+        client: admin,
+      })
       return
     }
 
@@ -196,6 +313,12 @@ export async function maybeHandleAiAutoReply(args: {
       status: answer.status,
       reason: answer.reason,
     })
+    await recordAiReply({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      response: answer.answer,
+      client: admin,
+    })
   } catch {
     await logAiChatbotEvent({
       workspaceId: args.workspaceId,
@@ -205,6 +328,13 @@ export async function maybeHandleAiAutoReply(args: {
       aiResponse: answer.answer,
       status: 'failed',
       reason: 'whatsapp_send_failed',
+    })
+    await recordAiSkippedReason({
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      reason: 'whatsapp_send_failed',
+      status: 'needs_human',
+      client: admin,
     })
   }
 }
@@ -225,6 +355,11 @@ async function logSkip(
     messageId: args.inboundMessageId,
     userMessage: args.customerText,
     status: 'skipped',
+    reason,
+  })
+  await recordAiSkippedReason({
+    workspaceId: args.workspaceId,
+    conversationId: args.conversationId,
     reason,
   })
 }
