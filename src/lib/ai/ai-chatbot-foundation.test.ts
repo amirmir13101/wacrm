@@ -102,6 +102,7 @@ describe('AI chatbot Phase 1 foundation', () => {
 
   it('sends configured fallback and handoff messages for live AI misses', () => {
     const autoReply = read('src/lib/ai/auto-reply.ts')
+    const chatbot = read('src/lib/ai/chatbot.ts')
 
     expect(autoReply).toContain('sendConfiguredAiMessage')
     expect(autoReply).toContain('chatbotSettings.fallback_message.trim()')
@@ -112,6 +113,7 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(autoReply).toContain('sendTextMessage')
     expect(autoReply).toContain('recordAiReply')
     expect(autoReply).toContain('recordAiSkippedReason')
+    expect(chatbot).not.toContain("onConflict: 'message_id'")
   })
 
   it('renders inbox conversation AI controls and readable skipped reasons', () => {

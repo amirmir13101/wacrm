@@ -228,10 +228,7 @@ export async function logAiChatbotEvent(args: {
     status: args.status,
     reason: args.reason ?? null,
   }
-  const query = args.messageId
-    ? supabaseAdmin().from('ai_chatbot_logs').upsert(row, { onConflict: 'message_id' })
-    : supabaseAdmin().from('ai_chatbot_logs').insert(row)
-  const { error } = await query
+  const { error } = await supabaseAdmin().from('ai_chatbot_logs').insert(row)
   if (error) {
     console.error('[ai-chatbot] failed to log event:', error.message)
   }
