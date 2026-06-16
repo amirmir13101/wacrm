@@ -120,7 +120,10 @@ describe('AI chatbot Phase 1 foundation', () => {
 
     expect(page).toContain('Edit Business Knowledge')
     expect(page).toContain('Update Knowledge')
-    expect(page).toContain('Cancel edit')
+    expect(page).toContain('DialogContent')
+    expect(page).toContain('closeEditSourceModal')
+    expect(page).toContain('editSourceTitle')
+    expect(page).toContain('editSourceContent')
     expect(page).toContain('editSource(source)')
     expect(route).toContain('export async function PUT')
     expect(route).toContain("hasWorkspacePermission(workspace, 'manage_ai_chatbot')")
@@ -131,14 +134,16 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(route).toContain("source_id: id")
   })
 
-  it('shows the owner AI chatbot testing checklist', () => {
+  it('shows the owner AI chatbot testing flow', () => {
     const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
 
-    expect(page).toContain('AI Chatbot Testing Checklist')
+    expect(page).toContain('AI Chatbot Testing Flow')
+    expect(page).toContain('TESTING_FLOW_STEPS')
     expect(page).toContain('Add AI provider API key')
     expect(page).toContain('Confirm AI replies only once')
-    expect(page).toContain('Pause AI in one conversation and confirm AI stops replying')
-    expect(page).toContain('Resume AI and confirm replies work again')
+    expect(page).toContain('Pause AI in Inbox and confirm it stops')
+    expect(page).toContain('Mark Needs Human and confirm AI stops')
+    expect(page).toContain('→')
   })
 
   it('keeps duplicate and recent-human guardrails visible without touching manual replies', () => {

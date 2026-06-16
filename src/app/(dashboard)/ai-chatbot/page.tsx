@@ -12,10 +12,17 @@ import {
   Pencil,
   ShieldCheck,
   Trash2,
-  X,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 
@@ -84,20 +91,19 @@ const sourceTypeLabels: Record<SourceType, string> = {
   instructions: "Instructions",
 }
 
-const TESTING_CHECKLIST = [
+const TESTING_FLOW_STEPS = [
   "Add AI provider API key",
-  "Save provider settings",
-  "Test provider connection",
-  "Add business knowledge or FAQ",
-  "Ask a test question",
+  "Save and test provider connection",
+  "Add or edit business knowledge",
+  "Ask a dashboard test question",
   "Ask an unknown question and confirm fallback",
   "Enable chatbot",
-  "Enable auto-reply if workspace has active Pro",
-  "Send a WhatsApp test message",
+  "Enable auto-reply if active Pro",
+  "Send WhatsApp test message",
   "Confirm AI replies only once",
-  "Assign conversation to human and confirm AI stops replying",
-  "Pause AI in one conversation and confirm AI stops replying",
-  "Resume AI and confirm replies work again",
+  "Pause AI in Inbox and confirm it stops",
+  "Resume AI and confirm it replies again",
+  "Mark Needs Human and confirm AI stops",
 ]
 
 const primaryActionClass =
@@ -122,7 +128,10 @@ export default function AiChatbotPage() {
   const [sourceType, setSourceType] = useState<SourceType>("manual")
   const [sourceTitle, setSourceTitle] = useState("")
   const [sourceContent, setSourceContent] = useState("")
-  const [editingSourceId, setEditingSourceId] = useState<string | null>(null)
+  const [editingSource, setEditingSource] = useState<KnowledgeSource | null>(null)
+  const [editSourceType, setEditSourceType] = useState<SourceType>("manual")
+  const [editSourceTitle, setEditSourceTitle] = useState("")
+  const [editSourceContent, setEditSourceContent] = useState("")
   const [question, setQuestion] = useState("")
   const [testAnswer, setTestAnswer] = useState<TestAnswer | null>(null)
 
@@ -187,9 +196,8 @@ export default function AiChatbotPage() {
   async function saveSource() {
     setSavingSource(true)
     try {
-      const isEditing = Boolean(editingSourceId)
-      const res = await fetch(isEditing ? `/api/ai-chatbot/sources/${editingSourceId}` : "/api/ai-chatbot", {
-        method: isEditing ? "PUT" : "POST",
+      const res = await fetch("/api/ai-chatbot", {
+        method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           source_type: sourceType,
@@ -199,8 +207,10 @@ export default function AiChatbotPage() {
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body?.error ?? "Failed to save knowledge")
-      toast.success(isEditing ? "Knowledge updated" : "Knowledge saved")
-      resetSourceForm()
+      toast.success("Knowledge saved")
+      setSourceType("manual")
+      setSourceTitle("")
+      setSourceContent("")
       await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save knowledge")
@@ -210,17 +220,42 @@ export default function AiChatbotPage() {
   }
 
   function editSource(source: KnowledgeSource) {
-    setEditingSourceId(source.id)
-    setSourceType(source.source_type)
-    setSourceTitle(source.title)
-    setSourceContent(source.content)
+    setEditingSource(source)
+    setEditSourceType(source.source_type)
+    setEditSourceTitle(source.title)
+    setEditSourceContent(source.content)
   }
 
-  function resetSourceForm() {
-    setEditingSourceId(null)
-    setSourceType("manual")
-    setSourceTitle("")
-    setSourceContent("")
+  function closeEditSourceModal() {
+    setEditingSource(null)
+    setEditSourceType("manual")
+    setEditSourceTitle("")
+    setEditSourceContent("")
+  }
+
+  async function updateSource() {
+    if (!editingSource) return
+    setSavingSource(true)
+    try {
+      const res = await fetch(`/api/ai-chatbot/sources/${editingSource.id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          source_type: editSourceType,
+          title: editSourceTitle,
+          content: editSourceContent,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? "Failed to update knowledge")
+      toast.success("Knowledge updated")
+      closeEditSourceModal()
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update knowledge")
+    } finally {
+      setSavingSource(false)
+    }
   }
 
   async function saveProviderSettings() {
@@ -594,27 +629,10 @@ export default function AiChatbotPage() {
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-white">
-                {editingSourceId ? "Edit Business Knowledge" : "Business Knowledge"}
-              </h2>
-              <p className="mt-1 text-sm text-[#9dbfb5]">
-                Add FAQs, business rules, service details, pricing notes, and support instructions manually.
-              </p>
-            </div>
-            {editingSourceId && (
-              <Button
-                className="w-fit border border-emerald-700 bg-[#07130e] text-emerald-100 hover:bg-emerald-950"
-                size="sm"
-                variant="outline"
-                onClick={resetSourceForm}
-              >
-                <X className="size-4" />
-                Cancel edit
-              </Button>
-            )}
-          </div>
+          <h2 className="text-lg font-bold text-white">Business Knowledge</h2>
+          <p className="mt-1 text-sm text-[#9dbfb5]">
+            Add FAQs, business rules, service details, pricing notes, and support instructions manually.
+          </p>
 
           <div className="mt-5 grid gap-4">
             <label className="space-y-2">
@@ -655,7 +673,7 @@ export default function AiChatbotPage() {
                 onClick={() => void saveSource()}
               >
                 {savingSource && <Loader2 className="size-4 animate-spin" />}
-                {editingSourceId ? "Update Knowledge" : "Save Knowledge"}
+                Save Knowledge
               </Button>
             )}
           </div>
@@ -701,16 +719,25 @@ export default function AiChatbotPage() {
       <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="size-5 text-emerald-300" />
-          <h2 className="text-lg font-bold text-white">AI Chatbot Testing Checklist</h2>
+          <h2 className="text-lg font-bold text-white">AI Chatbot Testing Flow</h2>
         </div>
-        <div className="mt-4 grid gap-2 md:grid-cols-2">
-          {TESTING_CHECKLIST.map((item) => (
-            <div
-              key={item}
-              className="flex items-start gap-2 rounded-xl border border-emerald-900 bg-[#07130e]/70 p-3 text-sm text-[#c8f7df]"
-            >
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300" />
-              <span>{item}</span>
+        <p className="mt-1 text-sm text-[#9dbfb5]">
+          Follow this roadmap after setup changes so you can confirm safe replies before going live.
+        </p>
+        <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-stretch">
+          {TESTING_FLOW_STEPS.map((item, index) => (
+            <div key={item} className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="flex min-h-20 w-full items-start gap-3 rounded-xl border border-emerald-900 bg-[#07130e]/80 p-3 text-sm text-[#c8f7df] shadow-[0_16px_36px_rgba(0,0,0,0.18)] lg:w-56">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#3ddf84] text-xs font-black text-[#07130e]">
+                  {index + 1}
+                </span>
+                <span className="leading-5">{item}</span>
+              </div>
+              {index < TESTING_FLOW_STEPS.length - 1 && (
+                <span className="hidden px-1 text-lg font-black text-emerald-300 lg:inline-flex" aria-hidden="true">
+                  →
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -770,6 +797,75 @@ export default function AiChatbotPage() {
           )}
         </div>
       </section>
+
+      <Dialog
+        open={Boolean(editingSource)}
+        onOpenChange={(open) => {
+          if (!open) closeEditSourceModal()
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto border-emerald-900 bg-[#061d15] text-emerald-50 sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-white">Edit Business Knowledge</DialogTitle>
+            <DialogDescription className="text-[#9dbfb5]">
+              Update this saved knowledge item. The chatbot chunks will refresh after saving.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4">
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-emerald-50">Knowledge type</span>
+              <select
+                className="h-11 w-full rounded-lg border border-emerald-800 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                disabled={savingSource}
+                value={editSourceType}
+                onChange={(event) => setEditSourceType(event.target.value as SourceType)}
+              >
+                <option value="manual">Business knowledge</option>
+                <option value="faq">FAQ</option>
+                <option value="instructions">Instructions</option>
+              </select>
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-semibold text-emerald-50">Title</span>
+              <input
+                className="h-11 w-full rounded-lg border border-emerald-800 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                disabled={savingSource}
+                value={editSourceTitle}
+                onChange={(event) => setEditSourceTitle(event.target.value)}
+                placeholder="Example: Delivery policy, Product FAQ, Support hours"
+              />
+            </label>
+            <TextAreaField
+              disabled={savingSource}
+              label="Knowledge content"
+              minHeight="min-h-72"
+              value={editSourceContent}
+              onChange={setEditSourceContent}
+              placeholder="Write the exact business information the chatbot is allowed to use."
+            />
+          </div>
+
+          <DialogFooter className="border-emerald-900 bg-[#061d15]">
+            <Button
+              className="border border-emerald-700 bg-[#07130e] text-emerald-100 hover:bg-emerald-950"
+              disabled={savingSource}
+              variant="outline"
+              onClick={closeEditSourceModal}
+            >
+              Cancel
+            </Button>
+            <Button
+              className={primaryActionClass}
+              disabled={savingSource || !editSourceTitle.trim() || !editSourceContent.trim()}
+              onClick={() => void updateSource()}
+            >
+              {savingSource && <Loader2 className="size-4 animate-spin" />}
+              Update Knowledge
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
