@@ -47,7 +47,7 @@ export function humanizeAiSkipReason(reason?: string | null): string {
     opt_out_message: 'AI did not reply because the customer sent an opt-out message.',
     plan_not_active_pro: 'AI did not reply because this workspace does not have active hosted Pro AI access.',
     provider_not_configured: 'AI did not reply because the AI provider is not configured.',
-    rapid_reply_cooldown: 'AI did not reply because this conversation is in a short cooldown window.',
+    rapid_reply_cooldown: 'AI cooldown blocking is disabled; this reason is kept only for older logs.',
     same_response_repeated: 'AI is ready to answer repeated customer questions again.',
     settings_missing: 'AI did not reply because chatbot settings are missing.',
     whatsapp_config_missing: 'AI did not reply because WhatsApp configuration is missing.',

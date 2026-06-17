@@ -85,15 +85,15 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(middleware).toContain("path.startsWith('/api/ai-chatbot')")
   })
 
-  it('guards Phase 2 auto-replies against paused AI, cooldowns, exact duplicates, and daily caps', () => {
+  it('guards Phase 2 auto-replies against paused AI, human handoff, exact duplicates, and daily caps', () => {
     const autoReply = read('src/lib/ai/auto-reply.ts')
 
     expect(autoReply).toContain('isHumanHandoffRequest')
-    expect(autoReply.indexOf('isHumanHandoffRequest')).toBeLessThan(autoReply.indexOf('isInCooldown'))
     expect(autoReply).toContain('getAiConversationControl')
     expect(autoReply).toContain("control?.status === 'ai_paused'")
     expect(autoReply).toContain("control?.status === 'needs_human'")
-    expect(autoReply).toContain('isInCooldown')
+    expect(autoReply).not.toContain('isInCooldown')
+    expect(autoReply).not.toContain('rapid_reply_cooldown')
     expect(autoReply).toContain('AI_DAILY_REPLY_LIMIT')
     expect(autoReply).toContain('daily_reply_limit_reached')
     expect(autoReply).toContain('duplicate_inbound_message')

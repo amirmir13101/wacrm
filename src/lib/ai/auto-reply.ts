@@ -14,7 +14,6 @@ import {
   AI_HUMAN_REPLY_PAUSE_SECONDS,
   AI_DAILY_REPLY_LIMIT,
   getAiConversationControl,
-  isInCooldown,
   recordAiReply,
   recordAiSkippedReason,
 } from '@/lib/ai/conversation-controls'
@@ -127,11 +126,6 @@ export async function maybeHandleAiAutoReply(args: {
       status: 'needs_human',
       client: admin,
     })
-    return
-  }
-
-  if (isInCooldown(control?.last_ai_reply_at)) {
-    await logSkip(args, 'rapid_reply_cooldown')
     return
   }
 
