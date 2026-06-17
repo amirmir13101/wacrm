@@ -199,12 +199,15 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(providerRoute).not.toContain('decrypt(')
   })
 
-  it('does not add website scraping or vector search in Phase 1', () => {
+  it('keeps website import separate from Phase 1 foundation and avoids vector dependencies', () => {
     const migration = read('supabase/migrations/033_ai_chatbot.sql').toLowerCase()
+    const websiteMigration = read('supabase/migrations/036_ai_website_knowledge_imports.sql').toLowerCase()
     const pkg = read('package.json').toLowerCase()
 
     expect(migration).not.toContain('vector(')
     expect(migration).not.toContain('pgvector')
+    expect(migration).not.toContain('ai_website_import_jobs')
+    expect(websiteMigration).toContain('ai_website_import_jobs')
     expect(pkg).not.toContain('firecrawl')
     expect(pkg).not.toContain('cheerio')
     expect(pkg).not.toContain('puppeteer')

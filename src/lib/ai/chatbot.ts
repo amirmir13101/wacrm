@@ -3,7 +3,7 @@ import { getWorkspaceTrialStatus } from '@/lib/billing/trial'
 import { resolveAiProviderConfig } from '@/lib/ai/provider'
 
 export type AiChatbotTone = 'friendly' | 'professional' | 'concise' | 'supportive'
-export type AiKnowledgeSourceType = 'manual' | 'faq' | 'instructions'
+export type AiKnowledgeSourceType = 'manual' | 'faq' | 'instructions' | 'website'
 export type AiChatbotStatus = 'answered' | 'fallback' | 'skipped' | 'failed'
 
 export interface AiChatbotSettings {

@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 
-const SOURCE_TYPES = new Set(['manual', 'faq', 'instructions'])
+const SOURCE_TYPES = new Set(['manual', 'faq', 'instructions', 'website'])
 
 export async function PUT(
   request: Request,

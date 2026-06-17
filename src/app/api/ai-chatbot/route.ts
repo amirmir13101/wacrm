@@ -14,7 +14,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 
-const SOURCE_TYPES = new Set(['manual', 'faq', 'instructions'])
+const SOURCE_TYPES = new Set(['manual', 'faq', 'instructions', 'website'])
 const TONES = new Set(['friendly', 'professional', 'concise', 'supportive'])
 
 export async function GET() {

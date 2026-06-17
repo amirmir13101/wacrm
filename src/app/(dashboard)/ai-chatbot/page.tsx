@@ -6,6 +6,7 @@ import {
   Bot,
   BookOpen,
   CheckCircle2,
+  Globe2,
   KeyRound,
   Loader2,
   MessageCircle,
@@ -27,7 +28,7 @@ import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 
 type Tone = "friendly" | "professional" | "concise" | "supportive"
-type SourceType = "manual" | "faq" | "instructions"
+type SourceType = "manual" | "faq" | "instructions" | "website"
 type Provider = "openai" | "openrouter" | "groq" | "ollama" | "custom" | "anthropic"
 
 interface ChatbotSettings {
@@ -85,10 +86,47 @@ interface TestAnswer {
   providerConfigured: boolean
 }
 
+interface WebsiteImportJob {
+  id: string
+  website_url: string
+  normalized_origin: string
+  status: "pending" | "running" | "draft_ready" | "completed" | "failed" | "discarded"
+  page_limit: number
+  pages_found: number
+  pages_imported: number
+  pages_skipped: number
+  pages_failed: number
+  duplicate_pages: number
+  draft_title: string | null
+  draft_content: string | null
+  error_message: string | null
+  created_at?: string
+  completed_at?: string | null
+}
+
+interface WebsiteImportPage {
+  url: string
+  canonical_url?: string | null
+  title?: string | null
+  status: "imported" | "skipped" | "failed" | "duplicate"
+  skip_reason?: string | null
+  http_status?: number | null
+}
+
+interface WebsiteImportResult {
+  job: WebsiteImportJob
+  pages: WebsiteImportPage[]
+  limits?: {
+    appliedPageLimit: number
+    trialPreview: boolean
+  }
+}
+
 const sourceTypeLabels: Record<SourceType, string> = {
   manual: "Business knowledge",
   faq: "FAQ",
   instructions: "Instructions",
+  website: "Website import",
 }
 
 const TESTING_FLOW_STEPS = [
@@ -128,6 +166,13 @@ export default function AiChatbotPage() {
   const [sourceType, setSourceType] = useState<SourceType>("manual")
   const [sourceTitle, setSourceTitle] = useState("")
   const [sourceContent, setSourceContent] = useState("")
+  const [websiteUrl, setWebsiteUrl] = useState("")
+  const [websitePageLimit, setWebsitePageLimit] = useState(50)
+  const [importingWebsite, setImportingWebsite] = useState(false)
+  const [publishingWebsite, setPublishingWebsite] = useState(false)
+  const [websiteImportResult, setWebsiteImportResult] = useState<WebsiteImportResult | null>(null)
+  const [websiteDraftTitle, setWebsiteDraftTitle] = useState("")
+  const [websiteDraftContent, setWebsiteDraftContent] = useState("")
   const [editingSource, setEditingSource] = useState<KnowledgeSource | null>(null)
   const [editSourceType, setEditSourceType] = useState<SourceType>("manual")
   const [editSourceTitle, setEditSourceTitle] = useState("")
@@ -217,6 +262,82 @@ export default function AiChatbotPage() {
     } finally {
       setSavingSource(false)
     }
+  }
+
+  async function importWebsiteKnowledge() {
+    setImportingWebsite(true)
+    setWebsiteImportResult(null)
+    try {
+      const res = await fetch("/api/ai-chatbot/website-import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          url: websiteUrl,
+          page_limit: websitePageLimit,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? "Failed to import website knowledge")
+      const result = body as WebsiteImportResult
+      setWebsiteImportResult(result)
+      setWebsiteDraftTitle(result.job.draft_title ?? "Website knowledge")
+      setWebsiteDraftContent(result.job.draft_content ?? "")
+      if (result.job.status === "draft_ready") {
+        toast.success(`Website draft ready from ${result.job.pages_imported} page${result.job.pages_imported === 1 ? "" : "s"}`)
+      } else {
+        toast.message(result.job.error_message ?? "Website import finished without publishable text.")
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to import website knowledge")
+    } finally {
+      setImportingWebsite(false)
+    }
+  }
+
+  async function publishWebsiteDraft() {
+    if (!websiteImportResult) return
+    setPublishingWebsite(true)
+    try {
+      const res = await fetch(`/api/ai-chatbot/website-import/${websiteImportResult.job.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "publish",
+          title: websiteDraftTitle,
+          content: websiteDraftContent,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? "Failed to publish website knowledge")
+      toast.success("Website knowledge published")
+      setWebsiteImportResult(null)
+      setWebsiteDraftTitle("")
+      setWebsiteDraftContent("")
+      setWebsiteUrl("")
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to publish website knowledge")
+    } finally {
+      setPublishingWebsite(false)
+    }
+  }
+
+  async function discardWebsiteDraft() {
+    if (!websiteImportResult) return
+    const res = await fetch(`/api/ai-chatbot/website-import/${websiteImportResult.job.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "discard" }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      toast.error(body?.error ?? "Failed to discard website draft")
+      return
+    }
+    toast.success("Website draft discarded")
+    setWebsiteImportResult(null)
+    setWebsiteDraftTitle("")
+    setWebsiteDraftContent("")
   }
 
   function editSource(source: KnowledgeSource) {
@@ -646,6 +767,7 @@ export default function AiChatbotPage() {
                 <option value="manual">Business knowledge</option>
                 <option value="faq">FAQ</option>
                 <option value="instructions">Instructions</option>
+                <option value="website">Website import</option>
               </select>
             </label>
             <label className="space-y-2">
@@ -714,6 +836,163 @@ export default function AiChatbotPage() {
             </div>
           )}
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Globe2 className="size-5 text-emerald-300" />
+              <h2 className="text-lg font-bold text-white">Import Website Knowledge</h2>
+            </div>
+            <p className="mt-1 max-w-3xl text-sm text-[#9dbfb5]">
+              Crawl public same-domain pages, skip private/media URLs, review the cleaned draft, then publish it to chatbot knowledge.
+            </p>
+          </div>
+          <StatusPill
+            label={state.planAccess.canUseAutoReply ? "Full Pro import" : "Trial preview limit"}
+            tone={state.planAccess.canUseAutoReply ? "success" : "warning"}
+          />
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_180px_auto] lg:items-end">
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-emerald-50">Website URL</span>
+            <input
+              className="h-11 w-full rounded-lg border border-emerald-800 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+              disabled={!canManage || importingWebsite}
+              value={websiteUrl}
+              onChange={(event) => setWebsiteUrl(event.target.value)}
+              placeholder="https://example.com"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-emerald-50">Page limit</span>
+            <select
+              className="h-11 w-full rounded-lg border border-emerald-800 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+              disabled={!canManage || importingWebsite}
+              value={websitePageLimit}
+              onChange={(event) => setWebsitePageLimit(Number(event.target.value))}
+            >
+              <option value={5}>5 preview pages</option>
+              <option value={25}>25 pages</option>
+              <option value={50}>50 pages</option>
+              <option value={100}>100 pages</option>
+            </select>
+          </label>
+          <Button
+            className={primaryActionClass}
+            disabled={!canManage || importingWebsite || !websiteUrl.trim()}
+            onClick={() => void importWebsiteKnowledge()}
+          >
+            {importingWebsite && <Loader2 className="size-4 animate-spin" />}
+            Import Website Knowledge
+          </Button>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4 text-sm text-[#b8cfc7]">
+          <p>
+            The importer only reads public pages on the same domain. Login, admin, checkout, media, uploads,
+            search, tag, author, and duplicate pages are skipped. Website content is not published until you review and save the draft.
+          </p>
+        </div>
+
+        {websiteImportResult && (
+          <div className="mt-5 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+            <div className="space-y-4">
+              <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Import summary</p>
+                <h3 className="mt-1 break-words text-sm font-bold text-white">{websiteImportResult.job.website_url}</h3>
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <SummaryMetric label="Imported" value={websiteImportResult.job.pages_imported} />
+                  <SummaryMetric label="Skipped" value={websiteImportResult.job.pages_skipped} />
+                  <SummaryMetric label="Failed" value={websiteImportResult.job.pages_failed} />
+                  <SummaryMetric label="Duplicates" value={websiteImportResult.job.duplicate_pages} />
+                </dl>
+                {websiteImportResult.limits?.trialPreview && (
+                  <div className={cn("mt-4 rounded-lg border p-3 text-xs font-semibold", inactiveStateClass)}>
+                    Trial preview imports are limited to 5 pages. Upgrade to active Pro for larger imports.
+                  </div>
+                )}
+                {websiteImportResult.job.error_message && (
+                  <p className="mt-3 text-sm text-yellow-200">{websiteImportResult.job.error_message}</p>
+                )}
+              </div>
+
+              <div className="max-h-80 overflow-y-auto rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Pages checked</p>
+                <div className="mt-3 space-y-2">
+                  {websiteImportResult.pages.slice(0, 30).map((page) => (
+                    <div key={`${page.status}:${page.url}`} className="rounded-lg border border-emerald-950 bg-[#04150f] p-3 text-xs">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="min-w-0 break-words font-semibold text-emerald-50">
+                          {page.title || page.canonical_url || page.url}
+                        </p>
+                        <span
+                          className={cn(
+                            "shrink-0 rounded-full border px-2 py-0.5 font-bold",
+                            page.status === "imported"
+                              ? "border-[#3ddf84]/50 text-[#a7ffd0]"
+                              : "border-[#f6c94a]/50 text-[#fff0b8]",
+                          )}
+                        >
+                          {page.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 break-all text-[#9dbfb5]">{page.canonical_url ?? page.url}</p>
+                      {page.skip_reason && (
+                        <p className="mt-1 text-[#fff0b8]">Reason: {page.skip_reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Review draft before publishing</p>
+              <label className="mt-3 block space-y-2">
+                <span className="text-sm font-semibold text-emerald-50">Draft title</span>
+                <input
+                  className="h-11 w-full rounded-lg border border-emerald-800 bg-[#04150f] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                  disabled={publishingWebsite}
+                  value={websiteDraftTitle}
+                  onChange={(event) => setWebsiteDraftTitle(event.target.value)}
+                />
+              </label>
+              <TextAreaField
+                disabled={publishingWebsite}
+                label="Draft content"
+                minHeight="min-h-[420px]"
+                value={websiteDraftContent}
+                onChange={setWebsiteDraftContent}
+              />
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <Button
+                  className="border border-emerald-700 bg-[#07130e] text-emerald-100 hover:bg-emerald-950"
+                  disabled={publishingWebsite}
+                  variant="outline"
+                  onClick={() => void discardWebsiteDraft()}
+                >
+                  Discard Draft
+                </Button>
+                <Button
+                  className={primaryActionClass}
+                  disabled={
+                    publishingWebsite ||
+                    websiteImportResult.job.status !== "draft_ready" ||
+                    !websiteDraftTitle.trim() ||
+                    !websiteDraftContent.trim()
+                  }
+                  onClick={() => void publishWebsiteDraft()}
+                >
+                  {publishingWebsite && <Loader2 className="size-4 animate-spin" />}
+                  Publish to Knowledge Base
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
@@ -824,6 +1103,7 @@ export default function AiChatbotPage() {
                 <option value="manual">Business knowledge</option>
                 <option value="faq">FAQ</option>
                 <option value="instructions">Instructions</option>
+                <option value="website">Website import</option>
               </select>
             </label>
             <label className="space-y-2">
@@ -866,6 +1146,15 @@ export default function AiChatbotPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function SummaryMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-emerald-950 bg-[#04150f] p-3">
+      <dt className="text-xs uppercase tracking-wide text-[#9dbfb5]">{label}</dt>
+      <dd className="mt-1 text-xl font-black text-white">{value}</dd>
     </div>
   )
 }
