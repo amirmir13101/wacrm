@@ -9,6 +9,7 @@ import {
   type AiChatbotTone,
   type AiKnowledgeSourceType,
 } from '@/lib/ai/chatbot'
+import { MAX_WEBSITE_DRAFT_CONTENT_LENGTH } from '@/lib/ai/website-import'
 import { getPublicProviderSettings } from '@/lib/ai/provider'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireCurrentWorkspace } from '@/lib/team/server'
@@ -131,7 +132,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
   const title = readLimitedText(body.title, '', 160)
-  const content = readLimitedText(body.content, '', 12000)
+  const content = readLimitedText(body.content, '', MAX_WEBSITE_DRAFT_CONTENT_LENGTH)
   const sourceType =
     typeof body.source_type === 'string' && SOURCE_TYPES.has(body.source_type)
       ? (body.source_type as AiKnowledgeSourceType)

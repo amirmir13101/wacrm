@@ -3,10 +3,16 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { chunkKnowledgeText, retrieveRelevantChunks } from './chatbot'
 import {
+  MAX_WEBSITE_DRAFT_CONTENT_LENGTH,
   buildWebsiteKnowledgeDraft,
   cleanHtmlToText,
   crawlWebsiteForKnowledge,
+  extractFaqSectionsAsText,
+  extractPricingCardsAsText,
+  extractTablesAsMarkdown,
+  extractWebsiteKnowledgeText,
   normalizeWebsiteUrl,
   parseRobotsTxt,
   shouldSkipWebsiteUrl,
@@ -68,6 +74,66 @@ describe('AI website knowledge import', () => {
     expect(text).toContain('WhatsApp CRM setup')
     expect(text).not.toContain('secret')
     expect(text).not.toContain('private')
+  })
+
+  it('converts HTML pricing tables into markdown and preserves prices, currencies, plan names, and billing periods', () => {
+    const markdown = extractTablesAsMarkdown(`
+      <table>
+        <thead><tr><th>Plan</th><th>Price</th><th>Included Features</th></tr></thead>
+        <tbody>
+          <tr><td>Free</td><td>$0/month</td><td>Basic CRM access</td></tr>
+          <tr><td>Pro</td><td>$5/month now $1/month</td><td>AI chatbot, broadcasts, contacts</td></tr>
+          <tr><td>Yearly</td><td>USD 12/year</td><td>Annual hosted access</td></tr>
+          <tr><td>Pakistan setup</td><td>PKR 4,999 / Rs 4,999</td><td>Setup support</td></tr>
+        </tbody>
+      </table>
+    `)
+
+    expect(markdown).toContain('| Plan | Price | Included Features |')
+    expect(markdown).toContain('| Free | $0/month | Basic CRM access |')
+    expect(markdown).toContain('| Pro | $5/month now $1/month | AI chatbot, broadcasts, contacts |')
+    expect(markdown).toContain('USD 12/year')
+    expect(markdown).toContain('PKR 4,999 / Rs 4,999')
+  })
+
+  it('extracts pricing cards, package details, and FAQ accordion content from div layouts', () => {
+    const html = `
+      <section class="pricing-cards">
+        <article class="plan-card">
+          <h2>Growth Package</h2>
+          <p>Price: £19 monthly</p>
+          <ul><li>Team inbox</li><li>Opening hours routing</li></ul>
+        </article>
+      </section>
+      <div id="faq-accordion">
+        <h3>Can I import contacts?</h3>
+        <p>Yes, customers can import opted-in contacts and keep their data in their workspace.</p>
+      </div>
+    `
+
+    const pricing = extractPricingCardsAsText(html)
+    const faqs = extractFaqSectionsAsText(html)
+
+    expect(pricing).toContain('Growth Package')
+    expect(pricing).toContain('£19 monthly')
+    expect(pricing).toContain('Opening hours routing')
+    expect(faqs).toContain('Can I import contacts?')
+    expect(faqs).toContain('opted-in contacts')
+  })
+
+  it('combines structured tables/cards/FAQs with plain text for stronger website knowledge', () => {
+    const text = extractWebsiteKnowledgeText(`
+      <main>
+        <h1>Plans</h1>
+        <table><tr><th>Plan</th><th>Price</th></tr><tr><td>Pro</td><td>$1/month</td></tr></table>
+        <div class="faq"><h2>Support hours?</h2><p>Monday to Friday, 9 AM to 5 PM.</p></div>
+      </main>
+    `)
+
+    expect(text).toContain('## Structured Tables')
+    expect(text).toContain('| Pro | $1/month |')
+    expect(text).toContain('## FAQs')
+    expect(text).toContain('Monday to Friday')
   })
 
   it('crawls same-domain pages, honors robots, page limit, duplicates, and failures', async () => {
@@ -155,14 +221,60 @@ describe('AI website knowledge import', () => {
     ])
 
     expect(draft).toContain('Page: Services')
+    expect(draft).toContain('# Website Knowledge Summary')
+    expect(draft).toContain('## Important Pages Imported')
+    expect(draft).toContain('## Business Overview, Services, Pricing, FAQs and Policies')
     expect(draft).toContain('Service summary')
     expect(draft).not.toContain('private_or_low_value_path')
+  })
+
+  it('does not silently truncate long website imports before the documented safe limit', () => {
+    const longContent = Array.from({ length: 400 }, (_item, index) =>
+      `Pricing detail ${index}: Pro plan costs $1/month and regular price is $5/month with automation, broadcasts, contacts, and AI chatbot.`,
+    ).join('\n')
+    const draft = buildWebsiteKnowledgeDraft([
+      {
+        url: 'https://example.com/pricing',
+        canonicalUrl: 'https://example.com/pricing',
+        title: 'Pricing',
+        metaDescription: 'Pricing details',
+        rawText: longContent,
+        cleanedText: longContent,
+        contentHash: 'pricing',
+        status: 'imported',
+        skipReason: null,
+        httpStatus: 200,
+      },
+    ])
+
+    expect(draft.length).toBeGreaterThan(45_000)
+    expect(draft.length).toBeLessThanOrEqual(MAX_WEBSITE_DRAFT_CONTENT_LENGTH)
+    expect(draft).toContain('Pricing detail 399')
+  })
+
+  it('creates chunks from full imported content and can retrieve pricing answers from website knowledge', () => {
+    const content = [
+      'Website pricing knowledge',
+      'Free plan: $0/month for trial users.',
+      'Pro Plan: $5/month regular price, limited time offer $1/month.',
+      'Lifetime setup: $499 one-time self-hosted setup.',
+      'Support package includes WhatsApp team inbox, broadcasts, AI chatbot, and automation workflows.',
+    ].join('\n\n')
+
+    const chunks = chunkKnowledgeText(content)
+    const relevant = retrieveRelevantChunks('What is the Pro monthly price?', chunks.map((chunk) => ({ chunk_text: chunk })))
+
+    expect(chunks.join('\n')).toContain('$499')
+    expect(relevant.join('\n')).toContain('$1/month')
+    expect(relevant.join('\n')).toContain('$5/month')
   })
 
   it('adds website import schema, source type, RLS, API routes, and review UI', () => {
     const migration = read('supabase/migrations/036_ai_website_knowledge_imports.sql')
     const route = read('src/app/api/ai-chatbot/website-import/route.ts')
     const publishRoute = read('src/app/api/ai-chatbot/website-import/[id]/route.ts')
+    const sourceRoute = read('src/app/api/ai-chatbot/route.ts')
+    const sourceUpdateRoute = read('src/app/api/ai-chatbot/sources/[id]/route.ts')
     const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
 
     expect(migration).toContain("source_type IN ('manual', 'faq', 'instructions', 'website')")
@@ -175,8 +287,13 @@ describe('AI website knowledge import', () => {
     expect(route).toContain('TRIAL_IMPORT_LIMIT')
     expect(publishRoute).toContain("action !== 'publish'")
     expect(publishRoute).toContain("sourceType: 'website'")
+    expect(publishRoute).toContain('MAX_WEBSITE_DRAFT_CONTENT_LENGTH')
+    expect(sourceRoute).toContain('MAX_WEBSITE_DRAFT_CONTENT_LENGTH')
+    expect(sourceUpdateRoute).toContain('MAX_WEBSITE_DRAFT_CONTENT_LENGTH')
     expect(page).toContain('Import Website Knowledge')
     expect(page).toContain('Publish to Knowledge Base')
     expect(page).toContain('Website import')
+    expect(page).toContain('setState((prev) =>')
+    expect(page).toContain('body.source as KnowledgeSource')
   })
 })

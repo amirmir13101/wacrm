@@ -310,6 +310,16 @@ export default function AiChatbotPage() {
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body?.error ?? "Failed to publish website knowledge")
       toast.success("Website knowledge published")
+      if (body?.source) {
+        setState((prev) =>
+          prev
+            ? {
+                ...prev,
+                sources: [body.source as KnowledgeSource, ...prev.sources.filter((source) => source.id !== body.source.id)],
+              }
+            : prev,
+        )
+      }
       setWebsiteImportResult(null)
       setWebsiteDraftTitle("")
       setWebsiteDraftContent("")

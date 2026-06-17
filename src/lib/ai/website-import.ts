@@ -43,6 +43,7 @@ const DEFAULT_PAGE_LIMIT = 50
 const MAX_PAGE_LIMIT = 100
 const DEFAULT_TIMEOUT_MS = 8_000
 const MAX_RECORDED_SKIPS = 120
+export const MAX_WEBSITE_DRAFT_CONTENT_LENGTH = 200_000
 
 const SKIP_PATH_PARTS = [
   'login',
@@ -220,7 +221,7 @@ export async function crawlWebsiteForKnowledge(options: CrawlOptions): Promise<W
 
     const title = extractTagContent(html, 'title') ?? hostTitle(start.hostname)
     const metaDescription = extractMetaDescription(html)
-    const rawText = cleanHtmlToText(html)
+    const rawText = extractWebsiteKnowledgeText(html)
     const cleanedText = normalizeExtractedText(rawText)
 
     if (cleanedText.length < 120) {
@@ -284,7 +285,8 @@ export async function crawlWebsiteForKnowledge(options: CrawlOptions): Promise<W
 }
 
 export function buildWebsiteKnowledgeDraft(pages: readonly WebsiteImportPage[]): string {
-  return pages
+  const importedPages = pages.filter((page) => page.status === 'imported' && page.cleanedText)
+  const combinedContent = importedPages
     .filter((page) => page.status === 'imported' && page.cleanedText)
     .map((page) => {
       const parts = [
@@ -296,7 +298,33 @@ export function buildWebsiteKnowledgeDraft(pages: readonly WebsiteImportPage[]):
       return parts.join('\n')
     })
     .join('\n\n---\n\n')
-    .slice(0, 50_000)
+
+  const pageList = importedPages
+    .map((page) => `- ${page.title ?? page.canonicalUrl ?? page.url}: ${page.canonicalUrl ?? page.url}`)
+    .join('\n')
+
+  return [
+    '# Website Knowledge Summary',
+    'Review and edit this imported website knowledge before publishing it to the chatbot.',
+    '',
+    '## Important Pages Imported',
+    pageList,
+    '',
+    '## Business Overview, Services, Pricing, FAQs and Policies',
+    combinedContent,
+  ]
+    .join('\n')
+    .slice(0, MAX_WEBSITE_DRAFT_CONTENT_LENGTH)
+}
+
+export function extractWebsiteKnowledgeText(html: string): string {
+  const structuredParts = [
+    extractTablesAsMarkdown(html),
+    extractPricingCardsAsText(html),
+    extractFaqSectionsAsText(html),
+  ].filter(Boolean)
+
+  return [...structuredParts, cleanHtmlToText(html)].join('\n\n')
 }
 
 export function cleanHtmlToText(html: string): string {
@@ -313,6 +341,45 @@ export function cleanHtmlToText(html: string): string {
     .replace(/<[^>]+>/g, ' ')
 
   return decodeHtmlEntities(withoutScripts)
+}
+
+export function extractTablesAsMarkdown(html: string): string {
+  const tables = Array.from(html.matchAll(/<table[\s\S]*?<\/table>/gi))
+    .map((match) => tableHtmlToMarkdown(match[0] ?? ''))
+    .filter(Boolean)
+
+  if (tables.length === 0) return ''
+  return ['## Structured Tables', ...tables.map((table, index) => `### Table ${index + 1}\n${table}`)].join('\n\n')
+}
+
+export function extractPricingCardsAsText(html: string): string {
+  const cardMatches = Array.from(
+    html.matchAll(/<(section|article|div)[^>]*(?:class|id)=["'][^"']*(?:pricing|price|plan|package|tier)[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi),
+  )
+
+  const cards = cardMatches
+    .map((match) => normalizeExtractedText(cleanHtmlToText(match[0] ?? '')))
+    .filter((text) => text.length >= 40 && looksLikePricingContent(text))
+    .filter(uniqueByLowercase)
+    .slice(0, 20)
+
+  if (cards.length === 0) return ''
+  return ['## Pricing / Plans', ...cards.map((card, index) => `### Pricing card ${index + 1}\n${card}`)].join('\n\n')
+}
+
+export function extractFaqSectionsAsText(html: string): string {
+  const faqMatches = Array.from(
+    html.matchAll(/<(section|article|div)[^>]*(?:class|id)=["'][^"']*(?:faq|accordion|question|answers?)[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi),
+  )
+
+  const faqs = faqMatches
+    .map((match) => normalizeExtractedText(cleanHtmlToText(match[0] ?? '')))
+    .filter((text) => text.length >= 40)
+    .filter(uniqueByLowercase)
+    .slice(0, 20)
+
+  if (faqs.length === 0) return ''
+  return ['## FAQs', ...faqs.map((faq, index) => `### FAQ section ${index + 1}\n${faq}`)].join('\n\n')
 }
 
 export function normalizeExtractedText(value: string): string {
@@ -467,6 +534,46 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/g, "'")
     .replace(/&#(\d+);/g, (_match, code: string) => String.fromCharCode(Number(code)))
+}
+
+function tableHtmlToMarkdown(tableHtml: string): string {
+  const rows = Array.from(tableHtml.matchAll(/<tr[\s\S]*?<\/tr>/gi))
+    .map((rowMatch) =>
+      Array.from(rowMatch[0].matchAll(/<(th|td)[^>]*>([\s\S]*?)<\/\1>/gi))
+        .map((cellMatch) => markdownCellText(cellMatch[2] ?? ''))
+        .filter(Boolean),
+    )
+    .filter((row) => row.length > 0)
+
+  if (rows.length === 0) return ''
+  const width = Math.max(...rows.map((row) => row.length))
+  const normalizedRows = rows.map((row) => Array.from({ length: width }, (_item, index) => row[index] ?? ''))
+  const header = normalizedRows[0]
+  const separator = header.map((cell) => (looksLikePriceHeader(cell) ? '---:' : '---'))
+  const body = normalizedRows.slice(1)
+
+  return [header, separator, ...body]
+    .map((row) => `| ${row.map((cell) => cell || ' ').join(' | ')} |`)
+    .join('\n')
+}
+
+function markdownCellText(html: string): string {
+  return normalizeExtractedText(cleanHtmlToText(html))
+    .replace(/\n+/g, '<br>')
+    .replace(/\|/g, '\\|')
+    .trim()
+}
+
+function looksLikePriceHeader(value: string): boolean {
+  return /\b(price|amount|cost|fee|rate|monthly|yearly|annual|billing)\b/i.test(value)
+}
+
+function looksLikePricingContent(value: string): boolean {
+  return /(\$|£|€|₹|rs\.?|pkr|usd|month|monthly|year|yearly|annual|plan|package|price|discount|setup fee|included|features?)/i.test(value)
+}
+
+function uniqueByLowercase(value: string, index: number, values: string[]): boolean {
+  return values.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index
 }
 
 function duplicatePage(

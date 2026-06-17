@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { saveKnowledgeSourceWithChunks } from '@/lib/ai/knowledge'
+import { MAX_WEBSITE_DRAFT_CONTENT_LENGTH } from '@/lib/ai/website-import'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
@@ -94,7 +95,7 @@ export async function PATCH(
   }
 
   const title = readLimitedText(body.title, job.draft_title ?? 'Website knowledge', 160)
-  const content = readLimitedText(body.content, job.draft_content ?? '', 50_000)
+  const content = readLimitedText(body.content, job.draft_content ?? '', MAX_WEBSITE_DRAFT_CONTENT_LENGTH)
   if (!title || !content) {
     return NextResponse.json({ error: 'Draft title and content are required.' }, { status: 400 })
   }
