@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { load } from 'cheerio'
 
 export type WebsiteImportPageStatus = 'imported' | 'skipped' | 'failed' | 'duplicate'
 
@@ -37,6 +38,13 @@ interface CrawlOptions {
 
 interface RobotsRules {
   readonly disallow: string[]
+}
+
+export interface WebsiteDocumentMetadata {
+  readonly title: string | null
+  readonly description: string | null
+  readonly canonicalUrl: string | null
+  readonly openGraph: Readonly<Record<string, string>>
 }
 
 const DEFAULT_PAGE_LIMIT = 50
@@ -207,7 +215,8 @@ export async function crawlWebsiteForKnowledge(options: CrawlOptions): Promise<W
     }
 
     const html = await response.text()
-    const canonical = normalizeCandidateUrl(extractCanonicalUrl(html, url) ?? url, origin)
+    const documentMetadata = extractWebsiteDocumentMetadata(html, url)
+    const canonical = normalizeCandidateUrl(documentMetadata.canonicalUrl ?? url, origin)
     if (!canonical) {
       pages.push(failedPage(url, 'invalid_canonical', response.status))
       continue
@@ -217,9 +226,9 @@ export async function crawlWebsiteForKnowledge(options: CrawlOptions): Promise<W
       continue
     }
 
-    const title = extractTagContent(html, 'title') ?? hostTitle(start.hostname)
-    const metaDescription = extractMetaDescription(html)
-    const rawText = extractWebsiteKnowledgeText(html)
+    const title = documentMetadata.title ?? hostTitle(start.hostname)
+    const metaDescription = documentMetadata.description
+    const rawText = extractWebsiteKnowledgeText(html, url)
     const cleanedText = normalizeExtractedText(rawText)
 
     if (cleanedText.length < 120) {
@@ -315,37 +324,40 @@ export function buildWebsiteKnowledgeDraft(pages: readonly WebsiteImportPage[]):
     .slice(0, MAX_WEBSITE_DRAFT_CONTENT_LENGTH)
 }
 
-export function extractWebsiteKnowledgeText(html: string): string {
+export function extractWebsiteKnowledgeText(html: string, pageUrl?: string): string {
   const structuredParts = [
+    extractPageMetadataAsText(html, pageUrl),
+    extractJsonLdAsText(html),
+    extractBreadcrumbsAsText(html),
     extractTablesAsMarkdown(html),
     extractBusinessCardsAsText(html),
     extractBusinessDetailsAsText(html),
     extractFaqSectionsAsText(html),
+    extractContactLinksAsText(html),
+    extractFooterFactsAsText(html),
+    extractPageHierarchyAsText(html),
   ].filter(Boolean)
 
   return [...structuredParts, cleanHtmlToText(html)].join('\n\n')
 }
 
 export function cleanHtmlToText(html: string): string {
-  const withoutScripts = html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
-    .replace(/<head[\s\S]*?<\/head>/gi, ' ')
-    .replace(/<(nav|header|footer|aside|form|button)[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|section|article|li|h1|h2|h3|h4|h5|h6)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-
-  return decodeHtmlEntities(withoutScripts)
+  const $ = load(html)
+  $('script, style, noscript, svg, head, nav, header, footer, aside, form, button').remove()
+  $('br').replaceWith('\n')
+  $('p, div, section, article, li, h1, h2, h3, h4, h5, h6, tr').each((_index, element) => {
+    $(element).append('\n')
+  })
+  return decodeHtmlEntities($.root().text())
 }
 
 export function extractTablesAsMarkdown(html: string): string {
-  const tables = Array.from(html.matchAll(/<table[\s\S]*?<\/table>/gi))
-    .map((match) => tableHtmlToMarkdown(match[0] ?? ''))
-    .filter(Boolean)
+  const $ = load(html)
+  const tables: string[] = []
+  $('table').each((_index, element) => {
+    const markdown = tableHtmlToMarkdown($.html(element))
+    if (markdown) tables.push(markdown)
+  })
 
   if (tables.length === 0) return ''
   return ['## Structured Tables', ...tables.map((table, index) => `### Table ${index + 1}\n${table}`)].join('\n\n')
@@ -356,7 +368,7 @@ export function extractPricingCardsAsText(html: string): string {
 }
 
 export function extractBusinessCardsAsText(html: string): string {
-  const cardMatches = extractElementsByAttributeKeyword(html, [
+  const attributeCards = extractElementsByAttributeKeyword(html, [
     'pricing',
     'price',
     'plan',
@@ -381,10 +393,18 @@ export function extractBusinessCardsAsText(html: string): string {
     'npname',
     'np-price',
   ])
+  const repeatedCards = extractRepeatedContentBlocks(html)
 
-  const cards = cardMatches
-    .map((cardHtml) => structureBusinessCardText(normalizeExtractedText(cleanHtmlToText(cardHtml))))
-    .filter((text) => text.length >= 30 && looksLikeBusinessCardContent(text))
+  const cards = [
+    ...repeatedCards.map((html) => ({ html, structurallyDetected: true })),
+    ...attributeCards.map((html) => ({ html, structurallyDetected: false })),
+  ]
+    .map(({ html, structurallyDetected }) => ({
+      text: structureBusinessCardText(normalizeExtractedText(cleanHtmlToText(html))),
+      structurallyDetected,
+    }))
+    .filter(({ text, structurallyDetected }) => text.length >= 30 && (structurallyDetected || looksLikeBusinessCardContent(text)))
+    .map(({ text }) => text)
     .filter(uniqueByLowercase)
     .slice(0, 40)
 
@@ -393,6 +413,7 @@ export function extractBusinessCardsAsText(html: string): string {
 }
 
 export function extractBusinessDetailsAsText(html: string): string {
+  const $ = load(html)
   const sections = [
     {
       heading: '## Business Hours and Booking',
@@ -410,30 +431,175 @@ export function extractBusinessDetailsAsText(html: string): string {
 
   return sections
     .map(({ heading, keywords }) => {
-      const text = extractElementsByAttributeKeyword(html, keywords)
-        .map((sectionHtml) => normalizeExtractedText(cleanHtmlToText(sectionHtml)))
+      const text: string[] = []
+      $('[class], [id]').each((_index, element) => {
+        const attributes = `${$(element).attr('class') ?? ''} ${$(element).attr('id') ?? ''}`.toLowerCase()
+        if (!keywords.some((keyword) => attributes.includes(keyword))) return
+        const value = normalizeExtractedText($(element).text())
+        if (value.length >= 30) text.push(value)
+      })
+      const uniqueText = text
         .filter((value) => value.length >= 30)
         .filter(uniqueByLowercase)
         .slice(0, 12)
-      return text.length > 0 ? [heading, ...text].join('\n\n') : ''
+      return uniqueText.length > 0 ? [heading, ...uniqueText].join('\n\n') : ''
     })
     .filter(Boolean)
     .join('\n\n')
 }
 
 export function extractFaqSectionsAsText(html: string): string {
-  const faqMatches = Array.from(
-    html.matchAll(/<(section|article|div)[^>]*(?:class|id)=["'][^"']*(?:faq|accordion|question|answers?)[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi),
-  )
+  const $ = load(html)
+  const faqValues: string[] = []
+  $('details').each((_index, element) => {
+    const value = normalizeExtractedText($(element).text())
+    if (value) faqValues.push(value)
+  })
+  $('[class], [id]').each((_index, element) => {
+    const attributes = `${$(element).attr('class') ?? ''} ${$(element).attr('id') ?? ''}`.toLowerCase()
+    if (!/(faq|accordion|question|answer)/.test(attributes)) return
+    const value = normalizeExtractedText($(element).text())
+    if (value) faqValues.push(value)
+  })
 
-  const faqs = faqMatches
-    .map((match) => normalizeExtractedText(cleanHtmlToText(match[0] ?? '')))
+  const faqs = faqValues
     .filter((text) => text.length >= 40)
     .filter(uniqueByLowercase)
     .slice(0, 20)
 
   if (faqs.length === 0) return ''
   return ['## FAQs', ...faqs.map((faq, index) => `### FAQ section ${index + 1}\n${faq}`)].join('\n\n')
+}
+
+export function extractWebsiteDocumentMetadata(html: string, baseUrl?: string): WebsiteDocumentMetadata {
+  const $ = load(html)
+  const title = normalizeOptionalText($('title').first().text(), 160)
+  const description = normalizeOptionalText(
+    $('meta[name="description" i]').first().attr('content') ?? $('meta[property="og:description" i]').first().attr('content'),
+    300,
+  )
+  const canonicalHref = $('link[rel~="canonical" i]').first().attr('href')
+  const canonicalUrl = resolveOptionalUrl(canonicalHref, baseUrl)
+  const openGraph: Record<string, string> = {}
+  $('meta[property^="og:" i], meta[name^="og:" i]').each((_index, element) => {
+    const property = ($(element).attr('property') ?? $(element).attr('name') ?? '').trim().toLowerCase()
+    const content = normalizeOptionalText($(element).attr('content'), 500)
+    if (property && content && !openGraph[property]) openGraph[property] = content
+  })
+  return { title, description, canonicalUrl, openGraph }
+}
+
+export function extractPageMetadataAsText(html: string, baseUrl?: string): string {
+  const metadata = extractWebsiteDocumentMetadata(html, baseUrl)
+  const lines = [
+    metadata.title ? `- Title: ${metadata.title}` : '',
+    metadata.description ? `- Description: ${metadata.description}` : '',
+    metadata.canonicalUrl ? `- Canonical URL: ${metadata.canonicalUrl}` : '',
+    ...Object.entries(metadata.openGraph).map(([key, value]) => `- ${humanizePropertyName(key)}: ${value}`),
+  ].filter(Boolean)
+  return lines.length > 0 ? ['## Page Metadata', ...lines].join('\n') : ''
+}
+
+export function extractJsonLdAsText(html: string): string {
+  const $ = load(html)
+  const blocks: string[] = []
+  $('script[type="application/ld+json" i]').each((_index, element) => {
+    const raw = $(element).text().trim()
+    if (!raw) return
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      for (const item of normalizeJsonLdItems(parsed)) {
+        const formatted = formatStructuredValue(item, 0)
+        if (formatted) blocks.push(formatted)
+      }
+    } catch {
+      // Invalid structured data should not prevent visible website content from importing.
+    }
+  })
+  const unique = blocks.filter(uniqueByLowercase).slice(0, 40)
+  return unique.length > 0 ? ['## Structured Website Data', ...unique].join('\n\n') : ''
+}
+
+export function extractBreadcrumbsAsText(html: string): string {
+  const $ = load(html)
+  const trails: string[] = []
+  const selectors = [
+    '[aria-label*="breadcrumb" i]',
+    '[class*="breadcrumb" i]',
+    '[id*="breadcrumb" i]',
+    '[itemtype*="BreadcrumbList" i]',
+  ]
+  $(selectors.join(', ')).each((_index, element) => {
+    const items = $(element)
+      .find('a, li, [itemprop="name"]')
+      .map((_itemIndex, item) => normalizeExtractedText($(item).text()))
+      .get()
+      .filter(Boolean)
+    const trail = Array.from(new Set(items)).join(' > ')
+    if (trail) trails.push(trail)
+  })
+  const unique = trails.filter(uniqueByLowercase).slice(0, 10)
+  return unique.length > 0 ? ['## Breadcrumbs', ...unique.map((trail) => `- ${trail}`)].join('\n') : ''
+}
+
+export function extractContactLinksAsText(html: string): string {
+  const $ = load(html)
+  const phones = new Set<string>()
+  const emails = new Set<string>()
+  $('a[href^="tel:" i]').each((_index, element) => {
+    const href = ($(element).attr('href') ?? '').replace(/^tel:/i, '').trim()
+    const label = normalizeExtractedText($(element).text())
+    if (href) phones.add(label && label !== href ? `${label}: ${href}` : href)
+  })
+  $('a[href^="mailto:" i]').each((_index, element) => {
+    const href = ($(element).attr('href') ?? '').replace(/^mailto:/i, '').split('?')[0]?.trim() ?? ''
+    const label = normalizeExtractedText($(element).text())
+    if (href) emails.add(label && label !== href ? `${label}: ${href}` : href)
+  })
+  const lines = [
+    ...Array.from(phones).map((value) => `- Phone: ${value}`),
+    ...Array.from(emails).map((value) => `- Email: ${value}`),
+  ]
+  return lines.length > 0 ? ['## Contact Links', ...lines].join('\n') : ''
+}
+
+export function extractFooterFactsAsText(html: string): string {
+  const $ = load(html)
+  const values: string[] = []
+  $('footer').each((_index, element) => {
+    const footer = $(element).clone()
+    footer.find('script, style, svg, form, button').remove()
+    footer.find('br').replaceWith('\n')
+    footer.find('p, div, section, li, address, time').each((_childIndex, child) => {
+      $(child).append('\n')
+    })
+    const text = normalizeExtractedText(footer.text())
+    if (text.length >= 20) values.push(text.slice(0, 6000))
+  })
+  const unique = values.filter(uniqueByLowercase).slice(0, 4)
+  return unique.length > 0 ? ['## Footer Information', ...unique].join('\n\n') : ''
+}
+
+export function extractPageHierarchyAsText(html: string): string {
+  const $ = load(html)
+  const scope = $('main').first().length > 0 ? $('main').first().clone() : $('body').first().clone()
+  scope.find('script, style, noscript, svg, nav, header, footer, aside, form, button').remove()
+  const output: string[] = []
+  scope.find('h1, h2, h3, h4, h5, h6, p, li, dt, dd, address, time, figcaption, summary').each((_index, element) => {
+    const node = $(element)
+    if (node.is('p, li, dt, dd') && node.parents('p, li, dt, dd').length > 0) return
+    const text = normalizeExtractedText(node.text())
+    if (!text || text.length < 2) return
+    const tag = element.type === 'tag' ? element.name.toLowerCase() : ''
+    if (/^h[1-6]$/.test(tag)) {
+      const level = Math.min(6, Math.max(2, Number(tag.slice(1)) + 1))
+      output.push(`${'#'.repeat(level)} ${text}`)
+    } else {
+      output.push(text)
+    }
+  })
+  const unique = output.filter(uniqueByLowercase).slice(0, 500)
+  return unique.length > 0 ? ['## Page Content by Section', ...unique].join('\n\n') : ''
 }
 
 export function normalizeExtractedText(value: string): string {
@@ -536,31 +702,6 @@ function extractLinks(html: string, baseUrl: string): string[] {
     .filter(Boolean)
 }
 
-function extractCanonicalUrl(html: string, baseUrl: string): string | null {
-  const match = html.match(/<link[^>]+rel=["'][^"']*canonical[^"']*["'][^>]*>/i)
-  const tag = match?.[0]
-  if (!tag) return null
-  const href = tag.match(/href=["']([^"']+)["']/i)?.[1]
-  if (!href) return null
-  try {
-    return new URL(href, baseUrl).toString()
-  } catch {
-    return null
-  }
-}
-
-function extractMetaDescription(html: string): string | null {
-  const match = html.match(/<meta[^>]+name=["']description["'][^>]*>/i)
-  const tag = match?.[0]
-  const content = tag?.match(/content=["']([^"']+)["']/i)?.[1]
-  return content ? decodeHtmlEntities(content).trim().slice(0, 300) : null
-}
-
-function extractTagContent(html: string, tagName: string): string | null {
-  const match = html.match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i'))
-  return match?.[1] ? normalizeExtractedText(cleanHtmlToText(match[1])).slice(0, 160) : null
-}
-
 function normalizeCandidateUrl(candidate: string, origin: string): string | null {
   try {
     const parsed = new URL(candidate, origin)
@@ -591,13 +732,16 @@ function decodeHtmlEntities(value: string): string {
 }
 
 function tableHtmlToMarkdown(tableHtml: string): string {
-  const rows = Array.from(tableHtml.matchAll(/<tr[\s\S]*?<\/tr>/gi))
-    .map((rowMatch) =>
-      Array.from(rowMatch[0].matchAll(/<(th|td)[^>]*>([\s\S]*?)<\/\1>/gi))
-        .map((cellMatch) => markdownCellText(cellMatch[2] ?? ''))
-        .filter(Boolean),
-    )
-    .filter((row) => row.length > 0)
+  const $ = load(tableHtml)
+  const rows: string[][] = []
+  $('tr').each((_rowIndex, rowElement) => {
+    const cells: string[] = []
+    $(rowElement).children('th, td').each((_cellIndex, cellElement) => {
+      const value = markdownCellText($.html(cellElement))
+      if (value) cells.push(value)
+    })
+    if (cells.length > 0) rows.push(cells)
+  })
 
   if (rows.length === 0) return ''
   const width = Math.max(...rows.map((row) => row.length))
@@ -612,42 +756,62 @@ function tableHtmlToMarkdown(tableHtml: string): string {
 }
 
 function extractElementsByAttributeKeyword(html: string, keywords: readonly string[]): string[] {
+  const $ = load(html)
   const results: string[] = []
-  const seenStarts = new Set<number>()
-  const pattern = /<(section|article|div)\b[^>]*(?:class|id)=["'][^"']*["'][^>]*>/gi
-  let match: RegExpExecArray | null
-
-  while ((match = pattern.exec(html))) {
-    const opening = match[0] ?? ''
-    const tagName = (match[1] ?? '').toLowerCase()
-    if (!keywords.some((keyword) => opening.toLowerCase().includes(keyword))) continue
-    if (seenStarts.has(match.index)) continue
-    const element = readBalancedElement(html, match.index, tagName)
-    if (!element) continue
-    seenStarts.add(match.index)
-    results.push(element)
-  }
-
+  $('[class], [id]').each((_index, element) => {
+    const attributes = `${$(element).attr('class') ?? ''} ${$(element).attr('id') ?? ''}`.toLowerCase()
+    if (!keywords.some((keyword) => attributes.includes(keyword))) return
+    const outerHtml = $.html(element)
+    if (outerHtml) results.push(outerHtml)
+  })
   return results
 }
 
-function readBalancedElement(html: string, startIndex: number, tagName: string): string | null {
-  const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, 'gi')
-  tagPattern.lastIndex = startIndex
-  let depth = 0
-  let match: RegExpExecArray | null
+function extractRepeatedContentBlocks(html: string): string[] {
+  const $ = load(html)
+  const results: string[] = []
+  const seen = new Set<string>()
 
-  while ((match = tagPattern.exec(html))) {
-    const tag = match[0] ?? ''
-    if (tag.startsWith(`</`)) {
-      depth -= 1
-      if (depth === 0) return html.slice(startIndex, tagPattern.lastIndex)
-    } else if (!tag.endsWith('/>')) {
-      depth += 1
+  $('main, section, article, div, ul, ol').each((_parentIndex, parentElement) => {
+    const children = $(parentElement).children('article, section, div, li')
+    if (children.length < 2 || children.length > 30) return
+
+    const groups = new Map<string, string[]>()
+    children.each((_childIndex, childElement) => {
+      const child = $(childElement)
+      const text = normalizeExtractedText(child.text())
+      if (text.length < 30 || text.length > 1800) return
+      const heading = normalizeExtractedText(child.find('h1, h2, h3, h4, h5, h6, [role="heading"]').first().text())
+      const detailCount = child.find('p, li, dt, dd, time, address, strong').length
+      if (!heading || detailCount < 1) return
+
+      const directShape = child
+        .children()
+        .map((_index, element) => (element.type === 'tag' ? element.name.toLowerCase() : ''))
+        .get()
+        .filter(Boolean)
+        .slice(0, 8)
+        .join(',')
+      const tagName = childElement.type === 'tag' ? childElement.name.toLowerCase() : ''
+      const signature = `${tagName}|${directShape}|${Math.min(detailCount, 5)}`
+      const values = groups.get(signature) ?? []
+      const outerHtml = $.html(childElement)
+      if (outerHtml) values.push(outerHtml)
+      groups.set(signature, values)
+    })
+
+    for (const values of groups.values()) {
+      if (values.length < 2) continue
+      for (const value of values) {
+        const key = normalizeExtractedText(cleanHtmlToText(value)).toLowerCase()
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        results.push(value)
+      }
     }
-  }
+  })
 
-  return null
+  return results.slice(0, 60)
 }
 
 function structureBusinessCardText(text: string): string {
@@ -754,6 +918,84 @@ function looksLikeBusinessCardContent(value: string): boolean {
 
 function looksLikePricingContent(value: string): boolean {
   return /(\$|£|€|₹|rs\.?|pkr|usd|month|monthly|year|yearly|annual|plan|package|price|discount|setup fee|included|features?)/i.test(value)
+}
+
+function normalizeOptionalText(value: string | null | undefined, maxLength: number): string | null {
+  if (!value) return null
+  const normalized = normalizeExtractedText(decodeHtmlEntities(value))
+  return normalized ? normalized.slice(0, maxLength) : null
+}
+
+function resolveOptionalUrl(value: string | null | undefined, baseUrl?: string): string | null {
+  if (!value) return null
+  try {
+    return new URL(value, baseUrl).toString()
+  } catch {
+    return null
+  }
+}
+
+function humanizePropertyName(value: string): string {
+  return value
+    .replace(/^og:/i, 'Open Graph ')
+    .replace(/^@/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .trim()
+}
+
+function normalizeJsonLdItems(value: unknown): ReadonlyArray<Record<string, unknown>> {
+  if (Array.isArray(value)) return value.flatMap((item) => normalizeJsonLdItems(item))
+  if (!isRecord(value)) return []
+  const graph = value['@graph']
+  if (Array.isArray(graph)) return graph.flatMap((item) => normalizeJsonLdItems(item))
+  return [value]
+}
+
+function formatStructuredValue(value: Record<string, unknown>, depth: number): string {
+  if (depth > 4) return ''
+  const typeValue = scalarText(value['@type'])
+  const nameValue = scalarText(value.name) ?? scalarText(value.headline)
+  const heading = nameValue ?? typeValue ?? 'Structured item'
+  const lines: string[] = [`${'#'.repeat(Math.min(6, depth + 3))} ${heading}`]
+
+  for (const [key, item] of Object.entries(value)) {
+    if (key === '@context' || key === '@graph' || key === '@type' || key === 'name' || key === 'headline') continue
+    if (item === null || item === undefined) continue
+    const label = humanizePropertyName(key)
+    const scalar = scalarText(item)
+    if (scalar) {
+      lines.push(`- ${label}: ${scalar}`)
+      continue
+    }
+    if (Array.isArray(item)) {
+      const scalarValues = item.map((entry) => scalarText(entry)).filter((entry): entry is string => Boolean(entry))
+      if (scalarValues.length > 0) lines.push(`- ${label}: ${scalarValues.join(', ')}`)
+      for (const nested of item) {
+        if (!isRecord(nested)) continue
+        const formatted = formatStructuredValue(nested, depth + 1)
+        if (formatted) lines.push(formatted)
+      }
+      continue
+    }
+    if (isRecord(item)) {
+      const formatted = formatStructuredValue(item, depth + 1)
+      if (formatted) lines.push(formatted)
+    }
+  }
+
+  return lines.join('\n').slice(0, 12_000)
+}
+
+function scalarText(value: unknown): string | null {
+  if (typeof value === 'string') return normalizeOptionalText(value, 2000)
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function uniqueByLowercase(value: string, index: number, values: string[]): boolean {

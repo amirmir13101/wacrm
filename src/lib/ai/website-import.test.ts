@@ -11,8 +11,15 @@ import {
   crawlWebsiteForKnowledge,
   extractFaqSectionsAsText,
   extractBusinessDetailsAsText,
+  extractBreadcrumbsAsText,
+  extractContactLinksAsText,
+  extractFooterFactsAsText,
+  extractJsonLdAsText,
+  extractPageHierarchyAsText,
+  extractPageMetadataAsText,
   extractPricingCardsAsText,
   extractTablesAsMarkdown,
+  extractWebsiteDocumentMetadata,
   extractWebsiteKnowledgeText,
   normalizeWebsiteUrl,
   parseRobotsTxt,
@@ -257,6 +264,164 @@ describe('AI website knowledge import', () => {
     expect(text).toContain('| Pro | $1/month |')
     expect(text).toContain('## FAQs')
     expect(text).toContain('Monday to Friday')
+  })
+
+  it('extracts JSON-LD schema.org facts without depending on one business industry', () => {
+    const structured = extractJsonLdAsText(`
+      <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "Organization",
+              "name": "North Star Works",
+              "telephone": "+1 555 0100",
+              "email": "hello@example.com",
+              "address": {
+                "@type": "PostalAddress",
+                "streetAddress": "14 Market Street",
+                "addressLocality": "Austin"
+              }
+            },
+            {
+              "@type": "Offer",
+              "name": "Priority Support",
+              "price": "49.00",
+              "priceCurrency": "USD",
+              "description": "Response within two business hours"
+            }
+          ]
+        }
+      </script>
+    `)
+
+    expect(structured).toContain('North Star Works')
+    expect(structured).toContain('Telephone: +1 555 0100')
+    expect(structured).toContain('Street Address: 14 Market Street')
+    expect(structured).toContain('Priority Support')
+    expect(structured).toContain('Price: 49.00')
+    expect(structured).toContain('Price Currency: USD')
+  })
+
+  it('extracts metadata, Open Graph values, breadcrumbs, and contact links', () => {
+    const html = `
+      <html>
+        <head>
+          <title>Acme Services</title>
+          <meta name="description" content="Professional support and repairs">
+          <meta property="og:title" content="Acme Service Center">
+          <meta property="og:locale" content="en_US">
+          <link rel="canonical" href="/services">
+        </head>
+        <body>
+          <nav aria-label="Breadcrumb"><a href="/">Home</a><a href="/services">Services</a></nav>
+          <a href="tel:+15550100">Call our team</a>
+          <a href="mailto:help@example.com?subject=Website">Email support</a>
+        </body>
+      </html>
+    `
+    const metadata = extractWebsiteDocumentMetadata(html, 'https://example.com/start')
+    const metadataText = extractPageMetadataAsText(html, 'https://example.com/start')
+    const breadcrumbs = extractBreadcrumbsAsText(html)
+    const contacts = extractContactLinksAsText(html)
+
+    expect(metadata.title).toBe('Acme Services')
+    expect(metadata.description).toBe('Professional support and repairs')
+    expect(metadata.canonicalUrl).toBe('https://example.com/services')
+    expect(metadata.openGraph['og:title']).toBe('Acme Service Center')
+    expect(metadataText).toContain('Open Graph Title: Acme Service Center')
+    expect(breadcrumbs).toContain('Home > Services')
+    expect(contacts).toContain('Phone: Call our team: +15550100')
+    expect(contacts).toContain('Email: Email support: help@example.com')
+  })
+
+  it('preserves heading hierarchy and footer business facts before boilerplate cleanup', () => {
+    const html = `
+      <main>
+        <h1>Customer Information</h1>
+        <section>
+          <h2>How It Works</h2>
+          <p>Choose an option and submit your request.</p>
+          <h3>Response Time</h3>
+          <p>Most requests receive a reply within one business day.</p>
+        </section>
+      </main>
+      <footer>
+        <address>14 Market Street, Austin</address>
+        <p>Monday-Friday: 8 AM-5 PM</p>
+        <a href="tel:+15550100">+1 555 0100</a>
+        <a href="mailto:hello@example.com">hello@example.com</a>
+      </footer>
+    `
+
+    const hierarchy = extractPageHierarchyAsText(html)
+    const footer = extractFooterFactsAsText(html)
+    const cleaned = cleanHtmlToText(html)
+
+    expect(hierarchy).toContain('## Customer Information')
+    expect(hierarchy).toContain('### How It Works')
+    expect(hierarchy).toContain('#### Response Time')
+    expect(hierarchy).toContain('within one business day')
+    expect(footer).toContain('14 Market Street, Austin')
+    expect(footer).toContain('Monday-Friday: 8 AM-5 PM')
+    expect(footer).toContain('hello@example.com')
+    expect(cleaned).not.toContain('14 Market Street')
+  })
+
+  it('detects repeated information cards from DOM structure even with neutral generated classes', () => {
+    const cards = extractPricingCardsAsText(`
+      <section class="x-19a">
+        <div class="z-001">
+          <h3>Standard Consultation</h3>
+          <p>USD 45</p>
+          <p>30 minute session with a specialist</p>
+        </div>
+        <div class="z-002">
+          <h3>Extended Consultation</h3>
+          <p>USD 75</p>
+          <p>60 minute session with a specialist</p>
+        </div>
+      </section>
+    `)
+
+    expect(cards).toContain('Standard Consultation')
+    expect(cards).toContain('USD 45')
+    expect(cards).toContain('30 minute session')
+    expect(cards).toContain('Extended Consultation')
+    expect(cards).toContain('USD 75')
+  })
+
+  it('builds one general knowledge document from metadata, structured data, sections, cards, and footer facts', () => {
+    const text = extractWebsiteKnowledgeText(`
+      <html>
+        <head>
+          <title>Willow & Co</title>
+          <meta property="og:description" content="Appointments and customer support">
+        </head>
+        <body>
+          <script type="application/ld+json">
+            {"@context":"https://schema.org","@type":"Organization","name":"Willow & Co","email":"team@willow.example"}
+          </script>
+          <main>
+            <h1>Our Options</h1>
+            <div class="row-a">
+              <article class="unit-a"><h2>Essential</h2><p>$25</p><p>Includes email support</p></article>
+              <article class="unit-b"><h2>Complete</h2><p>$60</p><p>Includes priority support</p></article>
+            </div>
+          </main>
+          <footer><p>Open Monday-Saturday, 9 AM-6 PM</p><address>5 River Road</address></footer>
+        </body>
+      </html>
+    `, 'https://willow.example/')
+
+    expect(text).toContain('## Page Metadata')
+    expect(text).toContain('Willow & Co')
+    expect(text).toContain('## Structured Website Data')
+    expect(text).toContain('Essential')
+    expect(text).toContain('$25')
+    expect(text).toContain('## Page Content by Section')
+    expect(text).toContain('## Footer Information')
+    expect(text).toContain('5 River Road')
   })
 
   it('crawls same-domain pages, honors robots, page limit, duplicates, and failures', async () => {
