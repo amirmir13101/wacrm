@@ -353,12 +353,20 @@ export function extractTablesAsMarkdown(html: string): string {
 }
 
 export function extractPricingCardsAsText(html: string): string {
-  const cardMatches = Array.from(
-    html.matchAll(/<(section|article|div)[^>]*(?:class|id)=["'][^"']*(?:pricing|price|plan|package|tier)[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi),
-  )
+  const cardMatches = extractElementsByAttributeKeyword(html, [
+    'pricing',
+    'price',
+    'plan',
+    'package',
+    'tier',
+    'ncard',
+    'ngrid',
+    'npname',
+    'np-price',
+  ])
 
   const cards = cardMatches
-    .map((match) => normalizeExtractedText(cleanHtmlToText(match[0] ?? '')))
+    .map((cardHtml) => structurePricingCardText(normalizeExtractedText(cleanHtmlToText(cardHtml))))
     .filter((text) => text.length >= 40 && looksLikePricingContent(text))
     .filter(uniqueByLowercase)
     .slice(0, 20)
@@ -555,6 +563,129 @@ function tableHtmlToMarkdown(tableHtml: string): string {
   return [header, separator, ...body]
     .map((row) => `| ${row.map((cell) => cell || ' ').join(' | ')} |`)
     .join('\n')
+}
+
+function extractElementsByAttributeKeyword(html: string, keywords: readonly string[]): string[] {
+  const results: string[] = []
+  const seenStarts = new Set<number>()
+  const pattern = /<(section|article|div)\b[^>]*(?:class|id)=["'][^"']*["'][^>]*>/gi
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(html))) {
+    const opening = match[0] ?? ''
+    const tagName = (match[1] ?? '').toLowerCase()
+    if (!keywords.some((keyword) => opening.toLowerCase().includes(keyword))) continue
+    if (seenStarts.has(match.index)) continue
+    const element = readBalancedElement(html, match.index, tagName)
+    if (!element) continue
+    seenStarts.add(match.index)
+    results.push(element)
+  }
+
+  return results
+}
+
+function readBalancedElement(html: string, startIndex: number, tagName: string): string | null {
+  const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, 'gi')
+  tagPattern.lastIndex = startIndex
+  let depth = 0
+  let match: RegExpExecArray | null
+
+  while ((match = tagPattern.exec(html))) {
+    const tag = match[0] ?? ''
+    if (tag.startsWith(`</`)) {
+      depth -= 1
+      if (depth === 0) return html.slice(startIndex, tagPattern.lastIndex)
+    } else if (!tag.endsWith('/>')) {
+      depth += 1
+    }
+  }
+
+  return null
+}
+
+function structurePricingCardText(text: string): string {
+  const lines = text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines.length === 0) return ''
+
+  const structured: string[] = []
+  let index = 0
+  const heading = lines[index]
+  if (heading && heading.length <= 80) {
+    structured.push(`### ${heading}`)
+    index += 1
+  }
+
+  while (index < lines.length) {
+    const current = lines[index] ?? ''
+    const next = lines[index + 1] ?? ''
+    const afterNext = lines[index + 2] ?? ''
+    const inlinePrice = normalizeInlinePrice(current)
+
+    if (inlinePrice) {
+      structured.push(`- Price: ${inlinePrice}`)
+      index += 1
+      continue
+    }
+
+    if (isCurrencySymbol(current) && isAmount(next)) {
+      const period = isBillingPeriod(afterNext) ? afterNext : ''
+      structured.push(`- Price: ${current}${next}${period}`)
+      index += period ? 3 : 2
+      continue
+    }
+
+    if (isAmount(current) && isBillingPeriod(next)) {
+      structured.push(`- Price: ${current}${next}`)
+      index += 2
+      continue
+    }
+
+    if (looksLikePlanSpec(current)) {
+      structured.push(`- ${current}`)
+    } else if (!/^buy now|order now|get started|select plan|choose plan/i.test(current)) {
+      structured.push(current)
+    }
+    index += 1
+  }
+
+  return structured.join('\n')
+}
+
+function isCurrencySymbol(value: string): boolean {
+  return /^[$£€₹]$|^(rs\.?|pkr|usd)$/i.test(value.trim())
+}
+
+function isAmount(value: string): boolean {
+  return /^\d+(?:[.,]\d+)?$/.test(value.trim()) || /^[$£€₹]\s?\d+(?:[.,]\d+)?/i.test(value.trim())
+}
+
+function isBillingPeriod(value: string): boolean {
+  return /^\/?\s?(mo|month|monthly|yr|year|yearly|quarter|quarterly|semi-annual|semi annual|2-year|3-year)$/i.test(value.trim())
+}
+
+function looksLikePlanSpec(value: string): boolean {
+  return /\b(cpu|core|ram|gb|tb|nvme|ssd|storage|bandwidth|traffic|backup|ssl|domain|database|email|workflow|execution|memory)\b/i.test(value)
+}
+
+function normalizeInlinePrice(value: string): string | null {
+  const trimmed = value.trim()
+  const compact = trimmed.match(/^([$£€₹])\s*(\d+(?:[.,]\d+)?)\s*(\/?\s?(?:mo|month|monthly|yr|year|yearly|quarter|quarterly|semi-annual|semi annual|2-year|3-year))$/i)
+  if (compact) {
+    const period = compact[3]?.replace(/\s+/g, '') ?? ''
+    return `${compact[1]}${compact[2]}${period}`
+  }
+
+  const named = trimmed.match(/^(USD|PKR|Rs\.?)\s+(\d[\d,.]*)\s*(\/?\s?(?:mo|month|monthly|yr|year|yearly|quarter|quarterly|semi-annual|semi annual|2-year|3-year))?$/i)
+  if (named) {
+    return [named[1], named[2], named[3]?.replace(/\s+/g, '')].filter(Boolean).join(' ')
+  }
+
+  return null
 }
 
 function markdownCellText(html: string): string {

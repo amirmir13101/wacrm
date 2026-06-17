@@ -42,6 +42,70 @@ describe('AI chatbot knowledge helpers', () => {
     expect(results).not.toContain(chunks[1].chunk_text)
   })
 
+  it('prefers exact VPS RAM matches so 4GB questions do not return the 8GB price', () => {
+    const knowledge = [
+      '## VPS Pricing',
+      '### Wagon VPS x4',
+      '- RAM: 4GB',
+      '- CPU: 2 Core',
+      '- Storage: 40GB NVMe',
+      '- Price: $6.50/mo',
+      '',
+      '### Wagon VPS x8',
+      '- RAM: 8GB',
+      '- CPU: 4 Core',
+      '- Storage: 60GB NVMe',
+      '- Price: $8.80/mo',
+    ].join('\n')
+
+    const results = retrieveRelevantChunks('What is the price of 4GB VPS?', [{ chunk_text: knowledge }])
+
+    expect(results[0]).toContain('Wagon VPS x4')
+    expect(results[0]).toContain('4GB')
+    expect(results[0]).toContain('$6.50/mo')
+    expect(results[0]).not.toContain('$8.80/mo')
+  })
+
+  it('prefers exact VPS RAM matches for 8GB pricing questions', () => {
+    const knowledge = [
+      '## VPS Pricing',
+      '### Wagon VPS x4',
+      '- RAM: 4GB',
+      '- Price: $6.50/mo',
+      '',
+      '### Wagon VPS x8',
+      '- RAM: 8GB',
+      '- Price: $8.80/mo',
+    ].join('\n')
+
+    const results = retrieveRelevantChunks('How much is 8GB VPS?', [{ chunk_text: knowledge }])
+
+    expect(results[0]).toContain('Wagon VPS x8')
+    expect(results[0]).toContain('8GB')
+    expect(results[0]).toContain('$8.80/mo')
+  })
+
+  it('uses structured preview formatting for pricing questions without hallucinating missing prices', async () => {
+    vi.stubEnv('OPENAI_API_KEY', '')
+
+    const result = await generateChatbotAnswer({
+      question: 'What is the 4GB VPS price?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      chunks: ['### Wagon VPS x4\n- RAM: 4GB\n- CPU: 2 Core\n- Storage: 40GB NVMe\n- Price: $6.50/mo'],
+    })
+    const missing = await generateChatbotAnswer({
+      question: 'What is n8n enterprise price?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      chunks: [],
+    })
+
+    expect(result.answer).toContain('*Wagon VPS x4*')
+    expect(result.answer).toContain('- Price: $6.50/mo')
+    expect(missing.answer).toBe(DEFAULT_AI_CHATBOT_SETTINGS.fallback_message)
+
+    vi.unstubAllEnvs()
+  })
+
   it('returns the workspace fallback when no knowledge matches', async () => {
     const result = await generateChatbotAnswer({
       question: 'Do you sell airport transfers?',

@@ -121,6 +121,65 @@ describe('AI website knowledge import', () => {
     expect(faqs).toContain('opted-in contacts')
   })
 
+  it('extracts nested n8n hosting cards with plan name, specs, and monthly prices', () => {
+    const pricing = extractPricingCardsAsText(`
+      <div id="n8n-price-root">
+        <div class="nph"><h2 class="nph-h">Choose The Right n8n Hosting Plan</h2></div>
+        <div class="ngrid">
+          <div class="ncard">
+            <div class="npname">Starter</div>
+            <div class="npsub">n8n 2GB Perfect to get started</div>
+            <div class="nprow"><span class="npcur">$</span><span class="npamt">0.99</span><span class="npperiod">/mo</span></div>
+            <ul class="npfeats">
+              <li><span><strong>1 Core</strong> CPU</span></li>
+              <li><span><strong>2GB</strong> RAM</span></li>
+              <li><span><strong>20GB</strong> NVMe Storage</span></li>
+            </ul>
+          </div>
+          <div class="ncard npop">
+            <div class="npname">Basic</div>
+            <div class="npsub">n8n 4GB Great for small teams</div>
+            <div class="nprow"><span class="npcur">$</span><span class="npamt">2.00</span><span class="npperiod">/mo</span></div>
+            <ul class="npfeats">
+              <li><span><strong>2 Core</strong> CPU</span></li>
+              <li><span><strong>4GB</strong> RAM</span></li>
+              <li><span><strong>40GB</strong> NVMe Storage</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    `)
+
+    expect(pricing).toContain('### Starter')
+    expect(pricing).toContain('- Price: $0.99/mo')
+    expect(pricing).toContain('2GB RAM')
+    expect(pricing).toContain('### Basic')
+    expect(pricing).toContain('- Price: $2.00/mo')
+    expect(pricing).toContain('4GB RAM')
+    expect(pricing).toContain('40GB NVMe Storage')
+  })
+
+  it('preserves monthly, quarterly, semi-annual, yearly and multi-year labels when present', () => {
+    const pricing = extractPricingCardsAsText(`
+      <div class="pricing package-card">
+        <h3>Automation Pro</h3>
+        <p>Monthly: USD 9/mo</p>
+        <p>Quarterly: $24/quarter</p>
+        <p>Semi-Annual: PKR 12,000</p>
+        <p>Yearly: Rs 20,000 /year</p>
+        <p>2-Year: $160</p>
+        <p>3-Year: $210</p>
+      </div>
+    `)
+
+    expect(pricing).toContain('USD 9/mo')
+    expect(pricing).toContain('$24/quarter')
+    expect(pricing).toContain('Semi-Annual: PKR 12,000')
+    expect(pricing).toContain('Rs 20,000 /year')
+    expect(pricing).toContain('2-Year: $160')
+    expect(pricing).toContain('3-Year: $210')
+  })
+
   it('combines structured tables/cards/FAQs with plain text for stronger website knowledge', () => {
     const text = extractWebsiteKnowledgeText(`
       <main>
