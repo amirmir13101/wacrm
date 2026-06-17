@@ -85,6 +85,83 @@ describe('AI chatbot knowledge helpers', () => {
     expect(results[0]).toContain('$8.80/mo')
   })
 
+  it('matches the exact restaurant menu item instead of a similar item', () => {
+    const knowledge = [
+      '## Menu Pricing',
+      '### Chicken Burger',
+      '- Price: $8.99',
+      '- Includes: fries and drink',
+      '',
+      '### Chicken Pizza',
+      '- Price: $14.99',
+      '- Serves: 2 people',
+    ].join('\n')
+
+    const results = retrieveRelevantChunks('What is the price of Chicken Burger?', [{ chunk_text: knowledge }])
+
+    expect(results[0]).toContain('Chicken Burger')
+    expect(results[0]).toContain('$8.99')
+    expect(results[0]).not.toContain('$14.99')
+  })
+
+  it('matches the exact clinic service instead of another dental treatment', () => {
+    const knowledge = [
+      '## Services',
+      '### Dental Cleaning',
+      '- Price: $50',
+      '- Duration: 30 minutes',
+      '',
+      '### Dental Implant',
+      '- Price: $900',
+      '- Appointment required',
+    ].join('\n')
+
+    const results = retrieveRelevantChunks('How much is dental cleaning?', [{ chunk_text: knowledge }])
+
+    expect(results[0]).toContain('Dental Cleaning')
+    expect(results[0]).toContain('$50')
+    expect(results[0]).not.toContain('$900')
+  })
+
+  it('matches SaaS plans, ecommerce products, opening hours, and delivery policies', () => {
+    const knowledge = [
+      '## Pricing Plans',
+      '### Pro Plan',
+      '- Price monthly: $10/month',
+      '- Price yearly: $99/year',
+      '',
+      '## Products',
+      '### Wireless Headphones',
+      '- Price: USD 79',
+      '- Delivery: free',
+      '',
+      '## Business Hours',
+      '- Monday-Friday: 9 AM-6 PM',
+      '',
+      '## Delivery Policy',
+      '- Delivery takes 2-3 business days.',
+    ].join('\n')
+
+    expect(retrieveRelevantChunks('What is the Pro plan yearly price?', [{ chunk_text: knowledge }])[0]).toContain('$99/year')
+    expect(retrieveRelevantChunks('How much are Wireless Headphones?', [{ chunk_text: knowledge }])[0]).toContain('USD 79')
+    expect(retrieveRelevantChunks('What are your opening hours?', [{ chunk_text: knowledge }])[0]).toContain('9 AM-6 PM')
+    expect(retrieveRelevantChunks('Do you offer delivery?', [{ chunk_text: knowledge }])[0]).toContain('2-3 business days')
+  })
+
+  it('does not guess a similar priced item when the requested item is missing', () => {
+    const knowledge = [
+      '### Dental Cleaning',
+      '- Price: $50',
+      '',
+      '### Dental Implant',
+      '- Price: $900',
+    ].join('\n')
+
+    const results = retrieveRelevantChunks('What is the price of dental whitening?', [{ chunk_text: knowledge }])
+
+    expect(results).toEqual([])
+  })
+
   it('uses structured preview formatting for pricing questions without hallucinating missing prices', async () => {
     vi.stubEnv('OPENAI_API_KEY', '')
 
@@ -101,6 +178,7 @@ describe('AI chatbot knowledge helpers', () => {
 
     expect(result.answer).toContain('*Wagon VPS x4*')
     expect(result.answer).toContain('- Price: $6.50/mo')
+    expect(result.answer).toContain('\n')
     expect(missing.answer).toBe(DEFAULT_AI_CHATBOT_SETTINGS.fallback_message)
 
     vi.unstubAllEnvs()

@@ -127,8 +127,6 @@ export function shouldSkipWebsiteUrl(candidate: string, origin: string): string 
   const pathname = parsed.pathname.toLowerCase()
   if (SKIP_EXTENSIONS.some((extension) => pathname.endsWith(extension))) return 'media_or_file_url'
   if (SKIP_PATH_PARTS.some((part) => pathname.includes(part))) return 'private_or_low_value_path'
-  if (pathname.includes('privacy-policy') || pathname.includes('terms')) return 'policy_page_skipped'
-
   return null
 }
 
@@ -320,7 +318,8 @@ export function buildWebsiteKnowledgeDraft(pages: readonly WebsiteImportPage[]):
 export function extractWebsiteKnowledgeText(html: string): string {
   const structuredParts = [
     extractTablesAsMarkdown(html),
-    extractPricingCardsAsText(html),
+    extractBusinessCardsAsText(html),
+    extractBusinessDetailsAsText(html),
     extractFaqSectionsAsText(html),
   ].filter(Boolean)
 
@@ -353,12 +352,30 @@ export function extractTablesAsMarkdown(html: string): string {
 }
 
 export function extractPricingCardsAsText(html: string): string {
+  return extractBusinessCardsAsText(html)
+}
+
+export function extractBusinessCardsAsText(html: string): string {
   const cardMatches = extractElementsByAttributeKeyword(html, [
     'pricing',
     'price',
     'plan',
     'package',
     'tier',
+    'product',
+    'service',
+    'menu',
+    'dish',
+    'food',
+    'course',
+    'program',
+    'treatment',
+    'appointment',
+    'booking',
+    'offer',
+    'deal',
+    'catalog',
+    'item',
     'ncard',
     'ngrid',
     'npname',
@@ -366,13 +383,42 @@ export function extractPricingCardsAsText(html: string): string {
   ])
 
   const cards = cardMatches
-    .map((cardHtml) => structurePricingCardText(normalizeExtractedText(cleanHtmlToText(cardHtml))))
-    .filter((text) => text.length >= 40 && looksLikePricingContent(text))
+    .map((cardHtml) => structureBusinessCardText(normalizeExtractedText(cleanHtmlToText(cardHtml))))
+    .filter((text) => text.length >= 30 && looksLikeBusinessCardContent(text))
     .filter(uniqueByLowercase)
-    .slice(0, 20)
+    .slice(0, 40)
 
   if (cards.length === 0) return ''
-  return ['## Pricing / Plans', ...cards.map((card, index) => `### Pricing card ${index + 1}\n${card}`)].join('\n\n')
+  return ['## Products, Services, Plans and Pricing', ...cards].join('\n\n')
+}
+
+export function extractBusinessDetailsAsText(html: string): string {
+  const sections = [
+    {
+      heading: '## Business Hours and Booking',
+      keywords: ['hours', 'opening', 'schedule', 'appointment', 'booking', 'reservation'],
+    },
+    {
+      heading: '## Contact and Locations',
+      keywords: ['contact', 'location', 'address', 'branch', 'phone', 'email', 'map'],
+    },
+    {
+      heading: '## Delivery, Returns and Policies',
+      keywords: ['delivery', 'shipping', 'return', 'refund', 'policy', 'terms'],
+    },
+  ]
+
+  return sections
+    .map(({ heading, keywords }) => {
+      const text = extractElementsByAttributeKeyword(html, keywords)
+        .map((sectionHtml) => normalizeExtractedText(cleanHtmlToText(sectionHtml)))
+        .filter((value) => value.length >= 30)
+        .filter(uniqueByLowercase)
+        .slice(0, 12)
+      return text.length > 0 ? [heading, ...text].join('\n\n') : ''
+    })
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 export function extractFaqSectionsAsText(html: string): string {
@@ -604,7 +650,7 @@ function readBalancedElement(html: string, startIndex: number, tagName: string):
   return null
 }
 
-function structurePricingCardText(text: string): string {
+function structureBusinessCardText(text: string): string {
   const lines = text
     .split(/\n+/)
     .map((line) => line.trim())
@@ -669,7 +715,7 @@ function isBillingPeriod(value: string): boolean {
 }
 
 function looksLikePlanSpec(value: string): boolean {
-  return /\b(cpu|core|ram|gb|tb|nvme|ssd|storage|bandwidth|traffic|backup|ssl|domain|database|email|workflow|execution|memory)\b/i.test(value)
+  return /\b(cpu|core|ram|gb|tb|mb|nvme|ssd|storage|bandwidth|traffic|backup|ssl|domain|database|email|workflow|execution|memory|includes?|serves?|serving|people|person|minutes?|hours?|duration|session|appointment|booking|required|delivery|shipping|size|weight|kg|ml|litre|liter|bed|bath|sq\.?\s?ft|location|branch|level|lessons?|classes?|weeks?|months?)\b/i.test(value)
 }
 
 function normalizeInlinePrice(value: string): string | null {
@@ -697,6 +743,13 @@ function markdownCellText(html: string): string {
 
 function looksLikePriceHeader(value: string): boolean {
   return /\b(price|amount|cost|fee|rate|monthly|yearly|annual|billing)\b/i.test(value)
+}
+
+function looksLikeBusinessCardContent(value: string): boolean {
+  return (
+    looksLikePricingContent(value) ||
+    /\b(product|service|menu|dish|course|program|treatment|appointment|booking|serves?|duration|delivery|shipping|return|sale|offer)\b/i.test(value)
+  )
 }
 
 function looksLikePricingContent(value: string): boolean {

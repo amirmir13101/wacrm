@@ -10,6 +10,7 @@ import {
   cleanHtmlToText,
   crawlWebsiteForKnowledge,
   extractFaqSectionsAsText,
+  extractBusinessDetailsAsText,
   extractPricingCardsAsText,
   extractTablesAsMarkdown,
   extractWebsiteKnowledgeText,
@@ -47,7 +48,7 @@ describe('AI website knowledge import', () => {
     expect(shouldSkipWebsiteUrl('https://example.com/checkout', origin)).toBe('private_or_low_value_path')
     expect(shouldSkipWebsiteUrl('https://example.com/search?q=test', origin)).toBe('private_or_low_value_path')
     expect(shouldSkipWebsiteUrl('https://example.com/photo.webp', origin)).toBe('media_or_file_url')
-    expect(shouldSkipWebsiteUrl('https://example.com/privacy-policy', origin)).toBe('policy_page_skipped')
+    expect(shouldSkipWebsiteUrl('https://example.com/privacy-policy', origin)).toBeNull()
     expect(shouldSkipWebsiteUrl('https://example.com/services', origin)).toBeNull()
   })
 
@@ -178,6 +179,69 @@ describe('AI website knowledge import', () => {
     expect(pricing).toContain('Rs 20,000 /year')
     expect(pricing).toContain('2-Year: $160')
     expect(pricing).toContain('3-Year: $210')
+  })
+
+  it('extracts restaurant menu cards with item price and serving details', () => {
+    const menu = extractPricingCardsAsText(`
+      <section class="restaurant-menu">
+        <article class="menu-item">
+          <h3>Chicken Burger</h3>
+          <p>$8.99</p>
+          <p>Includes fries and drink</p>
+        </article>
+        <article class="menu-item">
+          <h3>Family Pizza Deal</h3>
+          <p>$19.99</p>
+          <p>Serves 4 people</p>
+        </article>
+      </section>
+    `)
+
+    expect(menu).toContain('Chicken Burger')
+    expect(menu).toContain('$8.99')
+    expect(menu).toContain('Includes fries and drink')
+    expect(menu).toContain('Family Pizza Deal')
+    expect(menu).toContain('Serves 4 people')
+  })
+
+  it('extracts clinic services, course prices, and ecommerce product cards generically', () => {
+    const content = extractPricingCardsAsText(`
+      <div class="service-card treatment">
+        <h3>Dental Cleaning</h3><p>Price: $50</p><p>Duration: 30 minutes</p><p>Appointment required</p>
+      </div>
+      <div class="course-card program">
+        <h3>English Speaking Course</h3><p>PKR 12,000</p><p>Duration: 8 weeks</p>
+      </div>
+      <div class="product-card">
+        <h3>Wireless Headphones</h3><p>USD 79</p><p>Free delivery</p>
+      </div>
+    `)
+
+    expect(content).toContain('Dental Cleaning')
+    expect(content).toContain('$50')
+    expect(content).toContain('30 minutes')
+    expect(content).toContain('English Speaking Course')
+    expect(content).toContain('PKR 12,000')
+    expect(content).toContain('Wireless Headphones')
+    expect(content).toContain('USD 79')
+  })
+
+  it('extracts business hours, locations, booking, delivery, and return policies', () => {
+    const details = extractBusinessDetailsAsText(`
+      <section class="opening-hours"><h2>Opening Hours</h2><p>Monday-Friday: 9 AM-6 PM</p></section>
+      <section class="booking-info"><h2>Appointments</h2><p>Booking is required.</p></section>
+      <section class="branch-location"><h2>Downtown Branch</h2><p>12 Main Road, Lahore</p></section>
+      <section class="delivery-policy"><h2>Delivery</h2><p>Delivery takes 2-3 business days.</p></section>
+      <section class="return-policy"><h2>Returns</h2><p>Returns are accepted within 14 days.</p></section>
+    `)
+
+    expect(details).toContain('## Business Hours and Booking')
+    expect(details).toContain('Monday-Friday: 9 AM-6 PM')
+    expect(details).toContain('Booking is required')
+    expect(details).toContain('## Contact and Locations')
+    expect(details).toContain('12 Main Road, Lahore')
+    expect(details).toContain('## Delivery, Returns and Policies')
+    expect(details).toContain('Returns are accepted within 14 days')
   })
 
   it('combines structured tables/cards/FAQs with plain text for stronger website knowledge', () => {
