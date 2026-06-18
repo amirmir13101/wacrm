@@ -3,6 +3,15 @@ import { decrypt, encrypt } from '@/lib/whatsapp/encryption'
 
 const FIRECRAWL_BASE_URL = 'https://api.firecrawl.dev/v2'
 const FIRECRAWL_REQUEST_TIMEOUT_MS = 30_000
+const DEFAULT_FIRECRAWL_MAX_RUNTIME_MS = 60 * 60 * 1_000
+
+const FIRECRAWL_EXCLUDE_PATHS = [
+  '(^|/)(login|log-in|signin|sign-in)(/|$)',
+  '(^|/)(admin|wp-admin)(/|$)',
+  '(^|/)(account|my-account)(/|$)',
+  '(^|/)(cart|basket)(/|$)',
+  '(^|/)(checkout)(/|$)',
+]
 
 export interface FirecrawlPublicSettings {
   readonly apiKeyConfigured: boolean
@@ -32,6 +41,16 @@ export interface FirecrawlCrawlStatus {
   readonly completed: number
   readonly creditsUsed: number
   readonly data: readonly FirecrawlCrawlPage[]
+  readonly errors: readonly FirecrawlCrawlError[]
+  readonly robotsBlocked: readonly string[]
+  readonly createdAt: string | null
+  readonly completedAt: string | null
+  readonly durationSeconds: number | null
+}
+
+export interface FirecrawlCrawlError {
+  readonly url: string
+  readonly error: string
 }
 
 interface FirecrawlSettingsRow {
@@ -155,6 +174,8 @@ export async function startFirecrawlWebsiteCrawl(args: {
       allowExternalLinks: false,
       allowSubdomains: false,
       ignoreQueryParameters: true,
+      deduplicateSimilarURLs: true,
+      excludePaths: FIRECRAWL_EXCLUDE_PATHS,
       maxConcurrency: Math.min(5, args.pageLimit),
       scrapeOptions: {
         formats: ['markdown', 'rawHtml', 'links'],
@@ -197,12 +218,69 @@ export async function getFirecrawlCrawlStatus(apiKey: string, crawlId: string): 
     }
   }
 
+  const crawlErrors =
+    status === 'completed' || status === 'failed' || status === 'cancelled'
+      ? await getFirecrawlCrawlErrors(apiKey, crawlId)
+      : { errors: [], robotsBlocked: [] }
+
   return {
     status: status as FirecrawlCrawlStatus['status'],
     total: readNumber(firstStatus.total) ?? pages.length,
     completed: readNumber(firstStatus.completed) ?? pages.length,
     creditsUsed: readNumber(firstStatus.creditsUsed) ?? 0,
     data: pages,
+    errors: crawlErrors.errors,
+    robotsBlocked: crawlErrors.robotsBlocked,
+    createdAt: readString(firstStatus.createdAt),
+    completedAt: readString(firstStatus.completedAt),
+    durationSeconds: readNumber(firstStatus.duration),
+  }
+}
+
+export async function cancelFirecrawlCrawl(apiKey: string, crawlId: string): Promise<void> {
+  await firecrawlRequest(`/crawl/${encodeURIComponent(crawlId)}`, apiKey, { method: 'DELETE' })
+}
+
+export function isFirecrawlJobStalled(
+  createdAt: string | null | undefined,
+  nowMs = Date.now(),
+  maxRuntimeMs = getFirecrawlMaxRuntimeMs(),
+): boolean {
+  if (!createdAt) return false
+  const createdAtMs = Date.parse(createdAt)
+  return Number.isFinite(createdAtMs) && nowMs - createdAtMs >= maxRuntimeMs
+}
+
+export function getFirecrawlMaxRuntimeMs(): number {
+  const configuredMinutes = Number(process.env.AI_FIRECRAWL_MAX_RUNTIME_MINUTES ?? 60)
+  const safeMinutes = Number.isFinite(configuredMinutes)
+    ? Math.max(10, Math.min(180, Math.floor(configuredMinutes)))
+    : DEFAULT_FIRECRAWL_MAX_RUNTIME_MS / 60_000
+  return safeMinutes * 60_000
+}
+
+async function getFirecrawlCrawlErrors(
+  apiKey: string,
+  crawlId: string,
+): Promise<{ errors: FirecrawlCrawlError[]; robotsBlocked: string[] }> {
+  try {
+    const response = await firecrawlRequest(`/crawl/${encodeURIComponent(crawlId)}/errors`, apiKey)
+    const errors = Array.isArray(response.errors)
+      ? response.errors
+          .filter(isRecord)
+          .map((item) => ({
+            url: readString(item.url) ?? '',
+            error: readString(item.error) ?? 'Firecrawl could not scrape this page.',
+          }))
+          .filter((item) => item.url)
+      : []
+    const robotsBlocked = Array.isArray(response.robotsBlocked)
+      ? response.robotsBlocked.map(readString).filter((value): value is string => Boolean(value))
+      : []
+    return { errors, robotsBlocked }
+  } catch {
+    // Crawl content remains usable if Firecrawl's optional diagnostics endpoint fails.
+    return { errors: [], robotsBlocked: [] }
   }
 }
 

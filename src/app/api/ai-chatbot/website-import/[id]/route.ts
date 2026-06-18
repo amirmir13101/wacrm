@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 
-import { getFirecrawlCrawlStatus, resolveFirecrawlApiKey } from '@/lib/ai/firecrawl'
+import {
+  cancelFirecrawlCrawl,
+  getFirecrawlCrawlStatus,
+  getFirecrawlMaxRuntimeMs,
+  isFirecrawlJobStalled,
+  resolveFirecrawlApiKey,
+} from '@/lib/ai/firecrawl'
 import { saveKnowledgeSourceWithChunks } from '@/lib/ai/knowledge'
 import {
   MAX_WEBSITE_DRAFT_CONTENT_LENGTH,
@@ -43,11 +49,37 @@ export async function GET(
     try {
       const apiKey = await resolveFirecrawlApiKey(workspace.workspaceId)
       if (!apiKey) throw new Error('Firecrawl API key is no longer configured.')
+      if (isFirecrawlJobStalled(job.created_at)) {
+        await cancelFirecrawlCrawl(apiKey, job.external_crawl_id).catch(() => undefined)
+        const runtimeMinutes = Math.round(getFirecrawlMaxRuntimeMs() / 60_000)
+        const { data: timedOutJob, error: timeoutUpdateError } = await admin
+          .from('ai_website_import_jobs')
+          .update({
+            status: 'failed',
+            provider_status: 'timed_out',
+            error_message: `Firecrawl crawl exceeded the ${runtimeMinutes}-minute safety limit and was stopped.`,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .eq('workspace_id', workspace.workspaceId)
+          .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
+          .single()
+        if (timeoutUpdateError || !timedOutJob) {
+          throw new Error(timeoutUpdateError?.message ?? 'Failed to stop stalled Firecrawl import.')
+        }
+        job = timedOutJob
+      }
+      if (job.status !== 'running') {
+        // The stalled-job recovery above moved the import to a terminal state.
+      } else {
       const firecrawlStatus = await getFirecrawlCrawlStatus(apiKey, job.external_crawl_id)
       if (firecrawlStatus.status === 'completed') {
         const result = buildWebsiteImportFromFirecrawl({
           startUrl: job.website_url,
           pages: firecrawlStatus.data,
+          errors: firecrawlStatus.errors,
+          robotsBlocked: firecrawlStatus.robotsBlocked,
+          pageLimit: job.page_limit,
         })
         await admin
           .from('ai_website_import_pages')
@@ -110,6 +142,7 @@ export async function GET(
           .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
           .single()
         if (runningJob) job = runningJob
+      }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to check Firecrawl import.'

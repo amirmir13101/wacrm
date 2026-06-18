@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { load } from 'cheerio'
 
-import type { FirecrawlCrawlPage } from '@/lib/ai/firecrawl'
+import type { FirecrawlCrawlError, FirecrawlCrawlPage } from '@/lib/ai/firecrawl'
 
 export type WebsiteImportPageStatus = 'imported' | 'skipped' | 'failed' | 'duplicate'
 
@@ -34,35 +34,72 @@ export interface WebsiteImportResult {
 export function buildWebsiteImportFromFirecrawl(args: {
   readonly startUrl: string
   readonly pages: readonly FirecrawlCrawlPage[]
+  readonly errors?: readonly FirecrawlCrawlError[]
+  readonly robotsBlocked?: readonly string[]
+  readonly pageLimit?: number
 }): WebsiteImportResult {
   const start = new URL(args.startUrl)
   const seenCanonical = new Set<string>()
   const seenHashes = new Set<string>()
   const pages: WebsiteImportPage[] = []
+  const pageLimit = clampPageLimit(args.pageLimit)
 
-  for (const page of args.pages) {
+  for (const [pageIndex, page] of args.pages.entries()) {
     const metadata = page.metadata ?? {}
     const sourceUrl = readMetadataString(metadata, 'sourceURL') ?? readMetadataString(metadata, 'url') ?? args.startUrl
-    const canonicalUrl = normalizeCandidateUrl(sourceUrl, start.origin)
+    const normalizedSourceUrl = normalizeCandidateUrl(sourceUrl, start.origin)
     const title = readMetadataString(metadata, 'title')
     const metaDescription = readMetadataString(metadata, 'description')
     const statusCode = readMetadataNumber(metadata, 'statusCode')
     const error = readMetadataString(metadata, 'error')
 
-    if (!canonicalUrl || !isSameOrigin(canonicalUrl, start.origin)) {
-      pages.push(failedPage(sourceUrl, 'external_or_invalid_firecrawl_url', statusCode))
+    if (!normalizedSourceUrl) {
+      pages.push(failedPage(sourceUrl, 'invalid_firecrawl_url', statusCode))
+      continue
+    }
+    if (!isSameOrigin(normalizedSourceUrl, start.origin)) {
+      pages.push(failedPage(sourceUrl, 'external_domain', statusCode))
+      continue
+    }
+    const sourceSkipReason = shouldSkipWebsiteUrl(normalizedSourceUrl, start.origin)
+    if (sourceSkipReason) {
+      pages.push(skippedPage(normalizedSourceUrl, sourceSkipReason, statusCode))
       continue
     }
     if (error || (statusCode !== null && statusCode >= 400)) {
-      pages.push(failedPage(canonicalUrl, error ? `firecrawl_${slugReason(error)}` : `http_${statusCode}`, statusCode))
+      pages.push(failedPage(normalizedSourceUrl, error ? `firecrawl_${slugReason(error)}` : `http_${statusCode}`, statusCode))
       continue
     }
-    if (seenCanonical.has(canonicalUrl)) {
-      pages.push(duplicatePage(canonicalUrl, canonicalUrl, 'duplicate_url', statusCode, title, metaDescription))
+    if (pageIndex >= pageLimit) {
+      pages.push(skippedPage(normalizedSourceUrl, 'page_limit_exceeded', statusCode))
       continue
     }
 
     const rawHtml = page.rawHtml ?? page.html ?? ''
+    const documentCanonical = rawHtml
+      ? extractWebsiteDocumentMetadata(rawHtml, normalizedSourceUrl).canonicalUrl
+      : null
+    const canonicalUrl = normalizeCandidateUrl(documentCanonical ?? normalizedSourceUrl, start.origin)
+    if (!canonicalUrl) {
+      pages.push(failedPage(normalizedSourceUrl, 'invalid_canonical_url', statusCode))
+      continue
+    }
+    if (!isSameOrigin(canonicalUrl, start.origin)) {
+      pages.push(failedPage(normalizedSourceUrl, 'external_canonical_url', statusCode))
+      continue
+    }
+    const canonicalSkipReason = shouldSkipWebsiteUrl(canonicalUrl, start.origin)
+    if (canonicalSkipReason) {
+      pages.push(skippedPage(normalizedSourceUrl, canonicalSkipReason, statusCode, canonicalUrl))
+      continue
+    }
+
+    const canonicalKey = canonicalUrlKey(canonicalUrl)
+    if (seenCanonical.has(canonicalKey)) {
+      pages.push(duplicatePage(normalizedSourceUrl, canonicalUrl, 'duplicate_url', statusCode, title, metaDescription))
+      continue
+    }
+
     const structuredText = rawHtml ? extractWebsiteKnowledgeText(rawHtml, canonicalUrl) : ''
     const markdown = normalizeExtractedText(page.markdown ?? '')
     const cleanedText = normalizeExtractedText([structuredText, markdown].filter(Boolean).join('\n\n'))
@@ -88,7 +125,7 @@ export function buildWebsiteImportFromFirecrawl(args: {
       continue
     }
 
-    seenCanonical.add(canonicalUrl)
+    seenCanonical.add(canonicalKey)
     seenHashes.add(contentHash)
     pages.push({
       url: canonicalUrl,
@@ -102,6 +139,20 @@ export function buildWebsiteImportFromFirecrawl(args: {
       skipReason: null,
       httpStatus: statusCode ?? 200,
     })
+  }
+
+  for (const blockedUrl of args.robotsBlocked ?? []) {
+    appendProviderDiagnosticPage(pages, seenCanonical, blockedUrl, start.origin, 'robots_disallowed', 'skipped')
+  }
+  for (const crawlError of args.errors ?? []) {
+    appendProviderDiagnosticPage(
+      pages,
+      seenCanonical,
+      crawlError.url,
+      start.origin,
+      `firecrawl_${slugReason(crawlError.error)}`,
+      'failed',
+    )
   }
 
   const importedPages = pages.filter((page) => page.status === 'imported')
@@ -143,13 +194,21 @@ const DEFAULT_TIMEOUT_MS = 8_000
 const MAX_RECORDED_SKIPS = 120
 export const MAX_WEBSITE_DRAFT_CONTENT_LENGTH = 100_000
 
-const SKIP_PATH_PARTS = [
+const SENSITIVE_PATH_SEGMENTS = [
   'login',
+  'log-in',
+  'signin',
+  'sign-in',
   'admin',
-  'account',
-  'cart',
-  'checkout',
   'wp-admin',
+  'account',
+  'my-account',
+  'cart',
+  'basket',
+  'checkout',
+]
+
+const LOW_VALUE_PATH_SEGMENTS = [
   'media',
   'uploads',
   'gallery',
@@ -158,6 +217,18 @@ const SKIP_PATH_PARTS = [
   'author',
   'search',
 ]
+
+const TRACKING_QUERY_PARAMETERS = new Set([
+  'fbclid',
+  'gclid',
+  'dclid',
+  'msclkid',
+  'mc_cid',
+  'mc_eid',
+  'ref',
+  'referrer',
+  'source',
+])
 
 const SKIP_EXTENSIONS = [
   '.jpg',
@@ -208,7 +279,6 @@ export function isSameOrigin(candidate: string, origin: string): boolean {
     const candidateUrl = new URL(candidate)
     const originUrl = new URL(origin)
     return (
-      candidateUrl.protocol === originUrl.protocol &&
       candidateUrl.port === originUrl.port &&
       normalizeSiteHostname(candidateUrl.hostname) === normalizeSiteHostname(originUrl.hostname)
     )
@@ -229,8 +299,10 @@ export function shouldSkipWebsiteUrl(candidate: string, origin: string): string 
   if (!isSameOrigin(parsed.toString(), origin)) return 'external_domain'
 
   const pathname = parsed.pathname.toLowerCase()
+  const pathSegments = pathname.split('/').filter(Boolean)
   if (SKIP_EXTENSIONS.some((extension) => pathname.endsWith(extension))) return 'media_or_file_url'
-  if (SKIP_PATH_PARTS.some((part) => pathname.includes(part))) return 'private_or_low_value_path'
+  if (pathSegments.some((segment) => SENSITIVE_PATH_SEGMENTS.includes(segment))) return 'sensitive_path'
+  if (pathSegments.some((segment) => LOW_VALUE_PATH_SEGMENTS.includes(segment))) return 'private_or_low_value_path'
   return null
 }
 
@@ -802,12 +874,29 @@ function normalizeCandidateUrl(candidate: string, origin: string): string | null
   try {
     const parsed = new URL(candidate, origin)
     parsed.hash = ''
-    parsed.search = ''
+    for (const parameter of Array.from(parsed.searchParams.keys())) {
+      if (isTrackingQueryParameter(parameter)) parsed.searchParams.delete(parameter)
+    }
+    parsed.searchParams.sort()
     parsed.pathname = normalizePath(parsed.pathname)
     return parsed.toString()
   } catch {
     return null
   }
+}
+
+function canonicalUrlKey(value: string): string {
+  const parsed = new URL(value)
+  parsed.hostname = normalizeSiteHostname(parsed.hostname)
+  parsed.hash = ''
+  parsed.search = ''
+  parsed.pathname = normalizePath(parsed.pathname)
+  return parsed.toString()
+}
+
+function isTrackingQueryParameter(parameter: string): boolean {
+  const normalized = parameter.toLowerCase()
+  return normalized.startsWith('utm_') || TRACKING_QUERY_PARAMETERS.has(normalized)
 }
 
 function normalizePath(pathname: string): string {
@@ -1114,7 +1203,7 @@ function uniqueByLowercase(value: string, index: number, values: string[]): bool
 
 function duplicatePage(
   url: string,
-  canonicalUrl: string,
+  _canonicalUrl: string,
   reason: string,
   httpStatus: number | null,
   title: string | null = null,
@@ -1123,7 +1212,9 @@ function duplicatePage(
 ): WebsiteImportPage {
   return {
     url,
-    canonicalUrl,
+    // Duplicate rows keep the discovered URL for review but do not repeat the
+    // canonical key protected by the per-import database uniqueness index.
+    canonicalUrl: null,
     title,
     metaDescription,
     rawText: null,
@@ -1148,6 +1239,54 @@ function failedPage(url: string, reason: string, httpStatus: number | null = nul
     skipReason: reason,
     httpStatus,
   }
+}
+
+function skippedPage(
+  url: string,
+  reason: string,
+  httpStatus: number | null = null,
+  canonicalUrl: string | null = null,
+): WebsiteImportPage {
+  return {
+    url,
+    canonicalUrl,
+    title: null,
+    metaDescription: null,
+    rawText: null,
+    cleanedText: null,
+    contentHash: null,
+    status: 'skipped',
+    skipReason: reason,
+    httpStatus,
+  }
+}
+
+function appendProviderDiagnosticPage(
+  pages: WebsiteImportPage[],
+  seenCanonical: Set<string>,
+  candidate: string,
+  origin: string,
+  reason: string,
+  status: 'skipped' | 'failed',
+): void {
+  const normalized = normalizeCandidateUrl(candidate, origin)
+  if (!normalized || !isSameOrigin(normalized, origin)) return
+  const key = canonicalUrlKey(normalized)
+  const alreadyRecorded = pages.some((page) => {
+    const value = page.canonicalUrl ?? page.url
+    try {
+      return canonicalUrlKey(value) === key
+    } catch {
+      return false
+    }
+  })
+  if (seenCanonical.has(key) || alreadyRecorded) return
+  seenCanonical.add(key)
+  pages.push({
+    ...failedPage(normalized, reason),
+    canonicalUrl: normalized,
+    status,
+  })
 }
 
 function hostTitle(hostname: string): string {

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  getFirecrawlMaxRuntimeMs,
   getFirecrawlCrawlStatus,
+  isFirecrawlJobStalled,
   maskFirecrawlApiKey,
   startFirecrawlWebsiteCrawl,
 } from './firecrawl'
@@ -27,8 +29,14 @@ describe('Firecrawl website import helpers', () => {
         allowExternalLinks: false,
         allowSubdomains: false,
         ignoreQueryParameters: true,
+        deduplicateSimilarURLs: true,
         maxConcurrency: 5,
       })
+      expect(body.excludePaths).toEqual(expect.arrayContaining([
+        expect.stringContaining('login'),
+        expect.stringContaining('checkout'),
+        expect.stringContaining('wp-admin'),
+      ]))
       expect(body.scrapeOptions).toMatchObject({
         formats: ['markdown', 'rawHtml', 'links'],
         onlyMainContent: false,
@@ -81,6 +89,15 @@ describe('Firecrawl website import helpers', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         ),
       )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            errors: [{ url: 'https://example.com/broken', error: 'Request failed' }],
+            robotsBlocked: ['https://example.com/private'],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await getFirecrawlCrawlStatus('fc-test-key', 'crawl-123')
@@ -88,7 +105,9 @@ describe('Firecrawl website import helpers', () => {
     expect(result.status).toBe('completed')
     expect(result.creditsUsed).toBe(2)
     expect(result.data).toHaveLength(2)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.errors).toEqual([{ url: 'https://example.com/broken', error: 'Request failed' }])
+    expect(result.robotsBlocked).toEqual(['https://example.com/private'])
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('returns scraping progress immediately without following next result pages', async () => {
@@ -137,5 +156,13 @@ describe('Firecrawl website import helpers', () => {
         pageLimit: 5,
       }),
     ).rejects.toThrow('retry after 12 seconds')
+  })
+
+  it('detects stalled crawl jobs using a bounded configurable runtime', () => {
+    const createdAt = '2026-06-19T00:00:00.000Z'
+    expect(isFirecrawlJobStalled(createdAt, Date.parse('2026-06-19T00:59:59.000Z'), 60 * 60 * 1_000)).toBe(false)
+    expect(isFirecrawlJobStalled(createdAt, Date.parse('2026-06-19T01:00:00.000Z'), 60 * 60 * 1_000)).toBe(true)
+    expect(isFirecrawlJobStalled(null)).toBe(false)
+    expect(getFirecrawlMaxRuntimeMs()).toBeGreaterThanOrEqual(10 * 60 * 1_000)
   })
 })

@@ -55,8 +55,10 @@ describe('AI website knowledge import', () => {
     expect(shouldSkipWebsiteUrl('https://www.example.com/services', origin)).toBeNull()
     expect(shouldSkipWebsiteUrl('https://shop.example.com/services', origin)).toBe('external_domain')
     expect(shouldSkipWebsiteUrl('https://www.example.com.evil.test/services', origin)).toBe('external_domain')
-    expect(shouldSkipWebsiteUrl('https://example.com/wp-admin', origin)).toBe('private_or_low_value_path')
-    expect(shouldSkipWebsiteUrl('https://example.com/checkout', origin)).toBe('private_or_low_value_path')
+    expect(shouldSkipWebsiteUrl('https://example.com/wp-admin', origin)).toBe('sensitive_path')
+    expect(shouldSkipWebsiteUrl('https://example.com/checkout', origin)).toBe('sensitive_path')
+    expect(shouldSkipWebsiteUrl('https://example.com/my-account/orders', origin)).toBe('sensitive_path')
+    expect(shouldSkipWebsiteUrl('https://example.com/cartography', origin)).toBeNull()
     expect(shouldSkipWebsiteUrl('https://example.com/search?q=test', origin)).toBe('private_or_low_value_path')
     expect(shouldSkipWebsiteUrl('https://example.com/photo.webp', origin)).toBe('media_or_file_url')
     expect(shouldSkipWebsiteUrl('https://example.com/privacy-policy', origin)).toBeNull()
@@ -497,7 +499,83 @@ describe('AI website knowledge import', () => {
 
     expect(result.pagesImported).toBe(0)
     expect(result.pagesFailed).toBe(1)
-    expect(result.pages[0]?.skipReason).toBe('external_or_invalid_firecrawl_url')
+    expect(result.pages[0]?.skipReason).toBe('external_domain')
+  })
+
+  it('deduplicates trailing slashes, tracking parameters, www aliases, and canonical URLs', () => {
+    const commonHtml = `
+      <html>
+        <head><link rel="canonical" href="https://example.com/services/"></head>
+        <body><main><h1>Services</h1><p>Business consulting, implementation, managed support, reporting, and training are available for customers.</p></main></body>
+      </html>
+    `
+    const result = buildWebsiteImportFromFirecrawl({
+      startUrl: 'https://example.com/',
+      pages: [
+        {
+          rawHtml: commonHtml,
+          markdown: '# Services\nBusiness consulting, implementation, managed support, reporting, and training.',
+          metadata: { sourceURL: 'https://example.com/services?utm_source=newsletter', statusCode: 200 },
+        },
+        {
+          rawHtml: commonHtml,
+          markdown: '# Services\nBusiness consulting, implementation, managed support, reporting, and training.',
+          metadata: { sourceURL: 'https://www.example.com/services/', statusCode: 200 },
+        },
+      ],
+    })
+
+    expect(result.pagesImported).toBe(1)
+    expect(result.duplicatePages).toBe(1)
+    expect(result.pages[1]?.skipReason).toBe('duplicate_url')
+    expect(result.pages[1]?.canonicalUrl).toBeNull()
+  })
+
+  it('enforces the requested page limit and records Firecrawl diagnostics safely', () => {
+    const page = (url: string, label: string) => ({
+      markdown: `# ${label}\n${label} provides detailed services, pricing, policies, contact information, and customer support for this business website.`,
+      metadata: { sourceURL: url, title: label, statusCode: 200 },
+    })
+    const result = buildWebsiteImportFromFirecrawl({
+      startUrl: 'https://clinic.example/',
+      pageLimit: 2,
+      pages: [
+        page('https://clinic.example/treatments', 'Treatments'),
+        page('https://clinic.example/doctors', 'Doctors'),
+        page('https://clinic.example/appointments', 'Appointments'),
+      ],
+      robotsBlocked: ['https://clinic.example/account'],
+      errors: [
+        { url: 'https://clinic.example/contact', error: 'Upstream timeout' },
+        { url: 'https://evil.example/phishing', error: 'External error must not be stored' },
+      ],
+    })
+
+    expect(result.pagesImported).toBe(2)
+    expect(result.pages.some((item) => item.skipReason === 'page_limit_exceeded')).toBe(true)
+    expect(result.pages.some((item) => item.skipReason === 'robots_disallowed')).toBe(true)
+    expect(result.pages.some((item) => item.skipReason === 'firecrawl_upstream_timeout')).toBe(true)
+    expect(result.pages.some((item) => item.url.includes('evil.example'))).toBe(false)
+  })
+
+  it('rejects external canonical redirects even when the discovered URL is internal', () => {
+    const result = buildWebsiteImportFromFirecrawl({
+      startUrl: 'https://course.example/',
+      pages: [
+        {
+          rawHtml: `
+            <html>
+              <head><link rel="canonical" href="https://attacker.example/copied-course"></head>
+              <body><main><h1>Course</h1><p>This page contains course schedules, instructor information, fees, and enrollment details.</p></main></body>
+            </html>
+          `,
+          metadata: { sourceURL: 'https://course.example/course', statusCode: 200 },
+        },
+      ],
+    })
+
+    expect(result.pagesImported).toBe(0)
+    expect(result.pages[0]?.skipReason).toBe('external_canonical_url')
   })
 
   it('crawls same-domain pages, honors robots, page limit, duplicates, and failures', async () => {
