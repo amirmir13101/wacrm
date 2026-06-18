@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 
 import { chunkKnowledgeText, type AiKnowledgeSourceType } from '@/lib/ai/chatbot'
-import { MAX_WEBSITE_DRAFT_CONTENT_LENGTH } from '@/lib/ai/website-import'
+import {
+  MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
+  MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH,
+} from '@/lib/ai/website-import'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
@@ -29,11 +32,13 @@ export async function PUT(
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
   const title = readLimitedText(body.title, '', 160)
-  const content = readLimitedText(body.content, '', MAX_WEBSITE_DRAFT_CONTENT_LENGTH)
   const sourceType =
     typeof body.source_type === 'string' && SOURCE_TYPES.has(body.source_type)
       ? (body.source_type as AiKnowledgeSourceType)
       : 'manual'
+  const contentLimit =
+    sourceType === 'website' ? MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH : MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH
+  const content = readLimitedText(body.content, '', contentLimit)
 
   if (!title || !content) {
     return NextResponse.json({ error: 'Title and content are required.' }, { status: 400 })

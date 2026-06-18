@@ -116,6 +116,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     job,
     pages: [],
+    qualityWarnings: [],
     limits: {
       appliedPageLimit: pageLimit.limit,
       trialPreview: plan.isTrial && !plan.isActivePro,

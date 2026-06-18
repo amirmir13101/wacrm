@@ -24,6 +24,7 @@ export interface WebsiteImportResult {
   readonly pages: WebsiteImportPage[]
   readonly draftTitle: string
   readonly draftContent: string
+  readonly qualityWarnings: readonly string[]
   readonly pagesFound: number
   readonly pagesImported: number
   readonly pagesSkipped: number
@@ -155,18 +156,30 @@ export function buildWebsiteImportFromFirecrawl(args: {
     )
   }
 
-  const importedPages = pages.filter((page) => page.status === 'imported')
+  const compactedDraft = buildWebsiteKnowledgeDraftResult(pages)
+  const finalPages = pages.map((page) =>
+    page.status === 'imported' && !compactedDraft.includedPageUrls.has(page.canonicalUrl ?? page.url)
+      ? skippedPage(page.url, 'character_limit_excluded', page.httpStatus, page.canonicalUrl, page.title, page.metaDescription)
+      : page,
+  )
+  const importedPages = finalPages.filter((page) => page.status === 'imported')
   return {
     startUrl: args.startUrl,
     normalizedOrigin: start.origin,
-    pages,
+    pages: finalPages,
     draftTitle: `${hostTitle(start.hostname)} website knowledge`,
-    draftContent: buildWebsiteKnowledgeDraft(importedPages),
+    draftContent: compactedDraft.content,
+    qualityWarnings: buildWebsiteImportQualityWarnings({
+      pages: finalPages,
+      draftContent: compactedDraft.content,
+      startUrl: args.startUrl,
+      limit: MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
+    }),
     pagesFound: args.pages.length,
     pagesImported: importedPages.length,
-    pagesSkipped: pages.filter((page) => page.status === 'skipped').length,
-    pagesFailed: pages.filter((page) => page.status === 'failed').length,
-    duplicatePages: pages.filter((page) => page.status === 'duplicate').length,
+    pagesSkipped: finalPages.filter((page) => page.status === 'skipped').length,
+    pagesFailed: finalPages.filter((page) => page.status === 'failed').length,
+    duplicatePages: finalPages.filter((page) => page.status === 'duplicate').length,
   }
 }
 
@@ -192,7 +205,9 @@ const DEFAULT_PAGE_LIMIT = 50
 const MAX_PAGE_LIMIT = 100
 const DEFAULT_TIMEOUT_MS = 8_000
 const MAX_RECORDED_SKIPS = 120
-export const MAX_WEBSITE_DRAFT_CONTENT_LENGTH = 100_000
+export const MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH = 100_000
+export const MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH = 200_000
+export const MAX_WEBSITE_DRAFT_CONTENT_LENGTH = MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH
 
 const SENSITIVE_PATH_SEGMENTS = [
   'login',
@@ -441,44 +456,60 @@ export async function crawlWebsiteForKnowledge(options: CrawlOptions): Promise<W
     }
   }
 
-  const importedPages = pages.filter((page) => page.status === 'imported')
+  const compactedDraft = buildWebsiteKnowledgeDraftResult(pages)
+  const finalPages = pages.map((page) =>
+    page.status === 'imported' && !compactedDraft.includedPageUrls.has(page.canonicalUrl ?? page.url)
+      ? skippedPage(page.url, 'character_limit_excluded', page.httpStatus, page.canonicalUrl, page.title, page.metaDescription)
+      : page,
+  )
+  const importedPages = finalPages.filter((page) => page.status === 'imported')
   const draftTitle = `${hostTitle(start.hostname)} website knowledge`
-  const draftContent = buildWebsiteKnowledgeDraft(importedPages)
+  const draftContent = compactedDraft.content
 
   return {
     startUrl,
     normalizedOrigin: origin,
-    pages,
+    pages: finalPages,
     draftTitle,
     draftContent,
+    qualityWarnings: buildWebsiteImportQualityWarnings({
+      pages: finalPages,
+      draftContent,
+      startUrl,
+      limit: MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
+    }),
     pagesFound: queued.size,
     pagesImported: importedPages.length,
-    pagesSkipped: pages.filter((page) => page.status === 'skipped').length,
-    pagesFailed: pages.filter((page) => page.status === 'failed').length,
-    duplicatePages: pages.filter((page) => page.status === 'duplicate').length,
+    pagesSkipped: finalPages.filter((page) => page.status === 'skipped').length,
+    pagesFailed: finalPages.filter((page) => page.status === 'failed').length,
+    duplicatePages: finalPages.filter((page) => page.status === 'duplicate').length,
   }
 }
 
-export function buildWebsiteKnowledgeDraft(pages: readonly WebsiteImportPage[]): string {
-  const importedPages = pages.filter((page) => page.status === 'imported' && page.cleanedText)
-  const combinedContent = importedPages
-    .filter((page) => page.status === 'imported' && page.cleanedText)
-    .map((page) => {
-      const parts = [
-        `Page: ${page.title ?? page.canonicalUrl ?? page.url}`,
-        `URL: ${page.canonicalUrl ?? page.url}`,
-        page.metaDescription ? `Summary: ${page.metaDescription}` : '',
-        page.cleanedText,
-      ].filter(Boolean)
-      return parts.join('\n')
-    })
-    .join('\n\n---\n\n')
+interface WebsiteKnowledgeDraftResult {
+  readonly content: string
+  readonly includedPageUrls: ReadonlySet<string>
+}
 
-  const pageList = importedPages
+export function buildWebsiteKnowledgeDraft(pages: readonly WebsiteImportPage[]): string {
+  return buildWebsiteKnowledgeDraftResult(pages).content
+}
+
+function buildWebsiteKnowledgeDraftResult(pages: readonly WebsiteImportPage[]): WebsiteKnowledgeDraftResult {
+  const importedPages = pages.filter((page) => page.status === 'imported' && page.cleanedText)
+  const repeatedBoilerplateLines = findRepeatedBoilerplateLines(importedPages)
+  const rankedPages = [...importedPages].sort((left, right) => scoreKnowledgePage(right) - scoreKnowledgePage(left))
+  const compactedPages = rankedPages.map((page) => ({
+    page,
+    text: compactWebsitePageText(page.cleanedText ?? '', repeatedBoilerplateLines),
+  }))
+  const includedPageUrls = new Set<string>()
+
+  const pageList = rankedPages
     .map((page) => `- ${page.title ?? page.canonicalUrl ?? page.url}: ${page.canonicalUrl ?? page.url}`)
     .join('\n')
 
-  return [
+  const header = [
     '# Website Knowledge Summary',
     'Review and edit this imported website knowledge before publishing it to the chatbot.',
     '',
@@ -486,10 +517,201 @@ export function buildWebsiteKnowledgeDraft(pages: readonly WebsiteImportPage[]):
     pageList,
     '',
     '## Business Overview, Services, Pricing, FAQs and Policies',
-    combinedContent,
-  ]
+  ].join('\n')
+  const sections: string[] = []
+  let usedLength = header.length + 2
+
+  for (const item of compactedPages) {
+    const pageTitle = item.page.title ?? item.page.canonicalUrl ?? item.page.url
+    const section = [
+      `### Page: ${pageTitle}`,
+      `URL: ${item.page.canonicalUrl ?? item.page.url}`,
+      item.page.metaDescription ? `Summary: ${item.page.metaDescription}` : '',
+      item.text,
+    ]
+      .filter(Boolean)
+      .join('\n')
+    const separatorLength = sections.length === 0 ? 2 : 7
+    if (usedLength + separatorLength + section.length <= MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH) {
+      sections.push(section)
+      usedLength += separatorLength + section.length
+      includedPageUrls.add(item.page.canonicalUrl ?? item.page.url)
+      continue
+    }
+
+    const remaining = MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH - usedLength - separatorLength
+    const partialSection = fitImportantPageText(section, remaining)
+    if (partialSection) {
+      sections.push(partialSection)
+      includedPageUrls.add(item.page.canonicalUrl ?? item.page.url)
+    }
+    break
+  }
+
+  return {
+    content: [header, sections.join('\n\n---\n\n')]
+      .filter(Boolean)
+      .join('\n\n')
+      .slice(0, MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH),
+    includedPageUrls,
+  }
+}
+
+export function buildWebsiteImportQualityWarnings(args: {
+  readonly pages: readonly Pick<WebsiteImportPage, 'url' | 'canonicalUrl' | 'title' | 'cleanedText' | 'status' | 'skipReason'>[]
+  readonly draftContent: string | null
+  readonly startUrl: string
+  readonly limit?: number
+}): readonly string[] {
+  const warnings: string[] = []
+  const limit = args.limit ?? MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH
+  const importedPages = args.pages.filter((page) => page.status === 'imported')
+  const characterLimitExcluded = args.pages.filter((page) => page.skipReason === 'character_limit_excluded').length
+  if (characterLimitExcluded > 0 || (args.draftContent?.length ?? 0) >= limit) {
+    warnings.push(
+      characterLimitExcluded > 0
+        ? `${characterLimitExcluded} useful page${characterLimitExcluded === 1 ? ' was' : 's were'} excluded because the website knowledge limit was reached.`
+        : 'Imported content reached the website knowledge character limit.',
+    )
+  }
+  if (args.pages.some((page) => page.skipReason === 'not_enough_text')) {
+    warnings.push('Some pages had very little readable text; JavaScript-heavy content may be incomplete.')
+  }
+  const missingTypes = findMissingImportantPageTypes(importedPages, args.startUrl)
+  if (missingTypes.length > 0) {
+    warnings.push(`Could not clearly identify these common high-value page types: ${missingTypes.join(', ')}.`)
+  }
+  if (args.pages.some((page) => page.status === 'failed')) {
+    warnings.push('Some pages failed during import; review the checked pages list before publishing.')
+  }
+  return warnings
+}
+
+function scoreKnowledgePage(page: WebsiteImportPage): number {
+  const url = page.canonicalUrl ?? page.url
+  const haystack = `${url} ${page.title ?? ''} ${page.metaDescription ?? ''} ${page.cleanedText ?? ''}`.toLowerCase()
+  let score = isHomePageUrl(url) ? 120 : 0
+  score += countKeywordMatches(haystack, ['pricing', 'price', 'plans', 'packages', 'menu', 'fees', 'rates']) * 35
+  score += countKeywordMatches(haystack, ['service', 'services', 'product', 'products', 'solutions', 'course', 'treatment']) * 30
+  score += countKeywordMatches(haystack, ['contact', 'location', 'address', 'phone', 'email', 'hours', 'opening']) * 28
+  score += countKeywordMatches(haystack, ['faq', 'questions', 'help', 'support']) * 22
+  score += countKeywordMatches(haystack, ['policy', 'refund', 'return', 'shipping', 'delivery', 'terms', 'privacy']) * 18
+  score += countKeywordMatches(haystack, ['about', 'team', 'company', 'doctor', 'instructor']) * 14
+  score += Math.min(40, countExactFactLines(page.cleanedText ?? '') * 2)
+  score += Math.min(24, Math.floor((page.cleanedText?.length ?? 0) / 1_500))
+  return score
+}
+
+function findRepeatedBoilerplateLines(pages: readonly WebsiteImportPage[]): ReadonlySet<string> {
+  const counts = new Map<string, number>()
+  for (const page of pages) {
+    const seenOnPage = new Set<string>()
+    for (const line of splitMeaningfulLines(page.cleanedText ?? '')) {
+      const key = normalizeLineKey(line)
+      if (!key || seenOnPage.has(key) || isImportantFactLine(line)) continue
+      seenOnPage.add(key)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+  }
+  return new Set([...counts.entries()].filter(([, count]) => count >= 3).map(([line]) => line))
+}
+
+function compactWebsitePageText(text: string, repeatedBoilerplateLines: ReadonlySet<string>): string {
+  const output: string[] = []
+  const seen = new Set<string>()
+  for (const line of splitMeaningfulLines(text)) {
+    const key = normalizeLineKey(line)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    if (repeatedBoilerplateLines.has(key) && !isImportantFactLine(line)) continue
+    output.push(line)
+  }
+  return output.join('\n')
+}
+
+function fitImportantPageText(section: string, maxLength: number): string {
+  if (maxLength < 900) return ''
+  if (section.length <= maxLength) return section
+  const lines = splitMeaningfulLines(section)
+  const headerLines = lines.slice(0, 3)
+  const importantLines = lines.filter((line) => isImportantFactLine(line) || isHeadingLikeLine(line))
+  const selected: string[] = []
+  const seen = new Set<string>()
+  for (const line of [...headerLines, ...importantLines]) {
+    const key = normalizeLineKey(line)
+    if (!key || seen.has(key)) continue
+    const next = [...selected, line].join('\n')
+    if (next.length > maxLength - 80) break
+    selected.push(line)
+    seen.add(key)
+  }
+  if (selected.length <= headerLines.length) {
+    return section.slice(0, maxLength - 80).trimEnd()
+  }
+  return `${selected.join('\n')}\n\n[Page content compacted to preserve exact facts within the import limit.]`
+}
+
+function splitMeaningfulLines(text: string): string[] {
+  return text
+    .split(/\r?\n+/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length >= 3)
+}
+
+function normalizeLineKey(line: string): string {
+  return line.toLowerCase().replace(/\s+/g, ' ').replace(/[^\p{L}\p{N}\s$€£¥₹₨:+@./-]/gu, '').trim()
+}
+
+function isImportantFactLine(line: string): boolean {
+  const normalized = line.toLowerCase()
+  return (
+    /[$€£¥₹₨]\s?\d|\d+\s?(usd|eur|gbp|pkr|aed|sar|rs|dollars?|rupees?)/i.test(line) ||
+    /\b\d+\s?(gb|mb|tb|cpu|core|cores|vCPU|users?|days?|weeks?|months?|years?|hours?|minutes?)\b/i.test(line) ||
+    /\b\d{1,2}(:\d{2})?\s?(am|pm)\b/i.test(line) ||
+    /\+?\d[\d\s().-]{7,}\d/.test(line) ||
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(line) ||
+    ['price', 'pricing', 'plan', 'package', 'service', 'product', 'menu', 'fee', 'policy', 'refund', 'return', 'delivery', 'shipping', 'address', 'location', 'hours', 'faq', 'question', 'answer', 'appointment', 'booking', 'contact', 'phone', 'email', 'terms'].some((keyword) => normalized.includes(keyword))
+  )
+}
+
+function isHeadingLikeLine(line: string): boolean {
+  return /^#{1,6}\s+/.test(line) || (line.length <= 90 && /^[A-Z0-9][\p{L}\p{N}\s&:|/().,-]+$/u.test(line))
+}
+
+function countKeywordMatches(value: string, keywords: readonly string[]): number {
+  return keywords.reduce((count, keyword) => count + (value.includes(keyword) ? 1 : 0), 0)
+}
+
+function countExactFactLines(text: string): number {
+  return splitMeaningfulLines(text).filter(isImportantFactLine).length
+}
+
+function isHomePageUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.pathname === '/' || url.pathname === ''
+  } catch {
+    return false
+  }
+}
+
+function findMissingImportantPageTypes(
+  pages: readonly Pick<WebsiteImportPage, 'url' | 'canonicalUrl' | 'title' | 'cleanedText'>[],
+  startUrl: string,
+): string[] {
+  const homeImported = pages.some((page) => isHomePageUrl(page.canonicalUrl ?? page.url))
+  const combined = pages
+    .map((page) => `${page.canonicalUrl ?? page.url} ${page.title ?? ''} ${page.cleanedText ?? ''}`)
     .join('\n')
-    .slice(0, MAX_WEBSITE_DRAFT_CONTENT_LENGTH)
+    .toLowerCase()
+  const missing: string[] = []
+  if (!homeImported) missing.push('homepage')
+  if (!/(price|pricing|plans?|packages?|fees?|menu|rates?)/.test(combined)) missing.push('pricing/menu/fees')
+  if (!/(services?|products?|solutions?|courses?|treatments?)/.test(combined)) missing.push('services/products')
+  if (!/(contact|address|location|phone|email|hours?)/.test(combined)) missing.push('contact/location')
+  if (!/(faq|frequently asked|questions?)/.test(combined)) missing.push('FAQ')
+  if (!/(policy|refund|return|shipping|delivery|terms|privacy)/.test(combined)) missing.push('policies')
+  return missing.filter((item) => item !== 'homepage' || !isHomePageUrl(startUrl))
 }
 
 export function extractWebsiteKnowledgeText(html: string, pageUrl?: string): string {
@@ -1246,12 +1468,14 @@ function skippedPage(
   reason: string,
   httpStatus: number | null = null,
   canonicalUrl: string | null = null,
+  title: string | null = null,
+  metaDescription: string | null = null,
 ): WebsiteImportPage {
   return {
     url,
     canonicalUrl,
-    title: null,
-    metaDescription: null,
+    title,
+    metaDescription,
     rawText: null,
     cleanedText: null,
     contentHash: null,

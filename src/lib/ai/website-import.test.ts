@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 
 import { chunkKnowledgeText, retrieveRelevantChunks } from './chatbot'
 import {
+  MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
+  MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH,
   MAX_WEBSITE_DRAFT_CONTENT_LENGTH,
   buildWebsiteImportFromFirecrawl,
   buildWebsiteKnowledgeDraft,
@@ -671,7 +673,7 @@ describe('AI website knowledge import', () => {
   })
 
   it('does not silently truncate long website imports before the documented safe limit', () => {
-    const longContent = Array.from({ length: 400 }, (_item, index) =>
+    const longContent = Array.from({ length: 1_100 }, (_item, index) =>
       `Pricing detail ${index}: Pro plan costs $1/month and regular price is $5/month with automation, broadcasts, contacts, and AI chatbot.`,
     ).join('\n')
     const draft = buildWebsiteKnowledgeDraft([
@@ -689,13 +691,52 @@ describe('AI website knowledge import', () => {
       },
     ])
 
-    expect(draft.length).toBeGreaterThan(45_000)
+    expect(draft.length).toBeGreaterThan(100_000)
     expect(draft.length).toBeLessThanOrEqual(MAX_WEBSITE_DRAFT_CONTENT_LENGTH)
-    expect(draft).toContain('Pricing detail 399')
+    expect(draft).toContain('Pricing detail 1099')
   })
 
-  it('limits saved knowledge and website drafts to 100,000 characters', () => {
-    expect(MAX_WEBSITE_DRAFT_CONTENT_LENGTH).toBe(100_000)
+  it('keeps manual knowledge safe while allowing larger imported website drafts', () => {
+    expect(MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH).toBe(100_000)
+    expect(MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH).toBe(200_000)
+    expect(MAX_WEBSITE_DRAFT_CONTENT_LENGTH).toBe(MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH)
+  })
+
+  it('compacts Firecrawl imports, preserves exact facts, and marks pages excluded by the content limit', () => {
+    const makePage = (slug: string, title: string, pageIndex: number) => ({
+      markdown: [
+        `# ${title}`,
+        'Home Blog Careers Sitemap Continue Reading',
+        ...Array.from({ length: 420 }, (_item, index) =>
+          `${title} exact fact ${pageIndex}-${index}: Plan ${pageIndex}-${index} costs $${pageIndex + index}/month, includes ${index + 1}GB storage, and support hours are 9:00 AM to 5:00 PM.`,
+        ),
+      ].join('\n'),
+      metadata: {
+        sourceURL: `https://example.com/${slug}`,
+        title,
+        description: `${title} details`,
+        statusCode: 200,
+      },
+    })
+    const result = buildWebsiteImportFromFirecrawl({
+      startUrl: 'https://example.com/',
+      pageLimit: 10,
+      pages: [
+        makePage('', 'Home', 1),
+        makePage('pricing', 'Pricing', 2),
+        makePage('services', 'Services', 3),
+        makePage('faq', 'FAQ', 4),
+        makePage('contact', 'Contact', 5),
+        makePage('policies', 'Policies', 6),
+      ],
+    })
+
+    expect(result.draftContent.length).toBeLessThanOrEqual(MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH)
+    expect(result.draftContent).toContain('costs $')
+    expect(result.draftContent).toContain('9:00 AM to 5:00 PM')
+    expect(result.draftContent).not.toContain('Home Blog Careers Sitemap Continue Reading')
+    expect(result.pages.some((page) => page.skipReason === 'character_limit_excluded')).toBe(true)
+    expect(result.qualityWarnings.some((warning) => warning.includes('excluded because the website knowledge limit'))).toBe(true)
   })
 
   it('creates chunks from full imported content and can retrieve pricing answers from website knowledge', () => {
@@ -737,9 +778,13 @@ describe('AI website knowledge import', () => {
     expect(publishRoute).toContain("action !== 'publish'")
     expect(publishRoute).toContain("sourceType: 'website'")
     expect(publishRoute).toContain('MAX_WEBSITE_DRAFT_CONTENT_LENGTH')
-    expect(sourceRoute).toContain('MAX_WEBSITE_DRAFT_CONTENT_LENGTH')
-    expect(sourceUpdateRoute).toContain('MAX_WEBSITE_DRAFT_CONTENT_LENGTH')
+    expect(sourceRoute).toContain('MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH')
+    expect(sourceRoute).toContain('MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH')
+    expect(sourceUpdateRoute).toContain('MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH')
+    expect(sourceUpdateRoute).toContain('MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH')
     expect(page).toContain('Import Website Knowledge')
+    expect(page).toContain('Import quality warnings')
+    expect(page).toContain('Included in draft')
     expect(page).toContain('Publish to Knowledge Base')
     expect(page).toContain('Website import')
     expect(page).toContain('setState((prev) =>')

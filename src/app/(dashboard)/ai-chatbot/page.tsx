@@ -25,7 +25,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
-import { MAX_WEBSITE_DRAFT_CONTENT_LENGTH } from "@/lib/ai/website-import"
+import {
+  MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
+  MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH,
+  MAX_WEBSITE_DRAFT_CONTENT_LENGTH,
+} from "@/lib/ai/website-import"
 import { cn } from "@/lib/utils"
 
 type Tone = "friendly" | "professional" | "concise" | "supportive"
@@ -136,6 +140,7 @@ interface WebsiteImportPage {
 interface WebsiteImportResult {
   job: WebsiteImportJob
   pages: WebsiteImportPage[]
+  qualityWarnings?: string[]
   limits?: {
     appliedPageLimit: number
     trialPreview: boolean
@@ -169,6 +174,10 @@ const primaryActionClass =
 const controlActionClass = "border-[#3ddf84]/70 bg-[#3ddf84] text-[#07130e]"
 const activeStateClass = "border-[#3ddf84]/70 bg-[#3ddf84] text-[#07130e]"
 const inactiveStateClass = "border-[#f6c94a]/70 bg-[#f6c94a] text-[#07130e]"
+
+function knowledgeContentLimit(sourceType: SourceType): number {
+  return sourceType === "website" ? MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH : MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH
+}
 
 export default function AiChatbotPage() {
   const [state, setState] = useState<ChatbotState | null>(null)
@@ -1003,7 +1012,7 @@ export default function AiChatbotPage() {
             <TextAreaField
               disabled={!canManage}
               label="Knowledge content"
-              maxLength={MAX_WEBSITE_DRAFT_CONTENT_LENGTH}
+              maxLength={knowledgeContentLimit(sourceType)}
               minHeight="min-h-52"
               value={sourceContent}
               onChange={setSourceContent}
@@ -1125,8 +1134,8 @@ export default function AiChatbotPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Import summary</p>
                 <h3 className="mt-1 break-words text-sm font-bold text-white">{websiteImportResult.job.website_url}</h3>
                 <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                  <SummaryMetric label="Imported" value={websiteImportResult.job.pages_imported} />
-                  <SummaryMetric label="Skipped" value={websiteImportResult.job.pages_skipped} />
+                  <SummaryMetric label="Included in draft" value={websiteImportResult.job.pages_imported} />
+                  <SummaryMetric label="Skipped/excluded" value={websiteImportResult.job.pages_skipped} />
                   <SummaryMetric label="Failed" value={websiteImportResult.job.pages_failed} />
                   <SummaryMetric label="Duplicates" value={websiteImportResult.job.duplicate_pages} />
                   <SummaryMetric label="Credits used" value={websiteImportResult.job.credits_used ?? "—"} />
@@ -1139,6 +1148,16 @@ export default function AiChatbotPage() {
                 )}
                 {websiteImportResult.job.error_message && (
                   <p className="mt-3 text-sm text-yellow-200">{websiteImportResult.job.error_message}</p>
+                )}
+                {websiteImportResult.qualityWarnings && websiteImportResult.qualityWarnings.length > 0 && (
+                  <div className="mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 text-xs text-yellow-100">
+                    <p className="font-semibold uppercase tracking-wide">Import quality warnings</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-4">
+                      {websiteImportResult.qualityWarnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
 
@@ -1356,7 +1375,7 @@ export default function AiChatbotPage() {
             <TextAreaField
               disabled={savingSource}
               label="Knowledge content"
-              maxLength={MAX_WEBSITE_DRAFT_CONTENT_LENGTH}
+              maxLength={knowledgeContentLimit(editSourceType)}
               minHeight="min-h-72"
               value={editSourceContent}
               onChange={setEditSourceContent}

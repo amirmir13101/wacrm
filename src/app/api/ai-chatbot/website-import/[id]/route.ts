@@ -11,6 +11,7 @@ import {
 import { saveKnowledgeSourceWithChunks } from '@/lib/ai/knowledge'
 import {
   MAX_WEBSITE_DRAFT_CONTENT_LENGTH,
+  buildWebsiteImportQualityWarnings,
   buildWebsiteImportFromFirecrawl,
   type WebsiteImportPage,
 } from '@/lib/ai/website-import'
@@ -169,7 +170,23 @@ export async function GET(
     return NextResponse.json({ error: pagesError.message }, { status: 500 })
   }
 
-  return NextResponse.json({ job, pages: pages ?? [] })
+  const pageRows = pages ?? []
+  return NextResponse.json({
+    job,
+    pages: pageRows,
+    qualityWarnings: buildWebsiteImportQualityWarnings({
+      pages: pageRows.map((page) => ({
+        url: page.url,
+        canonicalUrl: page.canonical_url,
+        title: page.title,
+        cleanedText: null,
+        status: page.status,
+        skipReason: page.skip_reason,
+      })),
+      draftContent: job.draft_content,
+      startUrl: job.website_url,
+    }),
+  })
 }
 
 export async function PATCH(
