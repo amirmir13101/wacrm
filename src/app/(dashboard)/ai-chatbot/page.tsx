@@ -222,6 +222,24 @@ export default function AiChatbotPage() {
     }
   }
 
+  async function refreshFirecrawlSettings() {
+    try {
+      const res = await fetch("/api/ai-chatbot/firecrawl")
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body?.settings) return
+      setState((prev) =>
+        prev
+          ? {
+              ...prev,
+              firecrawlSettings: body.settings as FirecrawlSettings,
+            }
+          : prev,
+      )
+    } catch {
+      // Import results remain usable even if the optional credits refresh cannot be loaded.
+    }
+  }
+
   useEffect(() => {
     void load()
     void resumeLatestWebsiteImport()
@@ -313,6 +331,7 @@ export default function AiChatbotPage() {
       } else if (result.job.status === "draft_ready") {
         setWebsiteDraftTitle(result.job.draft_title ?? "Website knowledge")
         setWebsiteDraftContent(result.job.draft_content ?? "")
+        await refreshFirecrawlSettings()
         toast.success(`Website draft ready from ${result.job.pages_imported} page${result.job.pages_imported === 1 ? "" : "s"}`)
       } else {
         toast.message(result.job.error_message ?? "Website import finished without publishable text.")
@@ -343,6 +362,7 @@ export default function AiChatbotPage() {
       if (result.job.status === "draft_ready") {
         setWebsiteDraftTitle(result.job.draft_title ?? "Website knowledge")
         setWebsiteDraftContent(result.job.draft_content ?? "")
+        await refreshFirecrawlSettings()
         return
       }
       if (result.job.status === "running") {
@@ -372,10 +392,12 @@ export default function AiChatbotPage() {
       if (result.job.status === "draft_ready") {
         setWebsiteDraftTitle(result.job.draft_title ?? "Website knowledge")
         setWebsiteDraftContent(result.job.draft_content ?? "")
+        await refreshFirecrawlSettings()
         toast.success(`Website draft ready from ${result.job.pages_imported} page${result.job.pages_imported === 1 ? "" : "s"}`)
         return
       }
       if (result.job.status === "failed") {
+        await refreshFirecrawlSettings()
         throw new Error(result.job.error_message ?? "Firecrawl import failed")
       }
     }

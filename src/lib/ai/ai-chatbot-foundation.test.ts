@@ -230,6 +230,17 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(page).toContain('Remaining credits')
   })
 
+  it('refreshes Firecrawl credit usage automatically after website imports finish', () => {
+    const helper = read('src/lib/ai/firecrawl.ts')
+    const importRoute = read('src/app/api/ai-chatbot/website-import/[id]/route.ts')
+    const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
+
+    expect(helper).toContain('refreshFirecrawlAccountUsage')
+    expect(importRoute).toContain('refreshFirecrawlAccountUsage(workspace.workspaceId, apiKey)')
+    expect(page).toContain('refreshFirecrawlSettings')
+    expect(page).toContain('fetch("/api/ai-chatbot/firecrawl")')
+  })
+
   it('keeps website import separate from Phase 1 foundation and avoids browser/vector dependencies', () => {
     const migration = read('supabase/migrations/033_ai_chatbot.sql').toLowerCase()
     const websiteMigration = read('supabase/migrations/036_ai_website_knowledge_imports.sql').toLowerCase()

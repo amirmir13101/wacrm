@@ -53,6 +53,14 @@ export interface FirecrawlCrawlError {
   readonly error: string
 }
 
+interface FirecrawlAccountUsage {
+  readonly remainingCredits: number | null
+  readonly planCredits: number | null
+  readonly billingPeriodStart: string | null
+  readonly billingPeriodEnd: string | null
+  readonly maxConcurrency: number | null
+}
+
 interface FirecrawlSettingsRow {
   readonly encrypted_api_key: string | null
   readonly api_key_last4: string | null
@@ -128,25 +136,12 @@ export async function testFirecrawlConnection(workspaceId: string): Promise<{
   }
 
   try {
-    const [creditsResponse, queueResponse] = await Promise.all([
-      firecrawlRequest('/team/credit-usage', apiKey),
-      firecrawlRequest('/team/queue-status', apiKey),
-    ])
-    const credits = asRecord(creditsResponse.data)
-    const queue = asRecord(queueResponse)
-    await supabaseAdmin()
-      .from('ai_firecrawl_settings')
-      .update({
-        last_tested_at: new Date().toISOString(),
-        last_test_status: 'success',
-        last_test_error: null,
-        remaining_credits: readNumber(credits.remainingCredits),
-        plan_credits: readNumber(credits.planCredits),
-        billing_period_start: readString(credits.billingPeriodStart),
-        billing_period_end: readString(credits.billingPeriodEnd),
-        max_concurrency: readNumber(queue.maxConcurrency),
-      })
-      .eq('workspace_id', workspaceId)
+    const usage = await fetchFirecrawlAccountUsage(apiKey)
+    await updateFirecrawlUsage(workspaceId, usage, {
+      lastTestedAt: new Date().toISOString(),
+      lastTestStatus: 'success',
+      lastTestError: null,
+    })
     return {
       ok: true,
       message: 'Firecrawl connection works.',
@@ -157,6 +152,19 @@ export async function testFirecrawlConnection(workspaceId: string): Promise<{
     await markFirecrawlTest(workspaceId, false, message)
     return { ok: false, message, settings: await getPublicFirecrawlSettings(workspaceId) }
   }
+}
+
+export async function refreshFirecrawlAccountUsage(
+  workspaceId: string,
+  apiKey: string,
+): Promise<FirecrawlPublicSettings> {
+  const usage = await fetchFirecrawlAccountUsage(apiKey)
+  await updateFirecrawlUsage(workspaceId, usage, {
+    lastTestedAt: new Date().toISOString(),
+    lastTestStatus: 'success',
+    lastTestError: null,
+  })
+  return getPublicFirecrawlSettings(workspaceId)
 }
 
 export async function startFirecrawlWebsiteCrawl(args: {
@@ -331,6 +339,51 @@ async function markFirecrawlTest(workspaceId: string, ok: boolean, error: string
       last_test_error: error?.slice(0, 500) ?? null,
     })
     .eq('workspace_id', workspaceId)
+}
+
+async function fetchFirecrawlAccountUsage(apiKey: string): Promise<FirecrawlAccountUsage> {
+  const [creditsResponse, queueResponse] = await Promise.all([
+    firecrawlRequest('/team/credit-usage', apiKey),
+    firecrawlRequest('/team/queue-status', apiKey),
+  ])
+  const credits = asRecord(creditsResponse.data)
+  const queue = asRecord(queueResponse)
+  return {
+    remainingCredits: readNumber(credits.remainingCredits),
+    planCredits: readNumber(credits.planCredits),
+    billingPeriodStart: readString(credits.billingPeriodStart),
+    billingPeriodEnd: readString(credits.billingPeriodEnd),
+    maxConcurrency: readNumber(queue.maxConcurrency),
+  }
+}
+
+async function updateFirecrawlUsage(
+  workspaceId: string,
+  usage: FirecrawlAccountUsage,
+  testState?: {
+    readonly lastTestedAt: string
+    readonly lastTestStatus: 'success'
+    readonly lastTestError: null
+  },
+): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from('ai_firecrawl_settings')
+    .update({
+      ...(testState
+        ? {
+            last_tested_at: testState.lastTestedAt,
+            last_test_status: testState.lastTestStatus,
+            last_test_error: testState.lastTestError,
+          }
+        : {}),
+      remaining_credits: usage.remainingCredits,
+      plan_credits: usage.planCredits,
+      billing_period_start: usage.billingPeriodStart,
+      billing_period_end: usage.billingPeriodEnd,
+      max_concurrency: usage.maxConcurrency,
+    })
+    .eq('workspace_id', workspaceId)
+  if (error) throw new Error(error.message)
 }
 
 function toPublicSettings(data: FirecrawlSettingsRow | null): FirecrawlPublicSettings {

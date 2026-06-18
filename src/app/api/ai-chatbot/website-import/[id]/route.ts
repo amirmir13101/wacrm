@@ -5,6 +5,7 @@ import {
   getFirecrawlCrawlStatus,
   getFirecrawlMaxRuntimeMs,
   isFirecrawlJobStalled,
+  refreshFirecrawlAccountUsage,
   resolveFirecrawlApiKey,
 } from '@/lib/ai/firecrawl'
 import { saveKnowledgeSourceWithChunks } from '@/lib/ai/knowledge'
@@ -113,6 +114,7 @@ export async function GET(
           .single()
         if (updateError || !updatedJob) throw new Error(updateError?.message ?? 'Failed to finalize Firecrawl import.')
         job = updatedJob
+        await refreshFirecrawlAccountUsage(workspace.workspaceId, apiKey).catch(() => undefined)
       } else if (firecrawlStatus.status === 'failed' || firecrawlStatus.status === 'cancelled') {
         const { data: failedJob } = await admin
           .from('ai_website_import_jobs')
@@ -128,6 +130,7 @@ export async function GET(
           .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
           .single()
         if (failedJob) job = failedJob
+        await refreshFirecrawlAccountUsage(workspace.workspaceId, apiKey).catch(() => undefined)
       } else {
         const { data: runningJob } = await admin
           .from('ai_website_import_jobs')
