@@ -205,7 +205,13 @@ export function normalizeWebsiteUrl(value: string): string {
 
 export function isSameOrigin(candidate: string, origin: string): boolean {
   try {
-    return new URL(candidate).origin === origin
+    const candidateUrl = new URL(candidate)
+    const originUrl = new URL(origin)
+    return (
+      candidateUrl.protocol === originUrl.protocol &&
+      candidateUrl.port === originUrl.port &&
+      normalizeSiteHostname(candidateUrl.hostname) === normalizeSiteHostname(originUrl.hostname)
+    )
   } catch {
     return false
   }
@@ -220,7 +226,7 @@ export function shouldSkipWebsiteUrl(candidate: string, origin: string): string 
   }
 
   if (!['http:', 'https:'].includes(parsed.protocol)) return 'unsupported_protocol'
-  if (parsed.origin !== origin) return 'external_domain'
+  if (!isSameOrigin(parsed.toString(), origin)) return 'external_domain'
 
   const pathname = parsed.pathname.toLowerCase()
   if (SKIP_EXTENSIONS.some((extension) => pathname.endsWith(extension))) return 'media_or_file_url'
@@ -1146,6 +1152,10 @@ function failedPage(url: string, reason: string, httpStatus: number | null = nul
 
 function hostTitle(hostname: string): string {
   return hostname.replace(/^www\./, '').split('.')[0]?.replace(/-/g, ' ') || 'Website'
+}
+
+function normalizeSiteHostname(hostname: string): string {
+  return hostname.toLowerCase().replace(/^www\./, '')
 }
 
 function clampPageLimit(value: number | undefined): number {

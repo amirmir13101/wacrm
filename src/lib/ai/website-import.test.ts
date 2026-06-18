@@ -52,6 +52,9 @@ describe('AI website knowledge import', () => {
   it('skips external, private, media, checkout, search, and policy URLs', () => {
     const origin = 'https://example.com'
     expect(shouldSkipWebsiteUrl('https://other.com/page', origin)).toBe('external_domain')
+    expect(shouldSkipWebsiteUrl('https://www.example.com/services', origin)).toBeNull()
+    expect(shouldSkipWebsiteUrl('https://shop.example.com/services', origin)).toBe('external_domain')
+    expect(shouldSkipWebsiteUrl('https://www.example.com.evil.test/services', origin)).toBe('external_domain')
     expect(shouldSkipWebsiteUrl('https://example.com/wp-admin', origin)).toBe('private_or_low_value_path')
     expect(shouldSkipWebsiteUrl('https://example.com/checkout', origin)).toBe('private_or_low_value_path')
     expect(shouldSkipWebsiteUrl('https://example.com/search?q=test', origin)).toBe('private_or_low_value_path')
@@ -455,6 +458,46 @@ describe('AI website knowledge import', () => {
     expect(result.draftContent).toContain('Priority support costs')
     expect(result.draftContent).toContain('$49/month')
     expect(result.draftContent).toContain('Open Monday-Friday')
+  })
+
+  it('accepts Firecrawl pages when the site redirects between root and www hostnames', () => {
+    const result = buildWebsiteImportFromFirecrawl({
+      startUrl: 'https://vpswagon.com/',
+      pages: [
+        {
+          markdown: '# n8n Hosting\n\nManaged workflow hosting includes backups, monitoring, and scalable server resources for business automation teams.',
+          metadata: {
+            sourceURL: 'https://www.vpswagon.com/n8n-hosting/',
+            title: 'n8n Hosting',
+            statusCode: 200,
+          },
+        },
+      ],
+    })
+
+    expect(result.pagesImported).toBe(1)
+    expect(result.pagesFailed).toBe(0)
+    expect(result.pages[0]?.canonicalUrl).toBe('https://www.vpswagon.com/n8n-hosting')
+  })
+
+  it('still rejects unrelated Firecrawl hosts and deceptive www suffixes', () => {
+    const result = buildWebsiteImportFromFirecrawl({
+      startUrl: 'https://vpswagon.com/',
+      pages: [
+        {
+          markdown: '# External page\n\nThis content must not be imported into the workspace knowledge base.',
+          metadata: {
+            sourceURL: 'https://www.vpswagon.com.evil.test/n8n-hosting/',
+            title: 'External page',
+            statusCode: 200,
+          },
+        },
+      ],
+    })
+
+    expect(result.pagesImported).toBe(0)
+    expect(result.pagesFailed).toBe(1)
+    expect(result.pages[0]?.skipReason).toBe('external_or_invalid_firecrawl_url')
   })
 
   it('crawls same-domain pages, honors robots, page limit, duplicates, and failures', async () => {
