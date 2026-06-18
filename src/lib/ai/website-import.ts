@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import { load } from 'cheerio'
 
+import type { FirecrawlCrawlPage } from '@/lib/ai/firecrawl'
+
 export type WebsiteImportPageStatus = 'imported' | 'skipped' | 'failed' | 'duplicate'
 
 export interface WebsiteImportPage {
@@ -27,6 +29,94 @@ export interface WebsiteImportResult {
   readonly pagesSkipped: number
   readonly pagesFailed: number
   readonly duplicatePages: number
+}
+
+export function buildWebsiteImportFromFirecrawl(args: {
+  readonly startUrl: string
+  readonly pages: readonly FirecrawlCrawlPage[]
+}): WebsiteImportResult {
+  const start = new URL(args.startUrl)
+  const seenCanonical = new Set<string>()
+  const seenHashes = new Set<string>()
+  const pages: WebsiteImportPage[] = []
+
+  for (const page of args.pages) {
+    const metadata = page.metadata ?? {}
+    const sourceUrl = readMetadataString(metadata, 'sourceURL') ?? readMetadataString(metadata, 'url') ?? args.startUrl
+    const canonicalUrl = normalizeCandidateUrl(sourceUrl, start.origin)
+    const title = readMetadataString(metadata, 'title')
+    const metaDescription = readMetadataString(metadata, 'description')
+    const statusCode = readMetadataNumber(metadata, 'statusCode')
+    const error = readMetadataString(metadata, 'error')
+
+    if (!canonicalUrl || !isSameOrigin(canonicalUrl, start.origin)) {
+      pages.push(failedPage(sourceUrl, 'external_or_invalid_firecrawl_url', statusCode))
+      continue
+    }
+    if (error || (statusCode !== null && statusCode >= 400)) {
+      pages.push(failedPage(canonicalUrl, error ? `firecrawl_${slugReason(error)}` : `http_${statusCode}`, statusCode))
+      continue
+    }
+    if (seenCanonical.has(canonicalUrl)) {
+      pages.push(duplicatePage(canonicalUrl, canonicalUrl, 'duplicate_url', statusCode, title, metaDescription))
+      continue
+    }
+
+    const rawHtml = page.rawHtml ?? page.html ?? ''
+    const structuredText = rawHtml ? extractWebsiteKnowledgeText(rawHtml, canonicalUrl) : ''
+    const markdown = normalizeExtractedText(page.markdown ?? '')
+    const cleanedText = normalizeExtractedText([structuredText, markdown].filter(Boolean).join('\n\n'))
+    if (cleanedText.length < 80) {
+      pages.push({
+        url: canonicalUrl,
+        canonicalUrl,
+        title,
+        metaDescription,
+        rawText: rawHtml || markdown,
+        cleanedText,
+        contentHash: null,
+        status: 'skipped',
+        skipReason: 'not_enough_text',
+        httpStatus: statusCode,
+      })
+      continue
+    }
+
+    const contentHash = hashContent(cleanedText)
+    if (seenHashes.has(contentHash)) {
+      pages.push(duplicatePage(canonicalUrl, canonicalUrl, 'duplicate_content', statusCode, title, metaDescription, contentHash))
+      continue
+    }
+
+    seenCanonical.add(canonicalUrl)
+    seenHashes.add(contentHash)
+    pages.push({
+      url: canonicalUrl,
+      canonicalUrl,
+      title,
+      metaDescription,
+      rawText: rawHtml || markdown,
+      cleanedText,
+      contentHash,
+      status: 'imported',
+      skipReason: null,
+      httpStatus: statusCode ?? 200,
+    })
+  }
+
+  const importedPages = pages.filter((page) => page.status === 'imported')
+  return {
+    startUrl: args.startUrl,
+    normalizedOrigin: start.origin,
+    pages,
+    draftTitle: `${hostTitle(start.hostname)} website knowledge`,
+    draftContent: buildWebsiteKnowledgeDraft(importedPages),
+    pagesFound: args.pages.length,
+    pagesImported: importedPages.length,
+    pagesSkipped: pages.filter((page) => page.status === 'skipped').length,
+    pagesFailed: pages.filter((page) => page.status === 'failed').length,
+    duplicatePages: pages.filter((page) => page.status === 'duplicate').length,
+  }
 }
 
 interface CrawlOptions {
@@ -996,6 +1086,20 @@ function scalarText(value: unknown): string | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readMetadataString(metadata: Readonly<Record<string, unknown>>, key: string): string | null {
+  const value = metadata[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function readMetadataNumber(metadata: Readonly<Record<string, unknown>>, key: string): number | null {
+  const value = metadata[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function slugReason(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'page_error'
 }
 
 function uniqueByLowercase(value: string, index: number, values: string[]): boolean {

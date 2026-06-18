@@ -59,10 +59,25 @@ interface ChatbotState {
   }
   providerConfigured: boolean
   providerSettings: ProviderSettings
+  firecrawlSettings: FirecrawlSettings
   permissions: {
     canManage: boolean
     canEnableAutoReply: boolean
   }
+}
+
+interface FirecrawlSettings {
+  apiKeyConfigured: boolean
+  apiKeyMasked: string | null
+  apiKeyConfiguredAt: string | null
+  lastTestedAt: string | null
+  lastTestStatus: "success" | "failed" | "not_tested" | null
+  lastTestError: string | null
+  remainingCredits: number | null
+  planCredits: number | null
+  billingPeriodStart: string | null
+  billingPeriodEnd: string | null
+  maxConcurrency: number | null
 }
 
 interface ProviderSettings {
@@ -102,6 +117,10 @@ interface WebsiteImportJob {
   error_message: string | null
   created_at?: string
   completed_at?: string | null
+  crawl_provider?: "legacy" | "firecrawl"
+  external_crawl_id?: string | null
+  credits_used?: number | null
+  provider_status?: string | null
 }
 
 interface WebsiteImportPage {
@@ -163,6 +182,9 @@ export default function AiChatbotPage() {
   const [draftSettings, setDraftSettings] = useState<ChatbotSettings | null>(null)
   const [draftProvider, setDraftProvider] = useState<ProviderSettings | null>(null)
   const [providerApiKey, setProviderApiKey] = useState("")
+  const [firecrawlApiKey, setFirecrawlApiKey] = useState("")
+  const [savingFirecrawl, setSavingFirecrawl] = useState(false)
+  const [testingFirecrawl, setTestingFirecrawl] = useState(false)
   const [sourceType, setSourceType] = useState<SourceType>("manual")
   const [sourceTitle, setSourceTitle] = useState("")
   const [sourceContent, setSourceContent] = useState("")
@@ -191,6 +213,7 @@ export default function AiChatbotPage() {
       setDraftSettings((body as ChatbotState).settings)
       setDraftProvider((body as ChatbotState).providerSettings)
       setProviderApiKey("")
+      setFirecrawlApiKey("")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load AI Chatbot")
     } finally {
@@ -282,7 +305,10 @@ export default function AiChatbotPage() {
       setWebsiteImportResult(result)
       setWebsiteDraftTitle(result.job.draft_title ?? "Website knowledge")
       setWebsiteDraftContent(result.job.draft_content ?? "")
-      if (result.job.status === "draft_ready") {
+      if (result.job.status === "running") {
+        toast.success("Firecrawl import started")
+        await pollWebsiteImport(result.job.id, result.limits)
+      } else if (result.job.status === "draft_ready") {
         toast.success(`Website draft ready from ${result.job.pages_imported} page${result.job.pages_imported === 1 ? "" : "s"}`)
       } else {
         toast.message(result.job.error_message ?? "Website import finished without publishable text.")
@@ -291,6 +317,65 @@ export default function AiChatbotPage() {
       toast.error(err instanceof Error ? err.message : "Failed to import website knowledge")
     } finally {
       setImportingWebsite(false)
+    }
+  }
+
+  async function pollWebsiteImport(
+    jobId: string,
+    limits?: WebsiteImportResult["limits"],
+  ) {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2500))
+      const res = await fetch(`/api/ai-chatbot/website-import/${jobId}`)
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? "Failed to check Firecrawl import")
+      const result = { ...(body as WebsiteImportResult), limits }
+      setWebsiteImportResult(result)
+      if (result.job.status === "draft_ready") {
+        setWebsiteDraftTitle(result.job.draft_title ?? "Website knowledge")
+        setWebsiteDraftContent(result.job.draft_content ?? "")
+        toast.success(`Website draft ready from ${result.job.pages_imported} page${result.job.pages_imported === 1 ? "" : "s"}`)
+        return
+      }
+      if (result.job.status === "failed") {
+        throw new Error(result.job.error_message ?? "Firecrawl import failed")
+      }
+    }
+    throw new Error("Firecrawl import is still running. Reopen the latest import shortly to continue.")
+  }
+
+  async function saveFirecrawlSettings() {
+    setSavingFirecrawl(true)
+    try {
+      const res = await fetch("/api/ai-chatbot/firecrawl", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key: firecrawlApiKey }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? "Failed to save Firecrawl API key")
+      toast.success("Firecrawl API key saved")
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save Firecrawl API key")
+    } finally {
+      setSavingFirecrawl(false)
+    }
+  }
+
+  async function testFirecrawlSettings() {
+    setTestingFirecrawl(true)
+    try {
+      const res = await fetch("/api/ai-chatbot/firecrawl", { method: "POST" })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.message ?? body?.error ?? "Firecrawl connection test failed")
+      toast.success(body?.message ?? "Firecrawl connection works")
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Firecrawl connection test failed")
+      await load()
+    } finally {
+      setTestingFirecrawl(false)
     }
   }
 
@@ -533,6 +618,71 @@ export default function AiChatbotPage() {
           }
           tone={state.providerConfigured ? "active" : "inactive"}
         />
+      </section>
+
+      <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <KeyRound className="size-5 text-emerald-300" />
+              <h2 className="text-lg font-bold text-white">Firecrawl Website Import</h2>
+            </div>
+            <p className="mt-1 max-w-3xl text-sm text-[#9dbfb5]">
+              Connect your own Firecrawl Cloud account. Website crawling uses your Firecrawl credits and infrastructure; the API key is encrypted and never shown again.
+            </p>
+          </div>
+          <StatusPill
+            label={
+              state.firecrawlSettings.lastTestStatus === "success"
+                ? "Connection working"
+                : state.firecrawlSettings.apiKeyConfigured
+                  ? "Key saved"
+                  : "Key required"
+            }
+            tone={state.firecrawlSettings.apiKeyConfigured ? "success" : "warning"}
+          />
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-emerald-50">Firecrawl API key</span>
+            <input
+              className="h-11 w-full rounded-lg border border-emerald-800 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+              disabled={!canManage || savingFirecrawl || testingFirecrawl}
+              type="password"
+              value={firecrawlApiKey}
+              onChange={(event) => setFirecrawlApiKey(event.target.value)}
+              placeholder={state.firecrawlSettings.apiKeyMasked ?? "Paste your Firecrawl API key"}
+              autoComplete="new-password"
+            />
+          </label>
+          <Button
+            className={primaryActionClass}
+            disabled={!canManage || savingFirecrawl || testingFirecrawl || !firecrawlApiKey.trim()}
+            onClick={() => void saveFirecrawlSettings()}
+          >
+            {savingFirecrawl && <Loader2 className="size-4 animate-spin" />}
+            Save Key
+          </Button>
+          <Button
+            className="border border-emerald-700 bg-[#07130e] text-emerald-100 hover:bg-emerald-950"
+            disabled={!canManage || savingFirecrawl || testingFirecrawl || !state.firecrawlSettings.apiKeyConfigured}
+            variant="outline"
+            onClick={() => void testFirecrawlSettings()}
+          >
+            {testingFirecrawl && <Loader2 className="size-4 animate-spin" />}
+            Test Connection
+          </Button>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <SummaryMetric label="Remaining credits" value={state.firecrawlSettings.remainingCredits ?? "—"} />
+          <SummaryMetric label="Plan credits" value={state.firecrawlSettings.planCredits ?? "—"} />
+          <SummaryMetric label="Max concurrency" value={state.firecrawlSettings.maxConcurrency ?? "—"} />
+        </div>
+        {state.firecrawlSettings.lastTestError && (
+          <p className="mt-3 text-sm text-yellow-200">{state.firecrawlSettings.lastTestError}</p>
+        )}
       </section>
 
       <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
@@ -856,7 +1006,7 @@ export default function AiChatbotPage() {
               <h2 className="text-lg font-bold text-white">Import Website Knowledge</h2>
             </div>
             <p className="mt-1 max-w-3xl text-sm text-[#9dbfb5]">
-              Crawl public same-domain pages, skip private/media URLs, review the cleaned draft, then publish it to chatbot knowledge.
+              Firecrawl crawls public website pages using the workspace owner&apos;s account. Review the cleaned draft before publishing it to chatbot knowledge.
             </p>
           </div>
           <StatusPill
@@ -892,7 +1042,7 @@ export default function AiChatbotPage() {
           </label>
           <Button
             className={primaryActionClass}
-            disabled={!canManage || importingWebsite || !websiteUrl.trim()}
+            disabled={!canManage || importingWebsite || !websiteUrl.trim() || !state.firecrawlSettings.apiKeyConfigured}
             onClick={() => void importWebsiteKnowledge()}
           >
             {importingWebsite && <Loader2 className="size-4 animate-spin" />}
@@ -902,8 +1052,8 @@ export default function AiChatbotPage() {
 
         <div className="mt-4 rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4 text-sm text-[#b8cfc7]">
           <p>
-            The importer only reads public pages on the same domain. Login, admin, checkout, media, uploads,
-            search, tag, author, and duplicate pages are skipped. Website content is not published until you review and save the draft.
+            Firecrawl handles sitemap discovery, JavaScript rendering, proxy selection, caching, robots rules, and crawl concurrency.
+            The CRM keeps the crawl same-domain, processes Firecrawl Markdown and raw HTML, removes duplicates, and does not publish anything until you review the draft.
           </p>
         </div>
 
@@ -918,6 +1068,8 @@ export default function AiChatbotPage() {
                   <SummaryMetric label="Skipped" value={websiteImportResult.job.pages_skipped} />
                   <SummaryMetric label="Failed" value={websiteImportResult.job.pages_failed} />
                   <SummaryMetric label="Duplicates" value={websiteImportResult.job.duplicate_pages} />
+                  <SummaryMetric label="Credits used" value={websiteImportResult.job.credits_used ?? "—"} />
+                  <SummaryMetric label="Provider" value={websiteImportResult.job.crawl_provider ?? "firecrawl"} />
                 </dl>
                 {websiteImportResult.limits?.trialPreview && (
                   <div className={cn("mt-4 rounded-lg border p-3 text-xs font-semibold", inactiveStateClass)}>
@@ -1160,7 +1312,7 @@ export default function AiChatbotPage() {
   )
 }
 
-function SummaryMetric({ label, value }: { label: string; value: number }) {
+function SummaryMetric({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-lg border border-emerald-950 bg-[#04150f] p-3">
       <dt className="text-xs uppercase tracking-wide text-[#9dbfb5]">{label}</dt>

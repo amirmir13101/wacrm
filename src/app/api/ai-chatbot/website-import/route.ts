@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
 
 import { getWorkspaceTrialStatus } from '@/lib/billing/trial'
+import { resolveFirecrawlApiKey, startFirecrawlWebsiteCrawl } from '@/lib/ai/firecrawl'
 import {
-  crawlWebsiteForKnowledge,
   normalizeWebsiteUrl,
-  type WebsiteImportPage,
 } from '@/lib/ai/website-import'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
@@ -26,7 +25,7 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin()
     .from('ai_website_import_jobs')
-    .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, created_at, completed_at')
+    .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
     .eq('workspace_id', workspace.workspaceId)
     .order('created_at', { ascending: false })
     .limit(5)
@@ -69,6 +68,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: pageLimit.reason }, { status: 402 })
   }
 
+  const apiKey = await resolveFirecrawlApiKey(workspace.workspaceId)
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: 'Add and test your Firecrawl API key before importing a website.' },
+      { status: 503 },
+    )
+  }
+
+  let crawlId: string
+  try {
+    const crawl = await startFirecrawlWebsiteCrawl({
+      apiKey,
+      url: normalizedUrl,
+      pageLimit: pageLimit.limit,
+    })
+    crawlId = crawl.id
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to start Firecrawl website import.' },
+      { status: 502 },
+    )
+  }
+
   const parsed = new URL(normalizedUrl)
   const admin = supabaseAdmin()
   const { data: job, error: jobError } = await admin
@@ -80,75 +102,25 @@ export async function POST(request: Request) {
       normalized_origin: parsed.origin,
       status: 'running',
       page_limit: pageLimit.limit,
+      crawl_provider: 'firecrawl',
+      external_crawl_id: crawlId,
+      provider_status: 'scraping',
     })
-    .select('id')
+    .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
     .single()
 
   if (jobError || !job) {
     return NextResponse.json({ error: jobError?.message ?? 'Failed to create import job.' }, { status: 500 })
   }
 
-  try {
-    const result = await crawlWebsiteForKnowledge({
-      startUrl: normalizedUrl,
-      pageLimit: pageLimit.limit,
-    })
-
-    const pageRows = result.pages.map((page) => toPageRow(page, workspace.workspaceId, job.id))
-    if (pageRows.length > 0) {
-      const { error: pagesError } = await admin.from('ai_website_import_pages').insert(pageRows)
-      if (pagesError) throw new Error(pagesError.message)
-    }
-
-    const { data: updatedJob, error: updateError } = await admin
-      .from('ai_website_import_jobs')
-      .update({
-        status: result.pagesImported > 0 ? 'draft_ready' : 'failed',
-        pages_found: result.pagesFound,
-        pages_imported: result.pagesImported,
-        pages_skipped: result.pagesSkipped,
-        pages_failed: result.pagesFailed,
-        duplicate_pages: result.duplicatePages,
-        draft_title: result.draftTitle,
-        draft_content: result.draftContent,
-        error_message: result.pagesImported > 0 ? null : 'No useful website text could be imported.',
-        completed_at: new Date().toISOString(),
-      })
-      .eq('id', job.id)
-      .eq('workspace_id', workspace.workspaceId)
-      .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, error_message, created_at, completed_at')
-      .single()
-
-    if (updateError || !updatedJob) throw new Error(updateError?.message ?? 'Failed to update import job.')
-
-    return NextResponse.json({
-      job: updatedJob,
-      pages: result.pages.map((page) => ({
-        url: page.url,
-        canonical_url: page.canonicalUrl,
-        title: page.title,
-        status: page.status,
-        skip_reason: page.skipReason,
-        http_status: page.httpStatus,
-      })),
-      limits: {
-        appliedPageLimit: pageLimit.limit,
-        trialPreview: plan.isTrial && !plan.isActivePro,
-      },
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Website import failed.'
-    await admin
-      .from('ai_website_import_jobs')
-      .update({
-        status: 'failed',
-        error_message: message.slice(0, 500),
-        completed_at: new Date().toISOString(),
-      })
-      .eq('id', job.id)
-      .eq('workspace_id', workspace.workspaceId)
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
+  return NextResponse.json({
+    job,
+    pages: [],
+    limits: {
+      appliedPageLimit: pageLimit.limit,
+      trialPreview: plan.isTrial && !plan.isActivePro,
+    },
+  })
 }
 
 function resolveAllowedPageLimit(args: {
@@ -165,23 +137,6 @@ function resolveAllowedPageLimit(args: {
   return {
     allowed: false,
     reason: 'Website knowledge import requires an active Pro monthly or yearly plan. Trial workspaces can run a small preview import.',
-  }
-}
-
-function toPageRow(page: WebsiteImportPage, workspaceId: string, importJobId: string) {
-  return {
-    workspace_id: workspaceId,
-    import_job_id: importJobId,
-    url: page.url,
-    canonical_url: page.canonicalUrl,
-    title: page.title,
-    meta_description: page.metaDescription,
-    raw_text: page.rawText,
-    cleaned_text: page.cleanedText,
-    content_hash: page.contentHash,
-    status: page.status,
-    skip_reason: page.skipReason,
-    http_status: page.httpStatus,
   }
 }
 

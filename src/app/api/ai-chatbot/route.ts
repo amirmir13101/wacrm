@@ -10,6 +10,7 @@ import {
   type AiKnowledgeSourceType,
 } from '@/lib/ai/chatbot'
 import { MAX_WEBSITE_DRAFT_CONTENT_LENGTH } from '@/lib/ai/website-import'
+import { getPublicFirecrawlSettings } from '@/lib/ai/firecrawl'
 import { getPublicProviderSettings } from '@/lib/ai/provider'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireCurrentWorkspace } from '@/lib/team/server'
@@ -30,7 +31,7 @@ export async function GET() {
   }
 
   const admin = supabaseAdmin()
-  const [{ data: settings }, { data: sources }, planAccess, providerSettings, providerConfigured] = await Promise.all([
+  const [{ data: settings }, { data: sources }, planAccess, providerSettings, providerConfigured, firecrawlSettings] = await Promise.all([
     admin
       .from('ai_chatbot_settings')
       .select('*')
@@ -44,6 +45,7 @@ export async function GET() {
     getAiPlanAccess(workspace.workspaceId),
     getPublicProviderSettings(workspace.workspaceId),
     isAiProviderConfigured(workspace.workspaceId),
+    getPublicFirecrawlSettings(workspace.workspaceId),
   ])
 
   return NextResponse.json({
@@ -57,6 +59,7 @@ export async function GET() {
     planAccess,
     providerConfigured,
     providerSettings,
+    firecrawlSettings,
     permissions: {
       canManage: hasWorkspacePermission(workspace, 'manage_ai_chatbot'),
       canEnableAutoReply: hasWorkspacePermission(workspace, 'enable_ai_auto_reply'),

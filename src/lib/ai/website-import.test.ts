@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { chunkKnowledgeText, retrieveRelevantChunks } from './chatbot'
 import {
   MAX_WEBSITE_DRAFT_CONTENT_LENGTH,
+  buildWebsiteImportFromFirecrawl,
   buildWebsiteKnowledgeDraft,
   cleanHtmlToText,
   crawlWebsiteForKnowledge,
@@ -424,6 +425,38 @@ describe('AI website knowledge import', () => {
     expect(text).toContain('5 River Road')
   })
 
+  it('converts Firecrawl markdown, raw HTML, and metadata into the existing review draft', () => {
+    const result = buildWebsiteImportFromFirecrawl({
+      startUrl: 'https://example.com',
+      pages: [
+        {
+          markdown: '# Services\n\nPriority support costs **$49/month**.',
+          rawHtml: `
+            <html>
+              <head><title>Services</title></head>
+              <body>
+                <main><h1>Services</h1><p>Priority support costs $49/month.</p></main>
+                <footer><p>Open Monday-Friday, 9 AM-5 PM</p></footer>
+              </body>
+            </html>
+          `,
+          metadata: {
+            sourceURL: 'https://example.com/services',
+            title: 'Services',
+            description: 'Service packages',
+            statusCode: 200,
+          },
+        },
+      ],
+    })
+
+    expect(result.pagesImported).toBe(1)
+    expect(result.pages[0]?.canonicalUrl).toBe('https://example.com/services')
+    expect(result.draftContent).toContain('Priority support costs')
+    expect(result.draftContent).toContain('$49/month')
+    expect(result.draftContent).toContain('Open Monday-Friday')
+  })
+
   it('crawls same-domain pages, honors robots, page limit, duplicates, and failures', async () => {
     const pages = new Map<string, Response>([
       ['https://example.com/robots.txt', response('User-agent: *\nDisallow: /private', { headers: { 'content-type': 'text/plain' } })],
@@ -570,7 +603,10 @@ describe('AI website knowledge import', () => {
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS ai_website_import_pages')
     expect(migration).toContain('ALTER TABLE ai_website_import_jobs ENABLE ROW LEVEL SECURITY')
     expect(migration).toContain("workspace_has_permission(workspace_id, 'manage_ai_chatbot')")
-    expect(route).toContain('crawlWebsiteForKnowledge')
+    expect(route).toContain('startFirecrawlWebsiteCrawl')
+    expect(route).toContain('resolveFirecrawlApiKey')
+    expect(publishRoute).toContain('getFirecrawlCrawlStatus')
+    expect(publishRoute).toContain('buildWebsiteImportFromFirecrawl')
     expect(route).toContain('getWorkspaceTrialStatus')
     expect(route).toContain('TRIAL_IMPORT_LIMIT')
     expect(publishRoute).toContain("action !== 'publish'")

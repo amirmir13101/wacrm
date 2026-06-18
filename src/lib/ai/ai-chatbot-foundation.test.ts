@@ -13,6 +13,7 @@ describe('AI chatbot Phase 1 foundation', () => {
   it('creates workspace-scoped chatbot tables with RLS', () => {
     const migration = read('supabase/migrations/033_ai_chatbot.sql')
     const providerMigration = read('supabase/migrations/034_ai_chatbot_provider_settings.sql')
+    const firecrawlMigration = read('supabase/migrations/037_ai_firecrawl_settings.sql')
 
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS ai_chatbot_settings')
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS ai_knowledge_sources')
@@ -28,6 +29,10 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(providerMigration).toContain('encrypted_api_key TEXT')
     expect(providerMigration).toContain('api_key_last4 TEXT')
     expect(providerMigration).toContain('ALTER TABLE ai_chatbot_provider_settings ENABLE ROW LEVEL SECURITY')
+    expect(firecrawlMigration).toContain('CREATE TABLE IF NOT EXISTS ai_firecrawl_settings')
+    expect(firecrawlMigration).toContain('encrypted_api_key TEXT')
+    expect(firecrawlMigration).toContain("crawl_provider IN ('legacy', 'firecrawl')")
+    expect(firecrawlMigration).toContain('ALTER TABLE ai_firecrawl_settings ENABLE ROW LEVEL SECURITY')
   })
 
   it('adds AI chatbot permissions to defaults and RLS policies', () => {
@@ -197,6 +202,21 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(providerHelper).toContain('apiKeyMasked')
     expect(providerRoute).not.toContain('encrypted_api_key')
     expect(providerRoute).not.toContain('decrypt(')
+  })
+
+  it('keeps workspace Firecrawl API keys encrypted, masked, and server-only', () => {
+    const helper = read('src/lib/ai/firecrawl.ts')
+    const route = read('src/app/api/ai-chatbot/firecrawl/route.ts')
+    const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
+
+    expect(helper).toContain('encrypt(normalized)')
+    expect(helper).toContain('decrypt(data.encrypted_api_key)')
+    expect(helper).toContain('maskFirecrawlApiKey')
+    expect(route).not.toContain('encrypted_api_key')
+    expect(route).not.toContain('decrypt(')
+    expect(page).toContain('Firecrawl Website Import')
+    expect(page).toContain('Test Connection')
+    expect(page).toContain('Remaining credits')
   })
 
   it('keeps website import separate from Phase 1 foundation and avoids browser/vector dependencies', () => {
