@@ -173,28 +173,35 @@ export async function startFirecrawlWebsiteCrawl(args: {
 }
 
 export async function getFirecrawlCrawlStatus(apiKey: string, crawlId: string): Promise<FirecrawlCrawlStatus> {
-  let nextUrl: string | null = `${FIRECRAWL_BASE_URL}/crawl/${encodeURIComponent(crawlId)}`
-  let firstStatus: Record<string, unknown> | null = null
-  const pages: FirecrawlCrawlPage[] = []
-
-  while (nextUrl) {
-    const response = await firecrawlRequest(nextUrl, apiKey)
-    if (!firstStatus) firstStatus = response
-    if (Array.isArray(response.data)) {
-      pages.push(...response.data.filter(isRecord).map((page) => page as FirecrawlCrawlPage))
-    }
-    nextUrl = readString(response.next)
-  }
-
-  const status = readString(firstStatus?.status)
+  const firstStatus = await firecrawlRequest(`/crawl/${encodeURIComponent(crawlId)}`, apiKey)
+  const status = readString(firstStatus.status)
   if (!status || !['scraping', 'completed', 'failed', 'cancelled'].includes(status)) {
     throw new Error('Firecrawl returned an unknown crawl status.')
   }
+
+  const pages: FirecrawlCrawlPage[] = []
+  if (Array.isArray(firstStatus.data)) {
+    pages.push(...firstStatus.data.filter(isRecord).map((page) => page as FirecrawlCrawlPage))
+  }
+
+  if (status === 'completed') {
+    let nextUrl = readString(firstStatus.next)
+    const visited = new Set<string>()
+    while (nextUrl && !visited.has(nextUrl) && visited.size < 100) {
+      visited.add(nextUrl)
+      const response = await firecrawlRequest(nextUrl, apiKey)
+      if (Array.isArray(response.data)) {
+        pages.push(...response.data.filter(isRecord).map((page) => page as FirecrawlCrawlPage))
+      }
+      nextUrl = readString(response.next)
+    }
+  }
+
   return {
     status: status as FirecrawlCrawlStatus['status'],
-    total: readNumber(firstStatus?.total) ?? pages.length,
-    completed: readNumber(firstStatus?.completed) ?? pages.length,
-    creditsUsed: readNumber(firstStatus?.creditsUsed) ?? 0,
+    total: readNumber(firstStatus.total) ?? pages.length,
+    completed: readNumber(firstStatus.completed) ?? pages.length,
+    creditsUsed: readNumber(firstStatus.creditsUsed) ?? 0,
     data: pages,
   }
 }

@@ -223,6 +223,9 @@ export default function AiChatbotPage() {
 
   useEffect(() => {
     void load()
+    void resumeLatestWebsiteImport()
+    // Resume once when the AI Chatbot page opens; polling manages its own lifecycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const knowledgeCount = state?.sources.filter((source) => source.status === "active").length ?? 0
@@ -303,12 +306,12 @@ export default function AiChatbotPage() {
       if (!res.ok) throw new Error(body?.error ?? "Failed to import website knowledge")
       const result = body as WebsiteImportResult
       setWebsiteImportResult(result)
-      setWebsiteDraftTitle(result.job.draft_title ?? "Website knowledge")
-      setWebsiteDraftContent(result.job.draft_content ?? "")
       if (result.job.status === "running") {
         toast.success("Firecrawl import started")
         await pollWebsiteImport(result.job.id, result.limits)
       } else if (result.job.status === "draft_ready") {
+        setWebsiteDraftTitle(result.job.draft_title ?? "Website knowledge")
+        setWebsiteDraftContent(result.job.draft_content ?? "")
         toast.success(`Website draft ready from ${result.job.pages_imported} page${result.job.pages_imported === 1 ? "" : "s"}`)
       } else {
         toast.message(result.job.error_message ?? "Website import finished without publishable text.")
@@ -317,6 +320,40 @@ export default function AiChatbotPage() {
       toast.error(err instanceof Error ? err.message : "Failed to import website knowledge")
     } finally {
       setImportingWebsite(false)
+    }
+  }
+
+  async function resumeLatestWebsiteImport() {
+    try {
+      const jobsResponse = await fetch("/api/ai-chatbot/website-import")
+      const jobsBody = await jobsResponse.json().catch(() => ({}))
+      if (!jobsResponse.ok) return
+      const jobs = Array.isArray(jobsBody?.jobs) ? jobsBody.jobs as WebsiteImportJob[] : []
+      const latest = jobs.find((job) => job.status === "running" || job.status === "draft_ready")
+      if (!latest) return
+
+      const detailResponse = await fetch(`/api/ai-chatbot/website-import/${latest.id}`)
+      const detailBody = await detailResponse.json().catch(() => ({}))
+      if (!detailResponse.ok) return
+      const result = detailBody as WebsiteImportResult
+      setWebsiteImportResult(result)
+      setWebsiteUrl(result.job.website_url)
+      setWebsitePageLimit(result.job.page_limit)
+      if (result.job.status === "draft_ready") {
+        setWebsiteDraftTitle(result.job.draft_title ?? "Website knowledge")
+        setWebsiteDraftContent(result.job.draft_content ?? "")
+        return
+      }
+      if (result.job.status === "running") {
+        setImportingWebsite(true)
+        try {
+          await pollWebsiteImport(result.job.id)
+        } finally {
+          setImportingWebsite(false)
+        }
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to resume website import")
     }
   }
 
@@ -1111,7 +1148,17 @@ export default function AiChatbotPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4">
+            {websiteImportResult.job.status === "running" ? (
+              <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-emerald-900 bg-[#07130e]/70 p-6 text-center">
+                <Loader2 className="size-8 animate-spin text-emerald-300" />
+                <h3 className="mt-4 text-base font-bold text-white">Firecrawl is processing this website</h3>
+                <p className="mt-2 max-w-lg text-sm text-[#9dbfb5]">
+                  {websiteImportResult.job.pages_imported} of {websiteImportResult.job.pages_found || websiteImportResult.job.page_limit} discovered pages have been processed.
+                  The editable knowledge draft will appear automatically when the crawl completes.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Review draft before publishing</p>
               <label className="mt-3 block space-y-2">
                 <span className="text-sm font-semibold text-emerald-50">Draft title</span>
@@ -1152,7 +1199,8 @@ export default function AiChatbotPage() {
                   Publish to Knowledge Base
                 </Button>
               </div>
-            </div>
+              </div>
+            )}
           </div>
         )}
       </section>

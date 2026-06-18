@@ -91,6 +91,34 @@ describe('Firecrawl website import helpers', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('returns scraping progress immediately without following next result pages', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          status: 'scraping',
+          total: 20,
+          completed: 4,
+          creditsUsed: 4,
+          next: 'https://api.firecrawl.dev/v2/crawl/crawl-123?skip=4',
+          data: [],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await getFirecrawlCrawlStatus('fc-test-key', 'crawl-123')
+
+    expect(result).toMatchObject({
+      status: 'scraping',
+      total: 20,
+      completed: 4,
+      creditsUsed: 4,
+      data: [],
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('returns a useful error when Firecrawl rate limits the workspace account', async () => {
     vi.stubGlobal(
       'fetch',
