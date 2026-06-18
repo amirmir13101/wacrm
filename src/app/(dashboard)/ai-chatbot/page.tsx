@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
+import { MAX_WEBSITE_DRAFT_CONTENT_LENGTH } from "@/lib/ai/website-import"
 import { cn } from "@/lib/utils"
 
 type Tone = "friendly" | "professional" | "concise" | "supportive"
@@ -611,7 +612,7 @@ export default function AiChatbotPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 max-w-full space-y-6 overflow-hidden">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">AI Chatbot</h1>
@@ -980,6 +981,7 @@ export default function AiChatbotPage() {
             <TextAreaField
               disabled={!canManage}
               label="Knowledge content"
+              maxLength={MAX_WEBSITE_DRAFT_CONTENT_LENGTH}
               minHeight="min-h-52"
               value={sourceContent}
               onChange={setSourceContent}
@@ -1172,6 +1174,7 @@ export default function AiChatbotPage() {
               <TextAreaField
                 disabled={publishingWebsite}
                 label="Draft content"
+                maxLength={MAX_WEBSITE_DRAFT_CONTENT_LENGTH}
                 minHeight="min-h-[420px]"
                 value={websiteDraftContent}
                 onChange={setWebsiteDraftContent}
@@ -1205,7 +1208,7 @@ export default function AiChatbotPage() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
+      <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="size-5 text-emerald-300" />
           <h2 className="text-lg font-bold text-white">AI Chatbot Testing Flow</h2>
@@ -1237,7 +1240,7 @@ export default function AiChatbotPage() {
           <BookOpen className="size-5 text-emerald-300" />
           <h2 className="text-lg font-bold text-white">Knowledge Preview</h2>
         </div>
-        <div className="mt-4 grid gap-3">
+        <div className="mt-4 grid min-w-0 gap-3">
           {state.sources.length === 0 ? (
             <div className="rounded-xl border border-dashed border-emerald-800 p-6 text-sm text-[#9dbfb5]">
               No AI knowledge has been added yet.
@@ -1246,17 +1249,19 @@ export default function AiChatbotPage() {
             state.sources.map((source) => (
               <article
                 key={source.id}
-                className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4"
+                className="min-w-0 max-w-full overflow-hidden rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
+                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
                       {sourceTypeLabels[source.source_type]}
                     </p>
-                    <h3 className="mt-1 font-semibold text-white">{source.title}</h3>
+                    <h3 className="mt-1 break-words font-semibold text-white [overflow-wrap:anywhere]">
+                      {source.title}
+                    </h3>
                   </div>
                   {canManage && (
-                    <div className="flex shrink-0 items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1 self-end sm:self-start">
                       <Button
                         className="text-emerald-100 hover:bg-emerald-900/60 hover:text-white"
                         size="icon"
@@ -1278,7 +1283,7 @@ export default function AiChatbotPage() {
                     </div>
                   )}
                 </div>
-                <p className="mt-3 line-clamp-4 whitespace-pre-line text-sm text-[#b8cfc7]">
+                <p className="mt-3 line-clamp-4 max-w-full whitespace-pre-line break-words text-sm text-[#b8cfc7] [overflow-wrap:anywhere]">
                   {source.content}
                 </p>
               </article>
@@ -1329,6 +1334,7 @@ export default function AiChatbotPage() {
             <TextAreaField
               disabled={savingSource}
               label="Knowledge content"
+              maxLength={MAX_WEBSITE_DRAFT_CONTENT_LENGTH}
               minHeight="min-h-72"
               value={editSourceContent}
               onChange={setEditSourceContent}
@@ -1472,6 +1478,7 @@ function TextAreaField({
   onChange,
   disabled,
   placeholder,
+  maxLength,
   minHeight = "min-h-28",
 }: {
   label: string
@@ -1479,17 +1486,26 @@ function TextAreaField({
   onChange: (value: string) => void
   disabled?: boolean
   placeholder?: string
+  maxLength?: number
   minHeight?: string
 }) {
   return (
-    <label className="space-y-2">
-      <span className="text-sm font-semibold text-emerald-50">{label}</span>
+    <label className="block min-w-0 space-y-2">
+      <span className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-emerald-50">
+        <span>{label}</span>
+        {maxLength && (
+          <span className="text-xs font-normal tabular-nums text-[#9dbfb5]">
+            {value.length.toLocaleString()} / {maxLength.toLocaleString()} characters
+          </span>
+        )}
+      </span>
       <textarea
         className={cn(
-          "w-full rounded-lg border border-emerald-800 bg-[#07130e] p-3 text-sm text-white outline-none focus:border-emerald-300",
+          "w-full min-w-0 max-w-full rounded-lg border border-emerald-800 bg-[#07130e] p-3 text-sm text-white outline-none focus:border-emerald-300",
           minHeight,
         )}
         disabled={disabled}
+        maxLength={maxLength}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}

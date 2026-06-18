@@ -164,6 +164,17 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(route).toContain("source_id: id")
   })
 
+  it('keeps long knowledge previews inside the dashboard viewport', () => {
+    const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
+    const shell = read('src/app/(dashboard)/dashboard-shell.tsx')
+
+    expect(shell).toContain('min-w-0 flex-1 flex-col overflow-hidden')
+    expect(shell).toContain('overflow-x-hidden overflow-y-auto')
+    expect(page).toContain('[overflow-wrap:anywhere]')
+    expect(page).toContain('maxLength={MAX_WEBSITE_DRAFT_CONTENT_LENGTH}')
+    expect(page).toContain('{maxLength.toLocaleString()} characters')
+  })
+
   it('shows the owner AI chatbot testing flow', () => {
     const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
 

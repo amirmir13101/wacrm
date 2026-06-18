@@ -41,10 +41,10 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   return (
     <div className="dashboard-theme flex h-screen overflow-hidden bg-[#07130e]">
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
         {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
-        <main className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_50%_0%,rgba(61,223,132,0.13),transparent_34%),linear-gradient(180deg,#0d1b15_0%,#07130e_46%,#05100c_100%)] p-4 sm:p-6">{children}</main>
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-[radial-gradient(circle_at_50%_0%,rgba(61,223,132,0.13),transparent_34%),linear-gradient(180deg,#0d1b15_0%,#07130e_46%,#05100c_100%)] p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

@@ -573,6 +573,10 @@ describe('AI website knowledge import', () => {
     expect(draft).toContain('Pricing detail 399')
   })
 
+  it('limits saved knowledge and website drafts to 100,000 characters', () => {
+    expect(MAX_WEBSITE_DRAFT_CONTENT_LENGTH).toBe(100_000)
+  })
+
   it('creates chunks from full imported content and can retrieve pricing answers from website knowledge', () => {
     const content = [
       'Website pricing knowledge',
