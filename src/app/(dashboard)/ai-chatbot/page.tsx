@@ -112,6 +112,53 @@ interface TestAnswer {
   answer: string
   reason: string
   providerConfigured: boolean
+  debug?: RetrievalDebug
+}
+
+interface RetrievalDebug {
+  query: string
+  workspaceId: string
+  providerConfigured: boolean
+  provider: {
+    provider: string
+    model: string
+    baseUrl: string | null
+    embeddingsEnabled: boolean
+    embeddingModel: string | null
+    embeddingDimensions: number | null
+  } | null
+  embeddingCounts: Record<string, number>
+  retrieval: {
+    terms: string[]
+    entityTerms: string[]
+    entityPhrases: string[]
+    queryVariants: string[]
+    intents: Record<string, boolean>
+    activeChunkCount: number
+    exactCandidatesCount: number
+    keywordCandidatesCount: number
+    vectorCandidatesCount: number
+    answerBearingCandidatesCount: number
+    selectedChunkIds: string[]
+    selectedEvidence: Array<{
+      id: string
+      sourceTitle: string | null
+      sourceUrl: string | null
+      exactScore?: number
+      keywordScore?: number
+      vectorScore?: number
+      finalScore: number
+      matchTypes?: string[]
+      reasons: string[]
+    }>
+    fallbackReason: string | null
+    calculation?: {
+      status: string
+      value: number | null
+      unit: string
+      formula: string
+    } | null
+  }
 }
 
 interface WebsiteImportJob {
@@ -1156,6 +1203,115 @@ export default function AiChatbotPage() {
                 {testAnswer.status} · {testAnswer.reason}
               </p>
               <p>{testAnswer.answer || "No answer was generated."}</p>
+            </div>
+          )}
+          {testAnswer?.debug && (
+            <div className="mt-4 rounded-2xl border border-emerald-900/80 bg-[#04130e] p-4 text-sm text-[#d8fff0]">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">Retrieval Debug</p>
+                  <p className="mt-1 break-words text-white">{testAnswer.debug.query}</p>
+                </div>
+                <div className="grid gap-2 text-xs text-[#9dbfb5] sm:grid-cols-3">
+                  <span className="rounded-full border border-emerald-900 px-3 py-1">
+                    Provider: {testAnswer.debug.providerConfigured ? "configured" : "missing"}
+                  </span>
+                  <span className="rounded-full border border-emerald-900 px-3 py-1">
+                    Embeddings: {testAnswer.debug.provider?.embeddingsEnabled ? "enabled" : "disabled"}
+                  </span>
+                  <span className="rounded-full border border-emerald-900 px-3 py-1">
+                    Chunks: {testAnswer.debug.retrieval.activeChunkCount}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                {[
+                  ["Exact", testAnswer.debug.retrieval.exactCandidatesCount],
+                  ["Keyword", testAnswer.debug.retrieval.keywordCandidatesCount],
+                  ["Vector", testAnswer.debug.retrieval.vectorCandidatesCount],
+                  ["Answer facts", testAnswer.debug.retrieval.answerBearingCandidatesCount],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-emerald-950 bg-[#071b14] p-3">
+                    <p className="text-xs uppercase tracking-wide text-[#8fb7aa]">{label}</p>
+                    <p className="mt-1 text-lg font-bold text-white">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <div className="rounded-xl border border-emerald-950 bg-[#071b14] p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#8fb7aa]">Embedding status</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {Object.entries(testAnswer.debug.embeddingCounts).map(([status, count]) => (
+                      <span key={status} className="rounded-full bg-emerald-950 px-3 py-1 text-xs">
+                        {status}: {count}
+                      </span>
+                    ))}
+                  </div>
+                  {testAnswer.debug.retrieval.fallbackReason && (
+                    <p className="mt-3 text-xs text-[#f6c94a]">Fallback: {testAnswer.debug.retrieval.fallbackReason}</p>
+                  )}
+                  {testAnswer.debug.retrieval.calculation && (
+                    <p className="mt-3 text-xs text-emerald-200">
+                      Calculation: {testAnswer.debug.retrieval.calculation.value} {testAnswer.debug.retrieval.calculation.unit}
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-emerald-950 bg-[#071b14] p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#8fb7aa]">Detected intent</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {Object.entries(testAnswer.debug.retrieval.intents)
+                      .filter(([, enabled]) => enabled)
+                      .map(([intent]) => (
+                        <span key={intent} className="rounded-full bg-emerald-950 px-3 py-1 text-xs">
+                          {intent}
+                        </span>
+                      ))}
+                  </div>
+                  <p className="mt-3 break-words text-xs text-[#9dbfb5]">
+                    Terms: {testAnswer.debug.retrieval.terms.join(", ") || "none"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#8fb7aa]">Selected evidence</p>
+                {testAnswer.debug.retrieval.selectedEvidence.length > 0 ? (
+                  testAnswer.debug.retrieval.selectedEvidence.map((item) => (
+                    <div key={item.id} className="rounded-xl border border-emerald-950 bg-[#071b14] p-3">
+                      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <p className="break-all font-mono text-xs text-emerald-200">{item.id}</p>
+                          <p className="mt-1 text-sm font-semibold text-white">{item.sourceTitle ?? "Untitled source"}</p>
+                          {item.sourceUrl && <p className="mt-1 break-all text-xs text-[#9dbfb5]">{item.sourceUrl}</p>}
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          {(item.matchTypes ?? []).map((type) => (
+                            <span key={type} className="rounded-full bg-[#0b2a1f] px-2 py-1 text-emerald-200">
+                              {type}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs text-[#9dbfb5] sm:grid-cols-4">
+                        <span>Exact: {Math.round((item.exactScore ?? 0) * 100) / 100}</span>
+                        <span>Keyword: {Math.round((item.keywordScore ?? 0) * 100) / 100}</span>
+                        <span>Vector: {Math.round((item.vectorScore ?? 0) * 100) / 100}</span>
+                        <span>Final: {Math.round(item.finalScore * 100) / 100}</span>
+                      </div>
+                      <p className="mt-2 break-words text-xs text-[#9dbfb5]">
+                        Reasons: {item.reasons.join(", ") || "none"}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-xl border border-emerald-950 bg-[#071b14] p-3 text-xs text-[#9dbfb5]">
+                    No evidence selected.
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>

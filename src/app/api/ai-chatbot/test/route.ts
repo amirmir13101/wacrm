@@ -149,6 +149,14 @@ function buildSafeDebug(args: {
       selectedChunkIds: args.retrieval.debug.selectedChunkIds,
       selectedEvidence: args.retrieval.debug.selectedEvidence,
       fallbackReason: args.fallbackReason,
+      calculation: args.retrieval.calculation
+        ? {
+            status: args.retrieval.calculation.status,
+            value: args.retrieval.calculation.value,
+            unit: args.retrieval.calculation.unit,
+            formula: args.retrieval.calculation.formula,
+          }
+        : null,
     },
   }
 }

@@ -35,6 +35,9 @@ export interface RetrievalIntents {
   readonly location: boolean
   readonly faq: boolean
   readonly productOrService: boolean
+  readonly company: boolean
+  readonly ownership: boolean
+  readonly date: boolean
 }
 
 export interface RetrievalCandidate {
@@ -82,7 +85,11 @@ export interface HybridRetrievalResult {
       readonly id: string
       readonly sourceTitle: string | null
       readonly sourceUrl: string | null
+      readonly exactScore: number
+      readonly keywordScore: number
+      readonly vectorScore: number
       readonly finalScore: number
+      readonly matchTypes: readonly string[]
       readonly reasons: readonly string[]
     }>
     readonly calculationInvoked: boolean
@@ -218,11 +225,12 @@ export function hybridRetrieveFromRows(args: {
     calculation?.status === 'computed'
       ? `Computed fact: ${formatCalculationValue(calculation)}\nFormula: ${calculation.formula}\nSource chunk IDs: ${calculation.sourceChunkIds.join(', ')}`
       : null
+  const factGuidanceBlock = buildFactGuidanceBlock(analysis, fused)
 
   return {
     analysis,
     evidence: fused,
-    chunks: [...fused.map(formatEvidenceBlock), ...(calculationBlock ? [calculationBlock] : [])],
+    chunks: [...fused.map(formatEvidenceBlock), ...(factGuidanceBlock ? [factGuidanceBlock] : []), ...(calculationBlock ? [calculationBlock] : [])],
     calculation,
     fallbackReason,
     debug: {
@@ -237,7 +245,11 @@ export function hybridRetrieveFromRows(args: {
         id: item.id,
         sourceTitle: item.sourceTitle,
         sourceUrl: item.sourceUrl,
+        exactScore: item.exactScore,
+        keywordScore: item.keywordScore,
+        vectorScore: item.vectorScore,
         finalScore: item.finalScore,
+        matchTypes: buildMatchTypes(item.reasons),
         reasons: item.reasons,
       })),
       calculationInvoked: analysis.calculationIntent.hasIntent,
@@ -398,6 +410,10 @@ function semanticSimilarityHeuristic(question: string, text: string): number {
     ['delivery', 'shipping', 'courier', 'dispatch'],
     ['address', 'location', 'branch', 'where'],
     ['price', 'cost', 'fee', 'rate', 'how much'],
+    ['phone', 'whatsapp', 'wa.me', 'tel', 'call', 'contact'],
+    ['company', 'legal', 'registration', 'company number', 'incorporated'],
+    ['owner', 'founder', 'behind', 'operated by', 'owned by'],
+    ['date', 'created', 'built', 'founded', 'launch', 'published', 'updated'],
     ['faq', 'question', 'answer', 'help', 'book', 'booking', 'appointment'],
   ]
   for (const group of synonymGroups) {
@@ -423,6 +439,9 @@ function detectRetrievalIntents(question: string): RetrievalIntents {
     location: /\b(location|address|where|office|branch|map|city|country)\b/.test(normalized),
     faq: /\b(faq|question|help|how do i|can i|do you|does it|is there)\b/.test(normalized),
     productOrService: /\b(product|service|plan|package|menu|item|course|treatment|appointment|booking|available|sell|offer|include|includes|feature|spec)\b/.test(normalized),
+    company: /\b(company|business|legal|entity|registration|registered|company number|incorporated|limited|ltd|llc|inc)\b/.test(normalized),
+    ownership: /\b(owner|owned|founder|founded by|behind|run by|operated by|director|ceo)\b/.test(normalized),
+    date: /\b(date|built|created|founded|launched|launch|started|established|published|updated|modified|page date|sitemap)\b/.test(normalized),
   }
 }
 
@@ -436,7 +455,11 @@ function extractEntityTerms(question: string, terms: readonly string[], intents:
     'money', 'back', 'policy', 'terms', 'hours', 'open', 'close', 'closed', 'closing',
     'timing', 'schedule', 'contact', 'support', 'email', 'phone', 'call', 'help', 'desk',
     'ticket', 'location', 'located', 'address', 'where', 'office', 'branch', 'city', 'country',
-    'faq', 'question', 'questions', 'much',
+    'faq', 'question', 'questions', 'much', 'number', 'numbers', 'whatsapp', 'phone',
+    'company', 'business', 'legal', 'entity', 'registration', 'registered', 'ltd',
+    'limited', 'llc', 'inc', 'owner', 'owned', 'founder', 'behind', 'director', 'ceo',
+    'date', 'built', 'created', 'founded', 'launched', 'launch', 'started',
+    'established', 'published', 'updated', 'modified', 'page', 'sitemap', 'time',
   ])
   const entities = new Set<string>()
   for (const term of terms) {
@@ -445,7 +468,7 @@ function extractEntityTerms(question: string, terms: readonly string[], intents:
   for (const match of question.matchAll(/\b\d+(?:[.,]\d+)?\s?(?:gb|tb|mb|kb|cores?|cpu|ram|kg|g|mg|ml|l|hours?|hrs?|days?|weeks?|months?|years?|people|persons?|servings?|sq\.?\s?ft|sqm)\b/gi)) {
     entities.add(match[0].toLowerCase().replace(/\s+/g, ''))
   }
-  const hasSpecificIntent = intents.pricing || intents.policy || intents.hours || intents.contact || intents.location || intents.faq || intents.productOrService
+  const hasSpecificIntent = intents.pricing || intents.policy || intents.hours || intents.contact || intents.location || intents.faq || intents.productOrService || intents.company || intents.ownership || intents.date
   if (!hasSpecificIntent && entities.size === 0) {
     for (const term of terms.slice(0, 3)) entities.add(term)
   }
@@ -473,7 +496,10 @@ function buildQueryVariants(
     intents.policy ? ['refund', 'return', 'money back', 'cancellation', 'policy'] : [],
     intents.hours ? ['hours', 'open', 'close', 'timing', 'business hours'] : [],
     intents.location ? ['location', 'address', 'office', 'branch'] : [],
-    intents.contact ? ['support', 'contact', 'email', 'phone', 'help'] : [],
+    intents.contact ? ['support', 'contact', 'email', 'phone', 'whatsapp', 'wa.me', 'tel', 'call', 'help'] : [],
+    intents.company ? ['company', 'legal entity', 'company number', 'registration', 'registered'] : [],
+    intents.ownership ? ['owner', 'founder', 'owned by', 'operated by', 'behind'] : [],
+    intents.date ? ['date', 'built', 'created', 'founded', 'launched', 'published', 'updated', 'sitemap'] : [],
   ].filter((group) => group.length > 0)
 
   for (const entity of entityTerms) {
@@ -543,11 +569,14 @@ function scoreAnswerBearingEvidence(text: string, analysis: RetrievalQuestionAna
   let score = 0
   if (analysis.intents.pricing && containsPriceFact(text)) score += 20
   if (analysis.intents.hours && /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|am|pm|\d{1,2}:\d{2}|open|close|closed|hours?)\b/i.test(text)) score += 18
-  if (analysis.intents.contact && /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\+?\d[\d\s().-]{7,}\d|mailto:|tel:|support|contact)/i.test(text)) score += 18
+  if (analysis.intents.contact && /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\+?\d[\d\s().-]{7,}\d|mailto:|tel:|wa\.me|whatsapp|support|contact)/i.test(text)) score += 22
   if (analysis.intents.location && /\b(address|location|office|branch|street|road|city|country|map)\b/i.test(text)) score += 16
   if (analysis.intents.policy && /\b(refund|return|exchange|cancel|cancellation|money back|terms|policy|warranty)\b/i.test(text)) score += 18
   if (analysis.intents.productOrService && /\b(product|service|plan|package|menu|course|treatment|feature|spec|storage|ram|cpu|duration|includes?)\b/i.test(text)) score += 10
   if (analysis.intents.faq && /\b(faq|question|answer|yes|no|can|do you|does)\b/i.test(normalized)) score += 6
+  if (analysis.intents.company && /\b(company|legal entity|company number|registration|registered|incorporated|ltd|limited|llc|inc)\b/i.test(text)) score += 20
+  if (analysis.intents.ownership && /\b(owner|owned by|founder|founded by|operated by|run by|behind|director|ceo|company behind)\b/i.test(text)) score += 18
+  if (analysis.intents.date && /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|published|updated|modified|lastmod|page date|sitemap|founded|launched|established|created)\b/i.test(text)) score += 18
   return score
 }
 
@@ -575,9 +604,12 @@ function findAnswerFactIndexes(text: string, analysis: RetrievalQuestionAnalysis
   const patterns: RegExp[] = []
   if (analysis.intents.pricing) patterns.push(/(?:\$|rs\.?|pkr|usd|eur|gbp)?\s*\d+(?:[.,]\d+)?\s*(?:\/?\s*(?:mo|month|monthly|year|yearly|annual))?/gi)
   if (analysis.intents.hours) patterns.push(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}:\d{2}|am|pm|open|close|closed)\b/gi)
-  if (analysis.intents.contact) patterns.push(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\+?\d[\d\s().-]{7,}\d|mailto:|tel:/gi)
+  if (analysis.intents.contact) patterns.push(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\+?\d[\d\s().-]{7,}\d|mailto:|tel:|wa\.me|whatsapp/gi)
   if (analysis.intents.policy) patterns.push(/\b(refund|return|exchange|cancel|cancellation|money back|terms|policy)\b/gi)
   if (analysis.intents.location) patterns.push(/\b(address|location|office|branch|street|road|city|country)\b/gi)
+  if (analysis.intents.company) patterns.push(/\b(company|legal entity|company number|registration|registered|incorporated|ltd|limited)\b|\b\d{6,}\b/gi)
+  if (analysis.intents.ownership) patterns.push(/\b(owner|owned by|founder|founded by|operated by|behind|company behind)\b/gi)
+  if (analysis.intents.date) patterns.push(/\b\d{4}-\d{2}-\d{2}\b|\b(?:published|updated|modified|lastmod|page date|sitemap|founded|launched|created)\b/gi)
   return patterns.flatMap((pattern) => [...text.matchAll(pattern)].map((match) => match.index ?? 0))
 }
 
@@ -888,6 +920,86 @@ function formatCalculationValue(calculation: CalculationResult): string {
   return calculation.unit && /^[A-Z]{3}$/.test(calculation.unit)
     ? formatCurrency(calculation.value ?? 0, calculation.unit)
     : `${calculation.value} ${calculation.unit}`.trim()
+}
+
+function buildFactGuidanceBlock(
+  analysis: RetrievalQuestionAnalysis,
+  candidates: readonly RetrievalCandidate[],
+): string | null {
+  if (candidates.length === 0) return null
+  const text = candidates.map((candidate) => candidate.chunkText).join('\n')
+  const lines: string[] = []
+
+  if (analysis.intents.contact) {
+    const phones = uniqueMatches(text, /(?:tel:\s*)?\+?\d[\d\s().-]{7,}\d/gi)
+      .map((value) => value.replace(/^tel:\s*/i, '').trim())
+      .slice(0, 5)
+    const whatsappLinks = uniqueMatches(text, /(?:https?:\/\/)?wa\.me\/\d+|whatsapp:\S+/gi).slice(0, 5)
+    const emails = uniqueMatches(text, /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi).slice(0, 5)
+    if (phones.length > 0) lines.push(`Contact phone numbers found in source: ${phones.join(', ')}`)
+    if (whatsappLinks.length > 0) lines.push(`WhatsApp links found in source: ${whatsappLinks.join(', ')}`)
+    if (emails.length > 0) lines.push(`Email addresses found in source: ${emails.join(', ')}`)
+  }
+
+  if (analysis.intents.company || analysis.intents.ownership) {
+    const legalNames = extractLegalEntityNames(text).slice(0, 5)
+    const companyNumbers = uniqueMatches(text, /\b(?:company number|registration number|registered number)\s*:?\s*([A-Z0-9-]{5,})\b/gi)
+      .map((value) => value.replace(/^(?:company number|registration number|registered number)\s*:?\s*/i, '').trim())
+      .slice(0, 5)
+    if (legalNames.length > 0) lines.push(`Legal/company names found in source: ${legalNames.join(', ')}`)
+    if (companyNumbers.length > 0) lines.push(`Company/registration numbers found in source: ${companyNumbers.join(', ')}`)
+    if (analysis.intents.ownership && legalNames.length > 0) {
+      lines.push('If no individual owner/founder is explicitly named, say the source lists the legal/company entity but does not explicitly name an individual owner.')
+    }
+  }
+
+  if (analysis.intents.date) {
+    const exactDateLabels = uniqueMatches(text, /\b(?:founded|founded on|launched|launched on|established|created|built)\s*:?\s*(?:on\s*)?([A-Z][a-z]{2,9}\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2})\b/gi).slice(0, 5)
+    const pageDates = uniqueMatches(text, /\b(?:page date|published|updated|modified|lastmod|sitemap date|date)\s*:?\s*(\d{4}-\d{2}-\d{2})\b/gi)
+      .map((value) => value.replace(/^(?:page date|published|updated|modified|lastmod|sitemap date|date)\s*:?\s*/i, '').trim())
+      .slice(0, 10)
+    const allIsoDates = uniqueMatches(text, /\b20\d{2}-\d{2}-\d{2}\b/g).slice(0, 10)
+    const dates = pageDates.length > 0 ? pageDates : allIsoDates
+    if (exactDateLabels.length > 0) lines.push(`Exact founded/launch/created dates found in source: ${exactDateLabels.join(', ')}`)
+    if (dates.length > 0) {
+      lines.push(`Page or sitemap dates found in source: ${dates.join(', ')}`)
+      if (exactDateLabels.length === 0) {
+        lines.push('If the exact built/founded/launch date is not provided, say so clearly and only mention the related page/sitemap dates shown in the source.')
+      }
+    }
+  }
+
+  return lines.length > 0
+    ? `Derived fact guidance from selected source evidence:\n${lines.map((line) => `- ${line}`).join('\n')}`
+    : null
+}
+
+function buildMatchTypes(reasons: readonly string[]): string[] {
+  const types = new Set<string>()
+  if (reasons.includes('exact_signal')) types.add('exact')
+  if (reasons.includes('keyword_match') || reasons.includes('phrase_or_variant_match') || reasons.includes('entity_match')) types.add('keyword')
+  if (reasons.includes('semantic_match')) types.add('vector')
+  if (reasons.includes('neighbor_expansion')) types.add('neighbor')
+  if (reasons.includes('answer_bearing_fact')) types.add('answer_fact')
+  return [...types]
+}
+
+function uniqueMatches(text: string, pattern: RegExp): string[] {
+  const values = new Set<string>()
+  for (const match of text.matchAll(pattern)) {
+    const value = (match[1] ?? match[0] ?? '').trim()
+    if (value) values.add(value)
+  }
+  return [...values]
+}
+
+function extractLegalEntityNames(text: string): string[] {
+  const values = new Set<string>()
+  for (const match of text.matchAll(/\b([A-Z][A-Za-z0-9&.,' -]{2,80}\s+(?:Ltd|Limited|LLC|Inc|Corporation|Corp|Pvt\.?\s*Ltd|GmbH|S\.A\.|PLC))\b/g)) {
+    const value = match[1]?.replace(/\s+/g, ' ').trim()
+    if (value) values.add(value)
+  }
+  return [...values]
 }
 
 function extractStructuredFacts(text: string): Record<string, unknown> {

@@ -187,6 +187,83 @@ describe('AI hybrid retrieval', () => {
     expect(hybridRetrieveFromRows({ question: 'What is your support email?', rows }).evidence[0]?.id).toBe('contact')
   })
 
+  it('retrieves phone and WhatsApp contact facts from generic contact questions', () => {
+    const rows = [
+      {
+        id: 'contact',
+        source_id: 'source-1',
+        source,
+        chunk_text: 'Contact us: Phone +44 7478 060494. WhatsApp: https://wa.me/447478060494. Sales email sales@example.com.',
+      },
+    ]
+
+    const phone = hybridRetrieveFromRows({ question: 'phone number of company', rows })
+    expect(phone.fallbackReason).toBeNull()
+    expect(phone.chunks.join('\n')).toContain('+44 7478 060494')
+
+    const whatsapp = hybridRetrieveFromRows({ question: 'whatsapp number?', rows })
+    expect(whatsapp.fallbackReason).toBeNull()
+    expect(whatsapp.chunks.join('\n')).toContain('wa.me/447478060494')
+    expect(whatsapp.chunks.join('\n')).toContain('Derived fact guidance')
+  })
+
+  it('retrieves support email and legal company number facts generically', () => {
+    const rows = [
+      {
+        id: 'legal',
+        source_id: 'source-1',
+        source,
+        chunk_text: 'Legal entity: Example Trading Ltd. Company Number: 16754997. Support email: support@example.com.',
+      },
+    ]
+
+    const email = hybridRetrieveFromRows({ question: 'support email?', rows })
+    expect(email.fallbackReason).toBeNull()
+    expect(email.chunks.join('\n')).toContain('support@example.com')
+
+    const company = hybridRetrieveFromRows({ question: 'company number', rows })
+    expect(company.fallbackReason).toBeNull()
+    expect(company.chunks.join('\n')).toContain('16754997')
+    expect(company.chunks.join('\n')).toContain('Example Trading Ltd')
+  })
+
+  it('answers owner questions with legal company evidence without inventing an individual owner', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'owner of example cloud',
+      rows: [
+        {
+          id: 'company',
+          source_id: 'source-1',
+          source,
+          chunk_text: 'Example Cloud is operated by Example Trading Ltd, Company Number: 16754997. The source does not list an individual founder.',
+        },
+      ],
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.chunks.join('\n')).toContain('Example Trading Ltd')
+    expect(result.chunks.join('\n')).toContain('does not explicitly name an individual owner')
+  })
+
+  it('uses page dates as related evidence when an exact built date is unavailable', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'company built time and date',
+      rows: [
+        {
+          id: 'dates',
+          source_id: 'source-1',
+          source,
+          chunk_text: 'Sitemap page date: 2026-03-06. Homepage page date: 2026-05-05. No exact founded date is provided.',
+        },
+      ],
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.chunks.join('\n')).toContain('2026-03-06')
+    expect(result.chunks.join('\n')).toContain('2026-05-05')
+    expect(result.chunks.join('\n')).toContain('exact built/founded/launch date is not provided')
+  })
+
   it('falls back for missing products instead of guessing from generic business text', () => {
     const result = hybridRetrieveFromRows({
       question: 'Do you sell laptops?',
@@ -198,6 +275,19 @@ describe('AI hybrid retrieval', () => {
 
     expect(result.fallbackReason).toBe('no_relevant_knowledge')
     expect(result.evidence).toHaveLength(0)
+  })
+
+  it('does not leak knowledge across supplied workspace rows', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'What is the company phone number?',
+      rows: [
+        { id: 'workspace-a', source_id: 'source-1', source, chunk_text: 'Company phone number is +1 555 100 2000.' },
+      ],
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.chunks.join('\n')).toContain('+1 555 100 2000')
+    expect(result.chunks.join('\n')).not.toContain('+1 555 999 9999')
   })
 
   it('uses exact and keyword retrieval when embeddings are unavailable', () => {

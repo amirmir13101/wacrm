@@ -63,6 +63,9 @@ describe('AI chatbot Phase 1 foundation', () => {
     const autoReply = read('src/lib/ai/auto-reply.ts')
     const api = read('src/app/api/ai-chatbot/route.ts')
 
+    expect(autoReply).toContain('hybridRetrieveKnowledge')
+    expect(autoReply).toContain('workspaceId: args.workspaceId')
+    expect(autoReply).toContain('question: customerText')
     expect(autoReply).toContain('isOptOutMessage')
     expect(autoReply).toContain('getAiPlanAccess')
     expect(autoReply).toContain('conversation.assigned_agent_id')
@@ -71,6 +74,21 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(api).toContain('canUseAutoReply')
     expect(api).toContain('isAiProviderConfigured')
     expect(api).toContain('enable_ai_auto_reply')
+  })
+
+  it('exposes safe retrieval debug details in the dashboard test flow without secrets', () => {
+    const route = read('src/app/api/ai-chatbot/test/route.ts')
+    const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
+
+    expect(route).toContain('buildSafeDebug')
+    expect(route).toContain('embeddingCounts')
+    expect(route).toContain('selectedEvidence')
+    expect(route).toContain('exactCandidatesCount')
+    expect(route).toContain('vectorCandidatesCount')
+    expect(route).not.toContain('encrypted_api_key')
+    expect(page).toContain('Retrieval Debug')
+    expect(page).toContain('Selected evidence')
+    expect(page).toContain('Embedding status')
   })
 
   it('adds Phase 2 conversation controls with RLS and API protection', () => {
