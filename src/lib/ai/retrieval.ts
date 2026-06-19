@@ -374,6 +374,9 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
   const text = candidate.searchText
   const facts: Array<ExtractedPriceFact | ExtractedPercentFact> = []
   for (const match of text.matchAll(/(?:(USD|PKR|EUR|GBP|AED|SAR|Rs\.?|₨|\$|€|£)\s*)?(\d+(?:[.,]\d+)?)(?:\s*(USD|PKR|EUR|GBP|AED|SAR))?(?:\s*\/?\s*(monthly|month|yearly|year|annual|weekly|week|daily|day))?/gi)) {
+    const afterMatch = text.slice((match.index ?? 0) + match[0].length, (match.index ?? 0) + match[0].length + 1)
+    const hasExplicitPriceMarker = Boolean(match[1] || match[3] || match[4])
+    if (!hasExplicitPriceMarker && /^[a-z%]/i.test(afterMatch)) continue
     const context = text.slice(Math.max(0, match.index - 80), (match.index ?? 0) + match[0].length + 80).toLowerCase()
     if (!/(price|cost|fee|rate|plan|package|per|\/|month|year|week|day|\$|rs|pkr|usd|eur|gbp)/i.test(context)) continue
     facts.push({
@@ -411,7 +414,9 @@ function detectCandidateConflicts(candidates: readonly RetrievalCandidate[]): Se
   const prices = candidates.flatMap((candidate) => extractNumericFactsFromCandidate(candidate).filter((fact): fact is ExtractedPriceFact => fact.kind === 'price'))
   const byLabel = new Map<string, ExtractedPriceFact[]>()
   for (const price of prices) {
-    const key = `${price.label ?? 'price'}:${price.currency}:${price.period ?? ''}`.toLowerCase()
+    const label = normalizeConflictLabel(price.label)
+    if (!label) continue
+    const key = `${label}:${price.currency}:${price.period ?? ''}`.toLowerCase()
     byLabel.set(key, [...(byLabel.get(key) ?? []), price])
   }
   const conflicting = new Set<string>()
@@ -421,6 +426,35 @@ function detectCandidateConflicts(candidates: readonly RetrievalCandidate[]): Se
     }
   }
   return conflicting
+}
+
+function normalizeConflictLabel(label: string | null): string | null {
+  if (!label) return null
+  const normalized = label
+    .toLowerCase()
+    .replace(/(?:\$|rs\.?|pkr|usd|eur|gbp)\s*\d+(?:[.,]\d+)?/gi, ' ')
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:%|gb|tb|mb|core|cpu|ram|nvme|storage|month|monthly|year|yearly|mo)\b/gi, ' ')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!/[a-z]/.test(normalized)) return null
+
+  const generic = new Set([
+    'price',
+    'starting from',
+    'from',
+    'total',
+    'billed per',
+    'monthly',
+    'yearly',
+    'plan',
+    'package',
+    'pricing',
+  ])
+  if (generic.has(normalized)) return null
+
+  return normalized.length >= 3 ? normalized.slice(0, 80) : null
 }
 
 function formatEvidenceBlock(candidate: RetrievalCandidate): string {

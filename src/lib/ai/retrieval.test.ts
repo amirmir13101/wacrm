@@ -65,6 +65,52 @@ describe('AI hybrid retrieval', () => {
     expect(conflict.fallbackReason).toBe('no_relevant_knowledge')
   })
 
+  it('does not penalize multi-plan pricing cards as conflicting facts', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'What is the price of automation pro?',
+      rows: [
+        {
+          id: 'faq',
+          source_id: 'source-1',
+          source,
+          chunk_text: 'Automation hosting FAQ: higher resource plans support more workflows and complex jobs.',
+        },
+        {
+          id: 'pricing-card',
+          source_id: 'source-1',
+          source,
+          chunk_text: [
+            '### Choose The Right Automation Hosting Plan',
+            'Starter',
+            '- Price: 0.99/mo',
+            '- 1GB RAM',
+            'Basic',
+            'Automation 4GB Great for small teams',
+            '$2.00',
+            '1.70',
+            'Total: $20.40 billed per Year',
+            'Pro',
+            'Automation 8GB Best for growing businesses',
+            '$4.00',
+            '3.40',
+            'Total: $40.80 billed per Year',
+            '- 4 Core CPU',
+            '- 8GB RAM',
+            'Business',
+            'Automation 16GB For agencies',
+            '$8.00',
+            '6.80',
+          ].join('\n'),
+        },
+      ],
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.evidence[0]?.id).toBe('pricing-card')
+    expect(result.chunks.join('\n')).toContain('Pro')
+    expect(result.chunks.join('\n')).toContain('3.40')
+  })
+
   it('routes derived numeric questions through calculation results and falls back on missing facts', () => {
     const computed = hybridRetrieveFromRows({
       question: 'Yearly price has 15% discount, what is monthly?',
