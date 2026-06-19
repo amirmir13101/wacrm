@@ -5,6 +5,7 @@ import {
   applyTax,
   bulkOrTieredPrice,
   convertBillingPeriod,
+  convertBillingTotal,
   detectCalculationIntent,
   prorate,
 } from './calculations'
@@ -18,6 +19,17 @@ describe('deterministic AI calculation engine', () => {
     expect(monthly.status).toBe('computed')
     expect(monthly.value).toBeCloseTo(2.79, 2)
     expect(monthly.formula).toContain('365')
+  })
+
+  it('converts billing totals using billing cycles for customer-facing monthly equivalents', () => {
+    const monthly = convertBillingTotal(20.4, 'yearly', 'monthly', ['yearly-total'], 'USD')
+    expect(monthly.status).toBe('computed')
+    expect(monthly.value).toBe(1.7)
+    expect(monthly.formula).toContain('12')
+
+    const yearly = convertBillingTotal(2, 'monthly', 'yearly', ['monthly-price'], 'USD')
+    expect(yearly.status).toBe('computed')
+    expect(yearly.value).toBe(24)
   })
 
   it('computes per-unit totals and lets explicit bulk tiers override flat multiplication', () => {
@@ -34,5 +46,7 @@ describe('deterministic AI calculation engine', () => {
   it('detects calculation intent without false positives for plain lookup questions', () => {
     expect(detectCalculationIntent('What is the Pro plan price?').hasIntent).toBe(false)
     expect(detectCalculationIntent('What is the monthly price after 15% off yearly?').hasIntent).toBe(true)
+    expect(detectCalculationIntent('so what should be the monthly price if total is $20.40 yearly').targetPeriod).toBe('monthly')
+    expect(detectCalculationIntent('so what should be the monthly price if total is $20.40 yearly').periodConversion).toBe(true)
   })
 })

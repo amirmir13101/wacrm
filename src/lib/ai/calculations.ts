@@ -40,6 +40,14 @@ const DAYS_PER_PERIOD: Record<BillingPeriod, number> = {
   yearly: 365,
 }
 
+const BILLING_PERIODS_PER_YEAR: Record<BillingPeriod, number> = {
+  daily: 365,
+  weekly: 52,
+  monthly: 12,
+  quarterly: 4,
+  yearly: 1,
+}
+
 export function convertBillingPeriod(
   amount: number,
   fromPeriod: BillingPeriod,
@@ -51,6 +59,28 @@ export function convertBillingPeriod(
   const yearly = amount * (DAYS_PER_PERIOD.yearly / DAYS_PER_PERIOD[fromPeriod])
   const value = yearly / (DAYS_PER_PERIOD.yearly / DAYS_PER_PERIOD[toPeriod])
   return computed(value, `${amount} ${currency}/${fromPeriod} × (${DAYS_PER_PERIOD[toPeriod]} ÷ ${DAYS_PER_PERIOD[fromPeriod]}) = ${roundMoney(value)} ${currency}/${toPeriod}`, `${currency}/${toPeriod}`.trim(), sourceChunkIds)
+}
+
+export function convertBillingTotal(
+  amount: number,
+  fromPeriod: BillingPeriod,
+  toPeriod: BillingPeriod,
+  sourceChunkIds: readonly string[],
+  currency = '',
+): CalculationResult {
+  if (!isFiniteNumber(amount)) return cannotCompute('Base amount is missing or invalid.', currency, sourceChunkIds)
+  const yearlyTotal = amount * BILLING_PERIODS_PER_YEAR[fromPeriod]
+  const value = yearlyTotal / BILLING_PERIODS_PER_YEAR[toPeriod]
+  const operator = BILLING_PERIODS_PER_YEAR[toPeriod] > BILLING_PERIODS_PER_YEAR[fromPeriod] ? '÷' : '×'
+  const factor = operator === '÷'
+    ? BILLING_PERIODS_PER_YEAR[toPeriod] / BILLING_PERIODS_PER_YEAR[fromPeriod]
+    : BILLING_PERIODS_PER_YEAR[fromPeriod] / BILLING_PERIODS_PER_YEAR[toPeriod]
+  return computed(
+    value,
+    `${amount} ${currency}/${fromPeriod} ${operator} ${factor} = ${roundMoney(value)} ${currency}/${toPeriod}`,
+    `${currency}/${toPeriod}`.trim(),
+    sourceChunkIds,
+  )
 }
 
 export function applyPercentage(
@@ -147,10 +177,15 @@ export function detectCalculationIntent(question: string): {
 } {
   const normalized = question.toLowerCase()
   const quantityMatch = normalized.match(/\b(?:for|x|qty|quantity)\s*(\d+(?:\.\d+)?)\b/)
-  const targetPeriod = readPeriod(normalized)
+  const targetPeriod = readTargetPeriod(normalized) ?? readPeriod(normalized)
+  const mentionsPeriod = /\b(monthly|per month|\/mo|mo|yearly|annual|annually|weekly|daily|per day|per week)\b/.test(normalized)
+  const asksBillingTotalConversion =
+    mentionsPeriod &&
+    /\b(price|cost|how much|convert|per|total|billed|equivalent|should be)\b/.test(normalized) &&
+    (/\b(total|billed|yearly|annual|monthly|equivalent)\b/.test(normalized) || /\d+(?:[.,]\d+)?/.test(normalized))
   const intent = {
     percentage: /%|\b(discount|off|markup|percent|percentage)\b/.test(normalized),
-    periodConversion: /\b(monthly|per month|yearly|annual|annually|weekly|daily|per day|per week)\b/.test(normalized) && /\b(price|cost|how much|convert|per)\b/.test(normalized),
+    periodConversion: asksBillingTotalConversion,
     bulk: /\b(bulk|quantity|qty|units?|items?|for\s+\d+|x\d+)\b/.test(normalized),
     proration: /\b(prorat|mid-cycle|mid cycle|remaining days?|upgrade|downgrade|switch)\b/.test(normalized),
     tax: /\b(tax|vat|gst|inclusive|exclusive|including tax|plus tax)\b/.test(normalized),
@@ -188,9 +223,19 @@ function computed(value: number, formula: string, unit: string, sourceChunkIds: 
 function readPeriod(value: string): BillingPeriod | null {
   if (/\b(daily|per day|day)\b/.test(value)) return 'daily'
   if (/\b(weekly|per week|week)\b/.test(value)) return 'weekly'
-  if (/\b(monthly|per month|month)\b/.test(value)) return 'monthly'
+  if (/\b(monthly|per month|month|mo)\b|\/mo\b/.test(value)) return 'monthly'
   if (/\b(quarterly|quarter)\b/.test(value)) return 'quarterly'
   if (/\b(yearly|annual|annually|per year|year)\b/.test(value)) return 'yearly'
+  return null
+}
+
+function readTargetPeriod(value: string): BillingPeriod | null {
+  if (/\b(monthly price|monthly cost|monthly equivalent|per month|\/mo|what should be the monthly|what is monthly)\b/.test(value)) {
+    return 'monthly'
+  }
+  if (/\b(yearly total|annual total|yearly price|annual price|per year|what is yearly|what is annual)\b/.test(value)) {
+    return 'yearly'
+  }
   return null
 }
 

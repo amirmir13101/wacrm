@@ -5,9 +5,8 @@ import {
   applyTax,
   bulkOrTieredPrice,
   conflictingFacts,
-  convertBillingPeriod,
+  convertBillingTotal,
   detectCalculationIntent,
-  detectConflictingFacts,
   formatCurrency,
   prorate,
   type BillingPeriod,
@@ -209,6 +208,8 @@ export function hybridRetrieveFromRows(args: {
   const fallbackReason =
     fused.length === 0
       ? 'no_relevant_knowledge'
+      : analysis.calculationIntent.hasIntent && !calculation
+        ? 'cannot_compute'
       : calculation && calculation.status !== 'computed'
         ? calculation.status
         : null
@@ -679,11 +680,11 @@ function calculateFromEvidence(
   const priceFacts = facts.filter((fact): fact is ExtractedPriceFact => fact.kind === 'price')
   const percentFacts = facts.filter((fact): fact is ExtractedPercentFact => fact.kind === 'percent')
   const taxFacts = facts.filter((fact): fact is ExtractedPercentFact => fact.kind === 'tax_rate')
-  if (detectConflictingFacts(priceFacts.map((fact) => ({ value: fact.amount, label: fact.label, unit: `${fact.currency}/${fact.period ?? ''}` })))) {
+  if (hasSameLabelPriceConflict(priceFacts)) {
     return conflictingFacts('Conflicting price facts were found.', '', priceFacts.map((fact) => fact.sourceChunkId))
   }
 
-  const price = priceFacts[0]
+  const price = selectCalculationPriceFact(analysis, priceFacts)
   if (!price) return null
   const sourceIds = [price.sourceChunkId]
   let result: CalculationResult | null = null
@@ -699,7 +700,7 @@ function calculateFromEvidence(
     const fromPeriod = price.period
     const toPeriod = analysis.calculationIntent.targetPeriod
     if (!fromPeriod || !toPeriod) return null
-    result = convertBillingPeriod(baseAmount, fromPeriod, toPeriod, [...new Set([...(result?.sourceChunkIds ?? sourceIds)])], price.currency)
+    result = convertBillingTotal(baseAmount, fromPeriod, toPeriod, [...new Set([...(result?.sourceChunkIds ?? sourceIds)])], price.currency)
   }
 
   if (analysis.calculationIntent.bulk && analysis.calculationIntent.quantity) {
@@ -720,12 +721,58 @@ function calculateFromEvidence(
   return result
 }
 
+function selectCalculationPriceFact(
+  analysis: RetrievalQuestionAnalysis,
+  priceFacts: readonly ExtractedPriceFact[],
+): ExtractedPriceFact | null {
+  if (priceFacts.length === 0) return null
+  const targetPeriod = analysis.calculationIntent.targetPeriod
+  const preferredSourcePeriod = targetPeriod === 'monthly'
+    ? 'yearly'
+    : targetPeriod === 'yearly'
+      ? 'monthly'
+      : null
+  const questionNumbers = new Set(analysis.numbers.map((number) => roundCalculationNumber(number)))
+
+  return [...priceFacts]
+    .map((fact, index) => {
+      let score = priceFacts.length - index
+      if (questionNumbers.has(roundCalculationNumber(fact.amount))) score += 100
+      if (preferredSourcePeriod && fact.period === preferredSourcePeriod) score += 50
+      if (targetPeriod && fact.period === targetPeriod) score += 15
+      if (analysis.calculationIntent.percentage && /\b(regular|original|monthly|price)\b/.test(fact.context)) score += 20
+      if (analysis.calculationIntent.periodConversion && fact.isTotal) score += 25
+      if (analysis.entityTerms.some((term) => fact.context.includes(term))) score += 10
+      return { fact, score }
+    })
+    .sort((left, right) => right.score - left.score)[0]?.fact ?? null
+}
+
+function hasSameLabelPriceConflict(priceFacts: readonly ExtractedPriceFact[]): boolean {
+  const grouped = new Map<string, Set<number>>()
+  for (const fact of priceFacts) {
+    const label = normalizeConflictLabel(fact.label)
+    if (!label) continue
+    const key = `${label}:${fact.currency}:${fact.period ?? ''}`.toLowerCase()
+    const values = grouped.get(key) ?? new Set<number>()
+    values.add(roundCalculationNumber(fact.amount))
+    grouped.set(key, values)
+  }
+  return [...grouped.values()].some((values) => values.size > 1)
+}
+
+function roundCalculationNumber(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
 interface ExtractedPriceFact {
   readonly kind: 'price'
   readonly amount: number
   readonly currency: string
   readonly period: BillingPeriod | null
   readonly label: string | null
+  readonly context: string
+  readonly isTotal: boolean
   readonly sourceChunkId: string
 }
 
@@ -745,12 +792,15 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
     if (!hasExplicitPriceMarker && /^[a-z%]/i.test(afterMatch)) continue
     const context = text.slice(Math.max(0, match.index - 80), (match.index ?? 0) + match[0].length + 80).toLowerCase()
     if (!/(price|cost|fee|rate|plan|package|per|\/|month|year|week|day|\$|rs|pkr|usd|eur|gbp)/i.test(context)) continue
+    const period = normalizePeriod(match[4] ?? '') ?? inferPricePeriod(context)
     facts.push({
       kind: 'price',
       amount: Number(match[2]?.replace(',', '.')),
       currency: normalizeCurrency(match[1] ?? match[3] ?? '$'),
-      period: normalizePeriod(match[4] ?? ''),
+      period,
       label: extractNearbyLabel(text, match.index ?? 0),
+      context,
+      isTotal: /\b(total|billed|invoice|charged)\b/.test(context),
       sourceChunkId: candidate.id,
     })
   }
@@ -912,8 +962,16 @@ function normalizePeriod(value: string): BillingPeriod | null {
   const normalized = value.toLowerCase()
   if (/day|daily/.test(normalized)) return 'daily'
   if (/week|weekly/.test(normalized)) return 'weekly'
-  if (/month|monthly/.test(normalized)) return 'monthly'
+  if (/month|monthly|mo/.test(normalized)) return 'monthly'
   if (/year|yearly|annual/.test(normalized)) return 'yearly'
+  return null
+}
+
+function inferPricePeriod(context: string): BillingPeriod | null {
+  if (/\b(per year|billed per year|yearly|annual|annually|\/year)\b/.test(context)) return 'yearly'
+  if (/\b(per month|monthly|\/mo|\/month|mo)\b/.test(context)) return 'monthly'
+  if (/\b(per day|daily|\/day)\b/.test(context)) return 'daily'
+  if (/\b(per week|weekly|\/week)\b/.test(context)) return 'weekly'
   return null
 }
 

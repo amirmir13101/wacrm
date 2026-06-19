@@ -148,6 +148,54 @@ export function isHumanHandoffRequest(text: string): boolean {
   return phrases.some((phrase) => normalized.includes(phrase))
 }
 
+export function isHumanHandoffConfirmation(text: string): boolean {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+
+  if (!normalized) return false
+
+  const directConfirmation = new Set(['yes', 'yes please', 'yeah', 'yep', 'ok', 'okay', 'sure'])
+  if (directConfirmation.has(normalized)) return true
+
+  return [
+    'please connect me',
+    'connect me',
+    'connect with team',
+    'connect me with team',
+    'connect me to support',
+    'support please',
+    'human please',
+    'real human',
+    'talk to your team',
+    'speak with your team',
+    'team please',
+  ].some((phrase) => normalized.includes(phrase))
+}
+
+export function aiMessageOfferedHumanHandoff(text?: string | null): boolean {
+  const normalized = (text ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+
+  if (!normalized) return false
+
+  return [
+    'connect you with our team',
+    'connect you to our team',
+    'connect you with team',
+    'ask a team member',
+    'team member will follow up',
+    'our team can help',
+    'connect you with support',
+    'human agent',
+  ].some((phrase) => normalized.includes(phrase))
+}
+
 export function retrieveRelevantChunks(
   question: string,
   chunks: ReadonlyArray<Pick<AiKnowledgeChunk, 'chunk_text'>>,

@@ -1,8 +1,10 @@
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import {
   DEFAULT_AI_CHATBOT_SETTINGS,
+  aiMessageOfferedHumanHandoff,
   generateChatbotAnswer,
   getAiPlanAccess,
+  isHumanHandoffConfirmation,
   isHumanHandoffRequest,
   isOptOutMessage,
   logAiChatbotEvent,
@@ -76,7 +78,9 @@ export async function maybeHandleAiAutoReply(args: {
     return
   }
 
-  const humanRequest = isHumanHandoffRequest(customerText)
+  const humanRequest =
+    isHumanHandoffRequest(customerText) ||
+    (isHumanHandoffConfirmation(customerText) && aiMessageOfferedHumanHandoff(control?.last_ai_response))
   if (humanRequest) {
     const handoffMessage =
       chatbotSettings?.handover_message?.trim() ||
@@ -235,7 +239,7 @@ export async function maybeHandleAiAutoReply(args: {
       text: fallbackMessage,
       status: 'fallback',
       reason: retrieval.fallbackReason ?? 'no_relevant_knowledge',
-      controlStatus: activeChatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
+      controlStatus: 'ai_active',
       controlReason: retrieval.fallbackReason ?? 'no_relevant_knowledge',
       client: admin,
     })
@@ -296,7 +300,7 @@ export async function maybeHandleAiAutoReply(args: {
       text: answer.answer,
       status: 'fallback',
       reason: answer.reason || 'answer_not_found',
-      controlStatus: activeChatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
+      controlStatus: 'ai_active',
       controlReason: answer.reason || 'answer_not_found',
       client: admin,
     })

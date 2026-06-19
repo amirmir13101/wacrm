@@ -8,8 +8,10 @@ import {
 } from './conversation-controls'
 import {
   DEFAULT_AI_CHATBOT_SETTINGS,
+  aiMessageOfferedHumanHandoff,
   chunkKnowledgeText,
   generateChatbotAnswer,
+  isHumanHandoffConfirmation,
   isHumanHandoffRequest,
   isOptOutMessage,
   retrieveRelevantChunks,
@@ -239,6 +241,15 @@ describe('AI chatbot knowledge helpers', () => {
     expect(isHumanHandoffRequest('connect me to agent')).toBe(true)
     expect(isHumanHandoffRequest('can someone help me')).toBe(true)
     expect(isHumanHandoffRequest('What is your support hours?')).toBe(false)
+  })
+
+  it('detects follow-up human handoff confirmation only after the bot offered a team connection', () => {
+    const fallbackOffer = 'I do not have information about this right now. If you want, I can connect you with our team.'
+    expect(aiMessageOfferedHumanHandoff(fallbackOffer)).toBe(true)
+    expect(isHumanHandoffConfirmation('yes please')).toBe(true)
+    expect(isHumanHandoffConfirmation('support please')).toBe(true)
+    expect(isHumanHandoffConfirmation('yes')).toBe(true)
+    expect(isHumanHandoffConfirmation('yes') && aiMessageOfferedHumanHandoff('Your order is confirmed.')).toBe(false)
   })
 
   it('detects recent AI replies for cooldown protection', () => {

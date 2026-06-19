@@ -223,9 +223,59 @@ describe('AI hybrid retrieval', () => {
 
     const missing = hybridRetrieveFromRows({
       question: 'What is monthly after discount?',
-      rows: [{ id: 'yearly', source_id: 'source-1', source, chunk_text: 'Pro plan yearly price is $40/year.' }],
+      rows: [{ id: 'yearly', source_id: 'source-1', source, chunk_text: 'Pro plan yearly price is $40/year. Discount details are not listed.' }],
     })
     expect(missing.calculation).toBeNull()
+    expect(missing.fallbackReason).toBe('cannot_compute')
+  })
+
+  it('computes a yearly billed total into a monthly equivalent and keeps supporting facts grounded', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'so what should be the monthly price if total is $20.40 yearly',
+      rows: [
+        {
+          id: 'basic-plan',
+          source_id: 'source-1',
+          source,
+          chunk_text: [
+            'Basic automation plan',
+            'Regular monthly price: $2.00/mo',
+            '15% discount',
+            'Total: $20.40 billed per Year',
+            'Specs: 2 Core CPU, 4GB RAM, 40GB NVMe',
+          ].join('\n'),
+        },
+      ],
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.calculation).toMatchObject({ status: 'computed', value: 1.7, unit: 'USD/monthly' })
+    expect(result.chunks.join('\n')).toContain('$2.00/mo')
+    expect(result.chunks.join('\n')).toContain('$20.40 billed per Year')
+    expect(result.chunks.join('\n')).toContain('Computed fact')
+    expect(validateGroundedAnswer({
+      answer: 'The yearly discounted monthly equivalent is $1.70/mo. The total yearly billing is $20.40/year. The regular monthly price is $2.00/mo.',
+      evidence: result.chunks,
+      calculation: result.calculation,
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
+  })
+
+  it('computes monthly discount equivalents without treating specs as conflicting prices', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'monthly $2.00 with 15% discount, what is the monthly price?',
+      rows: [
+        {
+          id: 'basic-plan',
+          source_id: 'source-1',
+          source,
+          chunk_text: 'Basic plan regular monthly price: $2.00/mo. Discount: 15% off. Specs include 2 Core CPU and 4GB RAM.',
+        },
+      ],
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.calculation).toMatchObject({ status: 'computed', value: 1.7 })
   })
 
   it('rejects unsupported numeric facts from mocked model answers', () => {

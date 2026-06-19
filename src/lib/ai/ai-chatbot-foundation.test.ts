@@ -94,6 +94,8 @@ describe('AI chatbot Phase 1 foundation', () => {
     const autoReply = read('src/lib/ai/auto-reply.ts')
 
     expect(autoReply).toContain('isHumanHandoffRequest')
+    expect(autoReply).toContain('isHumanHandoffConfirmation')
+    expect(autoReply).toContain('aiMessageOfferedHumanHandoff')
     expect(autoReply).toContain('getAiConversationControl')
     expect(autoReply).toContain("control?.status === 'ai_paused'")
     expect(autoReply).toContain("control?.status === 'needs_human'")
@@ -123,7 +125,19 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(autoReply).toContain('sendTextMessage')
     expect(autoReply).toContain('recordAiReply')
     expect(autoReply).toContain('recordAiSkippedReason')
+    expect(autoReply).toContain("reason: retrieval.fallbackReason ?? 'no_relevant_knowledge'")
+    expect(autoReply).toContain("controlStatus: 'ai_active'")
+    expect(autoReply).toContain("reason: answer.reason || 'answer_not_found'")
     expect(chatbot).not.toContain("onConflict: 'message_id'")
+  })
+
+  it('keeps manual Mark Needs Human separate from normal knowledge fallback', () => {
+    const route = read('src/app/api/ai-chatbot/conversations/[id]/route.ts')
+    const controls = read('src/lib/ai/conversation-controls.ts')
+
+    expect(route).toContain("lastSkippedReason: status === 'needs_human' ? 'manual_handoff' : null")
+    expect(controls).toContain('AI replied with the fallback because no matching knowledge was found.')
+    expect(controls).toContain('AI replied with the fallback because it could not find a safe answer')
   })
 
   it('renders inbox conversation AI controls and readable skipped reasons', () => {
