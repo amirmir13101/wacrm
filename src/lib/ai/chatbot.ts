@@ -3,6 +3,8 @@ import { getWorkspaceTrialStatus } from '@/lib/billing/trial'
 import { resolveAiProviderConfig } from '@/lib/ai/provider'
 import { validateGroundedAnswer } from '@/lib/ai/retrieval'
 import type { CalculationResult } from '@/lib/ai/calculations'
+import { semanticChunkText } from '@/lib/ai/chunking'
+import { logKnowledgeGap } from '@/lib/ai/knowledge-gaps'
 
 export type AiChatbotTone = 'friendly' | 'professional' | 'concise' | 'supportive'
 export type AiKnowledgeSourceType = 'manual' | 'faq' | 'instructions' | 'website'
@@ -79,34 +81,7 @@ export async function getAiPlanAccess(workspaceId: string): Promise<{
 }
 
 export function chunkKnowledgeText(content: string): string[] {
-  const normalized = content.replace(/\r\n/g, '\n').trim()
-  if (!normalized) return []
-
-  const paragraphs = normalized
-    .split(/\n{2,}/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-
-  const chunks: string[] = []
-  let current = ''
-  for (const paragraph of paragraphs) {
-    if ((current + '\n\n' + paragraph).trim().length > 1200 && current) {
-      chunks.push(current.trim())
-      current = paragraph
-    } else {
-      current = [current, paragraph].filter(Boolean).join('\n\n')
-    }
-  }
-  if (current.trim()) chunks.push(current.trim())
-
-  return chunks.flatMap((chunk) => {
-    if (chunk.length <= 1400) return [chunk]
-    const pieces: string[] = []
-    for (let i = 0; i < chunk.length; i += 1200) {
-      pieces.push(chunk.slice(i, i + 1400).trim())
-    }
-    return pieces.filter(Boolean)
-  })
+  return semanticChunkText(content).map((chunk) => chunk.text)
 }
 
 export function isOptOutMessage(text: string): boolean {
@@ -231,17 +206,35 @@ export async function generateChatbotAnswer(args: {
   readonly requireProvider?: boolean
   readonly calculation?: CalculationResult | null
   readonly conversationContext?: string | null
+  readonly gapContext?: {
+    readonly retrievalScore?: number | null
+    readonly chunkCountRetrieved?: number
+    readonly embeddingUsed?: boolean
+  }
 }): Promise<AiAnswerResult> {
   const question = args.question.trim()
   const fallback = args.settings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
   const providerConfig = await resolveAiProviderConfig(args.workspaceId)
   const providerConfigured = Boolean(providerConfig)
+  const fallbackResult = async (reason: string, usedChunks: readonly string[]): Promise<AiAnswerResult> => {
+    if (args.workspaceId) {
+      await logKnowledgeGap({
+        workspaceId: args.workspaceId,
+        question,
+        fallbackReason: reason,
+        retrievalScore: args.gapContext?.retrievalScore,
+        chunkCountRetrieved: args.gapContext?.chunkCountRetrieved ?? usedChunks.length,
+        embeddingUsed: args.gapContext?.embeddingUsed,
+      })
+    }
+    return { status: 'fallback', answer: fallback, reason, usedChunks, providerConfigured }
+  }
 
   if (!question) {
-    return { status: 'fallback', answer: fallback, reason: 'empty_question', usedChunks: [], providerConfigured }
+    return fallbackResult('empty_question', [])
   }
   if (args.chunks.length === 0) {
-    return { status: 'fallback', answer: fallback, reason: 'no_relevant_knowledge', usedChunks: [], providerConfigured }
+    return fallbackResult('no_relevant_knowledge', [])
   }
   if (!providerConfig) {
     if (args.requireProvider) {
@@ -300,7 +293,7 @@ export async function generateChatbotAnswer(args: {
     }
     const answer = body.choices?.[0]?.message?.content?.trim()
     if (!answer) {
-      return { status: 'fallback', answer: fallback, reason: 'empty_ai_response', usedChunks: args.chunks, providerConfigured }
+      return fallbackResult('empty_ai_response', args.chunks)
     }
     const trimmedAnswer = formatForWhatsApp(answer)
     const validation = validateGroundedAnswer({
@@ -310,9 +303,10 @@ export async function generateChatbotAnswer(args: {
       fallback,
     })
     if (!validation.ok) {
-      return { status: 'fallback', answer: validation.answer, reason: validation.reason, usedChunks: args.chunks, providerConfigured }
+      return fallbackResult(validation.reason, args.chunks)
     }
-    return { status: trimmedAnswer === fallback ? 'fallback' : 'answered', answer: trimmedAnswer, reason: 'answered', usedChunks: args.chunks, providerConfigured }
+    if (trimmedAnswer === fallback) return fallbackResult('model_fallback', args.chunks)
+    return { status: 'answered', answer: trimmedAnswer, reason: 'answered', usedChunks: args.chunks, providerConfigured }
   } catch {
     return { status: 'failed', answer: fallback, reason: 'ai_provider_exception', usedChunks: args.chunks, providerConfigured }
   }

@@ -1,10 +1,85 @@
 import { describe, expect, it } from 'vitest'
 
-import { hybridRetrieveFromRows, validateGroundedAnswer } from './retrieval'
+import { expandQuery, hybridRetrieveFromRows, rerankCandidates, validateGroundedAnswer } from './retrieval'
 
 const source = { id: 'source-1', title: 'Business knowledge', source_type: 'website', status: 'active' }
 
 describe('AI hybrid retrieval', () => {
+  it('expands generic business queries without losing the original or named entities', () => {
+    const price = expandQuery('What is the price of Acme Pro?')
+    const phone = expandQuery('Acme Pro phone number')
+    const refund = expandQuery('Acme Pro refund policy')
+
+    expect(price[0]).toBe('What is the price of Acme Pro?')
+    expect(price.length).toBeLessThanOrEqual(5)
+    expect(new Set(price).size).toBe(price.length)
+    expect(price.every((variant) => variant.includes('Acme Pro'))).toBe(true)
+    expect(price.some((variant) => /\b(cost|fee|rate|pricing)\b/i.test(variant))).toBe(true)
+    expect(phone.some((variant) => /\b(telephone|call|contact number)\b/i.test(variant))).toBe(true)
+    expect(refund.some((variant) => /\b(return|money back|reimbursement)\b/i.test(variant))).toBe(true)
+  })
+
+  it('merges expanded-query candidates deterministically without race-sensitive ordering', async () => {
+    const rows = [
+      { id: 'pricing', source_id: 'source-1', source, chunk_text: 'Acme Pro pricing is $20 per month.' },
+      { id: 'noise', source_id: 'source-1', source, chunk_text: 'General Acme company information.' },
+    ]
+    const results = await Promise.all(
+      Array.from({ length: 5 }, async () => hybridRetrieveFromRows({ question: 'How much does Acme Pro cost?', rows })),
+    )
+
+    expect(results.every((result) => result.evidence[0]?.id === 'pricing')).toBe(true)
+  })
+
+  it('reranks exact and answer-bearing evidence above weak keyword and navigation matches', () => {
+    const base = hybridRetrieveFromRows({
+      question: 'refund policy',
+      rows: [
+        {
+          id: 'exact',
+          source_id: 'source-1',
+          source: { ...source, title: 'Refund policy' },
+          heading_path: 'Policies > Refund policy',
+          chunk_text: 'Refund policy. Customers may return unopened items within 14 days for a full refund.',
+        },
+        {
+          id: 'keyword',
+          source_id: 'source-1',
+          source,
+          chunk_text: 'Our policy team can explain general account settings and business information.',
+        },
+        {
+          id: 'navigation',
+          source_id: 'source-1',
+          source,
+          chunk_text: 'Home\nProducts\nServices\nRefund Policy\nContact\nAbout\nFAQ\nLogin',
+        },
+      ],
+      limit: 12,
+    })
+    const reranked = rerankCandidates('refund policy', base.evidence, 2)
+
+    expect(reranked[0]?.id).toBe('exact')
+    expect(reranked[0]?.rerankReasons).toContain('rerank_exact_phrase')
+    expect(reranked).toHaveLength(2)
+    expect(reranked.find((candidate) => candidate.id === 'navigation')?.rerankReasons).toContain('rerank_navigation_penalty')
+  })
+
+  it('penalizes mid-sentence and short chunks while never dropping a verified exact match', () => {
+    const base = hybridRetrieveFromRows({
+      question: 'support hours',
+      rows: [
+        { id: 'exact', source_id: 'source-1', source, chunk_text: 'support hours are Monday to Friday from 9:00 AM to 5:00 PM.' },
+        { id: 'complete', source_id: 'source-1', source, chunk_text: 'Business support is available Monday to Friday from 9:00 AM to 5:00 PM. Customers may call during these hours for assistance.' },
+      ],
+      limit: 12,
+    })
+    const reranked = rerankCandidates('support hours', base.evidence, 1)
+
+    expect(reranked).toHaveLength(1)
+    expect(reranked[0]?.id).toBe('exact')
+    expect(reranked[0]?.rerankReasons).toContain('rerank_mid_sentence_penalty')
+  })
   it('keeps exact product/package facts ahead of similar alternatives', () => {
     const result = hybridRetrieveFromRows({
       question: 'What is the 4GB plan price?',

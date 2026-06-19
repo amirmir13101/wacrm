@@ -9,6 +9,7 @@ import {
 } from '@/lib/ai/chatbot'
 import { getPublicProviderSettings } from '@/lib/ai/provider'
 import { hybridRetrieveKnowledge } from '@/lib/ai/retrieval'
+import { logKnowledgeGap } from '@/lib/ai/knowledge-gaps'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
@@ -54,6 +55,14 @@ export async function POST(request: Request) {
   ])
   if (retrieval.fallbackReason) {
     const fallback = effectiveSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
+    await logKnowledgeGap({
+      workspaceId: workspace.workspaceId,
+      question,
+      fallbackReason: retrieval.fallbackReason,
+      retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
+      chunkCountRetrieved: retrieval.evidence.length,
+      embeddingUsed: retrieval.evidence.some((candidate) => candidate.vectorScore > 0),
+    }, admin)
     return NextResponse.json({
       status: 'fallback',
       answer: fallback,
@@ -76,6 +85,11 @@ export async function POST(request: Request) {
     chunks: retrieval.chunks,
     workspaceId: workspace.workspaceId,
     calculation: retrieval.calculation,
+    gapContext: {
+      retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
+      chunkCountRetrieved: retrieval.evidence.length,
+      embeddingUsed: retrieval.evidence.some((candidate) => candidate.vectorScore > 0),
+    },
   })
 
   await logAiChatbotEvent({

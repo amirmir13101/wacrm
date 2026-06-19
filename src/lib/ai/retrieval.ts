@@ -71,6 +71,8 @@ export interface RetrievalCandidate {
   readonly finalScore: number
   readonly conflictPenalty: number
   readonly reasons: readonly string[]
+  readonly rerankScore: number
+  readonly rerankReasons: readonly string[]
 }
 
 export interface HybridRetrievalResult {
@@ -97,6 +99,8 @@ export interface HybridRetrievalResult {
       readonly finalScore: number
       readonly matchTypes: readonly string[]
       readonly reasons: readonly string[]
+      readonly rerankScore: number
+      readonly rerankReasons: readonly string[]
     }>
     readonly calculationInvoked: boolean
   }
@@ -125,6 +129,45 @@ const MAX_EVIDENCE = 6
 const RRF_K = 60
 const MIN_EVIDENCE_SCORE = 0.015
 const MIN_ROBUST_SCORE = 8
+
+const QUERY_SYNONYM_GROUPS = [
+  ['price', 'pricing', 'cost', 'fee', 'rate', 'charge', 'how much'],
+  ['phone', 'contact number', 'telephone', 'call', 'number'],
+  ['email', 'mail', 'contact', 'reach', 'write to'],
+  ['hours', 'open', 'available', 'schedule', 'timing', 'when'],
+  ['return', 'refund', 'money back', 'cancel', 'reimbursement'],
+  ['delivery', 'shipping', 'dispatch', 'send', 'ship'],
+  ['owner', 'founder', 'who runs', 'behind', 'company'],
+  ['address', 'location', 'where', 'find us', 'situated'],
+] as const
+
+export function expandQuery(question: string): string[] {
+  const original = question.trim()
+  if (!original) return []
+  const variants = new Set<string>([original])
+  const normalized = original.replace(/\s+/g, ' ').trim()
+  const normalizedForms = [
+    normalized.replace(/^what is the price of\s+(.+?)\??$/i, '$1 price'),
+    normalized.replace(/^how much does\s+(.+?)\s+cost\??$/i, '$1 cost'),
+    normalized.replace(/^do you offer\s+(.+?)\??$/i, '$1'),
+    normalized.replace(/^can i get\s+(.+?)\??$/i, '$1'),
+    normalized.replace(/^tell me about\s+(.+?)\??$/i, '$1 information'),
+  ]
+  normalizedForms.filter((variant) => variant !== normalized).forEach((variant) => variants.add(variant.trim()))
+
+  for (const group of QUERY_SYNONYM_GROUPS) {
+    const matched = group.find((synonym) => includesSemanticSignal(normalized.toLowerCase(), synonym))
+    if (!matched) continue
+    for (const synonym of group) {
+      if (synonym === matched) continue
+      variants.add(replaceSignalPreservingCase(normalized, matched, synonym))
+      if (variants.size >= 5) break
+    }
+    if (variants.size >= 5) break
+  }
+
+  return [...variants].filter(Boolean).slice(0, 5)
+}
 
 export function analyzeRetrievalQuestion(question: string, contextualQuery?: string | null): RetrievalQuestionAnalysis {
   const normalized = question.trim()
@@ -171,15 +214,47 @@ export async function hybridRetrieveKnowledge(args: {
     : []
   const directRows = await fetchWorkspaceChunks(admin, args.workspaceId)
   const mergedRows = mergeChunkRows([...rpcRows, ...directRows])
-  return hybridRetrieveFromRows({
-    question: args.question,
+  const variants = expandQuery(args.question)
+  const results = await Promise.all(
+    variants.map(async (question) => retrieveSingleQueryFromRows({
+      question,
+      contextualQuery: args.contextualQuery,
+      rows: mergedRows,
+      limit: Math.max(args.limit ?? MAX_EVIDENCE, 12),
+    })),
+  )
+  return mergeExpandedRetrievalResults({
+    originalQuestion: args.question,
     contextualQuery: args.contextualQuery,
     rows: mergedRows,
+    results,
     limit: args.limit,
   })
 }
 
 export function hybridRetrieveFromRows(args: {
+  readonly question: string
+  readonly contextualQuery?: string | null
+  readonly rows: readonly KnowledgeChunkRow[]
+  readonly limit?: number
+}): HybridRetrievalResult {
+  const variants = expandQuery(args.question)
+  const results = variants.map((question) => retrieveSingleQueryFromRows({
+    question,
+    contextualQuery: args.contextualQuery,
+    rows: args.rows,
+    limit: Math.max(args.limit ?? MAX_EVIDENCE, 12),
+  }))
+  return mergeExpandedRetrievalResults({
+    originalQuestion: args.question,
+    contextualQuery: args.contextualQuery,
+    rows: args.rows,
+    results,
+    limit: args.limit,
+  })
+}
+
+function retrieveSingleQueryFromRows(args: {
   readonly question: string
   readonly contextualQuery?: string | null
   readonly rows: readonly KnowledgeChunkRow[]
@@ -272,10 +347,165 @@ export function hybridRetrieveFromRows(args: {
         finalScore: item.finalScore,
         matchTypes: buildMatchTypes(item.reasons),
         reasons: item.reasons,
+        rerankScore: item.rerankScore,
+        rerankReasons: item.rerankReasons,
       })),
       calculationInvoked: analysis.calculationIntent.hasIntent,
     },
   }
+}
+
+function mergeExpandedRetrievalResults(args: {
+  readonly originalQuestion: string
+  readonly contextualQuery?: string | null
+  readonly rows: readonly KnowledgeChunkRow[]
+  readonly results: readonly HybridRetrievalResult[]
+  readonly limit?: number
+}): HybridRetrievalResult {
+  const analysis = analyzeRetrievalQuestion(args.originalQuestion, args.contextualQuery)
+  const byId = new Map<string, RetrievalCandidate>()
+  for (const result of args.results) {
+    for (const candidate of result.evidence) {
+      const current = byId.get(candidate.id)
+      if (!current || candidate.finalScore > current.finalScore) byId.set(candidate.id, candidate)
+    }
+  }
+  const reranked = rerankCandidates(args.originalQuestion, [...byId.values()], args.limit ?? MAX_EVIDENCE)
+  const calculation = analysis.calculationIntent.hasIntent ? calculateFromEvidence(analysis, reranked) : null
+  const fallbackReason =
+    reranked.length === 0
+      ? 'no_relevant_knowledge'
+      : analysis.calculationIntent.hasIntent && !calculation
+        ? 'cannot_compute'
+        : calculation && calculation.status !== 'computed'
+          ? calculation.status
+          : null
+  const calculationBlock =
+    calculation?.status === 'computed'
+      ? `Computed fact: ${formatCalculationValue(calculation)}\nFormula: ${calculation.formula}\nSource chunk IDs: ${calculation.sourceChunkIds.join(', ')}`
+      : null
+  const factGuidanceBlock = buildFactGuidanceBlock(analysis, reranked)
+  const primary = args.results[0]
+
+  return {
+    analysis: {
+      ...analysis,
+      queryVariants: [...new Set([...analysis.queryVariants, ...expandQuery(args.originalQuestion)])],
+    },
+    evidence: reranked,
+    chunks: [
+      ...reranked.map(formatEvidenceBlock),
+      ...(factGuidanceBlock ? [factGuidanceBlock] : []),
+      ...(calculationBlock ? [calculationBlock] : []),
+    ],
+    calculation,
+    fallbackReason,
+    debug: {
+      formula: 'rrf',
+      activeChunkCount: primary?.debug.activeChunkCount ?? args.rows.length,
+      exactCandidatesCount: Math.max(0, ...args.results.map((result) => result.debug.exactCandidatesCount)),
+      keywordCandidatesCount: Math.max(0, ...args.results.map((result) => result.debug.keywordCandidatesCount)),
+      vectorCandidatesCount: Math.max(0, ...args.results.map((result) => result.debug.vectorCandidatesCount)),
+      answerBearingCandidatesCount: Math.max(0, ...args.results.map((result) => result.debug.answerBearingCandidatesCount)),
+      selectedChunkIds: reranked.map((candidate) => candidate.id),
+      selectedEvidence: reranked.map((candidate) => ({
+        id: candidate.id,
+        sourceTitle: candidate.sourceTitle,
+        sourceUrl: candidate.sourceUrl,
+        exactScore: candidate.exactScore,
+        keywordScore: candidate.keywordScore,
+        vectorScore: candidate.vectorScore,
+        finalScore: candidate.finalScore,
+        matchTypes: buildMatchTypes(candidate.reasons),
+        reasons: candidate.reasons,
+        rerankScore: candidate.rerankScore,
+        rerankReasons: candidate.rerankReasons,
+      })),
+      calculationInvoked: analysis.calculationIntent.hasIntent,
+    },
+  }
+}
+
+export function rerankCandidates(
+  question: string,
+  candidates: readonly RetrievalCandidate[],
+  topK: number,
+): RetrievalCandidate[] {
+  const analysis = analyzeRetrievalQuestion(question)
+  const normalizedQuestion = normalizeComparableText(question)
+  const meaningfulTerms = tokenize(question)
+  const scored = candidates.map((candidate) => {
+    const text = candidate.searchText
+    const normalizedText = normalizeComparableText(text)
+    const reasons: string[] = []
+    let rerankScore = candidate.finalScore
+    const exactPhraseMatch = normalizedQuestion.length >= 4 && normalizedText.includes(normalizedQuestion)
+    const closeVariantMatch = analysis.queryVariants.some((variant) => {
+      const normalizedVariant = normalizeComparableText(variant)
+      return normalizedVariant.length >= 4 && normalizedText.includes(normalizedVariant)
+    })
+    if (exactPhraseMatch) {
+      rerankScore += 80
+      reasons.push('rerank_exact_phrase')
+    } else if (closeVariantMatch) {
+      rerankScore += 40
+      reasons.push('rerank_close_variant')
+    }
+
+    const factDensity = countAnswerBearingFacts(text, analysis)
+    if (factDensity > 0) {
+      rerankScore += Math.min(36, factDensity * 9)
+      reasons.push(`rerank_fact_density:${factDensity}`)
+    }
+    const coveredTerms = meaningfulTerms.filter((term) => normalizedText.includes(term)).length
+    const coverage = meaningfulTerms.length > 0 ? coveredTerms / meaningfulTerms.length : 0
+    if (coverage > 0) {
+      rerankScore += coverage * 24
+      reasons.push(`rerank_term_coverage:${coverage.toFixed(2)}`)
+    }
+
+    const wordCount = text.trim().split(/\s+/).filter(Boolean).length
+    if (/^[A-Z0-9"“]/.test(candidate.chunkText.trim()) && /[.!?)]$/.test(candidate.chunkText.trim())) {
+      rerankScore += 6
+      reasons.push('rerank_complete_sentence')
+    }
+    if (/^[a-z]/.test(candidate.chunkText.trim())) {
+      rerankScore -= 10
+      reasons.push('rerank_mid_sentence_penalty')
+    }
+    if (wordCount < 50) {
+      rerankScore -= 6
+      reasons.push('rerank_short_chunk_penalty')
+    }
+    if (looksLikeNavigationText(candidate.chunkText)) {
+      rerankScore -= 45
+      reasons.push('rerank_navigation_penalty')
+    }
+    if (isHighValueSource(candidate)) {
+      rerankScore += 5
+      reasons.push('rerank_high_value_source')
+    }
+    if (candidate.conflictPenalty > 0) {
+      rerankScore -= candidate.conflictPenalty
+      reasons.push('rerank_conflict_penalty')
+    }
+    return {
+      ...candidate,
+      rerankScore,
+      rerankReasons: reasons,
+      reasons: [...new Set([...candidate.reasons, ...reasons])],
+    }
+  })
+
+  const exactMatches = scored.filter((candidate) => candidate.rerankReasons.includes('rerank_exact_phrase'))
+  const ordered = scored.sort((left, right) => right.rerankScore - left.rerankScore)
+  const selected = new Map<string, RetrievalCandidate>()
+  for (const candidate of exactMatches) selected.set(candidate.id, candidate)
+  for (const candidate of ordered) {
+    if (selected.size >= Math.max(topK, exactMatches.length)) break
+    selected.set(candidate.id, candidate)
+  }
+  return [...selected.values()].sort((left, right) => right.rerankScore - left.rerankScore)
 }
 
 export function validateGroundedAnswer(args: {
@@ -418,7 +648,57 @@ function scoreCandidate(row: KnowledgeChunkRow, index: number, analysis: Retriev
     finalScore: 0,
     conflictPenalty: 0,
     reasons,
+    rerankScore: 0,
+    rerankReasons: [],
   }
+}
+
+function replaceSignalPreservingCase(value: string, signal: string, replacement: string): string {
+  const pattern = signal.includes(' ')
+    ? new RegExp(escapeRegex(signal), 'i')
+    : new RegExp(`\\b${escapeRegex(signal)}\\b`, 'i')
+  return value
+    .replace(pattern, replacement)
+    .replace(/\bnumber\s+number\b/gi, 'number')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeComparableText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9+@.$%/\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function countAnswerBearingFacts(text: string, analysis: RetrievalQuestionAnalysis): number {
+  const patterns: RegExp[] = []
+  if (analysis.intents.pricing) patterns.push(/(?:[$€£₹]|usd|pkr|eur|gbp|aed|sar|rs\.?)\s*\d+(?:[.,]\d+)?|\bprice\s*:/gi)
+  if (analysis.intents.contact) patterns.push(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\+?\d[\d\s().-]{7,}\d|mailto:|tel:|wa\.me/gi)
+  if (analysis.intents.hours) patterns.push(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}:\d{2}|am|pm|open|closed)\b/gi)
+  if (analysis.intents.policy) patterns.push(/\b(?:refund|return|exchange|cancel|warranty|policy)\b/gi)
+  if (analysis.intents.date) patterns.push(/\b(?:20\d{2}-\d{2}-\d{2}|founded|launched|published|updated)\b/gi)
+  if (analysis.intents.productOrService) patterns.push(/\b(?:includes?|features?|specs?|duration|size|quantity)\b/gi)
+  return patterns.reduce((count, pattern) => count + Math.min(4, (text.match(pattern) ?? []).length), 0)
+}
+
+function looksLikeNavigationText(text: string): boolean {
+  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+  if (lines.length < 4) return false
+  const shortLines = lines.filter((line) => line.split(/\s+/).length <= 4).length
+  const links = (text.match(/https?:\/\/|^\s*[-*]\s+\[[^\]]+\]/gm) ?? []).length
+  const facts = (text.match(/[$€£₹]\s*\d|@|\+?\d[\d\s().-]{7,}\d|\b(?:monday|refund|price|address)\b/gi) ?? []).length
+  const menuLabels = lines.filter((line) =>
+    /^(?:home|products?|services?|pricing|contact|about|faq|login|sign in|menu|policies?|refund policy)$/i.test(line),
+  ).length
+  return shortLines / lines.length >= 0.75 && (links >= 2 || menuLabels >= Math.ceil(lines.length / 2) || facts === 0)
+}
+
+function isHighValueSource(candidate: RetrievalCandidate): boolean {
+  return /\b(pricing|price|contact|about|faq|services?|products?|menu|policy|policies)\b/i.test(
+    [candidate.sourceUrl, candidate.headingPath].filter(Boolean).join(' '),
+  )
 }
 
 function semanticSimilarityHeuristic(question: string, text: string): number {

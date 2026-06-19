@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { load } from 'cheerio'
 
 import type { FirecrawlCrawlError, FirecrawlCrawlPage } from '@/lib/ai/firecrawl'
+import { semanticChunkText } from '@/lib/ai/chunking'
 
 export type WebsiteImportPageStatus = 'imported' | 'skipped' | 'failed' | 'duplicate'
 
@@ -208,6 +209,10 @@ const MAX_RECORDED_SKIPS = 120
 export const MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH = 100_000
 export const MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH = 200_000
 export const MAX_WEBSITE_DRAFT_CONTENT_LENGTH = MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH
+
+export function buildImportedWebsiteSemanticChunks(content: string) {
+  return semanticChunkText(content)
+}
 
 const SENSITIVE_PATH_SEGMENTS = [
   'login',

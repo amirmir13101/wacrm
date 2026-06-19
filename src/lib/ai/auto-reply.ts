@@ -11,6 +11,7 @@ import {
   type AiChatbotSettings,
 } from '@/lib/ai/chatbot'
 import { hybridRetrieveKnowledge } from '@/lib/ai/retrieval'
+import { logKnowledgeGap } from '@/lib/ai/knowledge-gaps'
 import {
   AI_HUMAN_REPLY_PAUSE_SECONDS,
   AI_DAILY_REPLY_LIMIT,
@@ -236,6 +237,14 @@ export async function maybeHandleAiAutoReply(args: {
   if (retrieval.fallbackReason || retrieval.chunks.length === 0) {
     const fallbackMessage =
       activeChatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
+    await logKnowledgeGap({
+      workspaceId: args.workspaceId,
+      question: customerText,
+      fallbackReason: retrieval.fallbackReason ?? 'no_relevant_knowledge',
+      retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
+      chunkCountRetrieved: retrieval.evidence.length,
+      embeddingUsed: retrieval.evidence.some((candidate) => candidate.vectorScore > 0),
+    }, admin)
     await sendConfiguredAiMessage({
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
@@ -260,6 +269,11 @@ export async function maybeHandleAiAutoReply(args: {
     requireProvider: true,
     calculation: retrieval.calculation,
     conversationContext: retrieval.analysis.contextualQuery,
+    gapContext: {
+      retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
+      chunkCountRetrieved: retrieval.evidence.length,
+      embeddingUsed: retrieval.evidence.some((candidate) => candidate.vectorScore > 0),
+    },
   })
 
   if (answer.status === 'skipped' || answer.status === 'failed' || !answer.answer) {

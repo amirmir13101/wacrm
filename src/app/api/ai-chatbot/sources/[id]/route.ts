@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 
-import { chunkKnowledgeText, type AiKnowledgeSourceType } from '@/lib/ai/chatbot'
+import type { AiKnowledgeSourceType } from '@/lib/ai/chatbot'
 import { embedNewChunks } from '@/lib/ai/embedding-backfill'
-import { buildChunkSearchMetadata } from '@/lib/ai/retrieval'
+import { buildKnowledgeChunkRows, semanticChunkText } from '@/lib/ai/knowledge'
 import {
   MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
   MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH,
@@ -77,15 +77,16 @@ export async function PUT(
     return NextResponse.json({ error: deleteChunksError.message }, { status: 500 })
   }
 
-  const chunks = chunkKnowledgeText(content)
+  const chunks = semanticChunkText(content)
   if (chunks.length > 0) {
     const { data: insertedChunks, error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
-      chunks.map((chunk, index) => ({
-        ...chunkSearchRow(chunk, index, title),
-        workspace_id: workspace.workspaceId,
-        source_id: id,
-        chunk_text: chunk,
-      })),
+      buildKnowledgeChunkRows({
+        chunks,
+        workspaceId: workspace.workspaceId,
+        sourceId: id,
+        title,
+        sourceType,
+      }),
     ).select('id')
     if (chunksError) {
       return NextResponse.json({ error: chunksError.message }, { status: 500 })
@@ -133,19 +134,4 @@ function readLimitedText(value: unknown, fallback: string, maxLength: number): s
   const trimmed = value.trim()
   if (!trimmed) return fallback
   return trimmed.slice(0, maxLength)
-}
-
-function chunkSearchRow(chunk: string, index: number, title: string) {
-  const metadata = buildChunkSearchMetadata(chunk, index)
-  return {
-    search_text: chunk,
-    content_hash: metadata.content_hash,
-    token_count: metadata.token_count,
-    source_url: metadata.source_url,
-    heading_path: title,
-    chunk_index: index,
-    structured_facts: metadata.structured_facts,
-    embedding_status: 'pending',
-    metadata: { title, index, ...metadata },
-  }
 }

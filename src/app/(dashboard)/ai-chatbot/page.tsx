@@ -11,6 +11,8 @@ import {
   Loader2,
   MessageCircle,
   Pencil,
+  Plus,
+  RefreshCw,
   ShieldCheck,
   Trash2,
 } from "lucide-react"
@@ -68,7 +70,22 @@ interface ChatbotState {
   permissions: {
     canManage: boolean
     canEnableAutoReply: boolean
+    canRechunkAll: boolean
   }
+}
+
+interface KnowledgeGap {
+  question: string
+  count: number
+  fallback_reason: string
+  last_asked: string
+  retrieval_score: number | null
+}
+
+interface KnowledgeGapsState {
+  gaps: KnowledgeGap[]
+  total: number
+  enabled: boolean
 }
 
 interface FirecrawlSettings {
@@ -150,6 +167,8 @@ interface RetrievalDebug {
       finalScore: number
       matchTypes?: string[]
       reasons: string[]
+      rerankScore?: number
+      rerankReasons?: string[]
     }>
     fallbackReason: string | null
     calculation?: {
@@ -243,6 +262,9 @@ export default function AiChatbotPage() {
   const [testingProvider, setTestingProvider] = useState(false)
   const [testingEmbeddings, setTestingEmbeddings] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [rechunkingSourceId, setRechunkingSourceId] = useState<string | null>(null)
+  const [knowledgeGaps, setKnowledgeGaps] = useState<KnowledgeGapsState | null>(null)
+  const [showAllKnowledgeGaps, setShowAllKnowledgeGaps] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [draftSettings, setDraftSettings] = useState<ChatbotSettings | null>(null)
@@ -280,10 +302,22 @@ export default function AiChatbotPage() {
       setDraftProvider((body as ChatbotState).providerSettings)
       setProviderApiKey("")
       setFirecrawlApiKey("")
+      void loadKnowledgeGaps()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load AI Chatbot")
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadKnowledgeGaps() {
+    try {
+      const res = await fetch("/api/ai-chatbot/gaps")
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? "Failed to load unanswered questions")
+      setKnowledgeGaps(body as KnowledgeGapsState)
+    } catch {
+      setKnowledgeGaps({ gaps: [], total: 0, enabled: false })
     }
   }
 
@@ -700,6 +734,41 @@ export default function AiChatbotPage() {
           }
         : prev,
     )
+  }
+
+  async function rechunkSource(source?: KnowledgeSource) {
+    const title = source?.title ?? "all active knowledge sources"
+    if (!window.confirm(
+      source
+        ? `This will re-chunk "${title}" using improved semantic splitting. This may improve chatbot accuracy. Your knowledge content will not change. Continue?`
+        : "This will re-chunk all active knowledge sources using improved semantic splitting. Knowledge content will not change. Continue?",
+    )) return
+
+    setRechunkingSourceId(source?.id ?? "all")
+    try {
+      const res = await fetch("/api/ai-chatbot/rechunk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(source ? { source_id: source.id } : {}),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? "Failed to re-chunk knowledge")
+      toast.success(
+        `Re-chunked successfully. Old: ${body.total_old_chunks ?? 0} chunks. New: ${body.total_new_chunks ?? 0} chunks. Embeddings will be generated automatically.`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to re-chunk knowledge")
+    } finally {
+      setRechunkingSourceId(null)
+    }
+  }
+
+  function addGapToKnowledge(gap: KnowledgeGap) {
+    setSourceType("manual")
+    setSourceTitle(gap.question.slice(0, 160))
+    setSourceContent("")
+    window.scrollTo({ top: 0, behavior: "smooth" })
+    toast.message("Question added as the knowledge title. Enter the verified answer before saving.")
   }
 
   async function testChatbot() {
@@ -1341,6 +1410,11 @@ export default function AiChatbotPage() {
                       <p className="mt-2 break-words text-xs text-[#9dbfb5]">
                         Reasons: {item.reasons.join(", ") || "none"}
                       </p>
+                      {item.rerankReasons && item.rerankReasons.length > 0 && (
+                        <p className="mt-1 break-words text-xs text-emerald-200">
+                          Rerank: {Math.round((item.rerankScore ?? 0) * 100) / 100} · {item.rerankReasons.join(", ")}
+                        </p>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -1563,9 +1637,23 @@ export default function AiChatbotPage() {
       </section>
 
       <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
-        <div className="flex items-center gap-2">
-          <BookOpen className="size-5 text-emerald-300" />
-          <h2 className="text-lg font-bold text-white">Knowledge Preview</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <BookOpen className="size-5 text-emerald-300" />
+            <h2 className="text-lg font-bold text-white">Knowledge Preview</h2>
+          </div>
+          {canManage && state.permissions.canRechunkAll && state.sources.length > 0 && (
+            <Button
+              className="border border-emerald-800 bg-[#07130e] text-emerald-100 hover:bg-emerald-950"
+              disabled={rechunkingSourceId !== null}
+              size="sm"
+              variant="outline"
+              onClick={() => void rechunkSource()}
+            >
+              {rechunkingSourceId === "all" ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              Re-chunk All Sources
+            </Button>
+          )}
         </div>
         <div className="mt-4 grid min-w-0 gap-3">
           {state.sources.length === 0 ? (
@@ -1589,6 +1677,19 @@ export default function AiChatbotPage() {
                   </div>
                   {canManage && (
                     <div className="flex shrink-0 items-center gap-1 self-end sm:self-start">
+                      <Button
+                        className="h-9 border border-emerald-900 bg-[#09241a] px-3 text-xs text-emerald-100 hover:bg-emerald-900/60 hover:text-white"
+                        disabled={rechunkingSourceId !== null}
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void rechunkSource(source)}
+                        title="Re-chunk knowledge"
+                      >
+                        {rechunkingSourceId === source.id
+                          ? <Loader2 className="size-3.5 animate-spin" />
+                          : <RefreshCw className="size-3.5" />}
+                        Re-chunk
+                      </Button>
                       <Button
                         className="text-emerald-100 hover:bg-emerald-900/60 hover:text-white"
                         size="icon"
@@ -1617,6 +1718,78 @@ export default function AiChatbotPage() {
             ))
           )}
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
+        <div>
+          <h2 className="text-lg font-bold text-white">Unanswered Questions</h2>
+          <p className="mt-1 max-w-3xl text-sm text-[#9dbfb5]">
+            Questions customers asked that the chatbot could not answer. Add this information to your knowledge base to improve your chatbot.
+          </p>
+        </div>
+
+        {!knowledgeGaps?.enabled ? (
+          <div className="mt-4 rounded-xl border border-dashed border-emerald-800 p-5 text-sm text-[#9dbfb5]">
+            Knowledge gap tracking is not yet enabled.
+          </div>
+        ) : knowledgeGaps.gaps.length === 0 ? (
+          <div className="mt-4 rounded-xl border border-dashed border-emerald-800 p-5 text-sm text-[#9dbfb5]">
+            No unanswered questions yet. Your chatbot is answering all customer questions from your knowledge base.
+          </div>
+        ) : (
+          <div className="mt-4 overflow-x-auto rounded-xl border border-emerald-900">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-[#07130e] text-xs uppercase tracking-wide text-[#8fb7aa]">
+                <tr>
+                  <th className="px-4 py-3">Question</th>
+                  <th className="px-4 py-3">Times Asked</th>
+                  <th className="px-4 py-3">Last Asked</th>
+                  <th className="px-4 py-3">Reason</th>
+                  <th className="px-4 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-emerald-950 bg-[#071b14]">
+                {knowledgeGaps.gaps.slice(0, showAllKnowledgeGaps ? 100 : 20).map((gap) => (
+                  <tr key={gap.question}>
+                    <td className="max-w-md px-4 py-3 font-medium text-white">{gap.question}</td>
+                    <td className="px-4 py-3 text-[#b8cfc7]">{gap.count}</td>
+                    <td className="px-4 py-3 text-[#b8cfc7]">{new Date(gap.last_asked).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-[#fff0b8]">{gap.fallback_reason.replaceAll("_", " ")}</td>
+                    <td className="px-4 py-3">
+                      <Button
+                        className="h-9 border border-emerald-800 bg-[#09241a] text-emerald-100 hover:bg-emerald-900/60"
+                        disabled={!canManage}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => addGapToKnowledge(gap)}
+                      >
+                        <Plus className="size-3.5" />
+                        Add to Knowledge Base
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {knowledgeGaps.gaps.length > 20 && (
+              <div className="flex items-center justify-between gap-3 border-t border-emerald-950 px-4 py-3">
+                <p className="text-xs text-[#9dbfb5]">
+                  {showAllKnowledgeGaps
+                    ? `Showing all ${knowledgeGaps.gaps.length} grouped questions.`
+                    : `Showing 20 questions. ${knowledgeGaps.gaps.length - 20} more available.`}
+                </p>
+                <Button
+                  className="h-8 border border-emerald-800 bg-[#09241a] text-xs text-emerald-100 hover:bg-emerald-900/60"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowAllKnowledgeGaps((value) => !value)}
+                >
+                  {showAllKnowledgeGaps ? "Show Recent 20" : "View All"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <Dialog

@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 
 import {
   DEFAULT_AI_CHATBOT_SETTINGS,
-  chunkKnowledgeText,
   getAiPlanAccess,
   isAiProviderConfigured,
   type AiChatbotSettings,
@@ -10,7 +9,7 @@ import {
   type AiKnowledgeSourceType,
 } from '@/lib/ai/chatbot'
 import { embedNewChunks } from '@/lib/ai/embedding-backfill'
-import { buildChunkSearchMetadata } from '@/lib/ai/retrieval'
+import { buildKnowledgeChunkRows, semanticChunkText } from '@/lib/ai/knowledge'
 import {
   MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
   MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH,
@@ -68,6 +67,7 @@ export async function GET() {
     permissions: {
       canManage: hasWorkspacePermission(workspace, 'manage_ai_chatbot'),
       canEnableAutoReply: hasWorkspacePermission(workspace, 'enable_ai_auto_reply'),
+      canRechunkAll: ['owner', 'admin'].includes(workspace.role),
     },
   })
 }
@@ -169,22 +169,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: sourceError?.message ?? 'Failed to save knowledge.' }, { status: 500 })
   }
 
-  const chunks = chunkKnowledgeText(content)
+  const chunks = semanticChunkText(content)
   if (chunks.length > 0) {
     const { data: insertedChunks, error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
-      chunks.map((chunk, index) => ({
-        workspace_id: workspace.workspaceId,
-        source_id: source.id,
-        chunk_text: chunk,
-        search_text: chunk,
-        content_hash: buildChunkSearchMetadata(chunk, index).content_hash,
-        token_count: buildChunkSearchMetadata(chunk, index).token_count,
-        heading_path: title,
-        chunk_index: index,
-        structured_facts: buildChunkSearchMetadata(chunk, index).structured_facts,
-        embedding_status: 'pending',
-        metadata: { source_type: sourceType, title, index, ...buildChunkSearchMetadata(chunk, index) },
-      })),
+      buildKnowledgeChunkRows({
+        chunks,
+        workspaceId: workspace.workspaceId,
+        sourceId: source.id,
+        title,
+        sourceType,
+      }),
     ).select('id')
     if (chunksError) {
       return NextResponse.json({ error: chunksError.message }, { status: 500 })

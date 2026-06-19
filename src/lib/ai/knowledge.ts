@@ -1,7 +1,13 @@
-import { chunkKnowledgeText, type AiKnowledgeSourceType } from '@/lib/ai/chatbot'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+import type { AiKnowledgeSourceType } from '@/lib/ai/chatbot'
+import { semanticChunkText, type SemanticChunk } from '@/lib/ai/chunking'
 import { embedNewChunks } from '@/lib/ai/embedding-backfill'
 import { buildChunkSearchMetadata } from '@/lib/ai/retrieval'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+
+export { chunkTextByCharacter, semanticChunkText } from '@/lib/ai/chunking'
+export type { SemanticChunk, SemanticChunkOptions } from '@/lib/ai/chunking'
 
 export async function saveKnowledgeSourceWithChunks(args: {
   readonly workspaceId: string
@@ -26,14 +32,14 @@ export async function saveKnowledgeSourceWithChunks(args: {
     throw new Error(sourceError?.message ?? 'Failed to save knowledge.')
   }
 
-  const chunks = chunkKnowledgeText(args.content)
+  const chunks = semanticChunkText(args.content)
   if (chunks.length > 0) {
     const { data: insertedChunks, error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
       chunks.map((chunk, index) => ({
         ...chunkSearchRow(chunk, index, args.title),
         workspace_id: args.workspaceId,
         source_id: source.id,
-        chunk_text: chunk,
+        chunk_text: chunk.text,
       })),
     ).select('id')
     if (chunksError) throw new Error(chunksError.message)
@@ -43,17 +49,85 @@ export async function saveKnowledgeSourceWithChunks(args: {
   return source
 }
 
-function chunkSearchRow(chunk: string, index: number, title: string) {
-  const metadata = buildChunkSearchMetadata(chunk, index)
+export async function rechunkKnowledgeSource(args: {
+  readonly workspaceId: string
+  readonly sourceId: string
+  readonly client?: SupabaseClient
+}): Promise<{ readonly oldChunkCount: number; readonly newChunkCount: number; readonly chunkIds: readonly string[] }> {
+  const admin = args.client ?? supabaseAdmin()
+  const { data: source, error: sourceError } = await admin
+    .from('ai_knowledge_sources')
+    .select('id, title, content')
+    .eq('id', args.sourceId)
+    .eq('workspace_id', args.workspaceId)
+    .maybeSingle()
+  if (sourceError) throw new Error(sourceError.message)
+  if (!source) throw new Error('Knowledge source not found.')
+
+  const { data: oldChunks, error: countError } = await admin
+    .from('ai_knowledge_chunks')
+    .select('id')
+    .eq('source_id', args.sourceId)
+    .eq('workspace_id', args.workspaceId)
+  if (countError) throw new Error(countError.message)
+  const oldChunkIds = (oldChunks ?? []).map((chunk) => chunk.id)
+
+  const chunks = semanticChunkText(source.content)
+  if (chunks.length === 0) {
+    return { oldChunkCount: oldChunkIds.length, newChunkCount: 0, chunkIds: [] }
+  }
+
+  const { data: inserted, error: insertError } = await admin
+    .from('ai_knowledge_chunks')
+    .insert(chunks.map((chunk, index) => ({
+      ...chunkSearchRow(chunk, index, source.title),
+      workspace_id: args.workspaceId,
+      source_id: args.sourceId,
+      chunk_text: chunk.text,
+    })))
+    .select('id')
+  if (insertError) throw new Error(insertError.message)
+  const chunkIds = (inserted ?? []).map((chunk) => chunk.id)
+  if (oldChunkIds.length > 0) {
+    const { error: deleteError } = await admin
+      .from('ai_knowledge_chunks')
+      .delete()
+      .eq('source_id', args.sourceId)
+      .eq('workspace_id', args.workspaceId)
+      .in('id', oldChunkIds)
+    if (deleteError) throw new Error(deleteError.message)
+  }
+  embedNewChunks(args.workspaceId, chunkIds, admin)
+  return { oldChunkCount: oldChunkIds.length, newChunkCount: chunks.length, chunkIds }
+}
+
+export function buildKnowledgeChunkRows(args: {
+  readonly chunks: readonly SemanticChunk[]
+  readonly workspaceId: string
+  readonly sourceId: string
+  readonly title: string
+  readonly sourceType?: AiKnowledgeSourceType
+}): ReadonlyArray<Record<string, unknown>> {
+  return args.chunks.map((chunk, index) => ({
+    ...chunkSearchRow(chunk, index, args.title, args.sourceType),
+    workspace_id: args.workspaceId,
+    source_id: args.sourceId,
+    chunk_text: chunk.text,
+  }))
+}
+
+function chunkSearchRow(chunk: SemanticChunk, index: number, title: string, sourceType?: AiKnowledgeSourceType) {
+  const metadata = buildChunkSearchMetadata(chunk.text, index)
+  const headingPath = chunk.headingPath.length > 0 ? chunk.headingPath.join(' > ') : title
   return {
-    search_text: chunk,
+    search_text: chunk.text,
     content_hash: metadata.content_hash,
     token_count: metadata.token_count,
     source_url: metadata.source_url,
-    heading_path: title,
+    heading_path: headingPath,
     chunk_index: index,
     structured_facts: metadata.structured_facts,
     embedding_status: 'pending',
-    metadata: { title, index, ...metadata },
+    metadata: { title, source_type: sourceType, index, heading_path: headingPath, ...metadata },
   }
 }

@@ -209,8 +209,43 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(route).toContain(".eq('workspace_id', workspace.workspaceId)")
     expect(route).toContain(".from('ai_knowledge_chunks')")
     expect(route).toContain('.delete()')
-    expect(route).toContain('chunkKnowledgeText(content)')
-    expect(route).toContain("source_id: id")
+    expect(route).toContain('semanticChunkText(content)')
+    expect(route).toContain('sourceId: id')
+  })
+
+  it('tracks sanitized unanswered questions and exposes workspace-scoped gap reporting', () => {
+    const gaps = read('src/lib/ai/knowledge-gaps.ts')
+    const route = read('src/app/api/ai-chatbot/gaps/route.ts')
+    const migration = read('supabase/migrations/040_ai_knowledge_gaps.sql')
+    const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
+
+    expect(gaps).toContain('sanitizeKnowledgeGapQuestion')
+    expect(gaps).toContain('[email removed]')
+    expect(gaps).toContain('[phone removed]')
+    expect(route).toContain('requireCurrentWorkspace')
+    expect(route).toContain(".eq('workspace_id', workspace.workspaceId)")
+    expect(migration).toContain('ALTER TABLE ai_knowledge_gaps ENABLE ROW LEVEL SECURITY')
+    expect(migration).toContain('FOR SELECT USING')
+    expect(migration).not.toContain('FOR INSERT')
+    expect(page).toContain('Unanswered Questions')
+    expect(page).toContain('Add to Knowledge Base')
+    expect(page).toContain('Knowledge gap tracking is not yet enabled.')
+  })
+
+  it('keeps semantic re-chunking manual, source-scoped, and workspace-scoped', () => {
+    const helper = read('src/lib/ai/knowledge.ts')
+    const route = read('src/app/api/ai-chatbot/rechunk/route.ts')
+    const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
+
+    expect(helper).toContain('semanticChunkText(source.content)')
+    expect(helper).toContain(".eq('source_id', args.sourceId)")
+    expect(helper).toContain(".eq('workspace_id', args.workspaceId)")
+    expect(helper).toContain('embedNewChunks(args.workspaceId, chunkIds, admin)')
+    expect(route).toContain('export async function POST')
+    expect(route).toContain("hasWorkspacePermission(workspace, 'manage_ai_chatbot')")
+    expect(route).toContain('source_id')
+    expect(page).toContain('Re-chunk All Sources')
+    expect(page).toContain('Your knowledge content will not change.')
   })
 
   it('keeps long knowledge previews inside the dashboard viewport', () => {
