@@ -664,6 +664,25 @@ export default function AiChatbotPage() {
     }
   }
 
+  async function runEmbeddingBackfill() {
+    setTestingEmbeddings(true)
+    try {
+      const res = await fetch("/api/ai-chatbot/provider/embeddings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "backfill", batch_size: 25 }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.message ?? body?.error ?? "Embedding backfill failed")
+      toast.success(body?.message ?? "Embedding backfill batch completed")
+      if (question.trim()) await testChatbot()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Embedding backfill failed")
+    } finally {
+      setTestingEmbeddings(false)
+    }
+  }
+
   async function deleteSource(source: KnowledgeSource) {
     if (!window.confirm(`Delete "${source.title}" from AI knowledge?`)) return
     const res = await fetch(`/api/ai-chatbot/sources/${source.id}`, { method: "DELETE" })
@@ -1242,6 +1261,9 @@ export default function AiChatbotPage() {
               <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 <div className="rounded-xl border border-emerald-950 bg-[#071b14] p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#8fb7aa]">Embedding status</p>
+                  <p className="mt-1 text-xs text-[#9dbfb5]">
+                    Total chunks: {Object.values(testAnswer.debug.embeddingCounts).reduce((sum, count) => sum + count, 0)}
+                  </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {Object.entries(testAnswer.debug.embeddingCounts).map(([status, count]) => (
                       <span key={status} className="rounded-full bg-emerald-950 px-3 py-1 text-xs">
@@ -1249,6 +1271,21 @@ export default function AiChatbotPage() {
                       </span>
                     ))}
                   </div>
+                  {(testAnswer.debug.embeddingCounts.pending ?? 0) > 0 && testAnswer.debug.provider?.embeddingsEnabled && (
+                    <div className="mt-3 rounded-lg border border-[#f6c94a]/40 bg-[#f6c94a]/10 p-3">
+                      <p className="text-xs text-[#fff0b8]">
+                        {testAnswer.debug.embeddingCounts.pending} chunks are not yet embedded. Semantic search may miss some content.
+                      </p>
+                      <Button
+                        className={cn("mt-2 h-8", primaryActionClass)}
+                        disabled={testingEmbeddings}
+                        onClick={() => void runEmbeddingBackfill()}
+                      >
+                        {testingEmbeddings && <Loader2 className="size-3 animate-spin" />}
+                        Run Backfill
+                      </Button>
+                    </div>
+                  )}
                   {testAnswer.debug.retrieval.fallbackReason && (
                     <p className="mt-3 text-xs text-[#f6c94a]">Fallback: {testAnswer.debug.retrieval.fallbackReason}</p>
                   )}

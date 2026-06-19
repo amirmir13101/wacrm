@@ -66,6 +66,8 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(autoReply).toContain('hybridRetrieveKnowledge')
     expect(autoReply).toContain('workspaceId: args.workspaceId')
     expect(autoReply).toContain('question: customerText')
+    expect(autoReply).toContain('fetchConversationContext')
+    expect(autoReply).toContain('contextualQuery: conversationContext')
     expect(autoReply).toContain('isOptOutMessage')
     expect(autoReply).toContain('getAiPlanAccess')
     expect(autoReply).toContain('conversation.assigned_agent_id')
@@ -89,6 +91,21 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(page).toContain('Retrieval Debug')
     expect(page).toContain('Selected evidence')
     expect(page).toContain('Embedding status')
+    expect(page).toContain('Run Backfill')
+    expect(page).toContain('Semantic search may miss some content')
+  })
+
+  it('auto-embeds new knowledge chunks without blocking source saves', () => {
+    const route = read('src/app/api/ai-chatbot/route.ts')
+    const sourceRoute = read('src/app/api/ai-chatbot/sources/[id]/route.ts')
+    const helper = read('src/lib/ai/embedding-backfill.ts')
+
+    expect(route).toContain('embedNewChunks')
+    expect(sourceRoute).toContain('embedNewChunks')
+    expect(helper).toContain('export function embedNewChunks')
+    expect(helper).toContain('void embedChunkIds')
+    expect(helper).toContain("embedding_status: 'ready'")
+    expect(helper).toContain('generateEmbedding(chunk.chunk_text, config)')
   })
 
   it('adds Phase 2 conversation controls with RLS and API protection', () => {

@@ -17,6 +17,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 
 export interface RetrievalQuestionAnalysis {
   readonly question: string
+  readonly contextualQuery: string | null
   readonly terms: readonly string[]
   readonly entityTerms: readonly string[]
   readonly entityPhrases: readonly string[]
@@ -24,6 +25,10 @@ export interface RetrievalQuestionAnalysis {
   readonly exactSignals: readonly string[]
   readonly numbers: readonly number[]
   readonly intents: RetrievalIntents
+  readonly comparison: {
+    readonly enabled: boolean
+    readonly entities: readonly string[]
+  }
   readonly calculationIntent: ReturnType<typeof detectCalculationIntent>
 }
 
@@ -38,6 +43,7 @@ export interface RetrievalIntents {
   readonly company: boolean
   readonly ownership: boolean
   readonly date: boolean
+  readonly comparison: boolean
 }
 
 export interface RetrievalCandidate {
@@ -120,22 +126,32 @@ const RRF_K = 60
 const MIN_EVIDENCE_SCORE = 0.015
 const MIN_ROBUST_SCORE = 8
 
-export function analyzeRetrievalQuestion(question: string): RetrievalQuestionAnalysis {
+export function analyzeRetrievalQuestion(question: string, contextualQuery?: string | null): RetrievalQuestionAnalysis {
   const normalized = question.trim()
-  const exactSignals = extractExactSignals(normalized)
-  const terms = tokenize(normalized)
-  const intents = detectRetrievalIntents(normalized)
-  const entityTerms = extractEntityTerms(normalized, terms, intents)
-  const entityPhrases = extractEntityPhrases(entityTerms)
+  const context = contextualQuery?.trim() ?? ''
+  const contextTerms = context ? tokenize(context) : []
+  const exactSignals = [...new Set([...extractExactSignals(normalized), ...extractExactSignals(context)])]
+  const currentTerms = tokenize(normalized)
+  const terms = [...new Set([...currentTerms, ...contextTerms])].slice(0, 30)
+  const currentIntents = detectRetrievalIntents(normalized)
+  const contextIntents = context ? detectRetrievalIntents(context) : null
+  const comparison = detectComparisonIntent(normalized)
+  const intents = mergeRetrievalIntents(currentIntents, contextIntents, comparison.enabled)
+  const entityTerms = extractEntityTerms(normalized, terms, intents, context)
+  const comparisonEntities = comparison.entities.filter((entity) => !entityTerms.includes(entity))
+  const mergedEntityTerms = [...entityTerms, ...comparisonEntities].slice(0, 12)
+  const entityPhrases = extractEntityPhrases(mergedEntityTerms)
   return {
     question: normalized,
+    contextualQuery: context || null,
     terms,
-    entityTerms,
+    entityTerms: mergedEntityTerms,
     entityPhrases,
-    queryVariants: buildQueryVariants(normalized, terms, entityTerms, entityPhrases, intents),
+    queryVariants: buildQueryVariants(normalized, terms, mergedEntityTerms, entityPhrases, intents),
     exactSignals,
     numbers: [...normalized.matchAll(/\b\d+(?:[.,]\d+)?\b/g)].map((match) => Number(match[0].replace(',', '.'))),
     intents,
+    comparison,
     calculationIntent: detectCalculationIntent(normalized),
   }
 }
@@ -143,18 +159,21 @@ export function analyzeRetrievalQuestion(question: string): RetrievalQuestionAna
 export async function hybridRetrieveKnowledge(args: {
   readonly workspaceId: string
   readonly question: string
+  readonly contextualQuery?: string | null
   readonly client?: SupabaseClient
   readonly limit?: number
 }): Promise<HybridRetrievalResult> {
   const admin = args.client ?? supabaseAdmin()
-  const queryEmbedding = await generateEmbedding(args.question, args.workspaceId).catch(() => null)
+  const queryForEmbedding = [args.contextualQuery, args.question].filter(Boolean).join('\n')
+  const queryEmbedding = await generateEmbedding(queryForEmbedding || args.question, args.workspaceId).catch(() => null)
   const rpcRows = queryEmbedding
-    ? await fetchRpcMatches(admin, args.workspaceId, args.question, queryEmbedding.embedding)
+    ? await fetchRpcMatches(admin, args.workspaceId, queryForEmbedding || args.question, queryEmbedding.embedding)
     : []
   const directRows = await fetchWorkspaceChunks(admin, args.workspaceId)
   const mergedRows = mergeChunkRows([...rpcRows, ...directRows])
   return hybridRetrieveFromRows({
     question: args.question,
+    contextualQuery: args.contextualQuery,
     rows: mergedRows,
     limit: args.limit,
   })
@@ -162,10 +181,11 @@ export async function hybridRetrieveKnowledge(args: {
 
 export function hybridRetrieveFromRows(args: {
   readonly question: string
+  readonly contextualQuery?: string | null
   readonly rows: readonly KnowledgeChunkRow[]
   readonly limit?: number
 }): HybridRetrievalResult {
-  const analysis = analyzeRetrievalQuestion(args.question)
+  const analysis = analyzeRetrievalQuestion(args.question, args.contextualQuery)
   const activeRows = args.rows.filter((row) => row.chunk_text && row.source?.status !== 'archived')
   const baseScored = activeRows.map((row, index) => scoreCandidate(row, index, analysis))
   const scored = applyNeighborExpansion(baseScored)
@@ -175,7 +195,7 @@ export function hybridRetrieveFromRows(args: {
   const answerRanked = rankBy(scored, (item) => item.answerScore + item.proximityScore + item.headingScore + item.neighborScore)
   const conflictGroups = detectCandidateConflicts(scored)
 
-  const fused = scored
+  const ranked = scored
     .map((candidate) => {
       const rrfScore =
         reciprocalRank(exactRanked, candidate.id) +
@@ -209,7 +229,8 @@ export function hybridRetrieveFromRows(args: {
       (candidate.finalScore >= MIN_ROBUST_SCORE || (!shouldRequireEntityMatch(analysis) && candidate.rrfScore >= MIN_EVIDENCE_SCORE)),
     )
     .sort((left, right) => right.finalScore - left.finalScore)
-    .slice(0, args.limit ?? MAX_EVIDENCE)
+
+  const fused = mergeComparisonEvidence(ranked, scored, analysis).slice(0, args.limit ?? MAX_EVIDENCE)
 
   const calculation = analysis.calculationIntent.hasIntent ? calculateFromEvidence(analysis, fused) : null
   const fallbackReason =
@@ -442,10 +463,56 @@ function detectRetrievalIntents(question: string): RetrievalIntents {
     company: /\b(company|business|legal|entity|registration|registered|company number|incorporated|limited|ltd|llc|inc)\b/.test(normalized),
     ownership: /\b(owner|owned|founder|founded by|behind|run by|operated by|director|ceo)\b/.test(normalized),
     date: /\b(date|built|created|founded|launched|launch|started|established|published|updated|modified|page date|sitemap)\b/.test(normalized),
+    comparison: /\b(compare|comparison|difference|different|vs|versus|better|which one|between)\b/.test(normalized),
   }
 }
 
-function extractEntityTerms(question: string, terms: readonly string[], intents: RetrievalIntents): string[] {
+function mergeRetrievalIntents(
+  current: RetrievalIntents,
+  context: RetrievalIntents | null,
+  comparison: boolean,
+): RetrievalIntents {
+  return {
+    pricing: current.pricing || Boolean(context?.pricing),
+    policy: current.policy || Boolean(context?.policy),
+    hours: current.hours || Boolean(context?.hours),
+    contact: current.contact || Boolean(context?.contact),
+    location: current.location || Boolean(context?.location),
+    faq: current.faq || Boolean(context?.faq),
+    productOrService: current.productOrService || Boolean(context?.productOrService),
+    company: current.company || Boolean(context?.company),
+    ownership: current.ownership || Boolean(context?.ownership),
+    date: current.date || Boolean(context?.date),
+    comparison: current.comparison || Boolean(context?.comparison) || comparison,
+  }
+}
+
+function detectComparisonIntent(question: string): { readonly enabled: boolean; readonly entities: readonly string[] } {
+  const normalized = question.toLowerCase()
+  const enabled = /\b(compare|comparison|difference|different|vs|versus|better|which one|between)\b/.test(normalized)
+  if (!enabled) return { enabled: false, entities: [] }
+
+  const entities = new Set<string>()
+  const between = normalized.match(/\bbetween\s+([a-z0-9][a-z0-9\s-]{1,60}?)\s+and\s+([a-z0-9][a-z0-9\s-]{1,60})(?:\?|$|\.|,)/)
+  if (between) {
+    entities.add(cleanComparisonEntity(between[1] ?? ''))
+    entities.add(cleanComparisonEntity(between[2] ?? ''))
+  }
+  for (const match of normalized.matchAll(/\b([a-z0-9][a-z0-9\s-]{1,40}?)\s+(?:vs|versus)\s+([a-z0-9][a-z0-9\s-]{1,40})(?:\?|$|\.|,)/g)) {
+    entities.add(cleanComparisonEntity(match[1] ?? ''))
+    entities.add(cleanComparisonEntity(match[2] ?? ''))
+  }
+  return { enabled, entities: [...entities].filter((entity) => entity.length >= 2).slice(0, 4) }
+}
+
+function cleanComparisonEntity(value: string): string {
+  return value
+    .replace(/\b(the|a|an|plan|package|service|product|option|one|is|are|what|which|better|difference|compare)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function extractEntityTerms(question: string, terms: readonly string[], intents: RetrievalIntents, contextualQuery = ''): string[] {
   const generic = new Set([
     'price', 'pricing', 'cost', 'fee', 'rate', 'charge', 'charges', 'monthly', 'yearly',
     'plan', 'plans', 'package', 'packages', 'product', 'products', 'service', 'services',
@@ -463,6 +530,9 @@ function extractEntityTerms(question: string, terms: readonly string[], intents:
   ])
   const entities = new Set<string>()
   for (const term of terms) {
+    if (!generic.has(term)) entities.add(term)
+  }
+  for (const term of tokenize(contextualQuery)) {
     if (!generic.has(term)) entities.add(term)
   }
   for (const match of question.matchAll(/\b\d+(?:[.,]\d+)?\s?(?:gb|tb|mb|kb|cores?|cpu|ram|kg|g|mg|ml|l|hours?|hrs?|days?|weeks?|months?|years?|people|persons?|servings?|sq\.?\s?ft|sqm)\b/gi)) {
@@ -656,6 +726,34 @@ function applyNeighborExpansion(candidates: readonly RetrievalCandidate[]): Retr
 
 function shouldRequireEntityMatch(analysis: RetrievalQuestionAnalysis): boolean {
   return analysis.entityTerms.length > 0 && (analysis.intents.pricing || analysis.intents.productOrService || analysis.intents.contact || analysis.intents.location)
+}
+
+function mergeComparisonEvidence(
+  ranked: readonly RetrievalCandidate[],
+  allCandidates: readonly RetrievalCandidate[],
+  analysis: RetrievalQuestionAnalysis,
+): RetrievalCandidate[] {
+  if (!analysis.comparison.enabled || analysis.comparison.entities.length < 2) return [...ranked]
+  const byId = new Map<string, RetrievalCandidate>()
+  for (const candidate of ranked) byId.set(candidate.id, candidate)
+  for (const entity of analysis.comparison.entities) {
+    const entityMatches = allCandidates
+      .filter((candidate) => candidate.conflictPenalty === 0 && candidate.searchText.toLowerCase().includes(entity.toLowerCase()))
+      .sort((left, right) =>
+        (right.answerScore + right.entityScore + right.phraseScore + right.keywordScore + right.vectorScore) -
+        (left.answerScore + left.entityScore + left.phraseScore + left.keywordScore + left.vectorScore),
+      )
+      .slice(0, 2)
+    for (const candidate of entityMatches) {
+      const existing = byId.get(candidate.id)
+      byId.set(candidate.id, existing ?? {
+        ...candidate,
+        finalScore: Math.max(candidate.finalScore, candidate.answerScore + candidate.entityScore + candidate.keywordScore + 12),
+        reasons: [...new Set([...candidate.reasons, 'comparison_entity_match'])],
+      })
+    }
+  }
+  return [...byId.values()].sort((left, right) => right.finalScore - left.finalScore)
 }
 
 function candidateHasRequiredEntity(candidate: RetrievalCandidate, analysis: RetrievalQuestionAnalysis): boolean {

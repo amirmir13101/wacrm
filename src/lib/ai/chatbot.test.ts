@@ -10,6 +10,7 @@ import {
   DEFAULT_AI_CHATBOT_SETTINGS,
   aiMessageOfferedHumanHandoff,
   chunkKnowledgeText,
+  formatForWhatsApp,
   generateChatbotAnswer,
   isHumanHandoffConfirmation,
   isHumanHandoffRequest,
@@ -196,6 +197,38 @@ describe('AI chatbot knowledge helpers', () => {
     expect(result.status).toBe('fallback')
     expect(result.answer).toBe(DEFAULT_AI_CHATBOT_SETTINGS.fallback_message)
     expect(result.reason).toBe('no_relevant_knowledge')
+  })
+
+  it('formats model answers with WhatsApp-native formatting only', () => {
+    const raw = [
+      '## Service Summary',
+      '',
+      '```',
+      'Plain detail',
+      '```',
+      '---',
+      '*Price*: $20',
+    ].join('\n')
+
+    const formatted = formatForWhatsApp(raw)
+
+    expect(formatted).toContain('*Service Summary*')
+    expect(formatted).toContain('Plain detail')
+    expect(formatted).toContain('*Price*: $20')
+    expect(formatted).not.toContain('##')
+    expect(formatted).not.toContain('```')
+    expect(formatted).not.toContain('---')
+  })
+
+  it('keeps answer content while normalizing WhatsApp formatting', () => {
+    const formatted = formatForWhatsApp('### Contact\n\n\nCall us at +1 555 123 4567.')
+    expect(formatted).toBe('*Contact*\n\nCall us at +1 555 123 4567.')
+  })
+
+  it('keeps very long WhatsApp answers bounded after formatting', () => {
+    const formatted = formatForWhatsApp(`## Summary\n${'Specific fact. '.repeat(120)}`)
+    expect(formatted.length).toBeLessThanOrEqual(900)
+    expect(formatted).toContain('*Summary*')
   })
 
   it('uses a safe knowledge preview for dashboard tests when OpenAI is not configured', async () => {

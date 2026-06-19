@@ -9,6 +9,7 @@ import {
   type AiChatbotTone,
   type AiKnowledgeSourceType,
 } from '@/lib/ai/chatbot'
+import { embedNewChunks } from '@/lib/ai/embedding-backfill'
 import { buildChunkSearchMetadata } from '@/lib/ai/retrieval'
 import {
   MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
@@ -170,7 +171,7 @@ export async function POST(request: Request) {
 
   const chunks = chunkKnowledgeText(content)
   if (chunks.length > 0) {
-    const { error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
+    const { data: insertedChunks, error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
       chunks.map((chunk, index) => ({
         workspace_id: workspace.workspaceId,
         source_id: source.id,
@@ -184,10 +185,11 @@ export async function POST(request: Request) {
         embedding_status: 'pending',
         metadata: { source_type: sourceType, title, index, ...buildChunkSearchMetadata(chunk, index) },
       })),
-    )
+    ).select('id')
     if (chunksError) {
       return NextResponse.json({ error: chunksError.message }, { status: 500 })
     }
+    embedNewChunks(workspace.workspaceId, (insertedChunks ?? []).map((chunk) => chunk.id), admin)
   }
 
   return NextResponse.json({ source })

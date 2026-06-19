@@ -1,4 +1,5 @@
 import { chunkKnowledgeText, type AiKnowledgeSourceType } from '@/lib/ai/chatbot'
+import { embedNewChunks } from '@/lib/ai/embedding-backfill'
 import { buildChunkSearchMetadata } from '@/lib/ai/retrieval'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 
@@ -27,15 +28,16 @@ export async function saveKnowledgeSourceWithChunks(args: {
 
   const chunks = chunkKnowledgeText(args.content)
   if (chunks.length > 0) {
-    const { error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
+    const { data: insertedChunks, error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
       chunks.map((chunk, index) => ({
         ...chunkSearchRow(chunk, index, args.title),
         workspace_id: args.workspaceId,
         source_id: source.id,
         chunk_text: chunk,
       })),
-    )
+    ).select('id')
     if (chunksError) throw new Error(chunksError.message)
+    embedNewChunks(args.workspaceId, (insertedChunks ?? []).map((chunk) => chunk.id), admin)
   }
 
   return source

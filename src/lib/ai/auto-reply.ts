@@ -217,9 +217,15 @@ export async function maybeHandleAiAutoReply(args: {
 
   let retrieval: Awaited<ReturnType<typeof hybridRetrieveKnowledge>>
   try {
+    const conversationContext = await fetchConversationContext({
+      conversationId: args.conversationId,
+      inboundMessageId: args.inboundMessageId,
+      client: admin,
+    })
     retrieval = await hybridRetrieveKnowledge({
       workspaceId: args.workspaceId,
       question: customerText,
+      contextualQuery: conversationContext,
       client: admin,
     })
   } catch {
@@ -253,6 +259,7 @@ export async function maybeHandleAiAutoReply(args: {
     workspaceId: args.workspaceId,
     requireProvider: true,
     calculation: retrieval.calculation,
+    conversationContext: retrieval.analysis.contextualQuery,
   })
 
   if (answer.status === 'skipped' || answer.status === 'failed' || !answer.answer) {
@@ -551,6 +558,31 @@ async function sendConfiguredAiMessage(args: {
     })
     return false
   }
+}
+
+async function fetchConversationContext(args: {
+  readonly conversationId: string
+  readonly inboundMessageId: string
+  readonly client: ReturnType<typeof supabaseAdmin>
+}): Promise<string | null> {
+  const { data } = await args.client
+    .from('messages')
+    .select('id, sender_type, content_text, created_at')
+    .eq('conversation_id', args.conversationId)
+    .neq('id', args.inboundMessageId)
+    .not('content_text', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(3)
+
+  const context = (data ?? [])
+    .filter((message) => typeof message.content_text === 'string' && message.content_text.trim())
+    .reverse()
+    .map((message) => {
+      const sender = message.sender_type === 'customer' ? 'Customer' : 'Assistant'
+      return `${sender}: ${message.content_text.trim().slice(0, 500)}`
+    })
+
+  return context.length > 0 ? context.join('\n') : null
 }
 
 async function logSkip(

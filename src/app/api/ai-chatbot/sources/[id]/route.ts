@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { chunkKnowledgeText, type AiKnowledgeSourceType } from '@/lib/ai/chatbot'
+import { embedNewChunks } from '@/lib/ai/embedding-backfill'
 import { buildChunkSearchMetadata } from '@/lib/ai/retrieval'
 import {
   MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
@@ -78,17 +79,18 @@ export async function PUT(
 
   const chunks = chunkKnowledgeText(content)
   if (chunks.length > 0) {
-    const { error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
+    const { data: insertedChunks, error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
       chunks.map((chunk, index) => ({
         ...chunkSearchRow(chunk, index, title),
         workspace_id: workspace.workspaceId,
         source_id: id,
         chunk_text: chunk,
       })),
-    )
+    ).select('id')
     if (chunksError) {
       return NextResponse.json({ error: chunksError.message }, { status: 500 })
     }
+    embedNewChunks(workspace.workspaceId, (insertedChunks ?? []).map((chunk) => chunk.id), admin)
   }
 
   return NextResponse.json({ source })

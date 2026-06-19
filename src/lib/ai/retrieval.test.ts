@@ -303,6 +303,56 @@ describe('AI hybrid retrieval', () => {
     expect(result.chunks.join('\n')).toContain('$25/month')
   })
 
+  it('uses recent conversation context for short follow-up retrieval', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'and the starter?',
+      contextualQuery: 'Customer: tell me about studio membership plans',
+      rows: [
+        { id: 'starter', source_id: 'source-1', source, chunk_text: 'Studio Starter membership plan includes 4 classes per month. Price: $29/month.' },
+        { id: 'unrelated', source_id: 'source-1', source, chunk_text: 'Starter salad is available on the cafe menu for $8.' },
+      ],
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.evidence[0]?.id).toBe('starter')
+    expect(result.analysis.contextualQuery).toContain('studio membership plans')
+  })
+
+  it('detects comparison intent and retrieves evidence for both compared entities', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'What is the difference between Basic and Pro?',
+      rows: [
+        { id: 'basic', source_id: 'source-1', source, chunk_text: 'Basic package includes email support and 5 projects. Price: $19/month.' },
+        { id: 'pro', source_id: 'source-1', source, chunk_text: 'Pro package includes priority support and 20 projects. Price: $49/month.' },
+      ],
+    })
+
+    expect(result.analysis.comparison.enabled).toBe(true)
+    expect(result.evidence.map((item) => item.id)).toEqual(expect.arrayContaining(['basic', 'pro']))
+    expect(result.chunks.join('\n')).toContain('Basic package')
+    expect(result.chunks.join('\n')).toContain('Pro package')
+  })
+
+  it.each(['Basic vs Pro', 'Basic versus Pro', 'compare Basic and Pro', 'difference between Basic and Pro', 'which is better Basic or Pro'])(
+    'detects comparison intent for %s',
+    (question) => {
+      expect(hybridRetrieveFromRows({ question, rows: [] }).analysis.comparison.enabled).toBe(true)
+    },
+  )
+
+  it('enriches what-about follow-ups with prior context entity signals', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'what about silver?',
+      contextualQuery: 'Customer: compare wellness membership options',
+      rows: [
+        { id: 'silver', source_id: 'source-1', source, chunk_text: 'Wellness Silver membership includes 2 sessions per month for $40.' },
+        { id: 'color', source_id: 'source-1', source, chunk_text: 'Silver gift box packaging is available for $4.' },
+      ],
+    })
+
+    expect(result.evidence[0]?.id).toBe('silver')
+  })
+
   it('routes derived numeric questions through calculation results and falls back on missing facts', () => {
     const computed = hybridRetrieveFromRows({
       question: 'Yearly price has 15% discount, what is monthly?',
