@@ -16,6 +16,14 @@ export interface AiProviderPublicSettings {
   readonly lastTestStatus: 'success' | 'failed' | 'not_tested' | null
   readonly lastTestError: string | null
   readonly supportedForChat: boolean
+  readonly embeddingsEnabled: boolean
+  readonly embeddingModel: string | null
+  readonly embeddingDimensions: number | null
+  readonly embeddingSupported: boolean
+  readonly embeddingStatusMessage: string
+  readonly lastEmbeddingTestedAt: string | null
+  readonly lastEmbeddingTestStatus: 'success' | 'failed' | 'not_tested' | null
+  readonly lastEmbeddingTestError: string | null
 }
 
 export interface AiProviderResolvedConfig {
@@ -25,6 +33,17 @@ export interface AiProviderResolvedConfig {
   readonly baseUrl: string
   readonly apiKey: string
   readonly supportedForChat: boolean
+}
+
+export interface AiEmbeddingProviderConfig {
+  readonly source: 'workspace' | 'env'
+  readonly provider: AiProvider
+  readonly model: string
+  readonly baseUrl: string
+  readonly apiKey: string
+  readonly dimensions: number
+  readonly supported: boolean
+  readonly reason: string | null
 }
 
 interface ProviderRow {
@@ -38,6 +57,12 @@ interface ProviderRow {
   readonly last_tested_at: string | null
   readonly last_test_status: 'success' | 'failed' | 'not_tested' | null
   readonly last_test_error: string | null
+  readonly embeddings_enabled?: boolean | null
+  readonly embedding_model?: string | null
+  readonly embedding_dimensions?: number | null
+  readonly last_embedding_tested_at?: string | null
+  readonly last_embedding_test_status?: 'success' | 'failed' | 'not_tested' | null
+  readonly last_embedding_test_error?: string | null
 }
 
 export function normalizeProvider(value: unknown): AiProvider {
@@ -64,6 +89,19 @@ export function defaultModelForProvider(provider: AiProvider): string {
   }
 }
 
+export function defaultEmbeddingModelForProvider(provider: AiProvider): string {
+  switch (provider) {
+    case 'openrouter':
+      return 'openai/text-embedding-3-small'
+    case 'ollama':
+      return 'nomic-embed-text'
+    case 'custom':
+    case 'openai':
+    default:
+      return 'text-embedding-3-small'
+  }
+}
+
 export function defaultBaseUrlForProvider(provider: AiProvider): string {
   switch (provider) {
     case 'openrouter':
@@ -86,6 +124,10 @@ export function providerSupportsChat(provider: AiProvider): boolean {
   return provider !== 'anthropic'
 }
 
+export function providerSupportsEmbeddings(provider: AiProvider): boolean {
+  return provider === 'openai' || provider === 'openrouter' || provider === 'custom' || provider === 'ollama'
+}
+
 export function maskApiKey(last4: string | null | undefined): string | null {
   return last4 ? `•••• ${last4}` : null
 }
@@ -97,7 +139,7 @@ export function readApiKeyLast4(apiKey: string): string {
 export async function getPublicProviderSettings(workspaceId: string): Promise<AiProviderPublicSettings> {
   const { data, error } = await supabaseAdmin()
     .from('ai_chatbot_provider_settings')
-    .select('workspace_id, provider, model, base_url, encrypted_api_key, api_key_last4, api_key_configured_at, last_tested_at, last_test_status, last_test_error')
+    .select('workspace_id, provider, model, base_url, encrypted_api_key, api_key_last4, api_key_configured_at, last_tested_at, last_test_status, last_test_error, embeddings_enabled, embedding_model, embedding_dimensions, last_embedding_tested_at, last_embedding_test_status, last_embedding_test_error')
     .eq('workspace_id', workspaceId)
     .maybeSingle<ProviderRow>()
 
@@ -116,8 +158,19 @@ export async function getPublicProviderSettings(workspaceId: string): Promise<Ai
       lastTestStatus: null,
       lastTestError: null,
       supportedForChat: true,
+      embeddingsEnabled: Boolean(process.env.AI_EMBEDDING_API_KEY || process.env.OPENAI_API_KEY),
+      embeddingModel: process.env.AI_EMBEDDING_MODEL || defaultEmbeddingModelForProvider(provider),
+      embeddingDimensions: readPositiveInteger(process.env.AI_EMBEDDING_DIMENSIONS, 1536),
+      embeddingSupported: true,
+      embeddingStatusMessage: process.env.AI_EMBEDDING_API_KEY || process.env.OPENAI_API_KEY
+        ? 'Server fallback embeddings are configured.'
+        : 'Embedding API key is not configured.',
+      lastEmbeddingTestedAt: null,
+      lastEmbeddingTestStatus: null,
+      lastEmbeddingTestError: null,
     }
   }
+  const embeddingSupported = providerSupportsEmbeddings(data.provider)
 
   return {
     provider: data.provider,
@@ -131,6 +184,16 @@ export async function getPublicProviderSettings(workspaceId: string): Promise<Ai
     lastTestStatus: data.last_test_status,
     lastTestError: data.last_test_error,
     supportedForChat: providerSupportsChat(data.provider),
+    embeddingsEnabled: Boolean(data.embeddings_enabled),
+    embeddingModel: data.embedding_model ?? defaultEmbeddingModelForProvider(data.provider),
+    embeddingDimensions: data.embedding_dimensions ?? 1536,
+    embeddingSupported,
+    embeddingStatusMessage: embeddingSupported
+      ? 'Embeddings can use this workspace provider key.'
+      : 'This provider does not support embeddings. Semantic search is disabled, but exact and keyword search still work.',
+    lastEmbeddingTestedAt: data.last_embedding_tested_at ?? null,
+    lastEmbeddingTestStatus: data.last_embedding_test_status ?? null,
+    lastEmbeddingTestError: data.last_embedding_test_error ?? null,
   }
 }
 
@@ -140,6 +203,9 @@ export async function saveProviderSettings(args: {
   readonly model: string
   readonly baseUrl?: string | null
   readonly apiKey?: string | null
+  readonly embeddingsEnabled?: boolean
+  readonly embeddingModel?: string | null
+  readonly embeddingDimensions?: number | null
 }): Promise<AiProviderPublicSettings> {
   const admin = supabaseAdmin()
   const apiKey = args.apiKey?.trim()
@@ -168,6 +234,11 @@ export async function saveProviderSettings(args: {
       api_key_configured_at: apiKeyConfiguredAt,
       last_test_status: apiKey ? 'not_tested' : undefined,
       last_test_error: apiKey ? null : undefined,
+      embeddings_enabled: Boolean(args.embeddingsEnabled),
+      embedding_model: (args.embeddingModel?.trim() || defaultEmbeddingModelForProvider(args.provider)).slice(0, 160),
+      embedding_dimensions: clampEmbeddingDimensions(args.embeddingDimensions),
+      last_embedding_test_status: apiKey || args.embeddingsEnabled !== undefined ? 'not_tested' : undefined,
+      last_embedding_test_error: apiKey || args.embeddingsEnabled !== undefined ? null : undefined,
     },
     { onConflict: 'workspace_id' },
   )
@@ -179,7 +250,7 @@ export async function resolveAiProviderConfig(workspaceId?: string | null): Prom
   if (workspaceId) {
     const { data, error } = await supabaseAdmin()
       .from('ai_chatbot_provider_settings')
-      .select('workspace_id, provider, model, base_url, encrypted_api_key, api_key_last4, api_key_configured_at, last_tested_at, last_test_status, last_test_error')
+      .select('workspace_id, provider, model, base_url, encrypted_api_key, api_key_last4, api_key_configured_at, last_tested_at, last_test_status, last_test_error, embeddings_enabled, embedding_model, embedding_dimensions, last_embedding_tested_at, last_embedding_test_status, last_embedding_test_error')
       .eq('workspace_id', workspaceId)
       .maybeSingle<ProviderRow>()
 
@@ -204,6 +275,62 @@ export async function resolveAiProviderConfig(workspaceId?: string | null): Prom
     baseUrl: normalizeBaseUrl(process.env.AI_CHATBOT_BASE_URL || defaultBaseUrlForProvider('openai')),
     apiKey: process.env.OPENAI_API_KEY,
     supportedForChat: true,
+  }
+}
+
+export async function resolveAiEmbeddingProviderConfig(workspaceId?: string | null): Promise<AiEmbeddingProviderConfig> {
+  if (workspaceId) {
+    const { data, error } = await supabaseAdmin()
+      .from('ai_chatbot_provider_settings')
+      .select('workspace_id, provider, model, base_url, encrypted_api_key, embeddings_enabled, embedding_model, embedding_dimensions')
+      .eq('workspace_id', workspaceId)
+      .maybeSingle<Pick<ProviderRow, 'workspace_id' | 'provider' | 'model' | 'base_url' | 'encrypted_api_key' | 'embeddings_enabled' | 'embedding_model' | 'embedding_dimensions'>>()
+
+    if (error) throw new Error(error.message)
+    if (data?.embeddings_enabled) {
+      if (!providerSupportsEmbeddings(data.provider)) {
+        return unsupportedEmbeddingConfig(data.provider, 'This provider does not support embeddings. Semantic search is disabled, but exact and keyword search still work.')
+      }
+      if (!data.encrypted_api_key) {
+        return unsupportedEmbeddingConfig(data.provider, 'Embedding API key is not configured.')
+      }
+      return {
+        source: 'workspace',
+        provider: data.provider,
+        model: data.embedding_model || defaultEmbeddingModelForProvider(data.provider),
+        baseUrl: normalizeBaseUrl(data.base_url || defaultBaseUrlForProvider(data.provider)),
+        apiKey: decrypt(data.encrypted_api_key),
+        dimensions: data.embedding_dimensions ?? 1536,
+        supported: true,
+        reason: null,
+      }
+    }
+  }
+
+  const apiKey = process.env.AI_EMBEDDING_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim()
+  if (!apiKey) return unsupportedEmbeddingConfig('openai', 'Embedding API key is not configured.')
+  return {
+    source: 'env',
+    provider: 'openai',
+    model: process.env.AI_EMBEDDING_MODEL || defaultEmbeddingModelForProvider('openai'),
+    baseUrl: normalizeBaseUrl(process.env.AI_EMBEDDING_BASE_URL || defaultBaseUrlForProvider('openai')),
+    apiKey,
+    dimensions: readPositiveInteger(process.env.AI_EMBEDDING_DIMENSIONS, 1536),
+    supported: true,
+    reason: null,
+  }
+}
+
+function unsupportedEmbeddingConfig(provider: AiProvider, reason: string): AiEmbeddingProviderConfig {
+  return {
+    source: 'workspace',
+    provider,
+    model: defaultEmbeddingModelForProvider(provider),
+    baseUrl: defaultBaseUrlForProvider(provider),
+    apiKey: '',
+    dimensions: 1536,
+    supported: false,
+    reason,
   }
 }
 
@@ -286,4 +413,14 @@ async function markProviderTest(workspaceId: string, ok: boolean, error: string 
 
 function normalizeBaseUrl(value: string | null | undefined): string {
   return (value ?? '').trim().replace(/\/+$/, '')
+}
+
+function readPositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function clampEmbeddingDimensions(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return 1536
+  return Math.max(128, Math.min(4096, value))
 }

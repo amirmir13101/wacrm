@@ -41,6 +41,9 @@ export async function PUT(request: Request) {
   const model = readText(body.model, defaultModelForProvider(provider), 120)
   const baseUrl = readText(body.base_url, defaultBaseUrlForProvider(provider), 300)
   const apiKey = typeof body.api_key === 'string' ? body.api_key.trim() : ''
+  const embeddingsEnabled = body.embeddings_enabled === true
+  const embeddingModel = readText(body.embedding_model, '', 160)
+  const embeddingDimensions = typeof body.embedding_dimensions === 'number' ? body.embedding_dimensions : null
 
   if (!providerSupportsChat(provider)) {
     const settings = await saveProviderSettings({
@@ -49,6 +52,9 @@ export async function PUT(request: Request) {
       model,
       baseUrl,
       apiKey: apiKey || null,
+      embeddingsEnabled,
+      embeddingModel,
+      embeddingDimensions,
     })
     return NextResponse.json({
       settings,
@@ -66,6 +72,9 @@ export async function PUT(request: Request) {
     model,
     baseUrl,
     apiKey: apiKey || null,
+    embeddingsEnabled,
+    embeddingModel,
+    embeddingDimensions,
   })
 
   return NextResponse.json({ settings })

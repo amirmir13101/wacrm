@@ -98,7 +98,7 @@ export async function hybridRetrieveKnowledge(args: {
   readonly limit?: number
 }): Promise<HybridRetrievalResult> {
   const admin = args.client ?? supabaseAdmin()
-  const queryEmbedding = await generateEmbedding(args.question).catch(() => null)
+  const queryEmbedding = await generateEmbedding(args.question, args.workspaceId).catch(() => null)
   const rpcRows = queryEmbedding
     ? await fetchRpcMatches(admin, args.workspaceId, args.question, queryEmbedding.embedding)
     : []

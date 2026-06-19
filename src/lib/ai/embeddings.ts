@@ -1,10 +1,15 @@
 import { createHash } from 'node:crypto'
 
+import { resolveAiEmbeddingProviderConfig } from '@/lib/ai/provider'
+
 export interface EmbeddingConfig {
+  readonly source: 'workspace' | 'env'
   readonly apiKey: string
   readonly baseUrl: string
   readonly model: string
   readonly dimensions: number
+  readonly supported: boolean
+  readonly reason: string | null
 }
 
 export interface EmbeddingResult {
@@ -13,18 +18,18 @@ export interface EmbeddingResult {
   readonly contentHash: string
 }
 
-const DEFAULT_EMBEDDING_BASE_URL = 'https://api.openai.com/v1'
-const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small'
 export const DEFAULT_EMBEDDING_DIMENSIONS = 1536
 
-export function resolveEmbeddingConfig(): EmbeddingConfig | null {
-  const apiKey = process.env.AI_EMBEDDING_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim()
-  if (!apiKey) return null
+export async function resolveEmbeddingConfig(workspaceId?: string | null): Promise<EmbeddingConfig> {
+  const config = await resolveAiEmbeddingProviderConfig(workspaceId)
   return {
-    apiKey,
-    baseUrl: (process.env.AI_EMBEDDING_BASE_URL?.trim() || DEFAULT_EMBEDDING_BASE_URL).replace(/\/+$/, ''),
-    model: process.env.AI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL,
-    dimensions: readPositiveInteger(process.env.AI_EMBEDDING_DIMENSIONS, DEFAULT_EMBEDDING_DIMENSIONS),
+    source: config.source,
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    dimensions: config.dimensions,
+    supported: config.supported,
+    reason: config.reason,
   }
 }
 
@@ -40,9 +45,16 @@ export function estimateTokenCount(value: string): number {
   return Math.max(1, Math.ceil(normalizeEmbeddingInput(value).length / 4))
 }
 
-export async function generateEmbedding(input: string, config = resolveEmbeddingConfig()): Promise<EmbeddingResult | null> {
+export async function generateEmbedding(
+  input: string,
+  configOrWorkspaceId?: EmbeddingConfig | string | null,
+): Promise<EmbeddingResult | null> {
   const normalized = normalizeEmbeddingInput(input)
-  if (!normalized || !config) return null
+  const config =
+    typeof configOrWorkspaceId === 'object' && configOrWorkspaceId !== null
+      ? configOrWorkspaceId
+      : await resolveEmbeddingConfig(configOrWorkspaceId)
+  if (!normalized || !config.supported || !config.apiKey) return null
 
   const response = await fetch(`${config.baseUrl}/embeddings`, {
     method: 'POST',
@@ -77,9 +89,4 @@ export async function generateEmbedding(input: string, config = resolveEmbedding
     model: body.model ?? config.model,
     contentHash: hashKnowledgeContent(normalized),
   }
-}
-
-function readPositiveInteger(value: string | undefined, fallback: number): number {
-  const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }

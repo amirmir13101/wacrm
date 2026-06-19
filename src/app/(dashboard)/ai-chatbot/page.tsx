@@ -97,6 +97,14 @@ interface ProviderSettings {
   lastTestStatus: "success" | "failed" | "not_tested" | null
   lastTestError: string | null
   supportedForChat: boolean
+  embeddingsEnabled: boolean
+  embeddingModel: string | null
+  embeddingDimensions: number | null
+  embeddingSupported: boolean
+  embeddingStatusMessage: string
+  lastEmbeddingTestedAt: string | null
+  lastEmbeddingTestStatus: "success" | "failed" | "not_tested" | null
+  lastEmbeddingTestError: string | null
 }
 
 interface TestAnswer {
@@ -186,6 +194,7 @@ export default function AiChatbotPage() {
   const [savingSource, setSavingSource] = useState(false)
   const [savingProvider, setSavingProvider] = useState(false)
   const [testingProvider, setTestingProvider] = useState(false)
+  const [testingEmbeddings, setTestingEmbeddings] = useState(false)
   const [testing, setTesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -555,6 +564,9 @@ export default function AiChatbotPage() {
           model: draftProvider.model,
           base_url: draftProvider.baseUrl,
           api_key: providerApiKey,
+          embeddings_enabled: draftProvider.embeddingsEnabled,
+          embedding_model: draftProvider.embeddingModel,
+          embedding_dimensions: draftProvider.embeddingDimensions,
         }),
       })
       const body = await res.json().catch(() => ({}))
@@ -582,6 +594,26 @@ export default function AiChatbotPage() {
       await load()
     } finally {
       setTestingProvider(false)
+    }
+  }
+
+  async function testEmbeddingConnection() {
+    setTestingEmbeddings(true)
+    try {
+      const res = await fetch("/api/ai-chatbot/provider/embeddings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "test" }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.message ?? body?.error ?? "Embedding test failed")
+      toast.success(body?.message ?? "Embedding connection works")
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Embedding test failed")
+      await load()
+    } finally {
+      setTestingEmbeddings(false)
     }
   }
 
@@ -786,13 +818,13 @@ export default function AiChatbotPage() {
               value={draftProvider.provider}
               onChange={(event) => {
                 const next = event.target.value as Provider
-                const defaults: Record<Provider, { model: string; baseUrl: string | null }> = {
-                  openai: { model: "gpt-4o-mini", baseUrl: "https://api.openai.com/v1" },
-                  openrouter: { model: "openai/gpt-4o-mini", baseUrl: "https://openrouter.ai/api/v1" },
-                  groq: { model: "llama-3.1-8b-instant", baseUrl: "https://api.groq.com/openai/v1" },
-                  ollama: { model: "llama3.1", baseUrl: "http://localhost:11434/v1" },
-                  custom: { model: "gpt-4o-mini", baseUrl: "" },
-                  anthropic: { model: "claude-3-5-haiku-latest", baseUrl: "https://api.anthropic.com" },
+                const defaults: Record<Provider, { model: string; baseUrl: string | null; embeddingModel: string | null; embeddingSupported: boolean }> = {
+                  openai: { model: "gpt-4o-mini", baseUrl: "https://api.openai.com/v1", embeddingModel: "text-embedding-3-small", embeddingSupported: true },
+                  openrouter: { model: "openai/gpt-4o-mini", baseUrl: "https://openrouter.ai/api/v1", embeddingModel: "openai/text-embedding-3-small", embeddingSupported: true },
+                  groq: { model: "llama-3.1-8b-instant", baseUrl: "https://api.groq.com/openai/v1", embeddingModel: null, embeddingSupported: false },
+                  ollama: { model: "llama3.1", baseUrl: "http://localhost:11434/v1", embeddingModel: "nomic-embed-text", embeddingSupported: true },
+                  custom: { model: "gpt-4o-mini", baseUrl: "", embeddingModel: "text-embedding-3-small", embeddingSupported: true },
+                  anthropic: { model: "claude-3-5-haiku-latest", baseUrl: "https://api.anthropic.com", embeddingModel: null, embeddingSupported: false },
                 }
                 setDraftProvider({
                   ...draftProvider,
@@ -800,6 +832,13 @@ export default function AiChatbotPage() {
                   model: defaults[next].model,
                   baseUrl: defaults[next].baseUrl,
                   supportedForChat: next !== "anthropic",
+                  embeddingSupported: defaults[next].embeddingSupported,
+                  embeddingModel: defaults[next].embeddingModel,
+                  embeddingDimensions: defaults[next].embeddingSupported ? 1536 : null,
+                  embeddingsEnabled: defaults[next].embeddingSupported ? draftProvider.embeddingsEnabled : false,
+                  embeddingStatusMessage: defaults[next].embeddingSupported
+                    ? "Embeddings can use this workspace provider key."
+                    : "This provider does not support embeddings. Semantic search is disabled, but exact and keyword search still work.",
                 })
               }}
             >
@@ -847,6 +886,52 @@ export default function AiChatbotPage() {
               placeholder="https://api.openai.com/v1"
             />
           </label>
+          <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4 lg:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-emerald-50">Semantic search embeddings</p>
+                <p className="mt-1 text-xs text-[#9dbfb5]">
+                  Use this workspace provider key for vector search when the provider exposes an OpenAI-compatible embeddings endpoint.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-[#9dbfb5]">Embeddings enabled</span>
+                <Switch
+                  checked={draftProvider.embeddingsEnabled}
+                  disabled={!canManage || !draftProvider.embeddingSupported}
+                  onCheckedChange={(checked) => setDraftProvider({ ...draftProvider, embeddingsEnabled: checked })}
+                />
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_180px]">
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-emerald-50">Embedding model</span>
+                <input
+                  className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                  disabled={!canManage || !draftProvider.embeddingsEnabled || !draftProvider.embeddingSupported}
+                  value={draftProvider.embeddingModel ?? ""}
+                  onChange={(event) => setDraftProvider({ ...draftProvider, embeddingModel: event.target.value })}
+                  placeholder="text-embedding-3-small"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-emerald-50">Dimensions</span>
+                <input
+                  className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                  disabled={!canManage || !draftProvider.embeddingsEnabled || !draftProvider.embeddingSupported}
+                  min={128}
+                  max={4096}
+                  type="number"
+                  value={draftProvider.embeddingDimensions ?? 1536}
+                  onChange={(event) => setDraftProvider({ ...draftProvider, embeddingDimensions: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <p className="mt-3 text-xs text-[#9dbfb5]">{draftProvider.embeddingStatusMessage}</p>
+            {draftProvider.lastEmbeddingTestError && (
+              <p className="mt-2 text-xs text-yellow-200">{draftProvider.lastEmbeddingTestError}</p>
+            )}
+          </div>
         </div>
 
         {draftProvider.provider === "anthropic" && (
@@ -863,6 +948,14 @@ export default function AiChatbotPage() {
           >
             {testingProvider && <Loader2 className="size-4 animate-spin" />}
             Test Connection
+          </Button>
+          <Button
+            className={primaryActionClass}
+            disabled={!canManage || testingEmbeddings || !draftProvider.apiKeyConfigured || !draftProvider.embeddingsEnabled}
+            onClick={() => void testEmbeddingConnection()}
+          >
+            {testingEmbeddings && <Loader2 className="size-4 animate-spin" />}
+            Test Embeddings
           </Button>
           <Button
             className={primaryActionClass}
