@@ -8,7 +8,10 @@ module.exports = {
       watch: false,
       restart_delay: 30000,
       max_restarts: 10,
-      env: { NODE_ENV: 'production' },
+      env: {
+        NODE_ENV: 'production',
+        WACRM_SCHEDULER_RUNNER: 'true',
+      },
     },
   ],
 }

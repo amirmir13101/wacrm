@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { pathToFileURL } from 'node:url'
 import { config as loadEnvironment } from 'dotenv'
 
 import { detectChanges } from '@/lib/ai/change-detection'
@@ -269,6 +268,6 @@ async function main(): Promise<void> {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.env.WACRM_SCHEDULER_RUNNER === 'true') {
   void main()
 }
