@@ -3,9 +3,11 @@ import { NextResponse } from 'next/server'
 import {
   DEFAULT_AI_CHATBOT_SETTINGS,
   generateChatbotAnswer,
+  isAiProviderConfigured,
   logAiChatbotEvent,
   type AiChatbotSettings,
 } from '@/lib/ai/chatbot'
+import { getPublicProviderSettings } from '@/lib/ai/provider'
 import { hybridRetrieveKnowledge } from '@/lib/ai/retrieval'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
@@ -45,6 +47,11 @@ export async function POST(request: Request) {
     question,
     client: admin,
   })
+  const [providerConfigured, providerSettings, embeddingCounts] = await Promise.all([
+    isAiProviderConfigured(workspace.workspaceId),
+    getPublicProviderSettings(workspace.workspaceId).catch(() => null),
+    countEmbeddingStatuses(admin, workspace.workspaceId),
+  ])
   if (retrieval.fallbackReason) {
     const fallback = effectiveSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
     return NextResponse.json({
@@ -52,7 +59,15 @@ export async function POST(request: Request) {
       answer: fallback,
       reason: retrieval.fallbackReason,
       usedChunks: retrieval.chunks,
-      providerConfigured: false,
+      providerConfigured,
+      debug: buildSafeDebug({
+        workspaceId: workspace.workspaceId,
+        providerConfigured,
+        providerSettings,
+        embeddingCounts,
+        retrieval,
+        fallbackReason: retrieval.fallbackReason,
+      }),
     })
   }
   const answer = await generateChatbotAnswer({
@@ -71,5 +86,69 @@ export async function POST(request: Request) {
     reason: answer.reason,
   })
 
-  return NextResponse.json(answer)
+  return NextResponse.json({
+    ...answer,
+    debug: buildSafeDebug({
+      workspaceId: workspace.workspaceId,
+      providerConfigured,
+      providerSettings,
+      embeddingCounts,
+      retrieval,
+      fallbackReason: answer.status === 'fallback' ? answer.reason : null,
+    }),
+  })
+}
+
+async function countEmbeddingStatuses(admin: ReturnType<typeof supabaseAdmin>, workspaceId: string): Promise<Record<string, number>> {
+  const { data } = await admin
+    .from('ai_knowledge_chunks')
+    .select('embedding_status')
+    .eq('workspace_id', workspaceId)
+
+  return (data ?? []).reduce<Record<string, number>>((counts, row) => {
+    const status = typeof row.embedding_status === 'string' ? row.embedding_status : 'unknown'
+    counts[status] = (counts[status] ?? 0) + 1
+    return counts
+  }, {})
+}
+
+function buildSafeDebug(args: {
+  readonly workspaceId: string
+  readonly providerConfigured: boolean
+  readonly providerSettings: Awaited<ReturnType<typeof getPublicProviderSettings>> | null
+  readonly embeddingCounts: Record<string, number>
+  readonly retrieval: Awaited<ReturnType<typeof hybridRetrieveKnowledge>>
+  readonly fallbackReason: string | null
+}) {
+  return {
+    query: args.retrieval.analysis.question,
+    workspaceId: args.workspaceId,
+    providerConfigured: args.providerConfigured,
+    provider: args.providerSettings
+      ? {
+          provider: args.providerSettings.provider,
+          model: args.providerSettings.model,
+          baseUrl: args.providerSettings.baseUrl,
+          embeddingsEnabled: args.providerSettings.embeddingsEnabled,
+          embeddingModel: args.providerSettings.embeddingModel,
+          embeddingDimensions: args.providerSettings.embeddingDimensions,
+        }
+      : null,
+    embeddingCounts: args.embeddingCounts,
+    retrieval: {
+      terms: args.retrieval.analysis.terms,
+      entityTerms: args.retrieval.analysis.entityTerms,
+      entityPhrases: args.retrieval.analysis.entityPhrases,
+      queryVariants: args.retrieval.analysis.queryVariants,
+      intents: args.retrieval.analysis.intents,
+      activeChunkCount: args.retrieval.debug.activeChunkCount,
+      exactCandidatesCount: args.retrieval.debug.exactCandidatesCount,
+      keywordCandidatesCount: args.retrieval.debug.keywordCandidatesCount,
+      vectorCandidatesCount: args.retrieval.debug.vectorCandidatesCount,
+      answerBearingCandidatesCount: args.retrieval.debug.answerBearingCandidatesCount,
+      selectedChunkIds: args.retrieval.debug.selectedChunkIds,
+      selectedEvidence: args.retrieval.debug.selectedEvidence,
+      fallbackReason: args.fallbackReason,
+    },
+  }
 }

@@ -111,6 +111,108 @@ describe('AI hybrid retrieval', () => {
     expect(result.chunks.join('\n')).toContain('3.40')
   })
 
+  it('finds clue-based plan pricing from small entity hints', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'automation pro price',
+      rows: [
+        { id: 'generic', source_id: 'source-1', source, chunk_text: 'Automation hosting helps teams run workflows and integrations.' },
+        {
+          id: 'plans',
+          source_id: 'source-1',
+          source,
+          chunk_text: [
+            'Starter',
+            '- Price: 0.99/mo',
+            'Pro',
+            'Automation 8GB Best for growing businesses',
+            '$4.00',
+            '3.40',
+            'Total: $40.80 billed per Year',
+            '- Price: 3.40/mo',
+            'Business',
+            '- Price: 6.80/mo',
+          ].join('\n'),
+        },
+      ],
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.evidence[0]?.id).toBe('plans')
+    expect(result.chunks.join('\n')).toContain('Price: 3.40/mo')
+  })
+
+  it('expands neighboring chunks when entity and answer fact are separated', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'What is the price of automation pro?',
+      rows: [
+        {
+          id: 'plan-name',
+          source_id: 'source-1',
+          source,
+          chunk_index: 10,
+          chunk_text: '### Automation Pro\nBest for growing businesses with advanced workflow needs.',
+        },
+        {
+          id: 'plan-price',
+          source_id: 'source-1',
+          source,
+          chunk_index: 11,
+          chunk_text: 'Billing details\nPrice: $33/month\nIncludes priority support and advanced workflows.',
+        },
+        {
+          id: 'noise',
+          source_id: 'source-1',
+          source,
+          chunk_index: 40,
+          chunk_text: 'Automation FAQ with many general questions but no plan price.',
+        },
+      ],
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.evidence.map((item) => item.id)).toContain('plan-name')
+    expect(result.evidence.map((item) => item.id)).toContain('plan-price')
+    expect(result.chunks.join('\n')).toContain('$33/month')
+  })
+
+  it('handles policy, hours, and contact paraphrases with answer-bearing evidence', () => {
+    const rows = [
+      { id: 'policy', source_id: 'source-1', source, chunk_text: 'Refund policy: customers can request a refund within 7 days if the service has not been activated.' },
+      { id: 'hours', source_id: 'source-1', source, chunk_text: 'Business hours: Monday-Friday 9:00 AM to 6:00 PM. Saturday is closed.' },
+      { id: 'contact', source_id: 'source-1', source, chunk_text: 'Contact support by email at support@example.com or phone +1 555 123 4567.' },
+    ]
+
+    expect(hybridRetrieveFromRows({ question: 'Can I get my money back?', rows }).evidence[0]?.id).toBe('policy')
+    expect(hybridRetrieveFromRows({ question: 'When do you close?', rows }).evidence[0]?.id).toBe('hours')
+    expect(hybridRetrieveFromRows({ question: 'What is your support email?', rows }).evidence[0]?.id).toBe('contact')
+  })
+
+  it('falls back for missing products instead of guessing from generic business text', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'Do you sell laptops?',
+      rows: [
+        { id: 'hosting', source_id: 'source-1', source, chunk_text: 'We offer managed cloud hosting, support, and migration services for businesses.' },
+        { id: 'pricing', source_id: 'source-1', source, chunk_text: 'Business plan price is $20/month and includes email support.' },
+      ],
+    })
+
+    expect(result.fallbackReason).toBe('no_relevant_knowledge')
+    expect(result.evidence).toHaveLength(0)
+  })
+
+  it('uses exact and keyword retrieval when embeddings are unavailable', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'What is the Alpha Care package price?',
+      rows: [
+        { id: 'other', source_id: 'source-1', source, chunk_text: 'Beta Care package price is $50/month.' },
+        { id: 'alpha', source_id: 'source-1', source, chunk_text: 'Alpha Care package price is $25/month and includes chat support.' },
+      ],
+    })
+
+    expect(result.evidence[0]?.id).toBe('alpha')
+    expect(result.chunks.join('\n')).toContain('$25/month')
+  })
+
   it('routes derived numeric questions through calculation results and falls back on missing facts', () => {
     const computed = hybridRetrieveFromRows({
       question: 'Yearly price has 15% discount, what is monthly?',

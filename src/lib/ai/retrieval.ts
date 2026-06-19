@@ -19,9 +19,23 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 export interface RetrievalQuestionAnalysis {
   readonly question: string
   readonly terms: readonly string[]
+  readonly entityTerms: readonly string[]
+  readonly entityPhrases: readonly string[]
+  readonly queryVariants: readonly string[]
   readonly exactSignals: readonly string[]
   readonly numbers: readonly number[]
+  readonly intents: RetrievalIntents
   readonly calculationIntent: ReturnType<typeof detectCalculationIntent>
+}
+
+export interface RetrievalIntents {
+  readonly pricing: boolean
+  readonly policy: boolean
+  readonly hours: boolean
+  readonly contact: boolean
+  readonly location: boolean
+  readonly faq: boolean
+  readonly productOrService: boolean
 }
 
 export interface RetrievalCandidate {
@@ -37,10 +51,18 @@ export interface RetrievalCandidate {
   readonly structuredFacts: Record<string, unknown> | null
   readonly exactScore: number
   readonly keywordScore: number
+  readonly entityScore: number
+  readonly phraseScore: number
+  readonly headingScore: number
+  readonly answerScore: number
+  readonly proximityScore: number
+  readonly neighborScore: number
+  readonly noisePenalty: number
   readonly vectorScore: number
   readonly rrfScore: number
   readonly finalScore: number
   readonly conflictPenalty: number
+  readonly reasons: readonly string[]
 }
 
 export interface HybridRetrievalResult {
@@ -51,7 +73,19 @@ export interface HybridRetrievalResult {
   readonly fallbackReason: string | null
   readonly debug: {
     readonly formula: 'rrf'
+    readonly activeChunkCount: number
+    readonly exactCandidatesCount: number
+    readonly keywordCandidatesCount: number
+    readonly vectorCandidatesCount: number
+    readonly answerBearingCandidatesCount: number
     readonly selectedChunkIds: readonly string[]
+    readonly selectedEvidence: ReadonlyArray<{
+      readonly id: string
+      readonly sourceTitle: string | null
+      readonly sourceUrl: string | null
+      readonly finalScore: number
+      readonly reasons: readonly string[]
+    }>
     readonly calculationInvoked: boolean
   }
 }
@@ -78,15 +112,24 @@ interface KnowledgeChunkRow {
 const MAX_EVIDENCE = 6
 const RRF_K = 60
 const MIN_EVIDENCE_SCORE = 0.015
+const MIN_ROBUST_SCORE = 8
 
 export function analyzeRetrievalQuestion(question: string): RetrievalQuestionAnalysis {
   const normalized = question.trim()
   const exactSignals = extractExactSignals(normalized)
+  const terms = tokenize(normalized)
+  const intents = detectRetrievalIntents(normalized)
+  const entityTerms = extractEntityTerms(normalized, terms, intents)
+  const entityPhrases = extractEntityPhrases(entityTerms)
   return {
     question: normalized,
-    terms: tokenize(normalized),
+    terms,
+    entityTerms,
+    entityPhrases,
+    queryVariants: buildQueryVariants(normalized, terms, entityTerms, entityPhrases, intents),
     exactSignals,
     numbers: [...normalized.matchAll(/\b\d+(?:[.,]\d+)?\b/g)].map((match) => Number(match[0].replace(',', '.'))),
+    intents,
     calculationIntent: detectCalculationIntent(normalized),
   }
 }
@@ -118,10 +161,12 @@ export function hybridRetrieveFromRows(args: {
 }): HybridRetrievalResult {
   const analysis = analyzeRetrievalQuestion(args.question)
   const activeRows = args.rows.filter((row) => row.chunk_text && row.source?.status !== 'archived')
-  const scored = activeRows.map((row, index) => scoreCandidate(row, index, analysis))
+  const baseScored = activeRows.map((row, index) => scoreCandidate(row, index, analysis))
+  const scored = applyNeighborExpansion(baseScored)
   const exactRanked = rankBy(scored, (item) => item.exactScore)
   const keywordRanked = rankBy(scored, (item) => item.keywordScore)
   const vectorRanked = rankBy(scored, (item) => item.vectorScore)
+  const answerRanked = rankBy(scored, (item) => item.answerScore + item.proximityScore + item.headingScore + item.neighborScore)
   const conflictGroups = detectCandidateConflicts(scored)
 
   const fused = scored
@@ -129,16 +174,34 @@ export function hybridRetrieveFromRows(args: {
       const rrfScore =
         reciprocalRank(exactRanked, candidate.id) +
         reciprocalRank(keywordRanked, candidate.id) +
-        reciprocalRank(vectorRanked, candidate.id)
-      const conflictPenalty = conflictGroups.has(candidate.id) ? 1 : 0
+        reciprocalRank(vectorRanked, candidate.id) +
+        reciprocalRank(answerRanked, candidate.id)
+      const conflictPenalty = conflictGroups.has(candidate.id) ? 1000 : 0
+      const robustScore = candidate.exactScore +
+        candidate.keywordScore +
+        candidate.entityScore +
+        candidate.phraseScore +
+        candidate.headingScore +
+        candidate.answerScore +
+        candidate.proximityScore +
+        candidate.neighborScore +
+        candidate.vectorScore -
+        candidate.noisePenalty
+      const missingEntityPenalty = shouldRequireEntityMatch(analysis)
+        ? Math.max(0, analysis.entityTerms.length - countMatchedEntityTerms(candidate.searchText, analysis.entityTerms)) * 12
+        : 0
       return {
         ...candidate,
         rrfScore,
         conflictPenalty,
-        finalScore: Math.max(0, rrfScore - conflictPenalty),
+        finalScore: Math.max(0, robustScore + rrfScore - conflictPenalty - missingEntityPenalty),
       }
     })
-    .filter((candidate) => candidate.finalScore >= MIN_EVIDENCE_SCORE)
+    .filter((candidate) =>
+      candidate.conflictPenalty === 0 &&
+      candidateHasRequiredEntity(candidate, analysis) &&
+      (candidate.finalScore >= MIN_ROBUST_SCORE || (!shouldRequireEntityMatch(analysis) && candidate.rrfScore >= MIN_EVIDENCE_SCORE)),
+    )
     .sort((left, right) => right.finalScore - left.finalScore)
     .slice(0, args.limit ?? MAX_EVIDENCE)
 
@@ -163,7 +226,19 @@ export function hybridRetrieveFromRows(args: {
     fallbackReason,
     debug: {
       formula: 'rrf',
+      activeChunkCount: activeRows.length,
+      exactCandidatesCount: exactRanked.length,
+      keywordCandidatesCount: keywordRanked.length,
+      vectorCandidatesCount: vectorRanked.length,
+      answerBearingCandidatesCount: scored.filter((candidate) => candidate.answerScore > 0).length,
       selectedChunkIds: fused.map((item) => item.id),
+      selectedEvidence: fused.map((item) => ({
+        id: item.id,
+        sourceTitle: item.sourceTitle,
+        sourceUrl: item.sourceUrl,
+        finalScore: item.finalScore,
+        reasons: item.reasons,
+      })),
       calculationInvoked: analysis.calculationIntent.hasIntent,
     },
   }
@@ -252,14 +327,38 @@ async function fetchRpcMatches(
 }
 
 function scoreCandidate(row: KnowledgeChunkRow, index: number, analysis: RetrievalQuestionAnalysis): RetrievalCandidate {
-  const text = row.search_text || row.chunk_text
+  const metadataText = [
+    row.source?.title,
+    row.source_url ?? readMetadataString(row.metadata, 'source_url'),
+    row.heading_path ?? readMetadataString(row.metadata, 'heading_path'),
+  ].filter(Boolean).join('\n')
+  const text = [metadataText, row.search_text || row.chunk_text].filter(Boolean).join('\n')
   const haystack = text.toLowerCase()
+  const headingHaystack = metadataText.toLowerCase()
   const exactScore = analysis.exactSignals.reduce((score, signal) => {
     const normalized = signal.toLowerCase()
     return score + (haystack.includes(normalized) ? 10 : 0)
   }, 0)
   const keywordScore = analysis.terms.reduce((score, term) => score + countOccurrences(haystack, term), 0)
+  const entityScore = scoreEntityTerms(haystack, analysis.entityTerms)
+  const phraseScore = scorePhrases(haystack, [...analysis.entityPhrases, ...analysis.queryVariants])
+  const headingScore = scoreHeadingAndSource(headingHaystack, analysis)
+  const answerScore = scoreAnswerBearingEvidence(text, analysis)
+  const proximityScore = scoreEntityAnswerProximity(text, analysis, answerScore)
+  const noisePenalty = scoreNoisePenalty(text, analysis)
   const vectorScore = semanticSimilarityHeuristic(analysis.question, text)
+  const reasons = buildCandidateReasons({
+    exactScore,
+    keywordScore,
+    entityScore,
+    phraseScore,
+    headingScore,
+    answerScore,
+    proximityScore,
+    neighborScore: 0,
+    vectorScore,
+    noisePenalty,
+  })
   return {
     id: row.id ?? `${row.source_id ?? 'chunk'}:${index}`,
     sourceId: row.source_id ?? null,
@@ -269,14 +368,22 @@ function scoreCandidate(row: KnowledgeChunkRow, index: number, analysis: Retriev
     searchText: text,
     sourceUrl: row.source_url ?? readMetadataString(row.metadata, 'source_url'),
     headingPath: row.heading_path ?? readMetadataString(row.metadata, 'heading_path'),
-    chunkIndex: row.chunk_index ?? index,
+    chunkIndex: row.chunk_index ?? null,
     structuredFacts: row.structured_facts ?? (isRecord(row.metadata?.structured_facts) ? row.metadata.structured_facts : null),
     exactScore,
     keywordScore,
+    entityScore,
+    phraseScore,
+    headingScore,
+    answerScore,
+    proximityScore,
+    neighborScore: 0,
+    noisePenalty,
     vectorScore,
     rrfScore: 0,
     finalScore: 0,
     conflictPenalty: 0,
+    reasons,
   }
 }
 
@@ -303,6 +410,265 @@ function semanticSimilarityHeuristic(question: string, text: string): number {
 function includesSemanticSignal(value: string, signal: string): boolean {
   if (signal.includes(' ')) return value.includes(signal)
   return new RegExp(`\\b${escapeRegex(signal)}\\b`, 'i').test(value)
+}
+
+function detectRetrievalIntents(question: string): RetrievalIntents {
+  const normalized = question.toLowerCase()
+  return {
+    pricing: /\b(price|pricing|cost|fee|rate|charge|charges|how much|monthly|yearly|plan|package)\b/.test(normalized),
+    policy: /\b(refund|return|exchange|cancel|cancellation|money back|terms?|policy|warranty)\b/.test(normalized),
+    hours: /\b(hours?|open|close|closed|closing|timing|schedule|when are you open)\b/.test(normalized),
+    contact: /\b(contact|support|email|phone|call|whatsapp|help desk|ticket)\b/.test(normalized),
+    location: /\b(location|address|where|office|branch|map|city|country)\b/.test(normalized),
+    faq: /\b(faq|question|help|how do i|can i|do you|does it|is there)\b/.test(normalized),
+    productOrService: /\b(product|service|plan|package|menu|item|course|treatment|appointment|booking|available|sell|offer|include|includes|feature|spec)\b/.test(normalized),
+  }
+}
+
+function extractEntityTerms(question: string, terms: readonly string[], intents: RetrievalIntents): string[] {
+  const generic = new Set([
+    'price', 'pricing', 'cost', 'fee', 'rate', 'charge', 'charges', 'monthly', 'yearly',
+    'plan', 'plans', 'package', 'packages', 'product', 'products', 'service', 'services',
+    'menu', 'item', 'items', 'course', 'courses', 'treatment', 'appointment', 'booking',
+    'available', 'sell', 'sells', 'offer', 'offers', 'include', 'includes', 'feature',
+    'features', 'spec', 'specs', 'refund', 'return', 'exchange', 'cancel', 'cancellation',
+    'money', 'back', 'policy', 'terms', 'hours', 'open', 'close', 'closed', 'closing',
+    'timing', 'schedule', 'contact', 'support', 'email', 'phone', 'call', 'help', 'desk',
+    'ticket', 'location', 'located', 'address', 'where', 'office', 'branch', 'city', 'country',
+    'faq', 'question', 'questions', 'much',
+  ])
+  const entities = new Set<string>()
+  for (const term of terms) {
+    if (!generic.has(term)) entities.add(term)
+  }
+  for (const match of question.matchAll(/\b\d+(?:[.,]\d+)?\s?(?:gb|tb|mb|kb|cores?|cpu|ram|kg|g|mg|ml|l|hours?|hrs?|days?|weeks?|months?|years?|people|persons?|servings?|sq\.?\s?ft|sqm)\b/gi)) {
+    entities.add(match[0].toLowerCase().replace(/\s+/g, ''))
+  }
+  const hasSpecificIntent = intents.pricing || intents.policy || intents.hours || intents.contact || intents.location || intents.faq || intents.productOrService
+  if (!hasSpecificIntent && entities.size === 0) {
+    for (const term of terms.slice(0, 3)) entities.add(term)
+  }
+  return [...entities]
+}
+
+function extractEntityPhrases(entityTerms: readonly string[]): string[] {
+  const phrases = new Set<string>()
+  for (let index = 0; index < entityTerms.length - 1; index += 1) {
+    phrases.add(`${entityTerms[index]} ${entityTerms[index + 1]}`)
+  }
+  return [...phrases]
+}
+
+function buildQueryVariants(
+  question: string,
+  terms: readonly string[],
+  entityTerms: readonly string[],
+  entityPhrases: readonly string[],
+  intents: RetrievalIntents,
+): string[] {
+  const variants = new Set<string>(entityPhrases)
+  const synonymGroups = [
+    intents.pricing ? ['price', 'cost', 'fee', 'rate', 'pricing'] : [],
+    intents.policy ? ['refund', 'return', 'money back', 'cancellation', 'policy'] : [],
+    intents.hours ? ['hours', 'open', 'close', 'timing', 'business hours'] : [],
+    intents.location ? ['location', 'address', 'office', 'branch'] : [],
+    intents.contact ? ['support', 'contact', 'email', 'phone', 'help'] : [],
+  ].filter((group) => group.length > 0)
+
+  for (const entity of entityTerms) {
+    variants.add(entity)
+    if (intents.pricing) {
+      variants.add(`${entity} price`)
+      variants.add(`${entity} pricing`)
+      variants.add(`${entity} plan`)
+    }
+    for (const group of synonymGroups) {
+      for (const synonym of group) variants.add(`${entity} ${synonym}`)
+    }
+  }
+  for (const phrase of entityPhrases) {
+    if (intents.pricing) variants.add(`${phrase} price`)
+    for (const group of synonymGroups) {
+      for (const synonym of group) variants.add(`${phrase} ${synonym}`)
+    }
+  }
+  for (const term of terms) {
+    for (const group of synonymGroups) {
+      if (group.includes(term)) group.forEach((synonym) => variants.add(synonym))
+    }
+  }
+  variants.add(question.toLowerCase())
+  return [...variants].filter((variant) => variant.length >= 3).slice(0, 40)
+}
+
+function scoreEntityTerms(haystack: string, entityTerms: readonly string[]): number {
+  if (entityTerms.length === 0) return 0
+  let score = 0
+  const compactHaystack = haystack.replace(/\s+/g, '')
+  for (const entity of entityTerms) {
+    const compactEntity = entity.replace(/\s+/g, '')
+    if (haystack.includes(entity)) score += 8
+    else if (compactEntity.length >= 2 && compactHaystack.includes(compactEntity)) score += 8
+  }
+  if (entityTerms.length > 1 && score >= entityTerms.length * 8) score += 10
+  return score
+}
+
+function scorePhrases(haystack: string, phrases: readonly string[]): number {
+  let score = 0
+  for (const phrase of phrases) {
+    if (phrase.length >= 4 && haystack.includes(phrase.toLowerCase())) score += phrase.split(/\s+/).length >= 2 ? 12 : 4
+  }
+  return Math.min(score, 40)
+}
+
+function scoreHeadingAndSource(headingHaystack: string, analysis: RetrievalQuestionAnalysis): number {
+  if (!headingHaystack) return 0
+  let score = 0
+  for (const entity of analysis.entityTerms) {
+    if (headingHaystack.includes(entity)) score += 10
+  }
+  for (const phrase of analysis.entityPhrases) {
+    if (headingHaystack.includes(phrase)) score += 12
+  }
+  for (const term of analysis.terms) {
+    if (headingHaystack.includes(term)) score += 2
+  }
+  return Math.min(score, 35)
+}
+
+function scoreAnswerBearingEvidence(text: string, analysis: RetrievalQuestionAnalysis): number {
+  const normalized = text.toLowerCase()
+  let score = 0
+  if (analysis.intents.pricing && containsPriceFact(text)) score += 20
+  if (analysis.intents.hours && /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|am|pm|\d{1,2}:\d{2}|open|close|closed|hours?)\b/i.test(text)) score += 18
+  if (analysis.intents.contact && /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\+?\d[\d\s().-]{7,}\d|mailto:|tel:|support|contact)/i.test(text)) score += 18
+  if (analysis.intents.location && /\b(address|location|office|branch|street|road|city|country|map)\b/i.test(text)) score += 16
+  if (analysis.intents.policy && /\b(refund|return|exchange|cancel|cancellation|money back|terms|policy|warranty)\b/i.test(text)) score += 18
+  if (analysis.intents.productOrService && /\b(product|service|plan|package|menu|course|treatment|feature|spec|storage|ram|cpu|duration|includes?)\b/i.test(text)) score += 10
+  if (analysis.intents.faq && /\b(faq|question|answer|yes|no|can|do you|does)\b/i.test(normalized)) score += 6
+  return score
+}
+
+function scoreEntityAnswerProximity(text: string, analysis: RetrievalQuestionAnalysis, answerScore: number): number {
+  if (answerScore <= 0 || analysis.entityTerms.length === 0) return 0
+  const normalized = text.toLowerCase()
+  const answerIndexes = findAnswerFactIndexes(normalized, analysis)
+  if (answerIndexes.length === 0) return 0
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const entity of analysis.entityTerms) {
+    const entityIndex = normalized.indexOf(entity)
+    if (entityIndex === -1) continue
+    for (const answerIndex of answerIndexes) {
+      bestDistance = Math.min(bestDistance, Math.abs(entityIndex - answerIndex))
+    }
+  }
+  if (!Number.isFinite(bestDistance)) return 0
+  if (bestDistance <= 180) return 20
+  if (bestDistance <= 500) return 12
+  if (bestDistance <= 1000) return 6
+  return 0
+}
+
+function findAnswerFactIndexes(text: string, analysis: RetrievalQuestionAnalysis): number[] {
+  const patterns: RegExp[] = []
+  if (analysis.intents.pricing) patterns.push(/(?:\$|rs\.?|pkr|usd|eur|gbp)?\s*\d+(?:[.,]\d+)?\s*(?:\/?\s*(?:mo|month|monthly|year|yearly|annual))?/gi)
+  if (analysis.intents.hours) patterns.push(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}:\d{2}|am|pm|open|close|closed)\b/gi)
+  if (analysis.intents.contact) patterns.push(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\+?\d[\d\s().-]{7,}\d|mailto:|tel:/gi)
+  if (analysis.intents.policy) patterns.push(/\b(refund|return|exchange|cancel|cancellation|money back|terms|policy)\b/gi)
+  if (analysis.intents.location) patterns.push(/\b(address|location|office|branch|street|road|city|country)\b/gi)
+  return patterns.flatMap((pattern) => [...text.matchAll(pattern)].map((match) => match.index ?? 0))
+}
+
+function scoreNoisePenalty(text: string, analysis: RetrievalQuestionAnalysis): number {
+  let penalty = 0
+  const urlCount = (text.match(/https?:\/\//gi) ?? []).length
+  if (urlCount >= 10) penalty += Math.min(12, urlCount)
+  const imageCount = (text.match(/!\[/g) ?? []).length
+  if (imageCount >= 3) penalty += Math.min(10, imageCount)
+  if (analysis.entityTerms.length > 0 && scoreEntityTerms(text.toLowerCase(), analysis.entityTerms) === 0) penalty += 8
+  return penalty
+}
+
+function applyNeighborExpansion(candidates: readonly RetrievalCandidate[]): RetrievalCandidate[] {
+  const seeds = candidates.filter((candidate) =>
+    candidate.entityScore + candidate.phraseScore + candidate.headingScore >= 8 ||
+    (candidate.answerScore > 0 && candidate.keywordScore > 0),
+  )
+  return candidates.map((candidate) => {
+    let neighborScore = 0
+    const neighborReasons = new Set(candidate.reasons)
+    for (const seed of seeds) {
+      if (!candidate.sourceId || candidate.sourceId !== seed.sourceId || candidate.id === seed.id) continue
+      if (candidate.chunkIndex === null || seed.chunkIndex === null) continue
+      const distance = Math.abs(candidate.chunkIndex - seed.chunkIndex)
+      if (distance > 1) continue
+      if (seed.entityScore + seed.phraseScore + seed.headingScore > 0 && candidate.answerScore > 0) {
+        neighborScore = Math.max(neighborScore, 14)
+        neighborReasons.add('neighbor_answer_fact')
+      }
+      if (seed.answerScore > 0 && candidate.entityScore + candidate.phraseScore + candidate.headingScore > 0) {
+        neighborScore = Math.max(neighborScore, 10)
+        neighborReasons.add('neighbor_entity_context')
+      }
+    }
+    if (neighborScore === candidate.neighborScore) return candidate
+    return {
+      ...candidate,
+      neighborScore,
+      reasons: [...neighborReasons],
+    }
+  })
+}
+
+function shouldRequireEntityMatch(analysis: RetrievalQuestionAnalysis): boolean {
+  return analysis.entityTerms.length > 0 && (analysis.intents.pricing || analysis.intents.productOrService || analysis.intents.contact || analysis.intents.location)
+}
+
+function candidateHasRequiredEntity(candidate: RetrievalCandidate, analysis: RetrievalQuestionAnalysis): boolean {
+  if (!shouldRequireEntityMatch(analysis)) return true
+  if (candidate.neighborScore > 0) return true
+  if (candidate.headingScore > 0 || candidate.phraseScore > 0) return true
+  return countMatchedEntityTerms(candidate.searchText, analysis.entityTerms) >= Math.max(1, Math.ceil(analysis.entityTerms.length * 0.6))
+}
+
+function countMatchedEntityTerms(text: string, entityTerms: readonly string[]): number {
+  const haystack = text.toLowerCase()
+  const compactHaystack = haystack.replace(/\s+/g, '')
+  return entityTerms.filter((entity) => {
+    const normalized = entity.toLowerCase()
+    return haystack.includes(normalized) || compactHaystack.includes(normalized.replace(/\s+/g, ''))
+  }).length
+}
+
+function buildCandidateReasons(scores: {
+  readonly exactScore: number
+  readonly keywordScore: number
+  readonly entityScore: number
+  readonly phraseScore: number
+  readonly headingScore: number
+  readonly answerScore: number
+  readonly proximityScore: number
+  readonly neighborScore: number
+  readonly vectorScore: number
+  readonly noisePenalty: number
+}): string[] {
+  const reasons: string[] = []
+  if (scores.exactScore > 0) reasons.push('exact_signal')
+  if (scores.keywordScore > 0) reasons.push('keyword_match')
+  if (scores.entityScore > 0) reasons.push('entity_match')
+  if (scores.phraseScore > 0) reasons.push('phrase_or_variant_match')
+  if (scores.headingScore > 0) reasons.push('heading_or_source_match')
+  if (scores.answerScore > 0) reasons.push('answer_bearing_fact')
+  if (scores.proximityScore > 0) reasons.push('entity_fact_proximity')
+  if (scores.neighborScore > 0) reasons.push('neighbor_expansion')
+  if (scores.vectorScore > 0) reasons.push('semantic_match')
+  if (scores.noisePenalty > 0) reasons.push('noise_penalty')
+  return reasons
+}
+
+function containsPriceFact(text: string): boolean {
+  return /(?:\$|rs\.?|pkr|usd|eur|gbp)\s*\d+(?:[.,]\d+)?|\bprice\s*:\s*\d+(?:[.,]\d+)?|\b\d+(?:[.,]\d+)?\s*\/\s*(?:mo|month|monthly|year|yearly|annual)\b|\b\d+(?:[.,]\d+)?\s*(?:mo|month|monthly|year|yearly|annual)\b/i.test(text)
 }
 
 function calculateFromEvidence(
@@ -436,6 +802,7 @@ function normalizeConflictLabel(label: string | null): string | null {
     .replace(/\b\d+(?:[.,]\d+)?\s*(?:%|gb|tb|mb|core|cpu|ram|nvme|storage|month|monthly|year|yearly|mo)\b/gi, ' ')
     .replace(/[^a-z0-9\s-]/g, ' ')
     .replace(/\s+/g, ' ')
+    .replace(/^[-\s]+|[-\s]+$/g, '')
     .trim()
 
   if (!/[a-z]/.test(normalized)) return null
