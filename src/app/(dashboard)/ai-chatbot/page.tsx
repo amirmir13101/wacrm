@@ -5,8 +5,10 @@ import { toast } from "sonner"
 import {
   Bot,
   BookOpen,
+  CalendarClock,
   CheckCircle2,
   Globe2,
+  History,
   KeyRound,
   Loader2,
   MessageCircle,
@@ -86,6 +88,41 @@ interface KnowledgeGapsState {
   gaps: KnowledgeGap[]
   total: number
   enabled: boolean
+}
+
+type ScrapeFrequency = "daily" | "weekly" | "monthly" | "manual"
+
+interface ScrapeSchedule {
+  id: string
+  source_id: string | null
+  url: string
+  frequency: ScrapeFrequency
+  day_of_week: number | null
+  hour_utc: number
+  is_active: boolean
+  auto_publish: boolean
+  page_limit: number
+  last_run_at: string | null
+  last_run_status: string | null
+  last_run_pages_found: number | null
+  last_run_pages_imported: number | null
+  last_run_changes_detected: boolean | null
+  next_run_at: string | null
+}
+
+interface ImportHistoryRow {
+  id: string
+  url: string
+  trigger: "manual" | "scheduled" | "api"
+  status: string
+  pages_found: number
+  pages_imported: number
+  changes_detected: boolean
+  change_summary: string | null
+  credits_used: number | null
+  error_message: string | null
+  created_at: string
+  import_job_id: string | null
 }
 
 interface FirecrawlSettings {
@@ -265,6 +302,18 @@ export default function AiChatbotPage() {
   const [rechunkingSourceId, setRechunkingSourceId] = useState<string | null>(null)
   const [knowledgeGaps, setKnowledgeGaps] = useState<KnowledgeGapsState | null>(null)
   const [showAllKnowledgeGaps, setShowAllKnowledgeGaps] = useState(false)
+  const [scrapeSchedules, setScrapeSchedules] = useState<ScrapeSchedule[]>([])
+  const [importHistory, setImportHistory] = useState<ImportHistoryRow[]>([])
+  const [importHistoryTotal, setImportHistoryTotal] = useState(0)
+  const [historyLimit, setHistoryLimit] = useState(20)
+  const [showScheduleForm, setShowScheduleForm] = useState(false)
+  const [savingSchedule, setSavingSchedule] = useState(false)
+  const [scheduleUrl, setScheduleUrl] = useState("")
+  const [scheduleFrequency, setScheduleFrequency] = useState<ScrapeFrequency>("weekly")
+  const [scheduleDay, setScheduleDay] = useState(1)
+  const [scheduleHour, setScheduleHour] = useState(3)
+  const [schedulePageLimit, setSchedulePageLimit] = useState(50)
+  const [scheduleAutoPublish, setScheduleAutoPublish] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [draftSettings, setDraftSettings] = useState<ChatbotSettings | null>(null)
@@ -303,11 +352,118 @@ export default function AiChatbotPage() {
       setProviderApiKey("")
       setFirecrawlApiKey("")
       void loadKnowledgeGaps()
+      void loadScheduleHistory()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load AI Chatbot")
     } finally {
       setLoading(false)
     }
+  }
+
+  async function loadScheduleHistory(limit = historyLimit) {
+    try {
+      const [schedulesResponse, historyResponse] = await Promise.all([
+        fetch("/api/ai-chatbot/schedules"),
+        fetch(`/api/ai-chatbot/import-history?limit=${limit}`),
+      ])
+      const schedulesBody = await schedulesResponse.json().catch(() => ({}))
+      const historyBody = await historyResponse.json().catch(() => ({}))
+      if (schedulesResponse.ok) setScrapeSchedules(schedulesBody.schedules ?? [])
+      if (historyResponse.ok) {
+        setImportHistory(historyBody.history ?? [])
+        setImportHistoryTotal(historyBody.total ?? 0)
+      }
+    } catch {
+      // The main AI Chatbot page remains usable if Phase 5 tables are not enabled yet.
+    }
+  }
+
+  async function saveSchedule() {
+    setSavingSchedule(true)
+    try {
+      const res = await fetch("/api/ai-chatbot/schedules", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          url: scheduleUrl,
+          frequency: scheduleFrequency,
+          day_of_week: scheduleFrequency === "weekly" ? scheduleDay : undefined,
+          hour_utc: scheduleHour,
+          auto_publish: scheduleAutoPublish,
+          page_limit: schedulePageLimit,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? "Failed to save schedule")
+      toast.success("Re-scrape schedule saved")
+      setShowScheduleForm(false)
+      setScheduleUrl("")
+      await loadScheduleHistory()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save schedule")
+    } finally {
+      setSavingSchedule(false)
+    }
+  }
+
+  async function updateSchedule(schedule: ScrapeSchedule, changes: Record<string, unknown>) {
+    const res = await fetch(`/api/ai-chatbot/schedules/${schedule.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(changes),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      toast.error(body?.error ?? "Failed to update schedule")
+      return
+    }
+    toast.success("Schedule updated")
+    await loadScheduleHistory()
+  }
+
+  async function deleteSchedule(schedule: ScrapeSchedule) {
+    if (!window.confirm(`Deactivate the schedule for "${schedule.url}"? Import history will be kept.`)) return
+    const res = await fetch(`/api/ai-chatbot/schedules/${schedule.id}`, { method: "DELETE" })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      toast.error(body?.error ?? "Failed to deactivate schedule")
+      return
+    }
+    toast.success("Schedule deactivated")
+    await loadScheduleHistory()
+  }
+
+  async function editSchedule(schedule: ScrapeSchedule) {
+    const frequency = window.prompt("Frequency: daily, weekly, monthly, or manual", schedule.frequency)
+    if (!frequency || !["daily", "weekly", "monthly", "manual"].includes(frequency)) return
+    const hour = window.prompt("UTC run hour (0-23)", String(schedule.hour_utc))
+    if (hour === null) return
+    const pageLimit = window.prompt("Page limit (1-200)", String(schedule.page_limit))
+    if (pageLimit === null) return
+    await updateSchedule(schedule, {
+      frequency,
+      hour_utc: Number(hour),
+      page_limit: Number(pageLimit),
+      day_of_week: frequency === "weekly" ? schedule.day_of_week ?? 1 : undefined,
+    })
+  }
+
+  async function reviewScheduledDraft(row: ImportHistoryRow) {
+    if (!row.import_job_id) {
+      toast.error("The review draft could not be located.")
+      return
+    }
+    const res = await fetch(`/api/ai-chatbot/website-import/${row.import_job_id}`)
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      toast.error(body?.error ?? "Failed to open import draft")
+      return
+    }
+    const result = body as WebsiteImportResult
+    setWebsiteImportResult(result)
+    setWebsiteDraftTitle(result.job.draft_title ?? "Website knowledge")
+    setWebsiteDraftContent(result.job.draft_content ?? "")
+    window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
   async function loadKnowledgeGaps() {
@@ -347,6 +503,12 @@ export default function AiChatbotPage() {
   }, [])
 
   const knowledgeCount = state?.sources.filter((source) => source.status === "active").length ?? 0
+  const schedulerWarning = scrapeSchedules.some((schedule) =>
+    schedule.is_active &&
+    schedule.frequency !== "manual" &&
+    Boolean(schedule.next_run_at) &&
+    new Date(schedule.next_run_at as string).getTime() < Date.now() - 15 * 60 * 1000,
+  )
   const canManage = Boolean(state?.permissions.canManage)
   const canTurnOnAutoReply = Boolean(
     state?.permissions.canEnableAutoReply &&
@@ -1609,6 +1771,251 @@ export default function AiChatbotPage() {
         )}
       </section>
 
+      <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <CalendarClock className="size-5 text-emerald-300" />
+              <h2 className="text-lg font-bold text-white">Schedule &amp; History</h2>
+            </div>
+            <p className="mt-1 max-w-3xl text-sm text-[#9dbfb5]">
+              Keep website knowledge current with scheduled Firecrawl imports and review every refresh from one timeline.
+            </p>
+          </div>
+          {canManage && (
+            <Button className={primaryActionClass} onClick={() => setShowScheduleForm((value) => !value)}>
+              <Plus className="size-4" />
+              Add Schedule
+            </Button>
+          )}
+        </div>
+
+        {showScheduleForm && (
+          <div className="mt-5 rounded-xl border border-emerald-900 bg-[#07130e]/80 p-4">
+            <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+              <label className="space-y-2 xl:col-span-2">
+                <span className="text-sm font-semibold text-emerald-50">Website URL</span>
+                <input
+                  className="h-11 w-full rounded-lg border border-emerald-800 bg-[#04150f] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                  value={scheduleUrl}
+                  onChange={(event) => setScheduleUrl(event.target.value)}
+                  placeholder="https://example.com"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-emerald-50">Frequency</span>
+                <select
+                  className="h-11 w-full rounded-lg border border-emerald-800 bg-[#04150f] px-3 text-sm text-white"
+                  value={scheduleFrequency}
+                  onChange={(event) => setScheduleFrequency(event.target.value as ScrapeFrequency)}
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="manual">Manual only</option>
+                </select>
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-emerald-50">Page limit</span>
+                <input
+                  className="h-11 w-full rounded-lg border border-emerald-800 bg-[#04150f] px-3 text-sm text-white"
+                  max={200}
+                  min={1}
+                  type="number"
+                  value={schedulePageLimit}
+                  onChange={(event) => setSchedulePageLimit(Number(event.target.value))}
+                />
+              </label>
+              {scheduleFrequency === "weekly" && (
+                <label className="space-y-2">
+                  <span className="text-sm font-semibold text-emerald-50">Day of week</span>
+                  <select
+                    className="h-11 w-full rounded-lg border border-emerald-800 bg-[#04150f] px-3 text-sm text-white"
+                    value={scheduleDay}
+                    onChange={(event) => setScheduleDay(Number(event.target.value))}
+                  >
+                    {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, index) => (
+                      <option key={day} value={index}>{day}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-emerald-50">Run hour (UTC)</span>
+                <select
+                  className="h-11 w-full rounded-lg border border-emerald-800 bg-[#04150f] px-3 text-sm text-white"
+                  value={scheduleHour}
+                  onChange={(event) => setScheduleHour(Number(event.target.value))}
+                >
+                  {Array.from({ length: 24 }, (_, hour) => (
+                    <option key={hour} value={hour}>{`${String(hour).padStart(2, "0")}:00 UTC`}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex items-center gap-3 rounded-lg border border-emerald-900 bg-[#04150f] p-3 xl:col-span-2">
+                <Switch checked={scheduleAutoPublish} onCheckedChange={setScheduleAutoPublish} />
+                <div>
+                  <p className="text-sm font-semibold text-white">Auto-publish changes</p>
+                  <p className="text-xs text-[#9dbfb5]">
+                    Automatically replace published knowledge when changes are detected. Leave off to review changes manually first.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowScheduleForm(false)}>Cancel</Button>
+              <Button
+                className={primaryActionClass}
+                disabled={savingSchedule || !scheduleUrl.trim()}
+                onClick={() => void saveSchedule()}
+              >
+                {savingSchedule && <Loader2 className="size-4 animate-spin" />}
+                Save Schedule
+              </Button>
+            </div>
+          </div>
+        )}
+        {schedulerWarning && (
+          <div className="mt-4 rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-yellow-100">
+            Scheduled imports are not running. Please check your server configuration.
+          </div>
+        )}
+
+        <div className="mt-6">
+          <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-emerald-300">Active schedules</h3>
+          {scrapeSchedules.length === 0 ? (
+            <div className="mt-3 rounded-xl border border-dashed border-emerald-800 p-5 text-sm text-[#9dbfb5]">
+              No re-scrape schedules configured. Add a schedule to keep your knowledge base automatically updated.
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-3 xl:grid-cols-2">
+              {scrapeSchedules.map((schedule) => (
+                <article key={schedule.id} className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-all font-semibold text-white">{schedule.url}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full bg-emerald-950 px-2.5 py-1 text-emerald-200">{schedule.frequency}</span>
+                        <span className="rounded-full bg-emerald-950 px-2.5 py-1 text-emerald-200">
+                          {schedule.auto_publish ? "Auto-publish on" : "Review before publish"}
+                        </span>
+                        <span className={cn("rounded-full px-2.5 py-1", schedule.is_active ? "bg-emerald-950 text-emerald-200" : "bg-yellow-950 text-yellow-200")}>
+                          {schedule.is_active ? "Active" : "Paused"}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      className="text-red-200 hover:text-red-100"
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => void deleteSchedule(schedule)}
+                      title="Deactivate schedule"
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                  <dl className="mt-4 grid gap-2 text-xs text-[#9dbfb5] sm:grid-cols-2">
+                    <div><dt>Next run</dt><dd className="mt-0.5 text-white">{formatScheduleDate(schedule.next_run_at)}</dd></div>
+                    <div><dt>Last run</dt><dd className="mt-0.5 text-white">{formatScheduleDate(schedule.last_run_at)}</dd></div>
+                    <div><dt>Last status</dt><dd className="mt-0.5 text-white">{schedule.last_run_status ?? "Not run yet"}</dd></div>
+                    <div><dt>Last result</dt><dd className="mt-0.5 text-white">{schedule.last_run_pages_imported ?? 0}/{schedule.last_run_pages_found ?? 0} pages</dd></div>
+                  </dl>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      className="h-8 border border-emerald-800 bg-[#09241a] text-xs text-emerald-100"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void editSchedule(schedule)}
+                    >
+                      <Pencil className="size-3.5" />
+                      Edit
+                    </Button>
+                    <Button
+                      className="h-8 border border-emerald-800 bg-[#09241a] text-xs text-emerald-100"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void updateSchedule(schedule, { is_active: !schedule.is_active })}
+                    >
+                      {schedule.is_active ? "Pause" : "Resume"}
+                    </Button>
+                    <Button
+                      className="h-8 border border-emerald-800 bg-[#09241a] text-xs text-emerald-100"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void updateSchedule(schedule, { auto_publish: !schedule.auto_publish })}
+                    >
+                      {schedule.auto_publish ? "Require Review" : "Enable Auto-publish"}
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-7">
+          <div className="flex items-center gap-2">
+            <History className="size-4 text-emerald-300" />
+            <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-emerald-300">Import history</h3>
+          </div>
+          {importHistory.length === 0 ? (
+            <div className="mt-3 rounded-xl border border-dashed border-emerald-800 p-5 text-sm text-[#9dbfb5]">
+              No import history yet. Import a website to get started.
+            </div>
+          ) : (
+            <div className="mt-3 overflow-x-auto rounded-xl border border-emerald-900">
+              <table className="w-full min-w-[920px] text-left text-sm">
+                <thead className="bg-[#07130e] text-xs uppercase tracking-wide text-[#8fb7aa]">
+                  <tr>
+                    <th className="px-4 py-3">Date</th><th className="px-4 py-3">Website</th>
+                    <th className="px-4 py-3">Trigger</th><th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Pages</th><th className="px-4 py-3">Changes</th>
+                    <th className="px-4 py-3">Credits</th><th className="px-4 py-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-emerald-950 bg-[#071b14]">
+                  {importHistory.map((row) => (
+                    <tr key={row.id}>
+                      <td className="px-4 py-3 text-[#b8cfc7]">{new Date(row.created_at).toLocaleString()}</td>
+                      <td className="max-w-xs break-all px-4 py-3 text-white">{row.url}</td>
+                      <td className="px-4 py-3 capitalize text-[#b8cfc7]">{row.trigger}</td>
+                      <td className="px-4 py-3"><span className="rounded-full bg-emerald-950 px-2 py-1 capitalize text-emerald-200">{row.status.replaceAll("_", " ")}</span></td>
+                      <td className="px-4 py-3 text-[#b8cfc7]">{row.pages_imported}/{row.pages_found}</td>
+                      <td className="max-w-sm px-4 py-3 text-[#b8cfc7]">
+                        {row.change_summary ?? (row.changes_detected ? "Changes detected" : "No changes")}
+                        {row.error_message && <p className="mt-1 text-red-200">{row.error_message}</p>}
+                      </td>
+                      <td className="px-4 py-3 text-[#b8cfc7]">{row.credits_used ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        {row.status === "draft_ready" && row.import_job_id && (
+                          <Button className={cn("h-8 text-xs", primaryActionClass)} size="sm" onClick={() => void reviewScheduledDraft(row)}>
+                            Review &amp; Publish
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {importHistory.length < importHistoryTotal && (
+                <div className="border-t border-emerald-950 p-3 text-center">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const next = Math.min(100, historyLimit + 20)
+                      setHistoryLimit(next)
+                      void loadScheduleHistory(next)
+                    }}
+                  >
+                    Load More
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="size-5 text-emerald-300" />
@@ -1873,6 +2280,13 @@ function SummaryMetric({ label, value }: { label: string; value: number | string
       <dd className="mt-1 text-xl font-black text-white">{value}</dd>
     </div>
   )
+}
+
+function formatScheduleDate(value: string | null): string {
+  if (!value) return "Not scheduled"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "Unknown"
+  return `${date.toLocaleString()} (${String(date.getUTCHours()).padStart(2, "0")}:00 UTC)`
 }
 
 function StatusCard({

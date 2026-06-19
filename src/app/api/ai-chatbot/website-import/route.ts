@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { getWorkspaceTrialStatus } from '@/lib/billing/trial'
 import { resolveFirecrawlApiKey, startFirecrawlWebsiteCrawl } from '@/lib/ai/firecrawl'
+import { findWebsiteKnowledgeSourceForUrl } from '@/lib/ai/knowledge'
 import {
   normalizeWebsiteUrl,
 } from '@/lib/ai/website-import'
@@ -112,6 +113,17 @@ export async function POST(request: Request) {
   if (jobError || !job) {
     return NextResponse.json({ error: jobError?.message ?? 'Failed to create import job.' }, { status: 500 })
   }
+  const linkedSourceId = typeof body.source_id === 'string' && body.source_id
+    ? body.source_id
+    : await findWebsiteKnowledgeSourceForUrl({ workspaceId: workspace.workspaceId, url: normalizedUrl, client: admin })
+  await admin.from('ai_import_history').insert({
+    workspace_id: workspace.workspaceId,
+    source_id: linkedSourceId,
+    url: normalizedUrl,
+    trigger: 'manual',
+    status: 'running',
+    firecrawl_job_id: crawlId,
+  })
 
   return NextResponse.json({
     job,

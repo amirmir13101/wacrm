@@ -8,7 +8,8 @@ import {
   refreshFirecrawlAccountUsage,
   resolveFirecrawlApiKey,
 } from '@/lib/ai/firecrawl'
-import { saveKnowledgeSourceWithChunks } from '@/lib/ai/knowledge'
+import { detectChanges } from '@/lib/ai/change-detection'
+import { replaceKnowledgeSourceWithChunks, saveKnowledgeSourceWithChunks } from '@/lib/ai/knowledge'
 import {
   MAX_WEBSITE_DRAFT_CONTENT_LENGTH,
   buildWebsiteImportQualityWarnings,
@@ -115,6 +116,32 @@ export async function GET(
           .single()
         if (updateError || !updatedJob) throw new Error(updateError?.message ?? 'Failed to finalize Firecrawl import.')
         job = updatedJob
+        const { data: history } = await admin
+          .from('ai_import_history')
+          .select('id, source_id')
+          .eq('workspace_id', workspace.workspaceId)
+          .eq('firecrawl_job_id', job.external_crawl_id)
+          .maybeSingle()
+        if (history) {
+          const previous = history.source_id
+            ? await admin.from('ai_knowledge_sources').select('content').eq('id', history.source_id).eq('workspace_id', workspace.workspaceId).maybeSingle()
+            : { data: null }
+          const changes = detectChanges(previous.data?.content ?? null, result.draftContent)
+          await admin.from('ai_import_history').update({
+            status: result.pagesImported > 0 ? 'draft_ready' : 'failed',
+            pages_found: result.pagesFound,
+            pages_imported: result.pagesImported,
+            pages_failed: result.pagesFailed,
+            pages_skipped: result.pagesSkipped,
+            draft_length: result.draftContent.length,
+            changes_detected: changes.hasChanges,
+            change_summary: changes.summary,
+            credits_used: firecrawlStatus.creditsUsed,
+            quality_warnings: result.qualityWarnings,
+            error_message: result.pagesImported > 0 ? null : 'no_useful_content',
+            completed_at: new Date().toISOString(),
+          }).eq('id', history.id)
+        }
         await refreshFirecrawlAccountUsage(workspace.workspaceId, apiKey).catch(() => undefined)
       } else if (firecrawlStatus.status === 'failed' || firecrawlStatus.status === 'cancelled') {
         const { data: failedJob } = await admin
@@ -131,6 +158,12 @@ export async function GET(
           .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
           .single()
         if (failedJob) job = failedJob
+        await admin.from('ai_import_history').update({
+          status: firecrawlStatus.status === 'cancelled' ? 'cancelled' : 'failed',
+          credits_used: firecrawlStatus.creditsUsed,
+          error_message: `firecrawl_${firecrawlStatus.status}`,
+          completed_at: new Date().toISOString(),
+        }).eq('workspace_id', workspace.workspaceId).eq('firecrawl_job_id', job.external_crawl_id)
         await refreshFirecrawlAccountUsage(workspace.workspaceId, apiKey).catch(() => undefined)
       } else {
         const { data: runningJob } = await admin
@@ -210,7 +243,7 @@ export async function PATCH(
   const admin = supabaseAdmin()
   const { data: job, error: jobError } = await admin
     .from('ai_website_import_jobs')
-    .select('id, workspace_id, status, draft_title, draft_content')
+    .select('id, workspace_id, status, draft_title, draft_content, external_crawl_id')
     .eq('id', id)
     .eq('workspace_id', workspace.workspaceId)
     .maybeSingle()
@@ -227,6 +260,10 @@ export async function PATCH(
       .select('id, status')
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    await admin.from('ai_import_history').update({
+      status: 'cancelled',
+      completed_at: new Date().toISOString(),
+    }).eq('workspace_id', workspace.workspaceId).eq('firecrawl_job_id', job.external_crawl_id)
     return NextResponse.json({ job: data })
   }
 
@@ -245,12 +282,26 @@ export async function PATCH(
   }
 
   try {
-    const source = await saveKnowledgeSourceWithChunks({
-      workspaceId: workspace.workspaceId,
-      sourceType: 'website',
-      title,
-      content,
-    })
+    const { data: linkedHistory } = await admin
+      .from('ai_import_history')
+      .select('source_id')
+      .eq('workspace_id', workspace.workspaceId)
+      .eq('firecrawl_job_id', job.external_crawl_id)
+      .maybeSingle()
+    const source = linkedHistory?.source_id
+      ? await replaceKnowledgeSourceWithChunks({
+          workspaceId: workspace.workspaceId,
+          sourceId: linkedHistory.source_id,
+          title,
+          content,
+          client: admin,
+        })
+      : await saveKnowledgeSourceWithChunks({
+          workspaceId: workspace.workspaceId,
+          sourceType: 'website',
+          title,
+          content,
+        })
 
     const { data: updatedJob, error: updateError } = await admin
       .from('ai_website_import_jobs')
@@ -267,6 +318,12 @@ export async function PATCH(
       .single()
 
     if (updateError) throw new Error(updateError.message)
+    await admin.from('ai_import_history').update({
+      source_id: source.id,
+      status: 'published',
+      published_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+    }).eq('workspace_id', workspace.workspaceId).eq('firecrawl_job_id', job.external_crawl_id)
     return NextResponse.json({ source, job: updatedJob })
   } catch (error) {
     return NextResponse.json(
