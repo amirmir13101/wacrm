@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { config as loadEnvironment } from 'dotenv'
+import WebSocket from 'ws'
 
 import { detectChanges } from '@/lib/ai/change-detection'
 import {
@@ -39,6 +40,9 @@ const MAX_CRAWL_POLLS = 720
 
 loadEnvironment({ path: '.env.local', quiet: true })
 loadEnvironment({ path: '.env', quiet: true })
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = WebSocket as unknown as typeof globalThis.WebSocket
+}
 
 export async function recoverStaleRuns(client: SupabaseClient, now = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - 2 * 60 * 60 * 1_000).toISOString()
