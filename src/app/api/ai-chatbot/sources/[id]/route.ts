@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { chunkKnowledgeText, type AiKnowledgeSourceType } from '@/lib/ai/chatbot'
+import { buildChunkSearchMetadata } from '@/lib/ai/retrieval'
 import {
   MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
   MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH,
@@ -79,10 +80,10 @@ export async function PUT(
   if (chunks.length > 0) {
     const { error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
       chunks.map((chunk, index) => ({
+        ...chunkSearchRow(chunk, index, title),
         workspace_id: workspace.workspaceId,
         source_id: id,
         chunk_text: chunk,
-        metadata: { source_type: sourceType, title, index },
       })),
     )
     if (chunksError) {
@@ -130,4 +131,19 @@ function readLimitedText(value: unknown, fallback: string, maxLength: number): s
   const trimmed = value.trim()
   if (!trimmed) return fallback
   return trimmed.slice(0, maxLength)
+}
+
+function chunkSearchRow(chunk: string, index: number, title: string) {
+  const metadata = buildChunkSearchMetadata(chunk, index)
+  return {
+    search_text: chunk,
+    content_hash: metadata.content_hash,
+    token_count: metadata.token_count,
+    source_url: metadata.source_url,
+    heading_path: title,
+    chunk_index: index,
+    structured_facts: metadata.structured_facts,
+    embedding_status: 'pending',
+    metadata: { title, index, ...metadata },
+  }
 }

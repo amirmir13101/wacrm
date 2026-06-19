@@ -1,6 +1,8 @@
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { getWorkspaceTrialStatus } from '@/lib/billing/trial'
 import { resolveAiProviderConfig } from '@/lib/ai/provider'
+import { validateGroundedAnswer } from '@/lib/ai/retrieval'
+import type { CalculationResult } from '@/lib/ai/calculations'
 
 export type AiChatbotTone = 'friendly' | 'professional' | 'concise' | 'supportive'
 export type AiKnowledgeSourceType = 'manual' | 'faq' | 'instructions' | 'website'
@@ -179,6 +181,7 @@ export async function generateChatbotAnswer(args: {
   readonly chunks: readonly string[]
   readonly workspaceId?: string | null
   readonly requireProvider?: boolean
+  readonly calculation?: CalculationResult | null
 }): Promise<AiAnswerResult> {
   const question = args.question.trim()
   const fallback = args.settings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
@@ -228,6 +231,9 @@ export async function generateChatbotAnswer(args: {
               `Tone: ${args.settings.tone}`,
               `Fallback message: ${fallback}`,
               `Workspace knowledge:\n${args.chunks.map((chunk, index) => `[${index + 1}] ${chunk}`).join('\n\n')}`,
+              args.calculation?.status === 'computed'
+                ? `Pre-computed deterministic calculation:\nValue: ${args.calculation.value} ${args.calculation.unit}\nFormula: ${args.calculation.formula}\nUse this result as already computed evidence. Do not recompute it.`
+                : '',
               `Customer question: ${question}`,
             ].join('\n\n'),
           },
@@ -246,7 +252,17 @@ export async function generateChatbotAnswer(args: {
     if (!answer) {
       return { status: 'fallback', answer: fallback, reason: 'empty_ai_response', usedChunks: args.chunks, providerConfigured }
     }
-    return { status: answer === fallback ? 'fallback' : 'answered', answer: trimForWhatsApp(answer), reason: 'answered', usedChunks: args.chunks, providerConfigured }
+    const trimmedAnswer = trimForWhatsApp(answer)
+    const validation = validateGroundedAnswer({
+      answer: trimmedAnswer,
+      evidence: args.chunks,
+      calculation: args.calculation,
+      fallback,
+    })
+    if (!validation.ok) {
+      return { status: 'fallback', answer: validation.answer, reason: validation.reason, usedChunks: args.chunks, providerConfigured }
+    }
+    return { status: trimmedAnswer === fallback ? 'fallback' : 'answered', answer: trimmedAnswer, reason: 'answered', usedChunks: args.chunks, providerConfigured }
   } catch {
     return { status: 'failed', answer: fallback, reason: 'ai_provider_exception', usedChunks: args.chunks, providerConfigured }
   }

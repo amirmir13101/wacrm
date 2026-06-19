@@ -9,6 +9,7 @@ import {
   type AiChatbotTone,
   type AiKnowledgeSourceType,
 } from '@/lib/ai/chatbot'
+import { buildChunkSearchMetadata } from '@/lib/ai/retrieval'
 import {
   MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH,
   MAX_MANUAL_KNOWLEDGE_CONTENT_LENGTH,
@@ -174,7 +175,14 @@ export async function POST(request: Request) {
         workspace_id: workspace.workspaceId,
         source_id: source.id,
         chunk_text: chunk,
-        metadata: { source_type: sourceType, title, index },
+        search_text: chunk,
+        content_hash: buildChunkSearchMetadata(chunk, index).content_hash,
+        token_count: buildChunkSearchMetadata(chunk, index).token_count,
+        heading_path: title,
+        chunk_index: index,
+        structured_facts: buildChunkSearchMetadata(chunk, index).structured_facts,
+        embedding_status: 'pending',
+        metadata: { source_type: sourceType, title, index, ...buildChunkSearchMetadata(chunk, index) },
       })),
     )
     if (chunksError) {

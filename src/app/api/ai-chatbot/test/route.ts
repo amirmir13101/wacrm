@@ -4,10 +4,9 @@ import {
   DEFAULT_AI_CHATBOT_SETTINGS,
   generateChatbotAnswer,
   logAiChatbotEvent,
-  retrieveRelevantChunks,
   type AiChatbotSettings,
-  type AiKnowledgeChunk,
 } from '@/lib/ai/chatbot'
+import { hybridRetrieveKnowledge } from '@/lib/ai/retrieval'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
@@ -30,32 +29,38 @@ export async function POST(request: Request) {
   }
 
   const admin = supabaseAdmin()
-  const [{ data: settings }, { data: chunks }] = await Promise.all([
-    admin
-      .from('ai_chatbot_settings')
-      .select('*')
-      .eq('workspace_id', workspace.workspaceId)
-      .maybeSingle(),
-    admin
-      .from('ai_knowledge_chunks')
-      .select('chunk_text')
-      .eq('workspace_id', workspace.workspaceId),
-  ])
+  const { data: settings } = await admin
+    .from('ai_chatbot_settings')
+    .select('*')
+    .eq('workspace_id', workspace.workspaceId)
+    .maybeSingle()
 
   const effectiveSettings = (settings ?? {
     workspace_id: workspace.workspaceId,
     ...DEFAULT_AI_CHATBOT_SETTINGS,
   }) as AiChatbotSettings
 
-  const relevantChunks = retrieveRelevantChunks(
+  const retrieval = await hybridRetrieveKnowledge({
+    workspaceId: workspace.workspaceId,
     question,
-    (chunks ?? []) as Array<Pick<AiKnowledgeChunk, 'chunk_text'>>,
-  )
+    client: admin,
+  })
+  if (retrieval.fallbackReason) {
+    const fallback = effectiveSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
+    return NextResponse.json({
+      status: 'fallback',
+      answer: fallback,
+      reason: retrieval.fallbackReason,
+      usedChunks: retrieval.chunks,
+      providerConfigured: false,
+    })
+  }
   const answer = await generateChatbotAnswer({
     question,
     settings: effectiveSettings,
-    chunks: relevantChunks,
+    chunks: retrieval.chunks,
     workspaceId: workspace.workspaceId,
+    calculation: retrieval.calculation,
   })
 
   await logAiChatbotEvent({

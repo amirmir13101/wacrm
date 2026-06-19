@@ -6,10 +6,9 @@ import {
   isHumanHandoffRequest,
   isOptOutMessage,
   logAiChatbotEvent,
-  retrieveRelevantChunks,
   type AiChatbotSettings,
-  type AiKnowledgeChunk,
 } from '@/lib/ai/chatbot'
+import { hybridRetrieveKnowledge } from '@/lib/ai/retrieval'
 import {
   AI_HUMAN_REPLY_PAUSE_SECONDS,
   AI_DAILY_REPLY_LIMIT,
@@ -212,21 +211,19 @@ export async function maybeHandleAiAutoReply(args: {
     return
   }
 
-  const { data: chunks, error: chunksError } = await admin
-    .from('ai_knowledge_chunks')
-    .select('chunk_text')
-    .eq('workspace_id', args.workspaceId)
-
-  if (chunksError) {
+  let retrieval: Awaited<ReturnType<typeof hybridRetrieveKnowledge>>
+  try {
+    retrieval = await hybridRetrieveKnowledge({
+      workspaceId: args.workspaceId,
+      question: customerText,
+      client: admin,
+    })
+  } catch {
     await logSkip(args, 'knowledge_lookup_failed')
     return
   }
 
-  const relevantChunks = retrieveRelevantChunks(
-    customerText,
-    (chunks ?? []) as Array<Pick<AiKnowledgeChunk, 'chunk_text'>>,
-  )
-  if (relevantChunks.length === 0) {
+  if (retrieval.fallbackReason || retrieval.chunks.length === 0) {
     const fallbackMessage =
       activeChatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
     await sendConfiguredAiMessage({
@@ -237,9 +234,9 @@ export async function maybeHandleAiAutoReply(args: {
       phone,
       text: fallbackMessage,
       status: 'fallback',
-      reason: 'no_relevant_knowledge',
+      reason: retrieval.fallbackReason ?? 'no_relevant_knowledge',
       controlStatus: activeChatbotSettings.handover_enabled ? 'needs_human' : 'ai_active',
-      controlReason: 'no_relevant_knowledge',
+      controlReason: retrieval.fallbackReason ?? 'no_relevant_knowledge',
       client: admin,
     })
     return
@@ -248,9 +245,10 @@ export async function maybeHandleAiAutoReply(args: {
   const answer = await generateChatbotAnswer({
     question: customerText,
     settings: activeChatbotSettings,
-    chunks: relevantChunks,
+    chunks: retrieval.chunks,
     workspaceId: args.workspaceId,
     requireProvider: true,
+    calculation: retrieval.calculation,
   })
 
   if (answer.status === 'skipped' || answer.status === 'failed' || !answer.answer) {
