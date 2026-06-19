@@ -9,6 +9,34 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 export { chunkTextByCharacter, semanticChunkText } from '@/lib/ai/chunking'
 export type { SemanticChunk, SemanticChunkOptions } from '@/lib/ai/chunking'
 
+export async function findWebsiteKnowledgeSourceForUrl(args: {
+  readonly workspaceId: string
+  readonly url: string
+  readonly client?: SupabaseClient
+}): Promise<string | null> {
+  const admin = args.client ?? supabaseAdmin()
+  const target = new URL(args.url)
+  const { data, error } = await admin
+    .from('ai_knowledge_sources')
+    .select('id, content')
+    .eq('workspace_id', args.workspaceId)
+    .eq('source_type', 'website')
+    .eq('status', 'active')
+  if (error) throw new Error(error.message)
+  for (const source of data ?? []) {
+    const urls = [...source.content.matchAll(/https?:\/\/[^\s)\]>"']+/gi)].map((match) => match[0])
+    if (urls.some((value) => {
+      try {
+        const candidate = new URL(value)
+        return candidate.hostname.replace(/^www\./, '') === target.hostname.replace(/^www\./, '')
+      } catch {
+        return false
+      }
+    })) return source.id
+  }
+  return null
+}
+
 export async function saveKnowledgeSourceWithChunks(args: {
   readonly workspaceId: string
   readonly sourceType: AiKnowledgeSourceType
@@ -46,6 +74,56 @@ export async function saveKnowledgeSourceWithChunks(args: {
     embedNewChunks(args.workspaceId, (insertedChunks ?? []).map((chunk) => chunk.id), admin)
   }
 
+  return source
+}
+
+export async function replaceKnowledgeSourceWithChunks(args: {
+  readonly workspaceId: string
+  readonly sourceId: string
+  readonly title: string
+  readonly content: string
+  readonly client?: SupabaseClient
+}) {
+  const admin = args.client ?? supabaseAdmin()
+  const { data: source, error: sourceError } = await admin
+    .from('ai_knowledge_sources')
+    .update({ title: args.title, content: args.content, status: 'active' })
+    .eq('id', args.sourceId)
+    .eq('workspace_id', args.workspaceId)
+    .select('*')
+    .maybeSingle()
+  if (sourceError || !source) throw new Error(sourceError?.message ?? 'Knowledge source not found.')
+
+  const chunks = semanticChunkText(args.content)
+  const { data: oldChunks, error: oldError } = await admin
+    .from('ai_knowledge_chunks')
+    .select('id')
+    .eq('source_id', args.sourceId)
+    .eq('workspace_id', args.workspaceId)
+  if (oldError) throw new Error(oldError.message)
+  const oldIds = (oldChunks ?? []).map((chunk) => chunk.id)
+  const { data: inserted, error: insertError } = await admin
+    .from('ai_knowledge_chunks')
+    .insert(buildKnowledgeChunkRows({
+      chunks,
+      workspaceId: args.workspaceId,
+      sourceId: args.sourceId,
+      title: args.title,
+      sourceType: 'website',
+    }))
+    .select('id')
+  if (insertError) throw new Error(insertError.message)
+  if (oldIds.length > 0) {
+    const { error: deleteError } = await admin
+      .from('ai_knowledge_chunks')
+      .delete()
+      .eq('workspace_id', args.workspaceId)
+      .eq('source_id', args.sourceId)
+      .in('id', oldIds)
+    if (deleteError) throw new Error(deleteError.message)
+  }
+  const ids = (inserted ?? []).map((chunk) => chunk.id)
+  embedNewChunks(args.workspaceId, ids, admin)
   return source
 }
 

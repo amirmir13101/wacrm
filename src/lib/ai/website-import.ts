@@ -284,7 +284,7 @@ export function normalizeWebsiteUrl(value: string): string {
   if (!['http:', 'https:'].includes(parsed.protocol)) {
     throw new Error('Only HTTP and HTTPS website URLs are supported.')
   }
-  if (!parsed.hostname || parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+  if (!parsed.hostname || isPrivateWebsiteHostname(parsed.hostname)) {
     throw new Error('Enter a public website URL.')
   }
 
@@ -292,6 +292,21 @@ export function normalizeWebsiteUrl(value: string): string {
   parsed.search = ''
   parsed.pathname = normalizePath(parsed.pathname)
   return parsed.toString()
+}
+
+function isPrivateWebsiteHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (normalized === 'localhost' || normalized === '::1' || normalized.endsWith('.local')) return true
+  const ipv4 = normalized.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (!ipv4) return /^(?:fc|fd|fe80):/i.test(normalized)
+  const first = Number(ipv4[1])
+  const second = Number(ipv4[2])
+  return first === 10 ||
+    first === 127 ||
+    first === 0 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
 }
 
 export function isSameOrigin(candidate: string, origin: string): boolean {
