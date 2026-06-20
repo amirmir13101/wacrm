@@ -820,6 +820,14 @@ describe('AI hybrid retrieval', () => {
     expect(facts.prices).not.toContain('3')
   })
 
+  it('does not persist standalone billing durations as pricing offers', () => {
+    const metadata = buildChunkSearchMetadata('Billing cycle options: 1 Year, 2 Years, 3 Years. Choose one during checkout.', 0)
+    const facts = metadata.structured_facts as { pricing_offers?: unknown[]; prices?: string[] }
+
+    expect(facts.pricing_offers ?? []).toHaveLength(0)
+    expect(facts.prices ?? []).toHaveLength(0)
+  })
+
   it('answers Pro Hosting yearly price from the scoped web-hosting offer, not the duration count', () => {
     const rows = buildProductionPricingRows()
 
@@ -991,6 +999,30 @@ function buildProductionPricingRows() {
       chunk_text: '### Enterprise Infrastructure\nCloud Infrastructure Built for Innovation. Startup Friendly Pricing - High-performance Web Hosting, VPS & Dedicated Servers powered by modern hardware. Trusted by many countries. Rs. 12 marketing counter.',
     },
     {
+      id: 'web-hosting-store-noisy',
+      source_id: 'source-1',
+      source: { ...source, title: 'Web Hosting store checkout' },
+      source_url: 'https://www.vpswagon.com/panel/index.php?rp=/store/web-hosting/pro-hosting',
+      heading_path: 'Store > Web Hosting',
+      chunk_text: 'Added to Cart Forex VPS Register a New Domain Transfer in a Domain View Cart Continue - Store Web Hosting Pro billing cycle 1 Year.',
+      structured_facts: {
+        pricing_offers: [
+          {
+            entity: 'Added to Cart Forex VPS Register a New Domain Transfer in a Domain View Cart Continue - Store Web Hosting Pro',
+            entity_name: 'Added to Cart Forex VPS Register a New Domain Transfer in a Domain View Cart Continue - Store Web Hosting Pro',
+            entity_type: 'plan',
+            product_family: 'added cart forex vps register new domain transfer view continue store web hosting',
+            current_price: { amount: 1, currency: 'USD', period: 'yearly', text: '1 Year' },
+            original_price: null,
+            discount_percent: null,
+            stored_period_totals: {},
+            billing_totals: [],
+            source_text: 'Added to Cart Forex VPS Register a New Domain Transfer in a Domain View Cart Continue - Store Web Hosting Pro billing cycle 1 Year.',
+          },
+        ],
+      },
+    },
+    {
       id: 'web-hosting',
       source_id: 'source-1',
       source: { ...source, title: 'Web Hosting pricing' },
@@ -1018,6 +1050,27 @@ function buildProductionPricingRows() {
         'RYZEN CPU 4 Core CPU, 8GB RAM, 60GB NVMe, Free Backup',
         'Starting at: $7.04/mo ~~$8.80~~ 20% OFF',
       ].join('\n'),
+      structured_facts: {
+        pricing_offers: [
+          {
+            entity: 'VPS x8 4 CoreCPU 8GBRAM 60 GBNVME',
+            entity_name: 'VPS x8 4 CoreCPU 8GBRAM 60 GBNVME',
+            entity_type: 'plan',
+            product_family: 'vps corecpu 8gbram gbnvme',
+            variant_specs: { memory_or_storage: '8gbram' },
+            current_price: { amount: 7.04, currency: 'USD', period: null, text: '$7.04' },
+            original_price: { amount: 8.8, currency: 'USD', period: null, text: '$8.80' },
+            discount_percent: 20,
+            stored_period_totals: {},
+            billing_totals: [],
+            source_text: [
+              '### Wagon VPS x8',
+              'RYZEN CPU 4 Core CPU, 8GB RAM, 60GB NVMe, Free Backup',
+              'Starting at: $7.04/mo ~~$8.80~~ 20% OFF',
+            ].join('\n'),
+          },
+        ],
+      },
     },
     {
       id: 'n8n',

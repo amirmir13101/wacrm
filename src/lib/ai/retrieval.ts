@@ -1439,7 +1439,8 @@ function filterSingleEntityPricingEvidence(
   if (candidates.length <= 1 || analysis.comparison.enabled || analysis.entityTerms.length === 0) return [...candidates]
   if (!analysis.intents.pricing && !analysis.intents.productOrService) return [...candidates]
   if (analysis.offerScope.answerMode === 'category_pricing_list' || analysis.offerScope.answerMode === 'comparison') return [...candidates]
-  const target = selectStructuredPricingOffer(analysis, candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate)))
+  const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
+  const target = selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
   if (!target) return [...candidates]
   const filtered = candidates.filter((candidate) => {
     if (candidate.id === target.sourceChunkId) return true
@@ -1748,12 +1749,13 @@ function calculateFromStructuredPricingOffers(
   candidates: readonly RetrievalCandidate[],
 ): CalculationResult | null {
   const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
-  const offer = selectStructuredPricingOffer(analysis, offers)
+  const offer = selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
   if (!offer) return null
   const sourceIds = [offer.sourceChunkId]
   const targetPeriod = analysis.calculationIntent.targetPeriod
   const wantsOriginal = asksForOriginalPrice(analysis.question)
-  const basePrice = wantsOriginal ? offer.original_price ?? offer.current_price : offer.current_price
+  const rawBasePrice = wantsOriginal ? offer.original_price ?? offer.current_price : offer.current_price
+  const basePrice = rawBasePrice ? withInferredStructuredPricePeriod(rawBasePrice, offer) : null
 
   if (analysis.calculationIntent.periodConversion && targetPeriod) {
     const stored = offer.stored_period_totals[targetPeriod]
@@ -1768,10 +1770,11 @@ function calculateFromStructuredPricingOffers(
     if (storedSource?.period) {
       return convertBillingTotal(storedSource.amount, storedSource.period, targetPeriod, sourceIds, storedSource.currency)
     }
-    if (!basePrice && !wantsOriginal && offer.original_price?.period && offer.discount_percent !== null) {
-      const discounted = applyPercentage(offer.original_price.amount, offer.discount_percent, 'discount', sourceIds, offer.original_price.currency)
+    const originalPrice = offer.original_price ? withInferredStructuredPricePeriod(offer.original_price, offer) : null
+    if (!basePrice && !wantsOriginal && originalPrice?.period && offer.discount_percent !== null) {
+      const discounted = applyPercentage(originalPrice.amount, offer.discount_percent, 'discount', sourceIds, originalPrice.currency)
       if (discounted.status !== 'computed' || discounted.value === null) return discounted
-      return convertBillingTotal(discounted.value, offer.original_price.period, targetPeriod, sourceIds, offer.original_price.currency)
+      return convertBillingTotal(discounted.value, originalPrice.period, targetPeriod, sourceIds, originalPrice.currency)
     }
     if (!basePrice?.period) return null
     return convertBillingTotal(basePrice.amount, basePrice.period, targetPeriod, sourceIds, basePrice.currency)
@@ -1795,6 +1798,44 @@ function calculateFromStructuredPricingOffers(
   }
 
   return null
+}
+
+function withInferredStructuredPricePeriod(
+  value: StructuredPriceValue,
+  offer: StructuredPricingOffer,
+): StructuredPriceValue {
+  if (value.period) return value
+  const period = inferStructuredPricePeriod(value, offer)
+  return period ? { ...value, period } : value
+}
+
+function inferStructuredPricePeriod(
+  value: StructuredPriceValue,
+  offer: StructuredPricingOffer,
+): BillingPeriod | null {
+  const evidence = [offer.source_text, offer.source_excerpt].filter(Boolean).join('\n')
+  const amount = roundCalculationNumber(value.amount)
+  const currency = value.currency
+  const matchingMoney = extractMoneyMatches(evidence)
+    .filter((match) =>
+      roundCalculationNumber(match.amount) === amount &&
+      (!currency || !match.currency || match.currency === currency) &&
+      Boolean(match.period),
+    )
+    .sort((left, right) => {
+      const leftTextMatch = value.text && left.text.includes(value.text) ? 1 : 0
+      const rightTextMatch = value.text && right.text.includes(value.text) ? 1 : 0
+      return rightTextMatch - leftTextMatch
+    })[0]
+  if (matchingMoney?.period) return matchingMoney.period
+
+  const amountPattern = escapeRegex(String(value.amount)).replace(/\\\./g, '[.,]')
+  const amountWithOptionalTrailingZero = amountPattern.includes('[.,]')
+    ? amountPattern.replace(/0+$/, '\\d*')
+    : `${amountPattern}(?:[.,]0+)?`
+  const contextPattern = new RegExp(`(?:[$€£]|USD|PKR|EUR|GBP|AED|SAR|Rs\\.?)?\\s*${amountWithOptionalTrailingZero}\\s*(?:/|per\\s+)?\\s*(mo|month|monthly|year|yearly|annual|annually|week|weekly|day|daily|quarter|quarterly)`, 'i')
+  const contextMatch = evidence.match(contextPattern)
+  return normalizePeriod(contextMatch?.[1] ?? '')
 }
 
 function selectBillingTotalForTarget(
@@ -1992,6 +2033,32 @@ function selectStructuredPricingOffer(
   return best.offer
 }
 
+function selectScopedStructuredPricingOfferFallback(
+  analysis: RetrievalQuestionAnalysis,
+  offers: readonly StructuredPricingOffer[],
+): StructuredPricingOffer | null {
+  const scope = analysis.offerScope
+  if (!scope.requestedFamily && scope.requestedVariantSpecs.length === 0) return null
+  const scoped = offers
+    .map((offer) => {
+      const familyScore = scoreOfferFamilyMatch(scope.requestedFamily, offer)
+      const specScore = scoreOfferSpecMatch(scope.requestedVariantSpecs, offer)
+      const haystack = normalizeEntityKey(structuredOfferSearchText(offer))
+      const weakNameMatched = scope.weakPlanNames.length === 0 || scope.weakPlanNames.some((name) => entityContainsTerm(haystack, name))
+      if (scope.requestedFamily && familyScore <= 0) return null
+      if (scope.requestedVariantSpecs.length > 0 && specScore <= 0) return null
+      if (!weakNameMatched) return null
+      const requestedEntityScore = scope.requestedEntity && entityContainsTerm(haystack, normalizeEntityKey(scope.requestedEntity)) ? 30 : 0
+      const periodScore = analysis.calculationIntent.targetPeriod && offerHasBillingForTarget(offer, analysis.calculationIntent.targetPeriod) ? 30 : 0
+      const priceScore = offer.current_price ? 12 : 0
+      const billingScore = Object.keys(offer.stored_period_totals).length * 8 + offer.billing_totals.length * 8
+      return { offer, score: familyScore + specScore + requestedEntityScore + periodScore + priceScore + billingScore + offerCompletenessScore(offer) }
+    })
+    .filter((item): item is { readonly offer: StructuredPricingOffer; readonly score: number } => Boolean(item))
+    .sort((left, right) => right.score - left.score)
+  return scoped[0]?.offer ?? null
+}
+
 function structuredOfferSearchText(offer: StructuredPricingOffer): string {
   return [
     offer.entity,
@@ -2038,6 +2105,8 @@ function specsAreCompatible(requestedSpec: string, offerSpec: string): boolean {
 function offerHasBillingForTarget(offer: StructuredPricingOffer, targetPeriod: BillingPeriod): boolean {
   if (offer.stored_period_totals[targetPeriod]) return true
   return offer.billing_totals.some((total) => billingTotalCanConvertToPeriod(total, targetPeriod))
+    || Boolean(offer.current_price?.period && periodsPerTarget(offer.current_price.period) && periodsPerTarget(targetPeriod))
+    || Boolean(offer.original_price?.period && periodsPerTarget(offer.original_price.period) && periodsPerTarget(targetPeriod))
 }
 
 function offerMatchesRequestedScope(offer: StructuredPricingOffer, scope: OfferQueryScope): boolean {
@@ -2253,6 +2322,8 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
     const before = text.slice(Math.max(0, (match.index ?? 0) - 45), match.index ?? 0)
     const after = text.slice((match.index ?? 0) + match[0].length, (match.index ?? 0) + match[0].length + 55)
     if (!(match[1] || match[3]) && isBillingDurationCountMatch(before, match[0], after)) continue
+    if (!(match[1] || match[3]) && isSpecQuantityMatch(before, match[0], after)) continue
+    if (!(match[1] || match[3]) && !hasExplicitNonCurrencyPriceContext(before, match[0], after)) continue
     const context = text.slice(Math.max(0, match.index - 80), (match.index ?? 0) + match[0].length + 80).toLowerCase()
     const localContext = text.slice(Math.max(0, match.index - 45), (match.index ?? 0) + match[0].length + 35).toLowerCase()
     if (!/(price|cost|fee|rate|plan|package|per|\/|month|year|week|day|\$|rs|pkr|usd|eur|gbp)/i.test(context)) continue
@@ -2411,6 +2482,7 @@ function readStructuredPriceValue(value: unknown): StructuredPriceValue | null {
   const currency = typeof value.currency === 'string' ? value.currency : ''
   const period = typeof value.period === 'string' ? normalizePeriod(value.period) : null
   const text = typeof value.text === 'string' ? value.text : ''
+  if (period && isStandaloneDurationText(text)) return null
   return Number.isFinite(amount) ? { amount, currency, period, text } : null
 }
 
@@ -2702,6 +2774,8 @@ function extractMoneyMatches(text: string): MoneyMatch[] {
     const hasPeriod = Boolean(match[4])
     if (!hasCurrency && !hasPeriod) continue
     if (!hasCurrency && isBillingDurationCountMatch(before, match[0], after)) continue
+    if (!hasCurrency && isSpecQuantityMatch(before, match[0], after)) continue
+    if (!hasCurrency && !hasExplicitNonCurrencyPriceContext(before, match[0], after)) continue
     const amount = Number(match[2]?.replace(',', '.'))
     if (!Number.isFinite(amount)) continue
     matches.push({
@@ -2715,6 +2789,28 @@ function extractMoneyMatches(text: string): MoneyMatch[] {
     })
   }
   return matches
+}
+
+function isStandaloneDurationText(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  return /^\d+(?:[.,]\d+)?\s*(?:days?|weeks?|months?|quarters?|years?|sessions?)$/.test(normalized)
+}
+
+function hasExplicitNonCurrencyPriceContext(before: string, value: string, after: string): boolean {
+  if (/[/$€£]/.test(value)) return true
+  const context = `${before.slice(-80)}${value}${after.slice(0, 80)}`.toLowerCase()
+  if (isStandaloneDurationText(value) && !/\b(price|cost|fee|rate|starting|from|now|was|regular|original|current|total|billed|charged|invoice|per)\b/.test(context)) {
+    return false
+  }
+  return /\b(price|cost|fee|rate|starting\s+at|starts?\s+at|from|now|was|regular|original|current|total|billed|charged|invoice|per)\b/.test(context)
+}
+
+function isSpecQuantityMatch(before: string, value: string, after: string): boolean {
+  const amount = value.match(/\d+(?:[.,]\d+)?/)?.[0]
+  if (!amount) return false
+  const compactContext = `${before}${value}${after}`.toLowerCase().replace(/\s+/g, '')
+  const escaped = escapeRegex(amount.replace(',', '.')).replace(/\\\./g, '[.,]')
+  return new RegExp(`${escaped}(?:gb|tb|mb|kb|gbram|ram|memory|nvme|ssd|storage|core|cores|cpu|users?|seats?|sessions?|hours?|days?|weeks?|months?|years?)`).test(compactContext)
 }
 
 function isBillingDurationCountMatch(before: string, value: string, after: string): boolean {
@@ -2952,7 +3048,9 @@ function buildFactGuidanceBlock(
         lines.push(`Matching offers found: ${matchingOffers.map(formatOfferGuidanceSummary).join(' | ')}`)
       }
     }
-    const offer = analysis.offerScope.answerMode === 'category_pricing_list' ? null : selectStructuredPricingOffer(analysis, offers)
+    const offer = analysis.offerScope.answerMode === 'category_pricing_list'
+      ? null
+      : selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
     if (offer) {
       lines.push(`Selected requested offer/entity: ${offer.entity ?? 'matched offer'}`)
       if (offer.product_family) lines.push(`Selected offer family/category: ${offer.product_family}`)
@@ -3026,7 +3124,8 @@ function buildSelectedOfferDebug(
   analysis: RetrievalQuestionAnalysis,
   candidates: readonly RetrievalCandidate[],
 ): HybridRetrievalResult['debug']['selectedOffer'] {
-  const offer = selectStructuredPricingOffer(analysis, candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate)))
+  const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
+  const offer = selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
   if (!offer) return null
   return {
     entity: offer.entity,
@@ -3170,7 +3269,7 @@ function validateSingleEntityFactConsistency(args: {
   const evidenceText = args.evidence.join('\n')
   const offers = extractStructuredPricingOffers(evidenceText, 'answer-evidence')
   if (offers.length === 0) return null
-  const targetOffer = selectStructuredPricingOffer(analysis, offers)
+  const targetOffer = selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
   if (!targetOffer) return null
   const targetText = [targetOffer.entity, targetOffer.source_text].filter(Boolean).join('\n')
   const allowedMoney = new Set<number>()
