@@ -90,11 +90,7 @@ export function isOptOutMessage(text: string): boolean {
 }
 
 export function isHumanHandoffRequest(text: string): boolean {
-  const normalized = text
-    .trim()
-    .toLowerCase()
-    .replace(/[^\w\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+  const normalized = normalizeHandoffText(text)
 
   if (!normalized) return false
 
@@ -118,17 +114,29 @@ export function isHumanHandoffRequest(text: string): boolean {
     'speak to someone',
     'speak with someone',
     'talk to someone',
+    'أريد التحدث مع إنسان',
+    'وصلني بموظف',
+    'أريد دعم بشري',
+    'تحدث مع شخص',
+    'انسان سے بات کرنی ہے',
+    'ایجنٹ سے ملاؤ',
+    'حقیقی شخص چاہیے',
+    'سپورٹ سے بات کرنی ہے',
+    'quiero hablar con una persona',
+    'conectar con un agente',
+    'necesito ayuda humana',
+    'je veux parler a un humain',
+    'je veux parler à un humain',
+    'connectez moi avec un agent',
+    'connectez-moi avec un agent',
+    'je veux un support humain',
   ]
 
-  return phrases.some((phrase) => normalized.includes(phrase))
+  return phrases.some((phrase) => normalized.includes(normalizeHandoffText(phrase)))
 }
 
 export function isHumanHandoffConfirmation(text: string): boolean {
-  const normalized = text
-    .trim()
-    .toLowerCase()
-    .replace(/[^\w\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+  const normalized = normalizeHandoffText(text)
 
   if (!normalized) return false
 
@@ -147,7 +155,7 @@ export function isHumanHandoffConfirmation(text: string): boolean {
     'talk to your team',
     'speak with your team',
     'team please',
-  ].some((phrase) => normalized.includes(phrase))
+  ].some((phrase) => normalized.includes(normalizeHandoffText(phrase)))
 }
 
 export function aiMessageOfferedHumanHandoff(text?: string | null): boolean {
@@ -206,10 +214,13 @@ export async function generateChatbotAnswer(args: {
   readonly requireProvider?: boolean
   readonly calculation?: CalculationResult | null
   readonly conversationContext?: string | null
+  readonly responseIsRTL?: boolean
   readonly gapContext?: {
     readonly retrievalScore?: number | null
     readonly chunkCountRetrieved?: number
     readonly embeddingUsed?: boolean
+    readonly originalQuestion?: string | null
+    readonly detectedLanguage?: string | null
   }
 }): Promise<AiAnswerResult> {
   const question = args.question.trim()
@@ -221,6 +232,8 @@ export async function generateChatbotAnswer(args: {
       await logKnowledgeGap({
         workspaceId: args.workspaceId,
         question,
+        originalQuestion: args.gapContext?.originalQuestion,
+        detectedLanguage: args.gapContext?.detectedLanguage,
         fallbackReason: reason,
         retrievalScore: args.gapContext?.retrievalScore,
         chunkCountRetrieved: args.gapContext?.chunkCountRetrieved ?? usedChunks.length,
@@ -295,7 +308,7 @@ export async function generateChatbotAnswer(args: {
     if (!answer) {
       return fallbackResult('empty_ai_response', args.chunks)
     }
-    const trimmedAnswer = formatForWhatsApp(answer)
+    const trimmedAnswer = formatForWhatsApp(answer, args.responseIsRTL)
     const validation = validateGroundedAnswer({
       answer: trimmedAnswer,
       evidence: args.chunks,
@@ -499,11 +512,21 @@ function countOccurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1
 }
 
-export function formatForWhatsApp(value: string): string {
+export function formatForWhatsApp(value: string, isRTL = false): string {
   const withoutCodeFences = value.replace(/```[a-z0-9-]*\n?([\s\S]*?)```/gi, '$1')
   const withoutRules = withoutCodeFences.replace(/^\s*[-*_]{3,}\s*$/gm, '')
+  if (isRTL) return trimForWhatsApp(withoutRules)
   const withWhatsAppHeadings = withoutRules.replace(/^\s{0,3}#{1,6}\s+(.+)$/gm, (_match, heading: string) => `*${heading.trim().replace(/\*+/g, '')}*`)
   return trimForWhatsApp(withWhatsAppHeadings)
+}
+
+function normalizeHandoffText(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
 }
 
 function trimForWhatsApp(value: string): string {

@@ -44,6 +44,10 @@ export async function PUT(request: Request) {
   const embeddingsEnabled = body.embeddings_enabled === true
   const embeddingModel = readText(body.embedding_model, '', 160)
   const embeddingDimensions = typeof body.embedding_dimensions === 'number' ? body.embedding_dimensions : null
+  const multilingualEnabled = body.multilingual_enabled === true
+  const defaultResponseLanguage = readText(body.default_response_language, 'auto', 24)
+  const supportedLanguages = readLanguageList(body.supported_languages)
+  const translationModel = readText(body.translation_model, '', 160)
 
   if (!providerSupportsChat(provider)) {
     const settings = await saveProviderSettings({
@@ -55,6 +59,10 @@ export async function PUT(request: Request) {
       embeddingsEnabled,
       embeddingModel,
       embeddingDimensions,
+      multilingualEnabled,
+      defaultResponseLanguage,
+      supportedLanguages,
+      translationModel,
     })
     return NextResponse.json({
       settings,
@@ -75,6 +83,10 @@ export async function PUT(request: Request) {
     embeddingsEnabled,
     embeddingModel,
     embeddingDimensions,
+    multilingualEnabled,
+    defaultResponseLanguage,
+    supportedLanguages,
+    translationModel,
   })
 
   return NextResponse.json({ settings })
@@ -98,4 +110,22 @@ function readText(value: unknown, fallback: string, maxLength: number): string {
   if (typeof value !== 'string') return fallback
   const trimmed = value.trim()
   return (trimmed || fallback).slice(0, maxLength)
+}
+
+function readLanguageList(value: unknown): string[] | null {
+  if (Array.isArray(value)) {
+    const languages = value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim().toLowerCase().replace(/[^a-z-]/g, ''))
+      .filter(Boolean)
+    return languages.length > 0 ? [...new Set(languages)].slice(0, 50) : null
+  }
+  if (typeof value === 'string') {
+    const languages = value
+      .split(',')
+      .map((item) => item.trim().toLowerCase().replace(/[^a-z-]/g, ''))
+      .filter(Boolean)
+    return languages.length > 0 ? [...new Set(languages)].slice(0, 50) : null
+  }
+  return null
 }

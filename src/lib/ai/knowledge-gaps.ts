@@ -5,6 +5,8 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 export interface KnowledgeGapLog {
   readonly workspaceId: string
   readonly question: string
+  readonly originalQuestion?: string | null
+  readonly detectedLanguage?: string | null
   readonly fallbackReason: string
   readonly retrievalScore?: number | null
   readonly chunkCountRetrieved?: number
@@ -16,6 +18,7 @@ export interface KnowledgeGapRow {
   readonly fallback_reason: string
   readonly retrieval_score: number | string | null
   readonly created_at: string
+  readonly detected_language?: string | null
 }
 
 export interface GroupedKnowledgeGap {
@@ -45,6 +48,8 @@ export async function logKnowledgeGap(
     .insert({
       workspace_id: args.workspaceId,
       question,
+      original_question: args.originalQuestion ? sanitizeKnowledgeGapQuestion(args.originalQuestion) : null,
+      detected_language: normalizeLanguageCode(args.detectedLanguage),
       fallback_reason: args.fallbackReason.slice(0, 160),
       retrieval_score: Number.isFinite(args.retrievalScore) ? args.retrievalScore : null,
       chunk_count_retrieved: Math.max(0, Math.floor(args.chunkCountRetrieved ?? 0)),
@@ -56,6 +61,18 @@ export async function logKnowledgeGap(
       reason: error.code ?? 'unknown_error',
     })
   }
+}
+
+export function buildLanguageBreakdown(rows: readonly KnowledgeGapRow[]): Array<{ readonly code: string; readonly name: string; readonly count: number }> {
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    const code = normalizeLanguageCode(row.detected_language)
+    if (!code) continue
+    counts.set(code, (counts.get(code) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([code, count]) => ({ code, name: languageName(code), count }))
+    .sort((left, right) => right.count - left.count || left.code.localeCompare(right.code))
 }
 
 export function groupKnowledgeGaps(rows: readonly KnowledgeGapRow[]): GroupedKnowledgeGap[] {
@@ -76,4 +93,20 @@ export function groupKnowledgeGaps(rows: readonly KnowledgeGapRow[]): GroupedKno
     })
   }
   return [...grouped.values()]
+}
+
+function normalizeLanguageCode(value: string | null | undefined): string | null {
+  const normalized = (value ?? '').trim().toLowerCase().replace(/[^a-z-]/g, '')
+  return normalized || null
+}
+
+function languageName(code: string): string {
+  const names: Record<string, string> = {
+    ar: 'Arabic',
+    en: 'English',
+    es: 'Spanish',
+    fr: 'French',
+    ur: 'Urdu',
+  }
+  return names[code] ?? code.toUpperCase()
 }

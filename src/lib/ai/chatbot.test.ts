@@ -220,6 +220,13 @@ describe('AI chatbot knowledge helpers', () => {
     expect(formatted).not.toContain('---')
   })
 
+  it('keeps RTL WhatsApp formatting stable without English heading conversion', () => {
+    const formatted = formatForWhatsApp('### الدعم\n\nالسعر $3.40/mo لخطة Pro.', true)
+    expect(formatted).toContain('### الدعم')
+    expect(formatted).toContain('$3.40/mo')
+    expect(formatted).toContain('Pro')
+  })
+
   it('keeps answer content while normalizing WhatsApp formatting', () => {
     const formatted = formatForWhatsApp('### Contact\n\n\nCall us at +1 555 123 4567.')
     expect(formatted).toBe('*Contact*\n\nCall us at +1 555 123 4567.')
@@ -273,6 +280,10 @@ describe('AI chatbot knowledge helpers', () => {
     expect(isHumanHandoffRequest('want to talk to real human')).toBe(true)
     expect(isHumanHandoffRequest('connect me to agent')).toBe(true)
     expect(isHumanHandoffRequest('can someone help me')).toBe(true)
+    expect(isHumanHandoffRequest('أريد التحدث مع إنسان')).toBe(true)
+    expect(isHumanHandoffRequest('ایجنٹ سے ملاؤ')).toBe(true)
+    expect(isHumanHandoffRequest('quiero hablar con una persona')).toBe(true)
+    expect(isHumanHandoffRequest('je veux parler à un humain')).toBe(true)
     expect(isHumanHandoffRequest('What is your support hours?')).toBe(false)
   })
 

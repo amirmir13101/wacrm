@@ -10,7 +10,10 @@ import {
   logAiChatbotEvent,
   type AiChatbotSettings,
 } from '@/lib/ai/chatbot'
+import { detectLanguage, type DetectedLanguage } from '@/lib/ai/language'
+import { resolveLanguageSettings } from '@/lib/ai/provider'
 import { hybridRetrieveKnowledge } from '@/lib/ai/retrieval'
+import { translateFromEnglish, translateToEnglish } from '@/lib/ai/translation'
 import { logKnowledgeGap } from '@/lib/ai/knowledge-gaps'
 import {
   AI_HUMAN_REPLY_PAUSE_SECONDS,
@@ -217,6 +220,11 @@ export async function maybeHandleAiAutoReply(args: {
   }
 
   let retrieval: Awaited<ReturnType<typeof hybridRetrieveKnowledge>>
+  const multilingual = await prepareMultilingualQuestion({
+    workspaceId: args.workspaceId,
+    customerText,
+  })
+  const retrievalQuestion = multilingual.questionForRetrieval
   try {
     const conversationContext = await fetchConversationContext({
       conversationId: args.conversationId,
@@ -225,7 +233,7 @@ export async function maybeHandleAiAutoReply(args: {
     })
     retrieval = await hybridRetrieveKnowledge({
       workspaceId: args.workspaceId,
-      question: customerText,
+      question: retrievalQuestion,
       contextualQuery: conversationContext,
       client: admin,
     })
@@ -239,7 +247,9 @@ export async function maybeHandleAiAutoReply(args: {
       activeChatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
     await logKnowledgeGap({
       workspaceId: args.workspaceId,
-      question: customerText,
+      question: retrievalQuestion,
+      originalQuestion: multilingual.originalQuestion,
+      detectedLanguage: multilingual.detectedLanguage?.code,
       fallbackReason: retrieval.fallbackReason ?? 'no_relevant_knowledge',
       retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
       chunkCountRetrieved: retrieval.evidence.length,
@@ -262,18 +272,27 @@ export async function maybeHandleAiAutoReply(args: {
   }
 
   const answer = await generateChatbotAnswer({
-    question: customerText,
+    question: retrievalQuestion,
     settings: activeChatbotSettings,
     chunks: retrieval.chunks,
     workspaceId: args.workspaceId,
     requireProvider: true,
     calculation: retrieval.calculation,
     conversationContext: retrieval.analysis.contextualQuery,
+    responseIsRTL: multilingual.responseLanguage?.isRTL,
     gapContext: {
       retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
       chunkCountRetrieved: retrieval.evidence.length,
       embeddingUsed: retrieval.evidence.some((candidate) => candidate.vectorScore > 0),
+      originalQuestion: multilingual.originalQuestion,
+      detectedLanguage: multilingual.detectedLanguage?.code,
     },
+  })
+
+  const finalAnswer = await localizeAnswerForCustomer({
+    workspaceId: args.workspaceId,
+    answer: answer.answer,
+    responseLanguage: multilingual.responseLanguage,
   })
 
   if (answer.status === 'skipped' || answer.status === 'failed' || !answer.answer) {
@@ -318,7 +337,7 @@ export async function maybeHandleAiAutoReply(args: {
       inboundMessageId: args.inboundMessageId,
       customerText,
       phone,
-      text: answer.answer,
+      text: finalAnswer,
       status: 'fallback',
       reason: answer.reason || 'answer_not_found',
       controlStatus: 'ai_active',
@@ -343,7 +362,7 @@ export async function maybeHandleAiAutoReply(args: {
       conversationId: args.conversationId,
       messageId: args.inboundMessageId,
       userMessage: customerText,
-      aiResponse: answer.answer,
+      aiResponse: finalAnswer,
       status: 'skipped',
       reason: configError ? 'whatsapp_config_error' : 'whatsapp_config_missing',
     })
@@ -362,14 +381,14 @@ export async function maybeHandleAiAutoReply(args: {
       phoneNumberId: config.phone_number_id,
       accessToken: decrypt(config.access_token),
       to: phone,
-      text: answer.answer,
+      text: finalAnswer,
     })
 
     const { error: insertError } = await admin.from('messages').insert({
       conversation_id: args.conversationId,
       sender_type: 'bot',
       content_type: 'text',
-      content_text: answer.answer,
+      content_text: finalAnswer,
       message_id: result.messageId,
       status: 'sent',
     })
@@ -380,7 +399,7 @@ export async function maybeHandleAiAutoReply(args: {
         conversationId: args.conversationId,
         messageId: args.inboundMessageId,
         userMessage: customerText,
-        aiResponse: answer.answer,
+        aiResponse: finalAnswer,
         status: 'failed',
         reason: 'message_insert_failed',
       })
@@ -397,7 +416,7 @@ export async function maybeHandleAiAutoReply(args: {
     await admin
       .from('conversations')
       .update({
-        last_message_text: answer.answer,
+        last_message_text: finalAnswer,
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -408,14 +427,14 @@ export async function maybeHandleAiAutoReply(args: {
       conversationId: args.conversationId,
       messageId: args.inboundMessageId,
       userMessage: customerText,
-      aiResponse: answer.answer,
+      aiResponse: finalAnswer,
       status: answer.status,
       reason: answer.reason,
     })
     await recordAiReply({
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
-      response: answer.answer,
+      response: finalAnswer,
       client: admin,
     })
   } catch {
@@ -424,7 +443,7 @@ export async function maybeHandleAiAutoReply(args: {
       conversationId: args.conversationId,
       messageId: args.inboundMessageId,
       userMessage: customerText,
-      aiResponse: answer.answer,
+      aiResponse: finalAnswer,
       status: 'failed',
       reason: 'whatsapp_send_failed',
     })
@@ -436,6 +455,56 @@ export async function maybeHandleAiAutoReply(args: {
       client: admin,
     })
   }
+}
+
+async function prepareMultilingualQuestion(args: {
+  readonly workspaceId: string
+  readonly customerText: string
+}): Promise<{
+  readonly questionForRetrieval: string
+  readonly originalQuestion: string | null
+  readonly detectedLanguage: DetectedLanguage | null
+  readonly responseLanguage: DetectedLanguage | null
+}> {
+  const settings = await resolveLanguageSettings(args.workspaceId).catch(() => ({
+    multilingualEnabled: false,
+    defaultResponseLanguage: 'auto',
+    supportedLanguages: null,
+  }))
+  if (!settings.multilingualEnabled) {
+    return { questionForRetrieval: args.customerText, originalQuestion: null, detectedLanguage: null, responseLanguage: null }
+  }
+  const detected = detectLanguage(args.customerText)
+  if (!detected.needsTranslation || detected.confidence < 0.6 || !languageAllowed(detected.code, settings.supportedLanguages)) {
+    return { questionForRetrieval: args.customerText, originalQuestion: null, detectedLanguage: detected, responseLanguage: null }
+  }
+  const translated = await translateToEnglish(args.customerText, detected, args.workspaceId)
+  const responseLanguage = settings.defaultResponseLanguage === 'auto'
+    ? detected
+    : settings.defaultResponseLanguage === 'en'
+      ? null
+      : { ...detected, code: settings.defaultResponseLanguage, needsTranslation: true }
+  return {
+    questionForRetrieval: translated.success ? translated.translatedText : args.customerText,
+    originalQuestion: args.customerText,
+    detectedLanguage: detected,
+    responseLanguage,
+  }
+}
+
+async function localizeAnswerForCustomer(args: {
+  readonly workspaceId: string
+  readonly answer: string
+  readonly responseLanguage: DetectedLanguage | null
+}): Promise<string> {
+  if (!args.responseLanguage || !args.answer.trim()) return args.answer
+  const translated = await translateFromEnglish(args.answer, args.responseLanguage, args.workspaceId)
+  if (translated.success) return translated.translatedText
+  return `${args.answer}\n\nNote: English response - translation temporarily unavailable.`
+}
+
+function languageAllowed(code: string, supportedLanguages: readonly string[] | null): boolean {
+  return !supportedLanguages || supportedLanguages.includes(code)
 }
 
 async function sendConfiguredAiMessage(args: {

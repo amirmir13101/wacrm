@@ -88,6 +88,11 @@ interface KnowledgeGapsState {
   gaps: KnowledgeGap[]
   total: number
   enabled: boolean
+  language_breakdown?: Array<{
+    code: string
+    name: string
+    count: number
+  }>
 }
 
 type ScrapeFrequency = "daily" | "weekly" | "monthly" | "manual"
@@ -159,6 +164,10 @@ interface ProviderSettings {
   lastEmbeddingTestedAt: string | null
   lastEmbeddingTestStatus: "success" | "failed" | "not_tested" | null
   lastEmbeddingTestError: string | null
+  multilingualEnabled: boolean
+  defaultResponseLanguage: string
+  supportedLanguages: string[] | null
+  translationModel: string | null
 }
 
 interface TestAnswer {
@@ -818,6 +827,10 @@ export default function AiChatbotPage() {
           embeddings_enabled: draftProvider.embeddingsEnabled,
           embedding_model: draftProvider.embeddingModel,
           embedding_dimensions: draftProvider.embeddingDimensions,
+          multilingual_enabled: draftProvider.multilingualEnabled,
+          default_response_language: draftProvider.defaultResponseLanguage,
+          supported_languages: draftProvider.supportedLanguages,
+          translation_model: draftProvider.translationModel,
         }),
       })
       const body = await res.json().catch(() => ({}))
@@ -1235,6 +1248,73 @@ export default function AiChatbotPage() {
             <p className="mt-3 text-xs text-[#9dbfb5]">{draftProvider.embeddingStatusMessage}</p>
             {draftProvider.lastEmbeddingTestError && (
               <p className="mt-2 text-xs text-yellow-200">{draftProvider.lastEmbeddingTestError}</p>
+            )}
+          </div>
+          <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4 lg:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-emerald-50">Language settings</p>
+                <p className="mt-1 text-xs text-[#9dbfb5]">
+                  When enabled, customers can ask in any language. The CRM translates questions to English for retrieval and translates answers back using this workspace AI key.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-[#9dbfb5]">Multilingual enabled</span>
+                <Switch
+                  checked={draftProvider.multilingualEnabled}
+                  disabled={!canManage}
+                  onCheckedChange={(checked) => setDraftProvider({ ...draftProvider, multilingualEnabled: checked })}
+                />
+              </div>
+            </div>
+            {draftProvider.multilingualEnabled ? (
+              <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                <label className="space-y-2">
+                  <span className="text-sm font-semibold text-emerald-50">Default response language</span>
+                  <select
+                    className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                    disabled={!canManage}
+                    value={draftProvider.defaultResponseLanguage}
+                    onChange={(event) => setDraftProvider({ ...draftProvider, defaultResponseLanguage: event.target.value })}
+                  >
+                    <option value="auto">Auto (match customer)</option>
+                    <option value="en">Always English</option>
+                    <option value="ur">Always Urdu</option>
+                    <option value="ar">Always Arabic</option>
+                    <option value="fr">Always French</option>
+                    <option value="es">Always Spanish</option>
+                  </select>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-semibold text-emerald-50">Supported languages</span>
+                  <input
+                    className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                    disabled={!canManage}
+                    value={draftProvider.supportedLanguages?.join(", ") ?? ""}
+                    onChange={(event) => {
+                      const languages = event.target.value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean)
+                      setDraftProvider({ ...draftProvider, supportedLanguages: languages.length > 0 ? languages : null })
+                    }}
+                    placeholder="Leave empty to support all languages"
+                  />
+                  <p className="text-xs text-[#9dbfb5]">Optional ISO codes, comma-separated. Example: ur, ar, fr.</p>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-semibold text-emerald-50">Translation model</span>
+                  <input
+                    className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                    disabled={!canManage}
+                    value={draftProvider.translationModel ?? ""}
+                    onChange={(event) => setDraftProvider({ ...draftProvider, translationModel: event.target.value || null })}
+                    placeholder="Leave empty to use primary model"
+                  />
+                  <p className="text-xs text-[#9dbfb5]">No extra API key needed. Uses this workspace provider key.</p>
+                </label>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-[#9dbfb5]">
+                Multilingual support is off. Non-English messages will use the normal retrieval path.
+              </p>
             )}
           </div>
         </div>
@@ -2205,7 +2285,7 @@ export default function AiChatbotPage() {
                 ))}
               </tbody>
             </table>
-            {knowledgeGaps.gaps.length > 20 && (
+        {knowledgeGaps.gaps.length > 20 && (
               <div className="flex items-center justify-between gap-3 border-t border-emerald-950 px-4 py-3">
                 <p className="text-xs text-[#9dbfb5]">
                   {showAllKnowledgeGaps
@@ -2222,6 +2302,18 @@ export default function AiChatbotPage() {
                 </Button>
               </div>
             )}
+          </div>
+        )}
+        {knowledgeGaps?.language_breakdown && knowledgeGaps.language_breakdown.length > 0 && (
+          <div className="mt-4 rounded-xl border border-emerald-900 bg-[#071b14] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#8fb7aa]">Language distribution</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {knowledgeGaps.language_breakdown.map((item) => (
+                <span key={item.code} className="rounded-full border border-emerald-900 bg-[#09241a] px-3 py-1 text-xs text-emerald-100">
+                  {item.count} in {item.name}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </section>

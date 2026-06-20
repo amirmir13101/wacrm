@@ -65,7 +65,7 @@ describe('AI chatbot Phase 1 foundation', () => {
 
     expect(autoReply).toContain('hybridRetrieveKnowledge')
     expect(autoReply).toContain('workspaceId: args.workspaceId')
-    expect(autoReply).toContain('question: customerText')
+    expect(autoReply).toContain('question: retrievalQuestion')
     expect(autoReply).toContain('fetchConversationContext')
     expect(autoReply).toContain('contextualQuery: conversationContext')
     expect(autoReply).toContain('isOptOutMessage')
@@ -164,6 +164,23 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(autoReply).toContain("controlStatus: 'ai_active'")
     expect(autoReply).toContain("reason: answer.reason || 'answer_not_found'")
     expect(chatbot).not.toContain("onConflict: 'message_id'")
+  })
+
+  it('routes opt-in multilingual auto-replies through English retrieval and localized final answers', () => {
+    const autoReply = read('src/lib/ai/auto-reply.ts')
+    const provider = read('src/lib/ai/provider.ts')
+    const migration = read('supabase/migrations/043_ai_language_settings.sql')
+
+    expect(migration).toContain('multilingual_enabled BOOLEAN DEFAULT false')
+    expect(migration).toContain('detected_language TEXT')
+    expect(autoReply).toContain('prepareMultilingualQuestion')
+    expect(autoReply).toContain('detectLanguage')
+    expect(autoReply).toContain('translateToEnglish')
+    expect(autoReply).toContain('question: retrievalQuestion')
+    expect(autoReply).toContain('translateFromEnglish')
+    expect(autoReply).toContain('text: finalAnswer')
+    expect(autoReply).toContain('originalQuestion: multilingual.originalQuestion')
+    expect(provider).toContain('resolveLanguageSettings')
   })
 
   it('keeps manual Mark Needs Human separate from normal knowledge fallback', () => {

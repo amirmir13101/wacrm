@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { describe, expect, it, vi } from 'vitest'
 
-import { groupKnowledgeGaps, logKnowledgeGap, sanitizeKnowledgeGapQuestion } from './knowledge-gaps'
+import { buildLanguageBreakdown, groupKnowledgeGaps, logKnowledgeGap, sanitizeKnowledgeGapQuestion } from './knowledge-gaps'
 
 describe('AI knowledge gap tracking', () => {
   it('removes personal email and phone patterns before logging', () => {
@@ -22,6 +22,8 @@ describe('AI knowledge gap tracking', () => {
     await logKnowledgeGap({
       workspaceId: 'workspace-a',
       question: 'Call me on +1 555 123 4567 about missing details',
+      originalQuestion: 'مجھے قیمت بتائیں',
+      detectedLanguage: 'ur',
       fallbackReason: 'no_relevant_knowledge',
       retrievalScore: 4.5,
       chunkCountRetrieved: 2,
@@ -32,6 +34,8 @@ describe('AI knowledge gap tracking', () => {
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({
       workspace_id: 'workspace-a',
       question: expect.not.stringContaining('555 123 4567'),
+      original_question: 'مجھے قیمت بتائیں',
+      detected_language: 'ur',
       fallback_reason: 'no_relevant_knowledge',
       chunk_count_retrieved: 2,
       embedding_used: true,
@@ -52,5 +56,16 @@ describe('AI knowledge gap tracking', () => {
       fallback_reason: 'no_relevant_knowledge',
       last_asked: '2026-06-20T10:00:00Z',
     }))
+  })
+
+  it('builds language distribution for unanswered questions', () => {
+    expect(buildLanguageBreakdown([
+      { question: 'Q1', fallback_reason: 'no_relevant_knowledge', retrieval_score: null, created_at: '2026-06-20T10:00:00Z', detected_language: 'ar' },
+      { question: 'Q2', fallback_reason: 'no_relevant_knowledge', retrieval_score: null, created_at: '2026-06-20T10:00:00Z', detected_language: 'ar' },
+      { question: 'Q3', fallback_reason: 'no_relevant_knowledge', retrieval_score: null, created_at: '2026-06-20T10:00:00Z', detected_language: 'ur' },
+    ])).toEqual([
+      { code: 'ar', name: 'Arabic', count: 2 },
+      { code: 'ur', name: 'Urdu', count: 1 },
+    ])
   })
 })
