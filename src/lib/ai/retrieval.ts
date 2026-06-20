@@ -25,6 +25,7 @@ export interface RetrievalQuestionAnalysis {
   readonly exactSignals: readonly string[]
   readonly numbers: readonly number[]
   readonly intents: RetrievalIntents
+  readonly offerScope: OfferQueryScope
   readonly comparison: {
     readonly enabled: boolean
     readonly entities: readonly string[]
@@ -44,6 +45,23 @@ export interface RetrievalIntents {
   readonly ownership: boolean
   readonly date: boolean
   readonly comparison: boolean
+}
+
+export type OfferAnswerMode =
+  | 'single_offer_exact'
+  | 'category_pricing_list'
+  | 'comparison'
+  | 'policy_or_terms'
+  | 'contact_location_hours'
+  | 'missing_or_ambiguous'
+
+export interface OfferQueryScope {
+  readonly answerMode: OfferAnswerMode
+  readonly requestedFamily: string | null
+  readonly requestedEntity: string | null
+  readonly requestedVariantSpecs: readonly string[]
+  readonly requestedPeriod: BillingPeriod | null
+  readonly weakPlanNames: readonly string[]
 }
 
 export interface RetrievalCandidate {
@@ -103,6 +121,20 @@ export interface HybridRetrievalResult {
       readonly rerankReasons: readonly string[]
     }>
     readonly calculationInvoked: boolean
+    readonly answerMode: OfferAnswerMode
+    readonly requestedFamily: string | null
+    readonly requestedEntity: string | null
+    readonly requestedVariantSpecs: readonly string[]
+    readonly requestedPeriod: BillingPeriod | null
+    readonly selectedOffer: {
+      readonly entity: string | null
+      readonly productFamily: string | null
+      readonly currentPrice: StructuredPriceValue | null
+      readonly originalPrice: StructuredPriceValue | null
+      readonly billingTotals: readonly StructuredBillingTotal[]
+      readonly sourceOrigin: 'persisted' | 'runtime'
+      readonly sourceChunkId: string
+    } | null
     readonly fullContextFallback: FullContextFallbackDebug
   }
 }
@@ -166,6 +198,63 @@ const QUERY_SYNONYM_GROUPS = [
   ['address', 'location', 'where', 'find us', 'situated'],
 ] as const
 
+const GENERIC_PLAN_NAMES = new Set([
+  'basic',
+  'starter',
+  'standard',
+  'pro',
+  'plus',
+  'premium',
+  'business',
+  'enterprise',
+  'ultimate',
+  'advanced',
+  'growth',
+  'lite',
+  'free',
+])
+
+const PERIOD_WORDS = new Set([
+  'daily',
+  'day',
+  'weekly',
+  'week',
+  'monthly',
+  'month',
+  'mo',
+  'quarterly',
+  'quarter',
+  'yearly',
+  'year',
+  'annual',
+  'annually',
+])
+
+const CATEGORY_LIST_SIGNALS = /\b(prices|pricing|plans|packages|menu|services|products|items|courses|treatments|fees|rates|list|available|options|catalog|catalogue)\b/i
+
+const SPEC_CONTEXT_TERMS = new Set(['ram', 'memory', 'cpu', 'core', 'cores', 'storage', 'nvme', 'ssd', 'gb', 'tb', 'mb'])
+
+const OFFER_FAMILY_STOP_TERMS = new Set([
+  ...GENERIC_PLAN_NAMES,
+  ...PERIOD_WORDS,
+  ...SPEC_CONTEXT_TERMS,
+  'plan',
+  'plans',
+  'package',
+  'packages',
+  'price',
+  'pricing',
+  'cost',
+  'fee',
+  'rate',
+  'current',
+  'original',
+  'discount',
+  'total',
+  'billed',
+  'knowledge',
+])
+
 export function expandQuery(question: string): string[] {
   const original = question.trim()
   if (!original) return []
@@ -209,6 +298,16 @@ export function analyzeRetrievalQuestion(question: string, contextualQuery?: str
   const comparisonEntities = comparison.entities.filter((entity) => !entityTerms.includes(entity))
   const mergedEntityTerms = [...entityTerms, ...comparisonEntities].slice(0, 12)
   const entityPhrases = extractEntityPhrases(mergedEntityTerms)
+  const calculationIntent = detectCalculationIntent(normalized)
+  const offerScope = buildOfferQueryScope({
+    question: normalized,
+    terms,
+    entityTerms: mergedEntityTerms,
+    entityPhrases,
+    intents,
+    comparison,
+    calculationIntent,
+  })
   return {
     question: normalized,
     contextualQuery: context || null,
@@ -219,8 +318,9 @@ export function analyzeRetrievalQuestion(question: string, contextualQuery?: str
     exactSignals,
     numbers: [...normalized.matchAll(/\b\d+(?:[.,]\d+)?\b/g)].map((match) => Number(match[0].replace(',', '.'))),
     intents,
+    offerScope,
     comparison,
-    calculationIntent: detectCalculationIntent(normalized),
+    calculationIntent,
   }
 }
 
@@ -358,9 +458,10 @@ function retrieveSingleQueryFromRows(args: {
   )
 
   const calculation = analysis.calculationIntent.hasIntent ? calculateFromEvidence(analysis, fused) : null
+  const ambiguousWeakOffer = hasAmbiguousWeakOfferRows(analysis, activeRows)
   const fallbackReason =
     fused.length === 0
-      ? 'no_relevant_knowledge'
+      ? ambiguousWeakOffer ? 'ambiguous_offer' : 'no_relevant_knowledge'
       : analysis.calculationIntent.hasIntent && !calculation
         ? 'cannot_compute'
       : calculation && calculation.status !== 'computed'
@@ -401,6 +502,12 @@ function retrieveSingleQueryFromRows(args: {
         rerankReasons: item.rerankReasons,
       })),
       calculationInvoked: analysis.calculationIntent.hasIntent,
+      answerMode: analysis.offerScope.answerMode,
+      requestedFamily: analysis.offerScope.requestedFamily,
+      requestedEntity: analysis.offerScope.requestedEntity,
+      requestedVariantSpecs: analysis.offerScope.requestedVariantSpecs,
+      requestedPeriod: analysis.offerScope.requestedPeriod,
+      selectedOffer: buildSelectedOfferDebug(analysis, fused),
       fullContextFallback: emptyFullContextFallbackDebug('not_needed'),
     },
   }
@@ -430,9 +537,10 @@ function mergeExpandedRetrievalResults(args: {
     analysis,
   )
   const calculation = analysis.calculationIntent.hasIntent ? calculateFromEvidence(analysis, reranked) : null
+  const ambiguousWeakOffer = hasAmbiguousWeakOfferRows(analysis, args.rows)
   const fallbackReason =
     reranked.length === 0
-      ? 'no_relevant_knowledge'
+      ? ambiguousWeakOffer ? 'ambiguous_offer' : 'no_relevant_knowledge'
       : analysis.calculationIntent.hasIntent && !calculation
         ? 'cannot_compute'
         : calculation && calculation.status !== 'computed'
@@ -444,7 +552,7 @@ function mergeExpandedRetrievalResults(args: {
       : null
   const factGuidanceBlock = buildFactGuidanceBlock(analysis, reranked)
   const primary = args.results[0]
-  const shouldTryFullContextFallback = fallbackReason === 'no_relevant_knowledge'
+  const shouldTryFullContextFallback = shouldAttemptFullContextFallback(fallbackReason, analysis, reranked)
   const fullContextFallback = shouldTryFullContextFallback
     ? buildFullContextFallback({
         analysis,
@@ -455,7 +563,6 @@ function mergeExpandedRetrievalResults(args: {
         ...emptyFullContextFallbackDebug('not_needed'),
         tokenBudget: readFullContextFallbackTokenBudget(args.fullContextTokenBudget),
       }
-  const effectiveFallbackReason = fullContextFallback.outcome === 'succeeded' ? null : fallbackReason
   const fullContextChunks = fullContextFallback.outcome === 'succeeded'
     ? [formatFullContextFallbackBlock(args.fullContextSources ?? buildFullContextSourcesFromRows(args.rows))]
     : []
@@ -465,6 +572,9 @@ function mergeExpandedRetrievalResults(args: {
       : []
   const effectiveCalculation =
     calculation ?? (fullContextCalculationCandidates.length > 0 ? calculateFromEvidence(analysis, fullContextCalculationCandidates) : null)
+  const recoveredByFullContext = fullContextFallback.outcome === 'succeeded' &&
+    (!analysis.calculationIntent.hasIntent || effectiveCalculation?.status === 'computed')
+  const effectiveFallbackReason = recoveredByFullContext ? null : fallbackReason
   const effectiveCalculationBlock =
     effectiveCalculation?.status === 'computed'
       ? `Computed fact: ${formatCalculationValue(effectiveCalculation)}\nFormula: ${effectiveCalculation.formula}\nSource chunk IDs: ${effectiveCalculation.sourceChunkIds.join(', ')}`
@@ -517,6 +627,12 @@ function mergeExpandedRetrievalResults(args: {
         rerankReasons: candidate.rerankReasons,
       })),
       calculationInvoked: analysis.calculationIntent.hasIntent,
+      answerMode: analysis.offerScope.answerMode,
+      requestedFamily: analysis.offerScope.requestedFamily,
+      requestedEntity: analysis.offerScope.requestedEntity,
+      requestedVariantSpecs: analysis.offerScope.requestedVariantSpecs,
+      requestedPeriod: analysis.offerScope.requestedPeriod,
+      selectedOffer: buildSelectedOfferDebug(analysis, reranked.length > 0 ? reranked : fullContextCalculationCandidates),
       fullContextFallback,
     },
   }
@@ -1036,6 +1152,128 @@ function buildQueryVariants(
   return [...variants].filter((variant) => variant.length >= 3).slice(0, 40)
 }
 
+function buildOfferQueryScope(args: {
+  readonly question: string
+  readonly terms: readonly string[]
+  readonly entityTerms: readonly string[]
+  readonly entityPhrases: readonly string[]
+  readonly intents: RetrievalIntents
+  readonly comparison: { readonly enabled: boolean; readonly entities: readonly string[] }
+  readonly calculationIntent: ReturnType<typeof detectCalculationIntent>
+}): OfferQueryScope {
+  const normalizedQuestion = args.question.toLowerCase()
+  const weakPlanNames = args.entityTerms
+    .map((term) => normalizeEntityKey(term))
+    .filter((term) => GENERIC_PLAN_NAMES.has(term))
+  const requestedVariantSpecs = [...extractSpecClaims(args.question)]
+  const requestedPeriod = args.calculationIntent.targetPeriod ?? readRequestedPeriod(normalizedQuestion)
+  const requestedFamily = inferRequestedFamily(args.entityTerms, weakPlanNames, requestedVariantSpecs)
+  const explicitEntityPhrase = extractRequestedEntityPhrase(args.question)
+  const specificEntityFromPhrase = explicitEntityPhrase && shouldTreatPhraseAsSpecificEntity(explicitEntityPhrase)
+    ? explicitEntityPhrase
+    : null
+  const requestedEntity = specificEntityFromPhrase ??
+    (weakPlanNames.length > 0 ? [weakPlanNames.join(' '), requestedFamily].filter(Boolean).join(' ') : null)
+
+  let answerMode: OfferAnswerMode = 'missing_or_ambiguous'
+  if (args.comparison.enabled) answerMode = 'comparison'
+  else if ((args.intents.contact || args.intents.hours || args.intents.location || args.intents.company || args.intents.ownership || args.intents.date) && !args.intents.pricing) {
+    answerMode = 'contact_location_hours'
+  } else if (args.intents.policy && !args.intents.pricing) {
+    answerMode = 'policy_or_terms'
+  } else if (args.intents.pricing || args.intents.productOrService) {
+    const hasSpecificOfferSignal =
+      weakPlanNames.length > 0 ||
+      requestedVariantSpecs.length > 0 ||
+      Boolean(specificEntityFromPhrase)
+    answerMode = hasSpecificOfferSignal || args.comparison.entities.length > 0
+      ? 'single_offer_exact'
+      : (CATEGORY_LIST_SIGNALS.test(args.question) || Boolean(requestedFamily))
+        ? 'category_pricing_list'
+        : 'missing_or_ambiguous'
+  }
+
+  return {
+    answerMode,
+    requestedFamily,
+    requestedEntity: requestedEntity || null,
+    requestedVariantSpecs,
+    requestedPeriod,
+    weakPlanNames: [...new Set(weakPlanNames)],
+  }
+}
+
+function inferRequestedFamily(
+  entityTerms: readonly string[],
+  weakPlanNames: readonly string[],
+  requestedVariantSpecs: readonly string[],
+): string | null {
+  const weak = new Set(weakPlanNames)
+  const specs = new Set(requestedVariantSpecs.map((spec) => normalizeEntityKey(spec)))
+  const familyTerms = entityTerms
+    .map((term) => normalizeEntityKey(term))
+    .filter((term) =>
+      term &&
+      !weak.has(term) &&
+      !PERIOD_WORDS.has(term) &&
+      !SPEC_CONTEXT_TERMS.has(term) &&
+      !specs.has(term.replace(/\s+/g, '')) &&
+      !isSpecEntityTerm(term) &&
+      !/^\d+(?:\.\d+)?$/.test(term),
+    )
+  if (familyTerms.length === 0) return null
+  return [...new Set(familyTerms)].join(' ')
+}
+
+function extractRequestedEntityPhrase(question: string): string | null {
+  const normalized = question
+    .toLowerCase()
+    .replace(/[?!.]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const patterns = [
+    /\b(?:price|pricing|cost|fee|rate|charges?)\s+(?:of|for)\s+(.+)$/,
+    /\b(?:how much(?: does| is)?|what(?: is|'s)?(?: the)?)\s+(.+?)\s+(?:cost|price|fee|rate)\b/,
+    /^(.+?)\s+(?:yearly|annual|monthly|weekly|daily)?\s*(?:price|pricing|cost|fee|rate)\b/,
+  ]
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern)
+    const value = cleanRequestedEntityPhrase(match?.[1] ?? '')
+    if (value) return value
+  }
+  return null
+}
+
+function cleanRequestedEntityPhrase(value: string): string | null {
+  const cleaned = value
+    .replace(/\b(?:the|a|an|of|for|plan|package|service|product|item|course|menu|treatment|appointment|price|pricing|cost|fee|rate|yearly|annual|monthly|weekly|daily|discounted|original|regular|current|total|billed|billing|what|is|are|should|be|if)\b/g, ' ')
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:usd|pkr|eur|gbp|\$|rs\.?)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return cleaned.length >= 2 ? cleaned : null
+}
+
+function shouldTreatPhraseAsSpecificEntity(phrase: string): boolean {
+  const terms = tokenize(phrase)
+  if (terms.length === 0) return false
+  if (terms.some((term) => GENERIC_PLAN_NAMES.has(term))) return true
+  if (terms.some((term) => isSpecEntityTerm(term))) return true
+  return terms.length >= 3
+}
+
+function readRequestedPeriod(value: string): BillingPeriod | null {
+  if (/\b(daily|per day|\/day|day)\b/.test(value)) return 'daily'
+  if (/\b(weekly|per week|\/week|week)\b/.test(value)) return 'weekly'
+  if (/\b(monthly|per month|\/mo|\/month|month|mo)\b/.test(value)) return 'monthly'
+  if (/\b(quarterly|per quarter|quarter)\b/.test(value)) return 'quarterly'
+  if (/\b(yearly|annual|annually|per year|\/year|year)\b/.test(value)) return 'yearly'
+  return null
+}
+
+function isSpecEntityTerm(term: string): boolean {
+  return /\b\d+(?:[.,]\d+)?\s*(?:gb|tb|mb|kb|cores?|core|cpu|ram|storage|nvme|ssd|kg|g|mg|ml|l|hours?|days?|weeks?|months?|years?|sessions?|users?|seats?|people|servings?)\b/i.test(term.replace(/(\d)([a-z])/gi, '$1 $2'))
+}
+
 function scoreEntityTerms(haystack: string, entityTerms: readonly string[]): number {
   if (entityTerms.length === 0) return 0
   let score = 0
@@ -1200,6 +1438,7 @@ function filterSingleEntityPricingEvidence(
 ): RetrievalCandidate[] {
   if (candidates.length <= 1 || analysis.comparison.enabled || analysis.entityTerms.length === 0) return [...candidates]
   if (!analysis.intents.pricing && !analysis.intents.productOrService) return [...candidates]
+  if (analysis.offerScope.answerMode === 'category_pricing_list' || analysis.offerScope.answerMode === 'comparison') return [...candidates]
   const target = selectStructuredPricingOffer(analysis, candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate)))
   if (!target) return [...candidates]
   const filtered = candidates.filter((candidate) => {
@@ -1208,6 +1447,30 @@ function filterSingleEntityPricingEvidence(
     return offers.length === 0
   })
   return filtered.length > 0 ? filtered : [...candidates]
+}
+
+function hasAmbiguousWeakOfferRows(
+  analysis: RetrievalQuestionAnalysis,
+  rows: readonly KnowledgeChunkRow[],
+): boolean {
+  if (
+    analysis.offerScope.weakPlanNames.length === 0 ||
+    analysis.offerScope.requestedFamily ||
+    analysis.offerScope.requestedVariantSpecs.length > 0 ||
+    analysis.offerScope.answerMode !== 'single_offer_exact'
+  ) {
+    return false
+  }
+  const offers = rows
+    .filter((row) => row.chunk_text && row.source?.status !== 'archived')
+    .flatMap((row) => extractStructuredPricingOffers(row.chunk_text, row.id ?? row.source_id ?? 'row'))
+    .filter((offer) => {
+      const haystack = normalizeEntityKey(structuredOfferSearchText(offer))
+      return analysis.offerScope.weakPlanNames.some((name) => entityContainsTerm(haystack, name))
+    })
+  if (offers.length <= 1) return false
+  const families = new Set(offers.map((offer) => normalizeEntityKey(offer.product_family ?? '')).filter(Boolean))
+  return families.size > 1
 }
 
 function candidateHasRequiredEntity(candidate: RetrievalCandidate, analysis: RetrievalQuestionAnalysis): boolean {
@@ -1269,6 +1532,30 @@ function emptyFullContextFallbackDebug(outcome: FullContextFallbackDebug['outcom
     sourceCount: 0,
     sourceTitles: [],
   }
+}
+
+function shouldAttemptFullContextFallback(
+  fallbackReason: string | null,
+  analysis: RetrievalQuestionAnalysis,
+  candidates: readonly RetrievalCandidate[],
+): boolean {
+  if (
+    fallbackReason &&
+    analysis.offerScope.weakPlanNames.length > 0 &&
+    !analysis.offerScope.requestedFamily &&
+    analysis.offerScope.requestedVariantSpecs.length === 0
+  ) {
+    return false
+  }
+  if (fallbackReason && new Set(['no_relevant_knowledge', 'cannot_compute', 'ambiguous_offer', 'weak_selected_evidence', 'family_mismatch', 'conflicting_facts']).has(fallbackReason)) {
+    return true
+  }
+  if (!fallbackReason && analysis.offerScope.requestedFamily && candidates.length > 0 && analysis.offerScope.answerMode === 'single_offer_exact') {
+    return !candidates.some((candidate) =>
+      extractStructuredPricingOffersFromCandidate(candidate).some((offer) => scoreOfferFamilyMatch(analysis.offerScope.requestedFamily, offer) > 0),
+    )
+  }
+  return false
 }
 
 function buildFullContextFallback(args: {
@@ -1473,6 +1760,10 @@ function calculateFromStructuredPricingOffers(
     if (stored && !wantsOriginal) {
       return storedBillingTotal(stored.amount, targetPeriod, sourceIds, stored.currency)
     }
+    const durationTotal = !wantsOriginal ? selectBillingTotalForTarget(offer.billing_totals, targetPeriod) : null
+    if (durationTotal) {
+      return convertStructuredBillingTotal(durationTotal, targetPeriod, sourceIds)
+    }
     const storedSource = !wantsOriginal ? selectStoredPeriodSource(offer.stored_period_totals, targetPeriod) : null
     if (storedSource?.period) {
       return convertBillingTotal(storedSource.amount, storedSource.period, targetPeriod, sourceIds, storedSource.currency)
@@ -1506,6 +1797,76 @@ function calculateFromStructuredPricingOffers(
   return null
 }
 
+function selectBillingTotalForTarget(
+  totals: readonly StructuredBillingTotal[],
+  targetPeriod: BillingPeriod,
+): StructuredBillingTotal | null {
+  const convertible = totals.filter((total) => billingTotalCanConvertToPeriod(total, targetPeriod))
+  if (convertible.length === 0) return null
+  return [...convertible].sort((left, right) => {
+    const leftExact = left.duration_count === 1 && left.period === targetPeriod ? 1 : 0
+    const rightExact = right.duration_count === 1 && right.period === targetPeriod ? 1 : 0
+    return rightExact - leftExact || left.duration_count - right.duration_count
+  })[0] ?? null
+}
+
+function billingTotalCanConvertToPeriod(total: StructuredBillingTotal, targetPeriod: BillingPeriod): boolean {
+  if (!total.period) return false
+  if (total.duration_unit === 'session') return false
+  return Boolean(periodsPerDurationUnit(total.duration_unit) && periodsPerTarget(targetPeriod))
+}
+
+function convertStructuredBillingTotal(
+  total: StructuredBillingTotal,
+  targetPeriod: BillingPeriod,
+  sourceChunkIds: readonly string[],
+): CalculationResult {
+  const sourcePeriodsPerYear = periodsPerDurationUnit(total.duration_unit)
+  const targetPeriodsPerYear = periodsPerTarget(targetPeriod)
+  if (!sourcePeriodsPerYear || !targetPeriodsPerYear || total.duration_count <= 0) {
+    return {
+      status: 'cannot_compute',
+      value: null,
+      formula: '',
+      unit: `${total.currency}/${targetPeriod}`.trim(),
+      sourceChunkIds,
+      reason: 'Unsupported billing duration.',
+    }
+  }
+  const coveredYears = total.duration_count / sourcePeriodsPerYear
+  const yearlyTotal = total.amount / coveredYears
+  const value = yearlyTotal / targetPeriodsPerYear
+  const formula = `${total.amount} ${total.currency} billed per ${formatDurationCount(total.duration_count, total.duration_unit)} = ${roundCalculationNumber(value)} ${total.currency}/${targetPeriod}`
+  return {
+    status: 'computed',
+    value: roundCalculationNumber(value),
+    formula,
+    unit: `${total.currency}/${targetPeriod}`.trim(),
+    sourceChunkIds,
+  }
+}
+
+function periodsPerDurationUnit(unit: BillingDurationUnit): number | null {
+  if (unit === 'day') return 365
+  if (unit === 'week') return 52
+  if (unit === 'month') return 12
+  if (unit === 'quarter') return 4
+  if (unit === 'year') return 1
+  return null
+}
+
+function periodsPerTarget(period: BillingPeriod): number {
+  if (period === 'daily') return 365
+  if (period === 'weekly') return 52
+  if (period === 'monthly') return 12
+  if (period === 'quarterly') return 4
+  return 1
+}
+
+function formatDurationCount(count: number, unit: BillingDurationUnit): string {
+  return `${count} ${unit}${count === 1 ? '' : 's'}`
+}
+
 function selectStoredPeriodSource(
   totals: Partial<Record<BillingPeriod, StructuredPriceValue>>,
   targetPeriod: BillingPeriod,
@@ -1527,12 +1888,44 @@ function selectStructuredPricingOffer(
   offers: readonly StructuredPricingOffer[],
 ): StructuredPricingOffer | null {
   if (offers.length === 0) return null
+  const scope = analysis.offerScope
   const scored = offers
     .map((offer, index) => {
       const entityHaystack = normalizeEntityKey(offer.entity ?? '')
-      const sourceHaystack = normalizeEntityKey(offer.source_text)
+      const sourceHaystack = normalizeEntityKey(structuredOfferSearchText(offer))
       let score = offers.length - index
       let entityLabelMatches = 0
+      const familyMatchScore = scoreOfferFamilyMatch(scope.requestedFamily, offer)
+      const specMatchScore = scoreOfferSpecMatch(scope.requestedVariantSpecs, offer)
+      if (scope.requestedFamily) {
+        if (familyMatchScore > 0) score += familyMatchScore
+        else score -= scope.answerMode === 'single_offer_exact' ? 90 : 30
+      }
+      if (scope.requestedVariantSpecs.length > 0) {
+        if (specMatchScore > 0) {
+          score += specMatchScore
+          entityLabelMatches += specMatchScore >= 40 ? 1 : 0
+        } else {
+          score -= 80
+        }
+      }
+      if (scope.requestedEntity) {
+        const normalizedRequestedEntity = normalizeEntityKey(scope.requestedEntity)
+        if (entityContainsTerm(entityHaystack, normalizedRequestedEntity)) {
+          score += 95
+          entityLabelMatches += 1
+        } else if (entityContainsTerm(sourceHaystack, normalizedRequestedEntity)) {
+          score += 18
+        }
+      }
+      for (const weakName of scope.weakPlanNames) {
+        if (entityContainsTerm(entityHaystack, weakName)) {
+          score += scope.requestedFamily ? 45 : 18
+          entityLabelMatches += 1
+        } else if (entityContainsTerm(sourceHaystack, weakName)) {
+          score += 6
+        }
+      }
       for (const phrase of analysis.entityPhrases) {
         const normalizedPhrase = normalizeEntityKey(phrase)
         if (entityContainsTerm(entityHaystack, normalizedPhrase)) {
@@ -1555,20 +1948,93 @@ function selectStructuredPricingOffer(
           entityLabelMatches += 1
         }
       }
-      if (analysis.calculationIntent.targetPeriod && offer.stored_period_totals[analysis.calculationIntent.targetPeriod]) score += 40
+      if (analysis.calculationIntent.targetPeriod && offerHasBillingForTarget(offer, analysis.calculationIntent.targetPeriod)) score += 40
       if (offer.current_price) score += 10
       if (offer.original_price && offer.discount_percent !== null) score += 10
-      if (analysis.entityTerms.length > 0 && entityLabelMatches === 0) score -= 45
+      if (scope.answerMode === 'single_offer_exact' && analysis.entityTerms.length > 0 && entityLabelMatches === 0) score -= 45
       return { offer, score }
     })
     .sort((left, right) => right.score - left.score)
+  if (scope.weakPlanNames.length > 0 && !scope.requestedFamily && scope.requestedVariantSpecs.length === 0) {
+    const weakMatches = scored.filter((item) => {
+      const haystack = normalizeEntityKey(structuredOfferSearchText(item.offer))
+      return scope.weakPlanNames.some((name) => entityContainsTerm(haystack, name))
+    })
+    const families = new Set(weakMatches.map((item) => normalizeEntityKey(item.offer.product_family ?? '')).filter(Boolean))
+    if (weakMatches.length > 1 && families.size > 1) return null
+  }
   const best = scored[0]
+  if (scope.requestedVariantSpecs.length > 0) {
+    const specMatchedRaw = scored.filter((item) => scoreOfferSpecMatch(scope.requestedVariantSpecs, item.offer) > 0)
+    const specMatched = scope.requestedFamily
+      ? specMatchedRaw.filter((item) => scoreOfferFamilyMatch(scope.requestedFamily, item.offer) > 0)
+      : specMatchedRaw
+    if (specMatched.length === 1 || (specMatched[0] && specMatched[1] && specMatched[0].score - specMatched[1].score >= 10)) {
+      return specMatched[0]?.offer ?? null
+    }
+  }
   if (!best || best.score < 15) return null
   const second = scored[1]
-  if (second && best.score - second.score < 5 && !analysis.entityTerms.some((term) => entityContainsTerm(normalizeEntityKey(best.offer.entity ?? ''), normalizeEntityKey(term)))) {
+  if (
+    scope.answerMode === 'single_offer_exact' &&
+    second &&
+    best.score - second.score < 5 &&
+    !offerMatchesRequestedScope(best.offer, scope)
+  ) {
     return null
   }
   return best.offer
+}
+
+function structuredOfferSearchText(offer: StructuredPricingOffer): string {
+  return [
+    offer.entity,
+    offer.entity_name,
+    offer.product_family,
+    offer.category_path.join(' '),
+    Object.values(offer.variant_specs).join(' '),
+    offer.heading_path.join(' '),
+    offer.source_url,
+    offer.source_text,
+  ].filter(Boolean).join('\n')
+}
+
+function scoreOfferFamilyMatch(requestedFamily: string | null, offer: StructuredPricingOffer): number {
+  if (!requestedFamily) return 0
+  const familyTerms = tokenize(requestedFamily)
+  if (familyTerms.length === 0) return 0
+  const haystack = normalizeEntityKey(structuredOfferSearchText(offer))
+  const compactHaystack = haystack.replace(/\s+/g, '')
+  const matched = familyTerms.filter((term) => haystack.includes(term) || compactHaystack.includes(term.replace(/\s+/g, ''))).length
+  if (matched === 0) return 0
+  const ratio = matched / familyTerms.length
+  const exactFamily = offer.product_family && entityContainsTerm(normalizeEntityKey(offer.product_family), normalizeEntityKey(requestedFamily))
+  return Math.round((exactFamily ? 35 : 18) + ratio * 45)
+}
+
+function scoreOfferSpecMatch(requestedSpecs: readonly string[], offer: StructuredPricingOffer): number {
+  if (requestedSpecs.length === 0) return 0
+  const offerSpecs = extractSpecClaims(structuredOfferSearchText(offer))
+  let matched = 0
+  for (const spec of requestedSpecs) {
+    if (offerSpecs.has(spec)) matched += 1
+  }
+  if (matched === 0) return 0
+  return Math.round((matched / requestedSpecs.length) * 80)
+}
+
+function offerHasBillingForTarget(offer: StructuredPricingOffer, targetPeriod: BillingPeriod): boolean {
+  if (offer.stored_period_totals[targetPeriod]) return true
+  return offer.billing_totals.some((total) => billingTotalCanConvertToPeriod(total, targetPeriod))
+}
+
+function offerMatchesRequestedScope(offer: StructuredPricingOffer, scope: OfferQueryScope): boolean {
+  if (scope.requestedFamily && scoreOfferFamilyMatch(scope.requestedFamily, offer) <= 0) return false
+  if (scope.requestedVariantSpecs.length > 0 && scoreOfferSpecMatch(scope.requestedVariantSpecs, offer) <= 0) return false
+  if (!scope.requestedEntity && scope.weakPlanNames.length === 0) return true
+  const haystack = normalizeEntityKey(structuredOfferSearchText(offer))
+  if (scope.requestedEntity && entityContainsTerm(haystack, normalizeEntityKey(scope.requestedEntity))) return true
+  return scope.weakPlanNames.some((name) => entityContainsTerm(haystack, name))
 }
 
 function entityContainsTerm(haystack: string, term: string): boolean {
@@ -1656,11 +2122,11 @@ function isCurrentPriceFact(fact: ExtractedPriceFact): boolean {
 }
 
 function isOriginalPriceContext(value: string): boolean {
-  return /\b(original|regular|before discount|before sale|list price|base price|standard price|was|undiscounted|struck|strikethrough)\b/i.test(value)
+  return /\b(original|regular|before discount|before sale|list price|base price|standard price|was|undiscounted|struck|strikethrough)\b|~~\s*(?:\$|rs\.?|pkr|usd|eur|gbp)?\s*\d/i.test(value)
 }
 
 function isCurrentPriceContext(value: string): boolean {
-  return /\b(current|discounted|sale|now|today|effective|after discount|special|offer|promo|save|deal)\b/i.test(value)
+  return /\b(current|discounted|sale|now|today|effective|after discount|special|offer|promo|save|deal|starting at|starts at)\b/i.test(value)
 }
 
 function hasTextualSameLabelPriceConflict(text: string): boolean {
@@ -1694,13 +2160,50 @@ interface StructuredPriceValue {
   readonly text: string
 }
 
+type StructuredOfferEntityType =
+  | 'product'
+  | 'service'
+  | 'plan'
+  | 'package'
+  | 'menu_item'
+  | 'course'
+  | 'treatment'
+  | 'appointment'
+  | 'subscription'
+  | 'membership'
+  | 'fee'
+  | 'unknown'
+
+type BillingDurationUnit = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'session'
+
+interface StructuredBillingTotal {
+  readonly amount: number
+  readonly currency: string
+  readonly duration_count: number
+  readonly duration_unit: BillingDurationUnit
+  readonly label: string
+  readonly source_text: string
+  readonly period: BillingPeriod | null
+}
+
 interface StructuredPricingOffer {
   readonly kind: 'pricing_offer'
   readonly entity: string | null
+  readonly entity_name: string | null
+  readonly entity_type: StructuredOfferEntityType
+  readonly product_family: string | null
+  readonly category_path: readonly string[]
+  readonly variant_specs: Record<string, string>
   readonly current_price: StructuredPriceValue | null
   readonly original_price: StructuredPriceValue | null
   readonly discount_percent: number | null
   readonly stored_period_totals: Partial<Record<BillingPeriod, StructuredPriceValue>>
+  readonly billing_totals: readonly StructuredBillingTotal[]
+  readonly source_url: string | null
+  readonly heading_path: readonly string[]
+  readonly source_excerpt: string
+  readonly confidence: 'high' | 'medium' | 'low'
+  readonly source_origin: 'persisted' | 'runtime'
   readonly source_text: string
   readonly sourceChunkId: string
 }
@@ -1729,6 +2232,9 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
     const afterMatch = text.slice((match.index ?? 0) + match[0].length, (match.index ?? 0) + match[0].length + 1)
     const hasExplicitPriceMarker = Boolean(match[1] || match[3] || match[4])
     if (!hasExplicitPriceMarker && /^[a-z%]/i.test(afterMatch)) continue
+    const before = text.slice(Math.max(0, (match.index ?? 0) - 45), match.index ?? 0)
+    const after = text.slice((match.index ?? 0) + match[0].length, (match.index ?? 0) + match[0].length + 55)
+    if (!(match[1] || match[3]) && isBillingDurationCountMatch(before, match[0], after)) continue
     const context = text.slice(Math.max(0, match.index - 80), (match.index ?? 0) + match[0].length + 80).toLowerCase()
     const localContext = text.slice(Math.max(0, match.index - 45), (match.index ?? 0) + match[0].length + 35).toLowerCase()
     if (!/(price|cost|fee|rate|plan|package|per|\/|month|year|week|day|\$|rs|pkr|usd|eur|gbp)/i.test(context)) continue
@@ -1758,8 +2264,8 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
 }
 
 function extractStructuredPricingOffersFromCandidate(candidate: RetrievalCandidate): StructuredPricingOffer[] {
-  const persisted = readStructuredPricingOffers(candidate.structuredFacts, candidate.id)
-  const derived = extractStructuredPricingOffers(candidate.chunkText, candidate.id)
+  const persisted = readStructuredPricingOffers(candidate.structuredFacts, candidate.id).map((offer) => enrichOfferWithCandidateMetadata(offer, candidate))
+  const derived = extractStructuredPricingOffers(candidate.chunkText, candidate.id).map((offer) => enrichOfferWithCandidateMetadata(offer, candidate))
   const bySignature = new Map<string, StructuredPricingOffer>()
   for (const offer of [...persisted, ...derived]) {
     const signature = [
@@ -1767,10 +2273,62 @@ function extractStructuredPricingOffersFromCandidate(candidate: RetrievalCandida
       offer.current_price ? `${offer.current_price.currency}:${roundCalculationNumber(offer.current_price.amount)}:${offer.current_price.period ?? ''}` : '',
       offer.original_price ? `${offer.original_price.currency}:${roundCalculationNumber(offer.original_price.amount)}:${offer.original_price.period ?? ''}` : '',
       Object.entries(offer.stored_period_totals).map(([period, value]) => `${period}:${value.currency}:${roundCalculationNumber(value.amount)}`).join('|'),
+      offer.billing_totals.map((total) => `${total.currency}:${total.amount}:${total.duration_count}:${total.duration_unit}`).join('|'),
     ].join('|')
-    if (!bySignature.has(signature)) bySignature.set(signature, offer)
+    const current = bySignature.get(signature)
+    if (!current || offerCompletenessScore(offer) > offerCompletenessScore(current)) bySignature.set(signature, offer)
   }
   return [...bySignature.values()]
+}
+
+function enrichOfferWithCandidateMetadata(
+  offer: StructuredPricingOffer,
+  candidate: Pick<RetrievalCandidate, 'sourceUrl' | 'headingPath' | 'sourceTitle'>,
+): StructuredPricingOffer {
+  const headingPath = candidate.headingPath
+    ? candidate.headingPath.split(/\s*>\s*/).map((part) => part.trim()).filter(Boolean)
+    : offer.heading_path
+  const categoryPath = headingPath.length > 0 ? headingPath : offer.category_path
+  const metadataFamily = inferFamilyFromMetadata(categoryPath, candidate.sourceUrl, candidate.sourceTitle)
+  const productFamily = metadataFamily && (!offer.product_family || entityContainsTerm(normalizeEntityKey(metadataFamily), normalizeEntityKey(offer.product_family)))
+    ? metadataFamily
+    : offer.product_family ?? metadataFamily
+  return {
+    ...offer,
+    source_url: offer.source_url ?? candidate.sourceUrl,
+    heading_path: headingPath,
+    category_path: categoryPath,
+    product_family: productFamily,
+    source_text: [
+      categoryPath.length > 0 ? `Heading path: ${categoryPath.join(' > ')}` : '',
+      candidate.sourceUrl ? `URL: ${candidate.sourceUrl}` : '',
+      offer.source_text,
+    ].filter(Boolean).join('\n').slice(0, 1400),
+  }
+}
+
+function inferFamilyFromMetadata(
+  headingPath: readonly string[],
+  sourceUrl: string | null,
+  sourceTitle: string | null,
+): string | null {
+  const text = [headingPath.join(' '), sourceTitle, sourceUrl?.replace(/https?:\/\//i, '').replace(/[/?#].*$/, '')].filter(Boolean).join(' ')
+  const terms = tokenize(text)
+    .filter((term) => !OFFER_FAMILY_STOP_TERMS.has(term) && !isSpecEntityTerm(term))
+  return terms.length > 0 ? [...new Set(terms)].slice(0, 6).join(' ') : null
+}
+
+function offerCompletenessScore(offer: StructuredPricingOffer): number {
+  return [
+    offer.current_price ? 10 : 0,
+    offer.original_price ? 8 : 0,
+    offer.discount_percent !== null ? 5 : 0,
+    Object.keys(offer.stored_period_totals).length * 4,
+    offer.billing_totals.length * 6,
+    offer.product_family ? 3 : 0,
+    Object.keys(offer.variant_specs).length * 2,
+    offer.source_origin === 'persisted' ? 1 : 0,
+  ].reduce((sum, value) => sum + value, 0)
 }
 
 function readStructuredPricingOffers(facts: Record<string, unknown> | null, sourceChunkId: string): StructuredPricingOffer[] {
@@ -1780,6 +2338,7 @@ function readStructuredPricingOffers(facts: Record<string, unknown> | null, sour
       if (!isRecord(offer)) return null
       const current = readStructuredPriceValue(offer.current_price)
       const original = readStructuredPriceValue(offer.original_price)
+      const billingTotals = readStructuredBillingTotals(offer.billing_totals)
       const stored: Partial<Record<BillingPeriod, StructuredPriceValue>> = {}
       if (isRecord(offer.stored_period_totals)) {
         for (const period of ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'] as const) {
@@ -1787,14 +2346,40 @@ function readStructuredPricingOffers(facts: Record<string, unknown> | null, sour
           if (value) stored[period] = value
         }
       }
-      if (!current && !original && Object.keys(stored).length === 0) return null
+      for (const total of billingTotals) {
+        if (total.period && total.duration_count === 1 && !stored[total.period]) {
+          stored[total.period] = {
+            amount: total.amount,
+            currency: total.currency,
+            period: total.period,
+            text: total.source_text,
+          }
+        }
+      }
+      if (!current && !original && Object.keys(stored).length === 0 && billingTotals.length === 0) return null
+      const entity = typeof offer.entity === 'string' && offer.entity.trim()
+        ? offer.entity.trim()
+        : typeof offer.entity_name === 'string' && offer.entity_name.trim()
+          ? offer.entity_name.trim()
+          : null
       return {
         kind: 'pricing_offer',
-        entity: typeof offer.entity === 'string' && offer.entity.trim() ? offer.entity.trim() : null,
+        entity,
+        entity_name: typeof offer.entity_name === 'string' && offer.entity_name.trim() ? offer.entity_name.trim() : entity,
+        entity_type: readStructuredOfferEntityType(offer.entity_type),
+        product_family: typeof offer.product_family === 'string' && offer.product_family.trim() ? offer.product_family.trim() : inferProductFamilyFromOffer(entity, typeof offer.source_text === 'string' ? offer.source_text : ''),
+        category_path: Array.isArray(offer.category_path) ? offer.category_path.filter((value): value is string => typeof value === 'string' && Boolean(value.trim())).map((value) => value.trim()) : [],
+        variant_specs: isRecord(offer.variant_specs) ? readStringRecord(offer.variant_specs) : {},
         current_price: current,
         original_price: original,
         discount_percent: typeof offer.discount_percent === 'number' && Number.isFinite(offer.discount_percent) ? offer.discount_percent : null,
         stored_period_totals: stored,
+        billing_totals: billingTotals,
+        source_url: typeof offer.source_url === 'string' && offer.source_url.trim() ? offer.source_url.trim() : null,
+        heading_path: Array.isArray(offer.heading_path) ? offer.heading_path.filter((value): value is string => typeof value === 'string' && Boolean(value.trim())).map((value) => value.trim()) : [],
+        source_excerpt: typeof offer.source_excerpt === 'string' ? offer.source_excerpt : typeof offer.source_text === 'string' ? offer.source_text.slice(0, 400) : '',
+        confidence: readOfferConfidence(offer.confidence),
+        source_origin: 'persisted',
         source_text: typeof offer.source_text === 'string' ? offer.source_text : '',
         sourceChunkId,
       }
@@ -1809,6 +2394,52 @@ function readStructuredPriceValue(value: unknown): StructuredPriceValue | null {
   const period = typeof value.period === 'string' ? normalizePeriod(value.period) : null
   const text = typeof value.text === 'string' ? value.text : ''
   return Number.isFinite(amount) ? { amount, currency, period, text } : null
+}
+
+function readStructuredBillingTotals(value: unknown): StructuredBillingTotal[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((total): StructuredBillingTotal | null => {
+      if (!isRecord(total)) return null
+      const amount = typeof total.amount === 'number' ? total.amount : Number.NaN
+      const durationCount = typeof total.duration_count === 'number' ? total.duration_count : 1
+      const durationUnit = readBillingDurationUnit(total.duration_unit)
+      const currency = typeof total.currency === 'string' ? total.currency : ''
+      if (!Number.isFinite(amount) || !Number.isFinite(durationCount) || durationCount <= 0 || !durationUnit) return null
+      return {
+        amount: roundCalculationNumber(amount),
+        currency,
+        duration_count: roundCalculationNumber(durationCount),
+        duration_unit: durationUnit,
+        label: typeof total.label === 'string' ? total.label : 'billing total',
+        source_text: typeof total.source_text === 'string' ? total.source_text : '',
+        period: durationUnitToBillingPeriod(durationUnit),
+      }
+    })
+    .filter((total): total is StructuredBillingTotal => Boolean(total))
+}
+
+function readStructuredOfferEntityType(value: unknown): StructuredOfferEntityType {
+  const allowed = new Set<StructuredOfferEntityType>(['product', 'service', 'plan', 'package', 'menu_item', 'course', 'treatment', 'appointment', 'subscription', 'membership', 'fee', 'unknown'])
+  return typeof value === 'string' && allowed.has(value as StructuredOfferEntityType) ? value as StructuredOfferEntityType : 'unknown'
+}
+
+function readBillingDurationUnit(value: unknown): BillingDurationUnit | null {
+  const normalized = typeof value === 'string' ? value.toLowerCase().replace(/s$/, '') : ''
+  if (normalized === 'day' || normalized === 'week' || normalized === 'month' || normalized === 'quarter' || normalized === 'year' || normalized === 'session') return normalized
+  return null
+}
+
+function readOfferConfidence(value: unknown): 'high' | 'medium' | 'low' {
+  return value === 'high' || value === 'medium' || value === 'low' ? value : 'medium'
+}
+
+function readStringRecord(value: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && Boolean(entry[1].trim()))
+      .map(([key, entryValue]) => [key, entryValue.trim()]),
+  )
 }
 
 function extractStructuredPricingOffers(text: string, sourceChunkId = 'chunk'): StructuredPricingOffer[] {
@@ -1863,18 +2494,33 @@ function splitInlinePricingOffers(block: string): string[] {
 function buildStructuredPricingOffer(block: string, sourceChunkId: string): StructuredPricingOffer | null {
   if (!containsPriceFact(block)) return null
   const money = extractMoneyMatches(block)
-  if (money.length === 0) return null
+  const billingTotals = extractBillingTotals(block)
+  if (money.length === 0 && billingTotals.length === 0) return null
   const discountPercent = extractDiscountPercent(block)
   const entity = extractPricingEntityName(block)
+  const productFamily = inferProductFamilyFromOffer(entity, block)
+  const headingPath = extractHeadingPathFromBlock(block)
   const stored: Partial<Record<BillingPeriod, StructuredPriceValue>> = {}
+  for (const total of billingTotals) {
+    if (total.period && total.duration_count === 1) {
+      stored[total.period] = {
+        amount: total.amount,
+        currency: total.currency,
+        period: total.period,
+        text: total.source_text,
+      }
+    }
+  }
   for (const match of money) {
     const period = match.period ?? inferPricePeriod(match.localContext)
-    if (match.isTotal && period) {
+    const billingTotal = findBillingTotalForMoney(match, billingTotals)
+    if (billingTotal?.duration_count && billingTotal.duration_count > 1) continue
+    if (match.isTotal && period && !billingTotal) {
       stored[period] = toStructuredPriceValue({ ...match, period })
     }
   }
 
-  const nonTotals = money.filter((match) => !match.isTotal)
+  const nonTotals = money.filter((match) => !match.isTotal && !findBillingTotalForMoney(match, billingTotals))
   const pair = findDiscountPricePair(nonTotals, discountPercent)
   const roleBasedCurrent = nonTotals.find((match) => isCurrentPriceContext(match.localContext))
   const roleBasedOriginal = nonTotals.find((match) => isOriginalPriceContext(match.localContext))
@@ -1885,17 +2531,145 @@ function buildStructuredPricingOffer(block: string, sourceChunkId: string): Stru
   const originalValue = original && (!current || roundCalculationNumber(original.amount) !== roundCalculationNumber(current.amount))
     ? toStructuredPriceValue(original)
     : null
-  if (!currentValue && !originalValue && Object.keys(stored).length === 0) return null
+  if (!currentValue && !originalValue && Object.keys(stored).length === 0 && billingTotals.length === 0) return null
   return {
     kind: 'pricing_offer',
     entity,
+    entity_name: entity,
+    entity_type: inferOfferEntityType(entity, block),
+    product_family: productFamily,
+    category_path: headingPath,
+    variant_specs: extractVariantSpecs(block),
     current_price: currentValue,
     original_price: originalValue,
     discount_percent: discountPercent,
     stored_period_totals: stored,
+    billing_totals: billingTotals,
+    source_url: extractSourceUrlFromBlock(block),
+    heading_path: headingPath,
+    source_excerpt: block.slice(0, 400),
+    confidence: currentValue || Object.keys(stored).length > 0 || billingTotals.length > 0 ? 'high' : 'low',
+    source_origin: 'runtime',
     source_text: block.slice(0, 1200),
     sourceChunkId,
   }
+}
+
+function extractBillingTotals(text: string): StructuredBillingTotal[] {
+  const totals: StructuredBillingTotal[] = []
+  const currencyAmount = String.raw`(?:(USD|PKR|EUR|GBP|AED|SAR|Rs\.?|₹|\$|€|£)\s*)?(\d+(?:[.,]\d+)?)(?:\s*(USD|PKR|EUR|GBP|AED|SAR))?`
+  const duration = String.raw`(?:(\d+(?:[.,]\d+)?)\s*)?(days?|weeks?|months?|quarters?|years?|sessions?)`
+  const patterns = [
+    new RegExp(`${currencyAmount}\\s*(?:billed|charged|invoiced|paid)\\s*(?:per|every|for)\\s*${duration}`, 'gi'),
+    new RegExp(`(?:total|billing total|package total|fee|price)\\s*:?\\s*${currencyAmount}\\s*(?:per|every|for|billed\\s*(?:per|every|for))\\s*${duration}`, 'gi'),
+    new RegExp(`${currencyAmount}\\s*for\\s*${duration}`, 'gi'),
+  ]
+
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const currency = normalizeCurrency(match[1] ?? match[3] ?? '$')
+      const amount = Number((match[2] ?? '').replace(',', '.'))
+      const durationCount = Number((match[4] ?? '1').replace(',', '.'))
+      const unit = readBillingDurationUnit(match[5])
+      if (!Number.isFinite(amount) || !Number.isFinite(durationCount) || durationCount <= 0 || !unit) continue
+      const sourceText = (match[0] ?? '').replace(/\s+/g, ' ').trim()
+      totals.push({
+        amount: roundCalculationNumber(amount),
+        currency,
+        duration_count: roundCalculationNumber(durationCount),
+        duration_unit: unit,
+        label: buildBillingTotalLabel(unit, durationCount),
+        source_text: sourceText,
+        period: durationUnitToBillingPeriod(unit),
+      })
+    }
+  }
+
+  const bySignature = new Map<string, StructuredBillingTotal>()
+  for (const total of totals) {
+    const signature = `${total.currency}:${total.amount}:${total.duration_count}:${total.duration_unit}`
+    if (!bySignature.has(signature)) bySignature.set(signature, total)
+  }
+  return [...bySignature.values()]
+}
+
+function buildBillingTotalLabel(unit: BillingDurationUnit, count: number): string {
+  return `${count === 1 ? '' : `${count} `}${unit}${count === 1 ? '' : 's'} billing total`.trim()
+}
+
+function durationUnitToBillingPeriod(unit: BillingDurationUnit): BillingPeriod | null {
+  if (unit === 'day') return 'daily'
+  if (unit === 'week') return 'weekly'
+  if (unit === 'month') return 'monthly'
+  if (unit === 'quarter') return 'quarterly'
+  if (unit === 'year') return 'yearly'
+  return null
+}
+
+function findBillingTotalForMoney(match: MoneyMatch, totals: readonly StructuredBillingTotal[]): StructuredBillingTotal | null {
+  const normalizedAmount = roundCalculationNumber(match.amount)
+  return totals.find((total) =>
+    total.currency === match.currency &&
+    roundCalculationNumber(total.amount) === normalizedAmount &&
+    total.source_text.toLowerCase().includes(match.text.toLowerCase().replace(/\s+/g, ' ').trim()),
+  ) ?? null
+}
+
+function inferOfferEntityType(entity: string | null, block: string): StructuredOfferEntityType {
+  const text = `${entity ?? ''}\n${block}`.toLowerCase()
+  if (/\b(menu|dish|meal|combo|drink|pizza|burger|pasta)\b/.test(text)) return 'menu_item'
+  if (/\b(course|class|program|lesson|training|bootcamp)\b/.test(text)) return 'course'
+  if (/\b(treatment|therapy|procedure|doctor|clinic)\b/.test(text)) return 'treatment'
+  if (/\b(appointment|booking|consultation)\b/.test(text)) return 'appointment'
+  if (/\b(subscription|membership)\b/.test(text)) return text.includes('membership') ? 'membership' : 'subscription'
+  if (/\b(plan|tier)\b/.test(text) || (entity && tokenize(entity).some((term) => GENERIC_PLAN_NAMES.has(term)))) return 'plan'
+  if (/\b(package|bundle)\b/.test(text)) return 'package'
+  if (/\b(service|setup|installation|audit)\b/.test(text)) return 'service'
+  if (/\b(fee|charge|rate)\b/.test(text)) return 'fee'
+  if (/\b(product|sku|variant|shipping|delivery)\b/.test(text)) return 'product'
+  return 'unknown'
+}
+
+function inferProductFamilyFromOffer(entity: string | null, block: string): string | null {
+  const entityTerms = tokenize(entity ?? '')
+    .filter((term) => !OFFER_FAMILY_STOP_TERMS.has(term) && !isSpecEntityTerm(term) && !/^x?\d+$/.test(term))
+  if (entityTerms.length > 0) return entityTerms.join(' ')
+
+  const heading = block
+    .split(/\n+/)
+    .map((line) => line.replace(/^#{2,4}\s+/, '').trim())
+    .find((line) => line && !containsPriceFact(line))
+  const headingTerms = tokenize(heading ?? '')
+    .filter((term) => !OFFER_FAMILY_STOP_TERMS.has(term) && !isSpecEntityTerm(term))
+  if (headingTerms.length > 0) return headingTerms.slice(0, 6).join(' ')
+  const contentTerms = tokenize(block)
+    .filter((term) => !OFFER_FAMILY_STOP_TERMS.has(term) && !isSpecEntityTerm(term) && !/^\d+(?:\.\d+)?$/.test(term))
+  return contentTerms.length > 0 ? [...new Set(contentTerms)].slice(0, 4).join(' ') : null
+}
+
+function extractVariantSpecs(block: string): Record<string, string> {
+  const specs: Record<string, string> = {}
+  for (const spec of extractSpecClaims(block)) {
+    if (/\bgb|tb|mb\b/i.test(spec)) specs.memory_or_storage = spec
+    else if (/\bcore|cpu\b/i.test(spec)) specs.cpu = spec
+    else specs[normalizeEntityKey(spec).replace(/\s+/g, '_') || `spec_${Object.keys(specs).length + 1}`] = spec
+  }
+  return specs
+}
+
+function extractHeadingPathFromBlock(block: string): string[] {
+  return block
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => /^#{2,4}\s+/.test(line))
+    .map((line) => line.replace(/^#{2,4}\s+/, '').trim())
+    .filter(Boolean)
+    .slice(0, 6)
+}
+
+function extractSourceUrlFromBlock(block: string): string | null {
+  const match = block.match(/\b(?:URL|Source URL|Page URL)\s*:\s*(https?:\/\/[^\s)]+)|\bhttps?:\/\/[^\s)]+/i)
+  return (match?.[1] ?? match?.[0] ?? '').replace(/^URL\s*:\s*/i, '').trim() || null
 }
 
 function extractMoneyMatches(text: string): MoneyMatch[] {
@@ -1909,6 +2683,7 @@ function extractMoneyMatches(text: string): MoneyMatch[] {
     const hasCurrency = Boolean(match[1] || match[3])
     const hasPeriod = Boolean(match[4])
     if (!hasCurrency && !hasPeriod) continue
+    if (!hasCurrency && isBillingDurationCountMatch(before, match[0], after)) continue
     const amount = Number(match[2]?.replace(',', '.'))
     if (!Number.isFinite(amount)) continue
     matches.push({
@@ -1922,6 +2697,12 @@ function extractMoneyMatches(text: string): MoneyMatch[] {
     })
   }
   return matches
+}
+
+function isBillingDurationCountMatch(before: string, value: string, after: string): boolean {
+  const context = `${before}${value}${after}`.toLowerCase()
+  return /\b(?:billed|charged|invoiced|paid|per|every|for)\s+\d+(?:[.,]\d+)?\s*(?:days?|weeks?|months?|quarters?|years?|sessions?)\b/.test(context) &&
+    /(?:\$|rs\.?|pkr|usd|eur|gbp|aed|sar|₹|€|£)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:usd|pkr|eur|gbp|aed|sar)/i.test(before)
 }
 
 function extractDiscountPercent(text: string): number | null {
@@ -2144,9 +2925,19 @@ function buildFactGuidanceBlock(
   }
 
   if (analysis.intents.pricing || analysis.intents.productOrService) {
-    const offer = selectStructuredPricingOffer(analysis, candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate)))
+    const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
+    if (analysis.offerScope.answerMode === 'category_pricing_list') {
+      const matchingOffers = selectCategoryPricingOffers(analysis, offers).slice(0, 10)
+      if (matchingOffers.length > 0) {
+        lines.push(`Answer mode: broad category/listing. Keep every price attached to its own offer; do not merge prices across offers.`)
+        lines.push(`Requested family/category: ${analysis.offerScope.requestedFamily ?? 'general pricing'}`)
+        lines.push(`Matching offers found: ${matchingOffers.map(formatOfferGuidanceSummary).join(' | ')}`)
+      }
+    }
+    const offer = analysis.offerScope.answerMode === 'category_pricing_list' ? null : selectStructuredPricingOffer(analysis, offers)
     if (offer) {
       lines.push(`Selected requested offer/entity: ${offer.entity ?? 'matched offer'}`)
+      if (offer.product_family) lines.push(`Selected offer family/category: ${offer.product_family}`)
       if (offer.current_price) lines.push(`Selected offer current/effective price: ${formatStructuredPriceValue(offer.current_price)}`)
       if (offer.original_price) lines.push(`Selected offer original/regular price: ${formatStructuredPriceValue(offer.original_price)}`)
       if (offer.discount_percent !== null) lines.push(`Selected offer discount percent: ${offer.discount_percent}%`)
@@ -2154,6 +2945,9 @@ function buildFactGuidanceBlock(
         .map(([period, value]) => `${period}: ${formatStructuredPriceValue(value)}`)
         .join(', ')
       if (totals) lines.push(`Selected offer stored billing totals: ${totals}`)
+      if (offer.billing_totals.length > 0) {
+        lines.push(`Selected offer billing duration totals: ${offer.billing_totals.map((total) => `${formatStructuredBillingTotal(total)} (${total.source_text})`).join(', ')}`)
+      }
       lines.push('For a single requested item, answer only from the selected offer/entity facts above and do not mix prices, specs, or totals from neighboring offers.')
     }
   }
@@ -2167,6 +2961,39 @@ function formatStructuredPriceValue(value: StructuredPriceValue): string {
   return `${value.currency ? `${value.currency} ` : ''}${value.amount}${value.period ? `/${value.period}` : ''}`
 }
 
+function formatStructuredBillingTotal(total: StructuredBillingTotal): string {
+  return `${total.currency ? `${total.currency} ` : ''}${total.amount} per ${formatDurationCount(total.duration_count, total.duration_unit)}`
+}
+
+function selectCategoryPricingOffers(
+  analysis: RetrievalQuestionAnalysis,
+  offers: readonly StructuredPricingOffer[],
+): StructuredPricingOffer[] {
+  const scoped = analysis.offerScope.requestedFamily
+    ? offers.filter((offer) => scoreOfferFamilyMatch(analysis.offerScope.requestedFamily, offer) > 0)
+    : [...offers]
+  const withPrice = scoped.filter((offer) => offer.current_price || offer.original_price || Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0)
+  const byName = new Map<string, StructuredPricingOffer>()
+  for (const offer of withPrice) {
+    const key = normalizeEntityKey(offer.entity ?? offer.entity_name ?? offer.source_text.slice(0, 80))
+    if (!key) continue
+    const current = byName.get(key)
+    if (!current || offerCompletenessScore(offer) > offerCompletenessScore(current)) byName.set(key, offer)
+  }
+  return [...byName.values()]
+}
+
+function formatOfferGuidanceSummary(offer: StructuredPricingOffer): string {
+  const parts = [
+    offer.entity ?? offer.entity_name ?? offer.product_family ?? 'Offer',
+    offer.current_price ? `current ${formatStructuredPriceValue(offer.current_price)}` : null,
+    offer.original_price ? `original ${formatStructuredPriceValue(offer.original_price)}` : null,
+    offer.discount_percent !== null ? `${offer.discount_percent}% off` : null,
+    offer.billing_totals.length > 0 ? `billing ${offer.billing_totals.map(formatStructuredBillingTotal).join(', ')}` : null,
+  ].filter(Boolean)
+  return parts.join(' - ')
+}
+
 function buildMatchTypes(reasons: readonly string[]): string[] {
   const types = new Set<string>()
   if (reasons.includes('exact_signal')) types.add('exact')
@@ -2175,6 +3002,23 @@ function buildMatchTypes(reasons: readonly string[]): string[] {
   if (reasons.includes('neighbor_expansion')) types.add('neighbor')
   if (reasons.includes('answer_bearing_fact')) types.add('answer_fact')
   return [...types]
+}
+
+function buildSelectedOfferDebug(
+  analysis: RetrievalQuestionAnalysis,
+  candidates: readonly RetrievalCandidate[],
+): HybridRetrievalResult['debug']['selectedOffer'] {
+  const offer = selectStructuredPricingOffer(analysis, candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate)))
+  if (!offer) return null
+  return {
+    entity: offer.entity,
+    productFamily: offer.product_family,
+    currentPrice: offer.current_price,
+    originalPrice: offer.original_price,
+    billingTotals: offer.billing_totals,
+    sourceOrigin: offer.source_origin,
+    sourceChunkId: offer.sourceChunkId,
+  }
 }
 
 function uniqueMatches(text: string, pattern: RegExp): string[] {
@@ -2202,10 +3046,20 @@ function extractStructuredFacts(text: string): Record<string, unknown> {
     pricing_offers: extractStructuredPricingOffers(text).map((offer) => ({
       kind: offer.kind,
       entity: offer.entity,
+      entity_name: offer.entity_name,
+      entity_type: offer.entity_type,
+      product_family: offer.product_family,
+      category_path: offer.category_path,
+      variant_specs: offer.variant_specs,
       current_price: offer.current_price,
       original_price: offer.original_price,
       discount_percent: offer.discount_percent,
       stored_period_totals: offer.stored_period_totals,
+      billing_totals: offer.billing_totals,
+      source_url: offer.source_url,
+      heading_path: offer.heading_path,
+      source_excerpt: offer.source_excerpt,
+      confidence: offer.confidence,
       source_text: offer.source_text,
     })),
   }
@@ -2291,6 +3145,10 @@ function validateSingleEntityFactConsistency(args: {
 }): string | null {
   const analysis = analyzeRetrievalQuestion(args.question)
   if ((!analysis.intents.pricing && !analysis.intents.productOrService) || analysis.entityTerms.length === 0) return null
+  if (analysis.offerScope.answerMode === 'category_pricing_list' || analysis.offerScope.answerMode === 'comparison') return null
+  if (analysis.offerScope.answerMode === 'contact_location_hours' || analysis.offerScope.answerMode === 'policy_or_terms') {
+    if (!extractMoneyMatches(args.answer).length) return null
+  }
   const evidenceText = args.evidence.join('\n')
   const offers = extractStructuredPricingOffers(evidenceText, 'answer-evidence')
   if (offers.length === 0) return null
@@ -2301,6 +3159,7 @@ function validateSingleEntityFactConsistency(args: {
   if (targetOffer.current_price) allowedMoney.add(roundCalculationNumber(targetOffer.current_price.amount))
   if (targetOffer.original_price) allowedMoney.add(roundCalculationNumber(targetOffer.original_price.amount))
   for (const value of Object.values(targetOffer.stored_period_totals)) allowedMoney.add(roundCalculationNumber(value.amount))
+  for (const value of targetOffer.billing_totals) allowedMoney.add(roundCalculationNumber(value.amount))
   if (args.calculation?.status === 'computed' && args.calculation.value !== null) allowedMoney.add(roundCalculationNumber(args.calculation.value))
 
   for (const money of extractMoneyMatches(args.answer)) {
@@ -2342,6 +3201,7 @@ function isTraceableFromStructuredOffer(amount: number, offer: StructuredPricing
     offer.original_price?.amount,
     offer.discount_percent ?? undefined,
     ...Object.values(offer.stored_period_totals).map((value) => value.amount),
+    ...offer.billing_totals.map((value) => value.amount),
   ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
   const target = roundCalculationNumber(amount)
   for (const seed of seedNumbers) {

@@ -155,6 +155,11 @@ function buildSafeDebug(args: {
       entityPhrases: args.retrieval.analysis.entityPhrases,
       queryVariants: args.retrieval.analysis.queryVariants,
       intents: args.retrieval.analysis.intents,
+      answerMode: args.retrieval.debug.answerMode,
+      requestedFamily: args.retrieval.debug.requestedFamily,
+      requestedEntity: args.retrieval.debug.requestedEntity,
+      requestedVariantSpecs: args.retrieval.debug.requestedVariantSpecs,
+      requestedPeriod: args.retrieval.debug.requestedPeriod,
       activeChunkCount: args.retrieval.debug.activeChunkCount,
       exactCandidatesCount: args.retrieval.debug.exactCandidatesCount,
       keywordCandidatesCount: args.retrieval.debug.keywordCandidatesCount,
@@ -162,6 +167,7 @@ function buildSafeDebug(args: {
       answerBearingCandidatesCount: args.retrieval.debug.answerBearingCandidatesCount,
       selectedChunkIds: args.retrieval.debug.selectedChunkIds,
       selectedEvidence: args.retrieval.debug.selectedEvidence,
+      selectedOffer: args.retrieval.debug.selectedOffer,
       fallbackReason: args.fallbackReason,
       calculation: args.retrieval.calculation
         ? {

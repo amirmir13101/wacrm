@@ -9,6 +9,22 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 export { chunkTextByCharacter, semanticChunkText } from '@/lib/ai/chunking'
 export type { SemanticChunk, SemanticChunkOptions } from '@/lib/ai/chunking'
 
+export interface StructuredOfferPopulationCounts {
+  readonly totalActiveChunks: number
+  readonly chunksWithPricingOffers: number
+  readonly chunksWithPrices: number
+  readonly chunksWithPercentages: number
+}
+
+export interface StructuredOfferBackfillResult {
+  readonly before: StructuredOfferPopulationCounts
+  readonly after: StructuredOfferPopulationCounts
+  readonly processed: number
+  readonly updated: number
+  readonly skipped: number
+  readonly failed: number
+}
+
 export async function findWebsiteKnowledgeSourceForUrl(args: {
   readonly workspaceId: string
   readonly url: string
@@ -35,6 +51,92 @@ export async function findWebsiteKnowledgeSourceForUrl(args: {
     })) return source.id
   }
   return null
+}
+
+export async function backfillStructuredPricingOffers(args: {
+  readonly workspaceId: string
+  readonly batchSize?: number
+  readonly client?: SupabaseClient
+}): Promise<StructuredOfferBackfillResult> {
+  const admin = args.client ?? supabaseAdmin()
+  const batchSize = Math.max(1, Math.min(25, Math.floor(args.batchSize ?? 10)))
+  const before = await countStructuredOfferPopulation({ workspaceId: args.workspaceId, client: admin })
+  const { data, error } = await admin
+    .from('ai_knowledge_chunks')
+    .select('id, chunk_text, structured_facts, source:ai_knowledge_sources!inner(status)')
+    .eq('workspace_id', args.workspaceId)
+    .eq('source.status', 'active')
+  if (error) throw new Error(error.message)
+
+  const candidates = (data ?? [])
+    .filter((row) => typeof row.id === 'string' && typeof row.chunk_text === 'string' && !hasPersistedPricingOffers(row.structured_facts))
+    .slice(0, batchSize)
+
+  let updated = 0
+  let failed = 0
+  let skipped = 0
+
+  for (const row of candidates) {
+    if (typeof row.id !== 'string' || typeof row.chunk_text !== 'string' || !row.chunk_text.trim()) {
+      skipped += 1
+      continue
+    }
+    const metadata = buildChunkSearchMetadata(row.chunk_text, 0)
+    const structuredFacts = metadata.structured_facts
+    const { error: updateError } = await admin
+      .from('ai_knowledge_chunks')
+      .update({ structured_facts: structuredFacts })
+      .eq('id', row.id)
+      .eq('workspace_id', args.workspaceId)
+    if (updateError) failed += 1
+    else updated += 1
+  }
+
+  const after = await countStructuredOfferPopulation({ workspaceId: args.workspaceId, client: admin })
+  return {
+    before,
+    after,
+    processed: candidates.length,
+    updated,
+    skipped,
+    failed,
+  }
+}
+
+export async function countStructuredOfferPopulation(args: {
+  readonly workspaceId: string
+  readonly client?: SupabaseClient
+}): Promise<StructuredOfferPopulationCounts> {
+  const admin = args.client ?? supabaseAdmin()
+  const { data, error } = await admin
+    .from('ai_knowledge_chunks')
+    .select('id, structured_facts, source:ai_knowledge_sources!inner(status)')
+    .eq('workspace_id', args.workspaceId)
+    .eq('source.status', 'active')
+  if (error) throw new Error(error.message)
+
+  return (data ?? []).reduce<StructuredOfferPopulationCounts>((counts, row) => {
+    const facts = isRecord(row.structured_facts) ? row.structured_facts : null
+    return {
+      totalActiveChunks: counts.totalActiveChunks + 1,
+      chunksWithPricingOffers: counts.chunksWithPricingOffers + (hasPersistedPricingOffers(facts) ? 1 : 0),
+      chunksWithPrices: counts.chunksWithPrices + (Array.isArray(facts?.prices) && facts.prices.length > 0 ? 1 : 0),
+      chunksWithPercentages: counts.chunksWithPercentages + (Array.isArray(facts?.percentages) && facts.percentages.length > 0 ? 1 : 0),
+    }
+  }, {
+    totalActiveChunks: 0,
+    chunksWithPricingOffers: 0,
+    chunksWithPrices: 0,
+    chunksWithPercentages: 0,
+  })
+}
+
+function hasPersistedPricingOffers(value: unknown): boolean {
+  return isRecord(value) && Array.isArray(value.pricing_offers) && value.pricing_offers.length > 0
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 export async function saveKnowledgeSourceWithChunks(args: {

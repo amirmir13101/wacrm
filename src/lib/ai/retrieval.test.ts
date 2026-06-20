@@ -796,4 +796,232 @@ describe('AI hybrid retrieval', () => {
     expect(result.debug.selectedChunkIds[0]).toBe('current')
     expect(result.debug.selectedEvidence.some((candidate) => candidate.reasons.includes('memory_context_weak_match'))).toBe(true)
   })
+
+  it('parses multi-year billing totals without treating duration counts as prices', () => {
+    const metadata = buildChunkSearchMetadata([
+      '### Web Hosting > Pro Hosting',
+      'Starting at: $0.63/mo ~~$0.90~~ 30% OFF',
+      'Total: $22.68 billed per 3 Years',
+    ].join('\n'), 0)
+    const facts = metadata.structured_facts as {
+      pricing_offers?: Array<{
+        current_price?: { amount?: number; period?: string | null }
+        original_price?: { amount?: number }
+        billing_totals?: Array<{ amount?: number; duration_count?: number; duration_unit?: string }>
+        stored_period_totals?: Record<string, { amount?: number }>
+      }>
+      prices?: string[]
+    }
+
+    expect(facts.pricing_offers?.[0]?.current_price).toMatchObject({ amount: 0.63, period: 'monthly' })
+    expect(facts.pricing_offers?.[0]?.original_price?.amount).toBe(0.9)
+    expect(facts.pricing_offers?.[0]?.billing_totals?.[0]).toMatchObject({ amount: 22.68, duration_count: 3, duration_unit: 'year' })
+    expect(facts.pricing_offers?.[0]?.stored_period_totals?.yearly).toBeUndefined()
+    expect(facts.prices).not.toContain('3')
+  })
+
+  it('answers Pro Hosting yearly price from the scoped web-hosting offer, not the duration count', () => {
+    const rows = buildProductionPricingRows()
+
+    const result = hybridRetrieveFromRows({ question: 'pro hosting yearly price', rows })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.debug.answerMode).toBe('single_offer_exact')
+    expect(result.debug.selectedOffer?.entity?.toLowerCase()).toContain('pro hosting')
+    expect(result.debug.selectedOffer?.productFamily?.toLowerCase()).toContain('hosting')
+    expect(result.calculation).toMatchObject({ status: 'computed', value: 7.56, unit: 'USD/yearly' })
+    expect(result.calculation?.formula).toContain('22.68 USD billed per 3 years')
+    expect(result.calculation?.formula).not.toContain('3 USD/yearly')
+    expect(result.chunks.join('\n')).toContain('USD 0.63/monthly')
+    expect(result.chunks.join('\n')).toContain('USD 0.9')
+  })
+
+  it('keeps Pro web-hosting price scoped away from VPS and automation plans', () => {
+    const rows = buildProductionPricingRows()
+
+    const result = hybridRetrieveFromRows({ question: 'pro web hosting yearly price', rows })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.debug.requestedFamily).toBe('web hosting')
+    expect(result.debug.selectedOffer?.entity?.toLowerCase()).toContain('pro hosting')
+    expect(result.debug.selectedOffer?.sourceChunkId).toBe('web-hosting')
+    expect(result.calculation).toMatchObject({ status: 'computed', value: 7.56 })
+    expect(result.chunks.join('\n')).not.toMatch(/Automation Pro|Wagon VPS x8/)
+  })
+
+  it('allows broad category pricing answers with multiple offers attached to their own prices', () => {
+    const rows = buildProductionPricingRows()
+    const result = hybridRetrieveFromRows({ question: 'web hosting price', rows })
+    const evidence = result.chunks
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.debug.answerMode).toBe('category_pricing_list')
+    expect(evidence.join('\n')).toContain('Matching offers found')
+    expect(validateGroundedAnswer({
+      question: 'web hosting price',
+      answer: 'Web hosting prices shown are: Free Hosting $0/mo, Pro Hosting $0.63/mo, and Premium Hosting $1.20/mo.',
+      evidence,
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
+  })
+
+  it('calculates 8GB VPS yearly price from the VPS monthly price and never borrows n8n yearly totals', () => {
+    const rows = buildProductionPricingRows()
+
+    const result = hybridRetrieveFromRows({ question: '8gb vps yearly price', rows })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.debug.selectedOffer?.sourceChunkId).toBe('vps')
+    expect(result.debug.selectedOffer?.entity?.toLowerCase()).toContain('vps x8')
+    expect(result.calculation).toMatchObject({ status: 'computed', value: 84.48, unit: 'USD/yearly' })
+    expect(result.calculation?.sourceChunkIds).toEqual(['vps'])
+    expect(result.chunks.join('\n')).not.toMatch(/81\.60 billed per Year/)
+  })
+
+  it('keeps the current 8GB RAM VPS monthly price behavior correct', () => {
+    const rows = buildProductionPricingRows()
+
+    const result = hybridRetrieveFromRows({ question: '8gb ram vps price', rows })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.debug.selectedOffer?.sourceChunkId).toBe('vps')
+    expect(result.chunks.join('\n')).toContain('$7.04/mo')
+    expect(validateGroundedAnswer({
+      question: '8gb ram vps price',
+      answer: 'Wagon VPS x8 is $7.04/mo. It includes 4 Core CPU, 8GB RAM, and 60GB NVMe.',
+      evidence: result.chunks,
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
+  })
+
+  it('keeps generic pricing fixtures scoped across restaurant, clinic, course, ecommerce, and agency businesses', () => {
+    const rows = [
+      {
+        id: 'restaurant',
+        source_id: 'source-1',
+        source: { ...source, title: 'Restaurant menu' },
+        heading_path: 'Menu > Family Meals',
+        chunk_text: '### Family Pasta Combo\nMenu price: $18.00. Original $24.00. 25% OFF. Serves 4.',
+      },
+      {
+        id: 'clinic',
+        source_id: 'source-1',
+        source: { ...source, title: 'Clinic services' },
+        heading_path: 'Clinic > Appointments',
+        chunk_text: '### Dental Consultation\nAppointment fee: $45. Multi-session package total: £300 for 10 sessions.',
+      },
+      {
+        id: 'course',
+        source_id: 'source-1',
+        source: { ...source, title: 'Course catalog' },
+        heading_path: 'Courses > English',
+        chunk_text: '### Beginner English Course\nCourse fee: USD 120/month. Duration: 8 weeks. Schedule: Monday and Wednesday.',
+      },
+      {
+        id: 'ecommerce',
+        source_id: 'source-1',
+        source: { ...source, title: 'Shop products' },
+        heading_path: 'Products > Shoes',
+        chunk_text: '### Runner Shoe Pro\nVariant: Size 9 blue. Price: $75. Shipping: $5. Returns: within 14 days.',
+      },
+      {
+        id: 'agency',
+        source_id: 'source-1',
+        source: { ...source, title: 'Agency packages' },
+        heading_path: 'Services > SEO',
+        chunk_text: '### SEO Growth Package\nService package price: $499/month. Includes keyword audit and monthly reporting.',
+      },
+    ]
+
+    expect(hybridRetrieveFromRows({ question: 'menu prices', rows }).debug.answerMode).toBe('category_pricing_list')
+    expect(hybridRetrieveFromRows({ question: 'Dental Consultation appointment fee', rows }).evidence[0]?.id).toBe('clinic')
+    expect(hybridRetrieveFromRows({ question: 'Beginner English Course schedule and fee', rows }).evidence[0]?.id).toBe('course')
+    expect(hybridRetrieveFromRows({ question: 'Runner Shoe Pro shipping and returns', rows }).evidence[0]?.id).toBe('ecommerce')
+    expect(hybridRetrieveFromRows({ question: 'SEO Growth Package price', rows }).evidence[0]?.id).toBe('agency')
+    expect(validateGroundedAnswer({
+      question: 'clinic appointment fee',
+      answer: 'Dental Consultation appointment fee is $45. The package total shown is £300 for 10 sessions.',
+      evidence: hybridRetrieveFromRows({ question: 'clinic appointment fee', rows }).chunks,
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
+  })
+
+  it('does not answer an ambiguous weak plan name across unrelated families', () => {
+    const rows = [
+      { id: 'course-pro', source_id: 'source-1', source, heading_path: 'Courses', chunk_text: '### Pro Plan\nCourse Pro price is $120/month.' },
+      { id: 'clinic-pro', source_id: 'source-1', source, heading_path: 'Clinic', chunk_text: '### Pro Plan\nClinic Pro membership is $45/month.' },
+    ]
+
+    const result = hybridRetrieveFromRows({ question: 'pro plan yearly price', rows })
+
+    expect(result.fallbackReason).toBe('ambiguous_offer')
+    expect(result.calculation).toBeNull()
+  })
+
+  it('keeps contact, hours, and policy answers out of pricing-offer guardrails unless prices are claimed', () => {
+    expect(validateGroundedAnswer({
+      question: 'support phone number',
+      answer: 'The support phone number shown is +44 7478 060494.',
+      evidence: ['Contact: https://wa.me/447478060494. Support email: support@example.com.'],
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
+    expect(validateGroundedAnswer({
+      question: 'when are you open?',
+      answer: 'Opening hours are Monday to Friday, 9:00 AM to 5:00 PM.',
+      evidence: ['Business hours: Monday to Friday, 9:00 AM to 5:00 PM.'],
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
+    expect(validateGroundedAnswer({
+      question: 'refund policy',
+      answer: 'Returns are accepted within 14 days. A $99 fee applies.',
+      evidence: ['Refund policy: returns accepted within 14 days.'],
+      fallback: 'Fallback',
+    })).toEqual({ ok: false, reason: 'unsupported_numeric_fact', answer: 'Fallback' })
+  })
 })
+
+function buildProductionPricingRows() {
+  return [
+    {
+      id: 'web-hosting',
+      source_id: 'source-1',
+      source: { ...source, title: 'Web Hosting pricing' },
+      source_url: 'https://example.test/web-hosting/',
+      heading_path: 'Web Hosting > Pricing',
+      chunk_text: [
+        '### Web Hosting',
+        '#### Free Hosting',
+        'Starting at: $0/mo',
+        '#### Pro Hosting',
+        'Starting at: $0.63/mo ~~$0.90~~ 30% OFF',
+        'Total: $22.68 billed per 3 Years',
+        '#### Premium Hosting',
+        'Starting at: $1.20/mo ~~$1.50~~ 20% OFF',
+      ].join('\n'),
+    },
+    {
+      id: 'vps',
+      source_id: 'source-1',
+      source: { ...source, title: 'VPS pricing' },
+      source_url: 'https://example.test/vps/',
+      heading_path: 'VPS > Pricing',
+      chunk_text: [
+        '### Wagon VPS x8',
+        'RYZEN CPU 4 Core CPU, 8GB RAM, 60GB NVMe, Free Backup',
+        'Starting at: $7.04/mo ~~$8.80~~ 20% OFF',
+      ].join('\n'),
+    },
+    {
+      id: 'n8n',
+      source_id: 'source-1',
+      source: { ...source, title: 'Automation pricing' },
+      source_url: 'https://example.test/n8n-hosting/',
+      heading_path: 'Automation > n8n Hosting',
+      chunk_text: [
+        '### Automation Pro Plan',
+        'n8n 8GB plan for growing businesses.',
+        'Price: $6.80/mo. Total: $81.60 billed per Year.',
+      ].join('\n'),
+    },
+  ]
+}
