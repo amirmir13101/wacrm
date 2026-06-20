@@ -73,7 +73,8 @@ export async function backfillStructuredPricingOffers(args: {
       typeof row.id === 'string' &&
       typeof row.chunk_text === 'string' &&
       hasPricingSignalForStructuredOffer(row.chunk_text) &&
-      !hasPersistedPricingOffers(row.structured_facts),
+      !hasPersistedPricingOffers(row.structured_facts) &&
+      !hasStructuredOfferBackfillChecked(row.structured_facts),
     )
     .slice(0, batchSize)
 
@@ -87,9 +88,23 @@ export async function backfillStructuredPricingOffers(args: {
       continue
     }
     const metadata = buildChunkSearchMetadata(row.chunk_text, 0)
-    const structuredFacts = metadata.structured_facts
+    const structuredFacts = {
+      ...(isRecord(metadata.structured_facts) ? metadata.structured_facts : {}),
+      pricing_offer_backfill_checked: true,
+    }
     if (!hasPersistedPricingOffers(structuredFacts)) {
-      skipped += 1
+      const { error: skippedUpdateError } = await admin
+        .from('ai_knowledge_chunks')
+        .update({
+          structured_facts: {
+            ...structuredFacts,
+            pricing_offer_backfill_skipped_reason: 'no_structured_offer_detected',
+          },
+        })
+        .eq('id', row.id)
+        .eq('workspace_id', args.workspaceId)
+      if (skippedUpdateError) failed += 1
+      else skipped += 1
       continue
     }
     const { error: updateError } = await admin
@@ -142,6 +157,10 @@ export async function countStructuredOfferPopulation(args: {
 
 function hasPersistedPricingOffers(value: unknown): boolean {
   return isRecord(value) && Array.isArray(value.pricing_offers) && value.pricing_offers.length > 0
+}
+
+function hasStructuredOfferBackfillChecked(value: unknown): boolean {
+  return isRecord(value) && value.pricing_offer_backfill_checked === true
 }
 
 function hasPricingSignalForStructuredOffer(value: string): boolean {
