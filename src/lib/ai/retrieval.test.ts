@@ -893,7 +893,7 @@ describe('AI hybrid retrieval', () => {
 
     expect(result.fallbackReason).toBeNull()
     expect(result.debug.selectedOffer?.sourceChunkId).toBe('vps')
-    expect(result.chunks.join('\n')).toContain('$7.04/mo')
+    expect(result.chunks.join('\n')).toContain('USD 7.04/monthly')
     expect(validateGroundedAnswer({
       question: '8gb ram vps price',
       answer: 'Wagon VPS x8 is $7.04/mo. It includes 4 Core CPU, 8GB RAM, and 60GB NVMe.',
@@ -1046,12 +1046,33 @@ function buildProductionPricingRows() {
       source_url: 'https://www.vpswagon.com/vps/',
       heading_path: 'VPS > Pricing',
       chunk_text: [
-        '### Wagon VPS x8',
-        'RYZEN CPU 4 Core CPU, 8GB RAM, 60GB NVMe, Free Backup',
-        'Starting at: $7.04/mo ~~$8.80~~ 20% OFF',
+        '### Choose Your Perfect VPS Plan',
+        'Wagon VPS x4 - RYZEN CPU 2 Core CPU, 4GB RAM, 40GB NVMe, Free Backup',
+        'Starting at: Price: $5.40/mo ~~$6.50~~ 17% OFF',
+        'Wagon VPS x8 4 Core CPU, 8GB RAM, 60GB NVMe',
+        '$7.04 ~~$8.80~~ 20% OFF',
       ].join('\n'),
       structured_facts: {
         pricing_offers: [
+          {
+            entity: 'VPS x4 RYZEN CPU 2 CoreCPU 4GBRAM 40 GBNVME FREEBACKUP',
+            entity_name: 'VPS x4 RYZEN CPU 2 CoreCPU 4GBRAM 40 GBNVME FREEBACKUP',
+            entity_type: 'plan',
+            product_family: 'vps ryzen corecpu 4gbram freebackup',
+            variant_specs: { memory_or_storage: '4gbram' },
+            current_price: { amount: 5.4, currency: 'USD', period: 'monthly', text: '$5.40/mo' },
+            original_price: { amount: 6.5, currency: 'USD', period: 'monthly', text: '$6.50' },
+            discount_percent: 17,
+            stored_period_totals: {},
+            billing_totals: [],
+            source_text: [
+              '### Choose Your Perfect VPS Plan',
+              'Wagon VPS x4 - RYZEN CPU 2 Core CPU, 4GB RAM, 40GB NVMe, Free Backup',
+              'Starting at: Price: $5.40/mo ~~$6.50~~ 17% OFF',
+              'Wagon VPS x8 4 Core CPU, 8GB RAM, 60GB NVMe',
+              '$7.04 ~~$8.80~~ 20% OFF',
+            ].join('\n'),
+          },
           {
             entity: 'VPS x8 4 CoreCPU 8GBRAM 60 GBNVME',
             entity_name: 'VPS x8 4 CoreCPU 8GBRAM 60 GBNVME',
@@ -1064,9 +1085,11 @@ function buildProductionPricingRows() {
             stored_period_totals: {},
             billing_totals: [],
             source_text: [
-              '### Wagon VPS x8',
-              'RYZEN CPU 4 Core CPU, 8GB RAM, 60GB NVMe, Free Backup',
-              'Starting at: $7.04/mo ~~$8.80~~ 20% OFF',
+              '### Choose Your Perfect VPS Plan',
+              'Wagon VPS x4 - RYZEN CPU 2 Core CPU, 4GB RAM, 40GB NVMe, Free Backup',
+              'Starting at: Price: $5.40/mo ~~$6.50~~ 17% OFF',
+              'Wagon VPS x8 4 Core CPU, 8GB RAM, 60GB NVMe',
+              '$7.04 ~~$8.80~~ 20% OFF',
             ].join('\n'),
           },
         ],

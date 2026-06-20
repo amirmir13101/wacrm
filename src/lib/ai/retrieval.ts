@@ -1835,7 +1835,16 @@ function inferStructuredPricePeriod(
     : `${amountPattern}(?:[.,]0+)?`
   const contextPattern = new RegExp(`(?:[$€£]|USD|PKR|EUR|GBP|AED|SAR|Rs\\.?)?\\s*${amountWithOptionalTrailingZero}\\s*(?:/|per\\s+)?\\s*(mo|month|monthly|year|yearly|annual|annually|week|weekly|day|daily|quarter|quarterly)`, 'i')
   const contextMatch = evidence.match(contextPattern)
-  return normalizePeriod(contextMatch?.[1] ?? '')
+  return normalizePeriod(contextMatch?.[1] ?? '') ?? inferDominantStructuredPricePeriod(evidence)
+}
+
+function inferDominantStructuredPricePeriod(evidence: string): BillingPeriod | null {
+  const periods = new Set(
+    extractMoneyMatches(evidence)
+      .map((match) => match.period)
+      .filter((period): period is BillingPeriod => Boolean(period)),
+  )
+  return periods.size === 1 ? [...periods][0] ?? null : null
 }
 
 function selectBillingTotalForTarget(
@@ -2086,13 +2095,24 @@ function scoreOfferFamilyMatch(requestedFamily: string | null, offer: Structured
 
 function scoreOfferSpecMatch(requestedSpecs: readonly string[], offer: StructuredPricingOffer): number {
   if (requestedSpecs.length === 0) return 0
-  const offerSpecs = extractSpecClaims(structuredOfferSearchText(offer))
+  const offerSpecs = extractSpecClaims(structuredOfferSpecText(offer))
   let matched = 0
   for (const spec of requestedSpecs) {
     if ([...offerSpecs].some((offerSpec) => specsAreCompatible(spec, offerSpec))) matched += 1
   }
   if (matched === 0) return 0
   return Math.round((matched / requestedSpecs.length) * 80)
+}
+
+function structuredOfferSpecText(offer: StructuredPricingOffer): string {
+  return [
+    offer.entity,
+    offer.entity_name,
+    offer.product_family,
+    offer.category_path.join(' '),
+    Object.values(offer.variant_specs).join(' '),
+    offer.heading_path.join(' '),
+  ].filter(Boolean).join('\n')
 }
 
 function specsAreCompatible(requestedSpec: string, offerSpec: string): boolean {
@@ -2104,9 +2124,11 @@ function specsAreCompatible(requestedSpec: string, offerSpec: string): boolean {
 
 function offerHasBillingForTarget(offer: StructuredPricingOffer, targetPeriod: BillingPeriod): boolean {
   if (offer.stored_period_totals[targetPeriod]) return true
+  const currentPrice = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
+  const originalPrice = offer.original_price ? withInferredStructuredPricePeriod(offer.original_price, offer) : null
   return offer.billing_totals.some((total) => billingTotalCanConvertToPeriod(total, targetPeriod))
-    || Boolean(offer.current_price?.period && periodsPerTarget(offer.current_price.period) && periodsPerTarget(targetPeriod))
-    || Boolean(offer.original_price?.period && periodsPerTarget(offer.original_price.period) && periodsPerTarget(targetPeriod))
+    || Boolean(currentPrice?.period && periodsPerTarget(currentPrice.period) && periodsPerTarget(targetPeriod))
+    || Boolean(originalPrice?.period && periodsPerTarget(originalPrice.period) && periodsPerTarget(targetPeriod))
 }
 
 function offerMatchesRequestedScope(offer: StructuredPricingOffer, scope: OfferQueryScope): boolean {
@@ -3052,10 +3074,12 @@ function buildFactGuidanceBlock(
       ? null
       : selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
     if (offer) {
+      const currentPrice = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
+      const originalPrice = offer.original_price ? withInferredStructuredPricePeriod(offer.original_price, offer) : null
       lines.push(`Selected requested offer/entity: ${offer.entity ?? 'matched offer'}`)
       if (offer.product_family) lines.push(`Selected offer family/category: ${offer.product_family}`)
-      if (offer.current_price) lines.push(`Selected offer current/effective price: ${formatStructuredPriceValue(offer.current_price)}`)
-      if (offer.original_price) lines.push(`Selected offer original/regular price: ${formatStructuredPriceValue(offer.original_price)}`)
+      if (currentPrice) lines.push(`Selected offer current/effective price: ${formatStructuredPriceValue(currentPrice)}`)
+      if (originalPrice) lines.push(`Selected offer original/regular price: ${formatStructuredPriceValue(originalPrice)}`)
       if (offer.discount_percent !== null) lines.push(`Selected offer discount percent: ${offer.discount_percent}%`)
       const totals = Object.entries(offer.stored_period_totals)
         .map(([period, value]) => `${period}: ${formatStructuredPriceValue(value)}`)
@@ -3100,10 +3124,12 @@ function selectCategoryPricingOffers(
 }
 
 function formatOfferGuidanceSummary(offer: StructuredPricingOffer): string {
+  const currentPrice = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
+  const originalPrice = offer.original_price ? withInferredStructuredPricePeriod(offer.original_price, offer) : null
   const parts = [
     offer.entity ?? offer.entity_name ?? offer.product_family ?? 'Offer',
-    offer.current_price ? `current ${formatStructuredPriceValue(offer.current_price)}` : null,
-    offer.original_price ? `original ${formatStructuredPriceValue(offer.original_price)}` : null,
+    currentPrice ? `current ${formatStructuredPriceValue(currentPrice)}` : null,
+    originalPrice ? `original ${formatStructuredPriceValue(originalPrice)}` : null,
     offer.discount_percent !== null ? `${offer.discount_percent}% off` : null,
     offer.billing_totals.length > 0 ? `billing ${offer.billing_totals.map(formatStructuredBillingTotal).join(', ')}` : null,
   ].filter(Boolean)
@@ -3127,11 +3153,13 @@ function buildSelectedOfferDebug(
   const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
   const offer = selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
   if (!offer) return null
+  const currentPrice = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
+  const originalPrice = offer.original_price ? withInferredStructuredPricePeriod(offer.original_price, offer) : null
   return {
     entity: offer.entity,
     productFamily: offer.product_family,
-    currentPrice: offer.current_price,
-    originalPrice: offer.original_price,
+    currentPrice,
+    originalPrice,
     billingTotals: offer.billing_totals,
     sourceOrigin: offer.source_origin,
     sourceChunkId: offer.sourceChunkId,
