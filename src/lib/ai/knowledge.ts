@@ -69,7 +69,12 @@ export async function backfillStructuredPricingOffers(args: {
   if (error) throw new Error(error.message)
 
   const candidates = (data ?? [])
-    .filter((row) => typeof row.id === 'string' && typeof row.chunk_text === 'string' && !hasPersistedPricingOffers(row.structured_facts))
+    .filter((row) =>
+      typeof row.id === 'string' &&
+      typeof row.chunk_text === 'string' &&
+      hasPricingSignalForStructuredOffer(row.chunk_text) &&
+      !hasPersistedPricingOffers(row.structured_facts),
+    )
     .slice(0, batchSize)
 
   let updated = 0
@@ -83,6 +88,10 @@ export async function backfillStructuredPricingOffers(args: {
     }
     const metadata = buildChunkSearchMetadata(row.chunk_text, 0)
     const structuredFacts = metadata.structured_facts
+    if (!hasPersistedPricingOffers(structuredFacts)) {
+      skipped += 1
+      continue
+    }
     const { error: updateError } = await admin
       .from('ai_knowledge_chunks')
       .update({ structured_facts: structuredFacts })
@@ -133,6 +142,10 @@ export async function countStructuredOfferPopulation(args: {
 
 function hasPersistedPricingOffers(value: unknown): boolean {
   return isRecord(value) && Array.isArray(value.pricing_offers) && value.pricing_offers.length > 0
+}
+
+function hasPricingSignalForStructuredOffer(value: string): boolean {
+  return /(?:\$|€|£|₹|rs\.?|pkr|usd|eur|gbp|aed|sar)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:usd|pkr|eur|gbp|aed|sar)|\b(?:price|pricing|cost|fee|rate|billed|discount|off)\b/i.test(value)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
