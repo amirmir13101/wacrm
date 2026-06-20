@@ -3194,7 +3194,10 @@ function selectCategoryPricingOffers(
 function offerMatchesCategoryFamily(requestedFamily: string, offer: StructuredPricingOffer): boolean {
   const terms = tokenize(requestedFamily)
   if (terms.length === 0) return true
-  const haystack = normalizeEntityKey(structuredOfferSearchText(offer))
+  const haystack = normalizeEntityKey([
+    structuredOfferSearchText(offer),
+    offer.context_text,
+  ].filter(Boolean).join('\n'))
   if (terms.length === 1) return entityContainsTerm(haystack, terms[0] ?? '')
   return terms.every((term) => entityContainsTerm(haystack, term))
 }
