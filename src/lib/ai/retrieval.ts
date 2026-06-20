@@ -452,8 +452,11 @@ function retrieveSingleQueryFromRows(args: {
     )
     .sort((left, right) => right.finalScore - left.finalScore)
 
-  const fused = filterSingleEntityPricingEvidence(
-    mergeComparisonEvidence(ranked, scored, analysis).slice(0, args.limit ?? MAX_EVIDENCE),
+  const fused = filterCategoryPricingEvidence(
+    filterSingleEntityPricingEvidence(
+      mergeComparisonEvidence(ranked, scored, analysis).slice(0, args.limit ?? MAX_EVIDENCE),
+      analysis,
+    ),
     analysis,
   )
 
@@ -532,8 +535,11 @@ function mergeExpandedRetrievalResults(args: {
       if (!current || candidate.finalScore > current.finalScore) byId.set(candidate.id, candidate)
     }
   }
-  const reranked = filterSingleEntityPricingEvidence(
-    rerankCandidates(args.originalQuestion, [...byId.values()], args.limit ?? MAX_EVIDENCE),
+  const reranked = filterCategoryPricingEvidence(
+    filterSingleEntityPricingEvidence(
+      rerankCandidates(args.originalQuestion, [...byId.values()], args.limit ?? MAX_EVIDENCE),
+      analysis,
+    ),
     analysis,
   )
   const calculation = analysis.calculationIntent.hasIntent ? calculateFromEvidence(analysis, reranked) : null
@@ -1448,6 +1454,18 @@ function filterSingleEntityPricingEvidence(
     return offers.length === 0
   })
   return filtered.length > 0 ? filtered : [...candidates]
+}
+
+function filterCategoryPricingEvidence(
+  candidates: readonly RetrievalCandidate[],
+  analysis: RetrievalQuestionAnalysis,
+): RetrievalCandidate[] {
+  if (candidates.length <= 1 || analysis.offerScope.answerMode !== 'category_pricing_list') return [...candidates]
+  if (!analysis.intents.pricing && !analysis.intents.productOrService) return [...candidates]
+  const matching = candidates.filter((candidate) =>
+    selectCategoryPricingOffers(analysis, extractStructuredPricingOffersFromCandidate(candidate)).length > 0,
+  )
+  return matching.length > 0 ? matching : [...candidates]
 }
 
 function hasAmbiguousWeakOfferRows(
@@ -2469,6 +2487,11 @@ function readStructuredPricingOffers(facts: Record<string, unknown> | null, sour
           }
         }
       }
+      const rawDiscountPercent = typeof offer.discount_percent === 'number' && Number.isFinite(offer.discount_percent) ? offer.discount_percent : null
+      const offerSourceText = typeof offer.source_text === 'string' ? offer.source_text : ''
+      const discountPercent = rawDiscountPercent !== null && isDiscountPercentSupported(offerSourceText, rawDiscountPercent)
+        ? rawDiscountPercent
+        : null
       if (!current && !original && Object.keys(stored).length === 0 && billingTotals.length === 0) return null
       const entity = typeof offer.entity === 'string' && offer.entity.trim()
         ? offer.entity.trim()
@@ -2480,21 +2503,21 @@ function readStructuredPricingOffers(facts: Record<string, unknown> | null, sour
         entity,
         entity_name: typeof offer.entity_name === 'string' && offer.entity_name.trim() ? offer.entity_name.trim() : entity,
         entity_type: readStructuredOfferEntityType(offer.entity_type),
-        product_family: typeof offer.product_family === 'string' && offer.product_family.trim() ? offer.product_family.trim() : inferProductFamilyFromOffer(entity, typeof offer.source_text === 'string' ? offer.source_text : ''),
+        product_family: typeof offer.product_family === 'string' && offer.product_family.trim() ? offer.product_family.trim() : inferProductFamilyFromOffer(entity, offerSourceText),
         category_path: Array.isArray(offer.category_path) ? offer.category_path.filter((value): value is string => typeof value === 'string' && Boolean(value.trim())).map((value) => value.trim()) : [],
         variant_specs: isRecord(offer.variant_specs) ? readStringRecord(offer.variant_specs) : {},
         current_price: current,
         original_price: original,
-        discount_percent: typeof offer.discount_percent === 'number' && Number.isFinite(offer.discount_percent) ? offer.discount_percent : null,
+        discount_percent: discountPercent,
         stored_period_totals: stored,
         billing_totals: billingTotals,
         source_url: typeof offer.source_url === 'string' && offer.source_url.trim() ? offer.source_url.trim() : null,
         heading_path: Array.isArray(offer.heading_path) ? offer.heading_path.filter((value): value is string => typeof value === 'string' && Boolean(value.trim())).map((value) => value.trim()) : [],
-        source_excerpt: typeof offer.source_excerpt === 'string' ? offer.source_excerpt : typeof offer.source_text === 'string' ? offer.source_text.slice(0, 400) : '',
+        source_excerpt: typeof offer.source_excerpt === 'string' ? offer.source_excerpt : offerSourceText.slice(0, 400),
         confidence: readOfferConfidence(offer.confidence),
         source_origin: 'persisted',
-        source_text: typeof offer.source_text === 'string' ? offer.source_text : '',
-        context_text: typeof offer.source_text === 'string' ? offer.source_text : '',
+        source_text: offerSourceText,
+        context_text: offerSourceText,
         sourceChunkId,
       }
     })
@@ -2647,7 +2670,7 @@ function buildStructuredPricingOffer(block: string, sourceChunkId: string): Stru
     ? toStructuredPriceValue(original)
     : null
   if (!currentValue && !originalValue && Object.keys(stored).length === 0 && billingTotals.length === 0) return null
-  return {
+  const offer: StructuredPricingOffer = {
     kind: 'pricing_offer',
     entity,
     entity_name: entity,
@@ -2669,6 +2692,22 @@ function buildStructuredPricingOffer(block: string, sourceChunkId: string): Stru
     context_text: block.slice(0, 1200),
     sourceChunkId,
   }
+  return isLikelyMarketingMetricOffer(offer) ? null : offer
+}
+
+function isLikelyMarketingMetricOffer(offer: StructuredPricingOffer): boolean {
+  if (!offer.current_price || offer.current_price.period || offer.original_price || offer.discount_percent !== null) return false
+  if (Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0) return false
+  const text = [offer.entity, offer.entity_name, offer.product_family, offer.source_text].filter(Boolean).join(' ').toLowerCase()
+  if (!/\b(counter|uptime|guarantee|availability|trusted|reviews?|countries|locations|customers|visitors|traffic|support|global|infrastructure)\b/.test(text)) {
+    return false
+  }
+  const priceNeedle = offer.current_price.text || String(offer.current_price.amount)
+  const priceIndex = priceNeedle ? offer.source_text.toLowerCase().indexOf(priceNeedle.toLowerCase()) : -1
+  const priceContext = priceIndex >= 0
+    ? offer.source_text.slice(Math.max(0, priceIndex - 45), priceIndex + priceNeedle.length + 45).toLowerCase()
+    : text
+  return !/\b(price|cost|fee|rate|starting\s+at|starts?\s+at|from|per|monthly|yearly|annual)\b/.test(priceContext)
 }
 
 function extractBillingTotals(text: string): StructuredBillingTotal[] {
@@ -2846,11 +2885,26 @@ function isBillingDurationCountMatch(before: string, value: string, after: strin
 }
 
 function extractDiscountPercent(text: string): number | null {
-  for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*%\s*(?:off|discount|save|saving|promo|offer)?|(?:off|discount|save|saving)\s*(\d+(?:[.,]\d+)?)\s*%/gi)) {
+  for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*%\s*(?:off|discount|save|saving|promo|offer|deal|sale)|(?:off|discount|save|saving|promo|offer|deal|sale)\s*(\d+(?:[.,]\d+)?)\s*%/gi)) {
     const value = Number((match[1] ?? match[2] ?? '').replace(',', '.'))
     if (Number.isFinite(value) && value > 0 && value < 100) return value
   }
   return null
+}
+
+function isDiscountPercentSupported(text: string, percent: number): boolean {
+  if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) return false
+  if (!text.trim()) return true
+  const target = roundCalculationNumber(percent)
+  for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*%/g)) {
+    const value = Number((match[1] ?? '').replace(',', '.'))
+    if (!Number.isFinite(value) || roundCalculationNumber(value) !== target) continue
+    const index = match.index ?? 0
+    const context = text.slice(Math.max(0, index - 55), index + match[0].length + 55).toLowerCase()
+    if (/\b(off|discount|save|saving|promo|offer|deal|sale|regular|original|was|now|limited time)\b/.test(context)) return true
+    if (/\b(uptime|guarantee|availability|sla|reliability|rating|score|review|traffic|support|satisfaction)\b/.test(context)) return false
+  }
+  return false
 }
 
 function findDiscountPricePair(matches: readonly MoneyMatch[], discountPercent: number | null): { readonly current: MoneyMatch; readonly original: MoneyMatch } | null {
@@ -3113,18 +3167,48 @@ function selectCategoryPricingOffers(
   analysis: RetrievalQuestionAnalysis,
   offers: readonly StructuredPricingOffer[],
 ): StructuredPricingOffer[] {
-  const scoped = analysis.offerScope.requestedFamily
-    ? offers.filter((offer) => scoreOfferFamilyMatch(analysis.offerScope.requestedFamily, offer) > 0)
+  const requestedFamily = analysis.offerScope.requestedFamily
+  const scoped = requestedFamily
+    ? offers.filter((offer) => offerMatchesCategoryFamily(requestedFamily, offer))
     : [...offers]
   const withPrice = scoped.filter((offer) => offer.current_price || offer.original_price || Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0)
+  const actionable = withPrice.filter(isActionableCategoryPricingOffer)
+  const sourceOffers = actionable.length > 0 ? actionable : withPrice
   const byName = new Map<string, StructuredPricingOffer>()
-  for (const offer of withPrice) {
+  for (const offer of sourceOffers) {
     const key = normalizeEntityKey(offer.entity ?? offer.entity_name ?? offer.source_text.slice(0, 80))
     if (!key) continue
     const current = byName.get(key)
     if (!current || offerCompletenessScore(offer) > offerCompletenessScore(current)) byName.set(key, offer)
   }
   return [...byName.values()]
+}
+
+function offerMatchesCategoryFamily(requestedFamily: string, offer: StructuredPricingOffer): boolean {
+  const terms = tokenize(requestedFamily)
+  if (terms.length === 0) return true
+  const haystack = normalizeEntityKey(structuredOfferSearchText(offer))
+  if (terms.length === 1) return entityContainsTerm(haystack, terms[0] ?? '')
+  return terms.every((term) => entityContainsTerm(haystack, term))
+}
+
+function isActionableCategoryPricingOffer(offer: StructuredPricingOffer): boolean {
+  if (isLikelyMarketingMetricOffer(offer)) return false
+  if (Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0) return true
+  const currentPrice = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
+  const originalPrice = offer.original_price ? withInferredStructuredPricePeriod(offer.original_price, offer) : null
+  if (currentPrice?.period || originalPrice?.period || offer.discount_percent !== null) return true
+  if (offer.entity_type !== 'unknown') return true
+
+  const text = [
+    offer.entity,
+    offer.entity_name,
+    offer.product_family,
+    offer.source_text,
+  ].filter(Boolean).join(' ').toLowerCase()
+  const hasPriceLabel = /\b(price|cost|fee|rate|starting\s+at|starts?\s+at|from|per)\b/.test(text)
+  const looksLikeMarketingCounter = /\b(counter|uptime|guarantee|availability|trusted|reviews?|countries|locations|customers|visitors|traffic|support|global|infrastructure)\b/.test(text)
+  return hasPriceLabel && !looksLikeMarketingCounter
 }
 
 function formatOfferGuidanceSummary(offer: StructuredPricingOffer): string {
@@ -3154,6 +3238,7 @@ function buildSelectedOfferDebug(
   analysis: RetrievalQuestionAnalysis,
   candidates: readonly RetrievalCandidate[],
 ): HybridRetrievalResult['debug']['selectedOffer'] {
+  if (analysis.offerScope.answerMode === 'category_pricing_list' || analysis.offerScope.answerMode === 'comparison') return null
   const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
   const offer = selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
   if (!offer) return null

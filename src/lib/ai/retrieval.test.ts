@@ -828,6 +828,15 @@ describe('AI hybrid retrieval', () => {
     expect(facts.prices ?? []).toHaveLength(0)
   })
 
+  it('does not treat uptime percentages and marketing counters as discount pricing offers', () => {
+    const metadata = buildChunkSearchMetadata('Trusted infrastructure with 99.9% uptime guarantee, 500+ customers, and Rs. 12 marketing counter.', 0)
+    const facts = metadata.structured_facts as { pricing_offers?: unknown[]; percentages?: string[]; prices?: string[] }
+
+    expect(facts.pricing_offers ?? []).toHaveLength(0)
+    expect(facts.percentages).toContain('99.9%')
+    expect(facts.prices).toContain('Rs. 12')
+  })
+
   it('answers Pro Hosting yearly price from the scoped web-hosting offer, not the duration count', () => {
     const rows = buildProductionPricingRows()
 
@@ -865,6 +874,8 @@ describe('AI hybrid retrieval', () => {
     expect(result.fallbackReason).toBeNull()
     expect(result.debug.answerMode).toBe('category_pricing_list')
     expect(evidence.join('\n')).toContain('Matching offers found')
+    expect(evidence.join('\n')).not.toContain('Enterprise Infrastructure')
+    expect(evidence.join('\n')).not.toContain('PKR 12')
     expect(validateGroundedAnswer({
       question: 'web hosting price',
       answer: 'Web hosting prices shown are: Free Hosting $0/mo, Pro Hosting $0.63/mo, and Premium Hosting $1.20/mo.',
@@ -996,7 +1007,7 @@ function buildProductionPricingRows() {
       source: { ...source, title: 'VPSWagon homepage' },
       source_url: 'https://www.vpswagon.com/',
       heading_path: 'Homepage > Hero',
-      chunk_text: '### Enterprise Infrastructure\nCloud Infrastructure Built for Innovation. Startup Friendly Pricing - High-performance Web Hosting, VPS & Dedicated Servers powered by modern hardware. Trusted by many countries. Rs. 12 marketing counter.',
+      chunk_text: '### Enterprise Infrastructure\nCloud Infrastructure Built for Innovation. Startup Friendly Pricing - High-performance Web Hosting, VPS & Dedicated Servers powered by modern hardware. 99.9% Uptime Guarantee. Trusted by many countries. Rs. 12 marketing counter.',
     },
     {
       id: 'web-hosting-store-noisy',
