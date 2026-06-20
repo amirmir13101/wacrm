@@ -339,7 +339,10 @@ function retrieveSingleQueryFromRows(args: {
     )
     .sort((left, right) => right.finalScore - left.finalScore)
 
-  const fused = mergeComparisonEvidence(ranked, scored, analysis).slice(0, args.limit ?? MAX_EVIDENCE)
+  const fused = filterSingleEntityPricingEvidence(
+    mergeComparisonEvidence(ranked, scored, analysis).slice(0, args.limit ?? MAX_EVIDENCE),
+    analysis,
+  )
 
   const calculation = analysis.calculationIntent.hasIntent ? calculateFromEvidence(analysis, fused) : null
   const fallbackReason =
@@ -408,7 +411,10 @@ function mergeExpandedRetrievalResults(args: {
       if (!current || candidate.finalScore > current.finalScore) byId.set(candidate.id, candidate)
     }
   }
-  const reranked = rerankCandidates(args.originalQuestion, [...byId.values()], args.limit ?? MAX_EVIDENCE)
+  const reranked = filterSingleEntityPricingEvidence(
+    rerankCandidates(args.originalQuestion, [...byId.values()], args.limit ?? MAX_EVIDENCE),
+    analysis,
+  )
   const calculation = analysis.calculationIntent.hasIntent ? calculateFromEvidence(analysis, reranked) : null
   const fallbackReason =
     reranked.length === 0
@@ -439,6 +445,19 @@ function mergeExpandedRetrievalResults(args: {
   const fullContextChunks = fullContextFallback.outcome === 'succeeded'
     ? [formatFullContextFallbackBlock(args.fullContextSources ?? buildFullContextSourcesFromRows(args.rows))]
     : []
+  const fullContextCalculationCandidates =
+    !calculation && analysis.calculationIntent.hasIntent && fullContextFallback.outcome === 'succeeded'
+      ? buildFullContextCalculationCandidates(args.fullContextSources ?? buildFullContextSourcesFromRows(args.rows), analysis, args.limit ?? MAX_EVIDENCE)
+      : []
+  const effectiveCalculation =
+    calculation ?? (fullContextCalculationCandidates.length > 0 ? calculateFromEvidence(analysis, fullContextCalculationCandidates) : null)
+  const effectiveCalculationBlock =
+    effectiveCalculation?.status === 'computed'
+      ? `Computed fact: ${formatCalculationValue(effectiveCalculation)}\nFormula: ${effectiveCalculation.formula}\nSource chunk IDs: ${effectiveCalculation.sourceChunkIds.join(', ')}`
+      : calculationBlock
+  const effectiveFactGuidanceBlock = factGuidanceBlock ?? (
+    fullContextCalculationCandidates.length > 0 ? buildFactGuidanceBlock(analysis, fullContextCalculationCandidates) : null
+  )
   if (args.workspaceId && fullContextFallback.attempted) {
     console.info('[ai-chatbot] full-context fallback', {
       workspaceId: args.workspaceId,
@@ -453,14 +472,14 @@ function mergeExpandedRetrievalResults(args: {
       ...analysis,
       queryVariants: [...new Set([...analysis.queryVariants, ...expandQuery(args.originalQuestion)])],
     },
-    evidence: reranked,
+    evidence: reranked.length > 0 ? reranked : fullContextCalculationCandidates,
     chunks: [
       ...fullContextChunks,
       ...(fullContextChunks.length > 0 ? [] : reranked.map(formatEvidenceBlock)),
-      ...(factGuidanceBlock ? [factGuidanceBlock] : []),
-      ...(calculationBlock ? [calculationBlock] : []),
+      ...(effectiveFactGuidanceBlock ? [effectiveFactGuidanceBlock] : []),
+      ...(effectiveCalculationBlock ? [effectiveCalculationBlock] : []),
     ],
-    calculation,
+    calculation: effectiveCalculation,
     fallbackReason: effectiveFallbackReason,
     debug: {
       formula: 'rrf',
@@ -469,8 +488,8 @@ function mergeExpandedRetrievalResults(args: {
       keywordCandidatesCount: Math.max(0, ...args.results.map((result) => result.debug.keywordCandidatesCount)),
       vectorCandidatesCount: Math.max(0, ...args.results.map((result) => result.debug.vectorCandidatesCount)),
       answerBearingCandidatesCount: Math.max(0, ...args.results.map((result) => result.debug.answerBearingCandidatesCount)),
-      selectedChunkIds: reranked.map((candidate) => candidate.id),
-      selectedEvidence: reranked.map((candidate) => ({
+      selectedChunkIds: (reranked.length > 0 ? reranked : fullContextCalculationCandidates).map((candidate) => candidate.id),
+      selectedEvidence: (reranked.length > 0 ? reranked : fullContextCalculationCandidates).map((candidate) => ({
         id: candidate.id,
         sourceTitle: candidate.sourceTitle,
         sourceUrl: candidate.sourceUrl,
@@ -576,6 +595,7 @@ export function validateGroundedAnswer(args: {
   readonly evidence: readonly string[]
   readonly calculation?: CalculationResult | null
   readonly fallback: string
+  readonly question?: string
 }): { readonly ok: true } | { readonly ok: false; readonly reason: string; readonly answer: string } {
   const answer = args.answer.trim()
   if (!answer || answer === args.fallback) return { ok: true }
@@ -608,6 +628,15 @@ export function validateGroundedAnswer(args: {
       return { ok: false, reason: 'unsupported_exact_fact', answer: args.fallback }
     }
   }
+  const entityConsistency = args.question
+    ? validateSingleEntityFactConsistency({
+        question: args.question,
+        answer,
+        evidence: args.evidence,
+        calculation: args.calculation,
+      })
+    : null
+  if (entityConsistency) return { ok: false, reason: entityConsistency, answer: args.fallback }
   return { ok: true }
 }
 
@@ -1128,6 +1157,22 @@ function mergeComparisonEvidence(
   return [...byId.values()].sort((left, right) => right.finalScore - left.finalScore)
 }
 
+function filterSingleEntityPricingEvidence(
+  candidates: readonly RetrievalCandidate[],
+  analysis: RetrievalQuestionAnalysis,
+): RetrievalCandidate[] {
+  if (candidates.length <= 1 || analysis.comparison.enabled || analysis.entityTerms.length === 0) return [...candidates]
+  if (!analysis.intents.pricing && !analysis.intents.productOrService) return [...candidates]
+  const target = selectStructuredPricingOffer(analysis, candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate)))
+  if (!target) return [...candidates]
+  const filtered = candidates.filter((candidate) => {
+    if (candidate.id === target.sourceChunkId) return true
+    const offers = extractStructuredPricingOffersFromCandidate(candidate)
+    return offers.length === 0
+  })
+  return filtered.length > 0 ? filtered : [...candidates]
+}
+
 function candidateHasRequiredEntity(candidate: RetrievalCandidate, analysis: RetrievalQuestionAnalysis): boolean {
   if (!shouldRequireEntityMatch(analysis)) return true
   if (candidate.neighborScore > 0) return true
@@ -1249,6 +1294,32 @@ function buildFullContextSourcesFromRows(rows: readonly KnowledgeChunkRow[]): Kn
       })
     })
   return [...bySource.values()]
+}
+
+function buildFullContextCalculationCandidates(
+  sources: readonly KnowledgeSourceRow[],
+  analysis: RetrievalQuestionAnalysis,
+  limit: number,
+): RetrievalCandidate[] {
+  const rows: KnowledgeChunkRow[] = sources.map((source, index) => ({
+    id: `full-context:${source.id}:${index}`,
+    source_id: source.id,
+    chunk_text: source.content,
+    search_text: source.content,
+    chunk_index: index,
+    structured_facts: buildChunkSearchMetadata(source.content, index).structured_facts as Record<string, unknown>,
+    source: {
+      id: source.id,
+      title: source.title,
+      source_type: source.source_type,
+      status: source.status,
+    },
+  }))
+  const candidates = rows
+    .map((row, index) => scoreCandidate(row, index, analysis))
+    .map((candidate) => ({ ...candidate, finalScore: candidate.answerScore + candidate.entityScore + candidate.keywordScore + candidate.phraseScore + candidate.vectorScore }))
+    .filter((candidate) => candidate.finalScore > 0)
+  return filterSingleEntityPricingEvidence(rerankCandidates(analysis.question, candidates, limit), analysis)
 }
 
 function formatFullContextFallbackBlock(sources: readonly KnowledgeSourceRow[]): string {
@@ -1734,7 +1805,7 @@ function splitInlinePricingOffers(block: string): string[] {
   const moneyCount = extractMoneyMatches(block).length
   if (moneyCount < 3 || block.length < 180) return [block]
   const rawParts = block
-    .split(/(?=\b(?!Total\b|Price\b|Starting\b|From\b|Year\b|Monthly\b|Annual\b|Weekly\b|Daily\b|Quarterly\b|OFF\b|Discount\b|Save\b)[A-Z][A-Za-z0-9&+().,'’\- ]{2,90}?\b(?:\s+[-–]\s+|\s+).{0,140}?(?:\$|USD|GBP|EUR|PKR|Rs\.?)\s*\d)/g)
+    .split(/(?=\b(?!Total\b|Price\b|Starting\b|From\b|Year\b|Monthly\b|Annual\b|Weekly\b|Daily\b|Quarterly\b|OFF\b|Discount\b|Save\b|CPU\b|Core\b|Cores\b|RAM\b|NVME\b|SSD\b|Storage\b|Traffic\b|Bandwidth\b|Backup\b|Guarantee\b)[A-Z][A-Za-z0-9&+().,'’\- ]{2,90}?\b(?:\s+[-–]\s+|\s+).{0,140}?(?:\$|USD|GBP|EUR|PKR|Rs\.?)\s*\d)/g)
     .map((part) => part.trim())
     .filter((part) => part.length >= 8)
   const parts: string[] = []
@@ -2035,9 +2106,28 @@ function buildFactGuidanceBlock(
     }
   }
 
+  if (analysis.intents.pricing || analysis.intents.productOrService) {
+    const offer = selectStructuredPricingOffer(analysis, candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate)))
+    if (offer) {
+      lines.push(`Selected requested offer/entity: ${offer.entity ?? 'matched offer'}`)
+      if (offer.current_price) lines.push(`Selected offer current/effective price: ${formatStructuredPriceValue(offer.current_price)}`)
+      if (offer.original_price) lines.push(`Selected offer original/regular price: ${formatStructuredPriceValue(offer.original_price)}`)
+      if (offer.discount_percent !== null) lines.push(`Selected offer discount percent: ${offer.discount_percent}%`)
+      const totals = Object.entries(offer.stored_period_totals)
+        .map(([period, value]) => `${period}: ${formatStructuredPriceValue(value)}`)
+        .join(', ')
+      if (totals) lines.push(`Selected offer stored billing totals: ${totals}`)
+      lines.push('For a single requested item, answer only from the selected offer/entity facts above and do not mix prices, specs, or totals from neighboring offers.')
+    }
+  }
+
   return lines.length > 0
     ? `Derived fact guidance from selected source evidence:\n${lines.map((line) => `- ${line}`).join('\n')}`
     : null
+}
+
+function formatStructuredPriceValue(value: StructuredPriceValue): string {
+  return `${value.currency ? `${value.currency} ` : ''}${value.amount}${value.period ? `/${value.period}` : ''}`
 }
 
 function buildMatchTypes(reasons: readonly string[]): string[] {
@@ -2154,6 +2244,96 @@ function isMoneyClaimTraceable(claim: string, evidence: string, calculation?: Ca
   if (!Number.isFinite(amount)) return false
   if (calculation?.status === 'computed' && calculation.value !== null && roundCalculationNumber(calculation.value) === roundCalculationNumber(amount)) return true
   return isTraceableDerivedNumber(amount, evidence)
+}
+
+function validateSingleEntityFactConsistency(args: {
+  readonly question: string
+  readonly answer: string
+  readonly evidence: readonly string[]
+  readonly calculation?: CalculationResult | null
+}): string | null {
+  const analysis = analyzeRetrievalQuestion(args.question)
+  if ((!analysis.intents.pricing && !analysis.intents.productOrService) || analysis.entityTerms.length === 0) return null
+  const evidenceText = args.evidence.join('\n')
+  const offers = extractStructuredPricingOffers(evidenceText, 'answer-evidence')
+  if (offers.length === 0) return null
+  const targetOffer = selectStructuredPricingOffer(analysis, offers)
+  if (!targetOffer) return null
+  const targetText = [targetOffer.entity, targetOffer.source_text].filter(Boolean).join('\n')
+  const allowedMoney = new Set<number>()
+  if (targetOffer.current_price) allowedMoney.add(roundCalculationNumber(targetOffer.current_price.amount))
+  if (targetOffer.original_price) allowedMoney.add(roundCalculationNumber(targetOffer.original_price.amount))
+  for (const value of Object.values(targetOffer.stored_period_totals)) allowedMoney.add(roundCalculationNumber(value.amount))
+  if (args.calculation?.status === 'computed' && args.calculation.value !== null) allowedMoney.add(roundCalculationNumber(args.calculation.value))
+
+  for (const money of extractMoneyMatches(args.answer)) {
+    const amount = roundCalculationNumber(money.amount)
+    if (allowedMoney.has(amount)) continue
+    if (args.calculation?.status === 'computed' && args.calculation.value !== null && amount === roundCalculationNumber(args.calculation.value)) continue
+    if (isTraceableFromStructuredOffer(amount, targetOffer)) continue
+    return 'cross_entity_fact_mix'
+  }
+
+  const targetSpecs = extractSpecClaims(targetText)
+  const questionSpecs = extractSpecClaims(args.question)
+  const compactTargetText = targetText.replace(/\s+/g, '').toLowerCase()
+  const compactEvidenceText = evidenceText.replace(/\s+/g, '').toLowerCase()
+  for (const spec of extractSpecClaims(args.answer)) {
+    if (targetSpecs.has(spec)) continue
+    if (compactTargetText.includes(spec.replace(/\s+/g, '').toLowerCase())) continue
+    if (targetContainsSpecNumberAndEvidenceContainsUnit(compactTargetText, compactEvidenceText, spec)) continue
+    if (questionSpecs.has(spec) && compactTargetText.includes(spec.replace(/\s+/g, '').toLowerCase())) continue
+    return 'cross_entity_fact_mix'
+  }
+  return null
+}
+
+function targetContainsSpecNumberAndEvidenceContainsUnit(
+  compactTargetText: string,
+  compactEvidenceText: string,
+  spec: string,
+): boolean {
+  const number = spec.match(/^\d+(?:\.\d+)?/)?.[0]
+  const unit = spec.replace(/^\d+(?:\.\d+)?/, '')
+  if (!number || !unit) return false
+  return compactTargetText.includes(number) && compactEvidenceText.includes(unit)
+}
+
+function isTraceableFromStructuredOffer(amount: number, offer: StructuredPricingOffer): boolean {
+  const seedNumbers = [
+    offer.current_price?.amount,
+    offer.original_price?.amount,
+    offer.discount_percent ?? undefined,
+    ...Object.values(offer.stored_period_totals).map((value) => value.amount),
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  const target = roundCalculationNumber(amount)
+  for (const seed of seedNumbers) {
+    for (const factor of [2, 3, 4, 7, 12, 30, 52, 365]) {
+      if (roundCalculationNumber(seed * factor) === target || roundCalculationNumber(seed / factor) === target) return true
+    }
+  }
+  if (offer.original_price && offer.discount_percent !== null) {
+    const discounted = offer.original_price.amount * (1 - offer.discount_percent / 100)
+    if (roundCalculationNumber(discounted) === target) return true
+    if (roundCalculationNumber(discounted * 12) === target) return true
+  }
+  return false
+}
+
+function extractSpecClaims(value: string): Set<string> {
+  const specs = new Set<string>()
+  for (const match of value.matchAll(/\b\d+(?:[.,]\d+)?\s*(?:gb|tb|mb)\s*(?:ram|memory|nvme|ssd|storage)?\b|\b\d+(?:[.,]\d+)?\s*(?:core|cores|cpu)\b/gi)) {
+    const normalized = match[0]
+      .toLowerCase()
+      .replace(',', '.')
+      .replace(/\s+/g, '')
+      .replace(/memory/g, 'ram')
+      .replace(/cores/g, 'core')
+      .replace(/cpu/g, 'core')
+      .trim()
+    if (normalized) specs.add(normalized)
+  }
+  return specs
 }
 
 function canonicalUrl(value: string): string {

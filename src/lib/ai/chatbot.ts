@@ -274,6 +274,7 @@ export async function generateChatbotAnswer(args: {
       evidence: args.chunks,
       calculation: args.calculation,
       fallback,
+      question,
     })
     if (!validation.ok) {
       const retryAnswer = await requestProviderAnswer({
@@ -285,7 +286,7 @@ export async function generateChatbotAnswer(args: {
       })
       const formattedRetry = retryAnswer ? formatForWhatsApp(retryAnswer, args.responseIsRTL) : ''
       const retryValidation = formattedRetry
-        ? validateGroundedAnswer({ answer: formattedRetry, evidence: args.chunks, calculation: args.calculation, fallback })
+        ? validateGroundedAnswer({ answer: formattedRetry, evidence: args.chunks, calculation: args.calculation, fallback, question })
         : validation
       if (formattedRetry && retryValidation.ok && formattedRetry !== fallback) {
         return { status: 'answered', answer: formattedRetry, reason: 'answered_after_guardrail_retry', usedChunks: args.chunks, providerConfigured }

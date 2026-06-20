@@ -618,6 +618,73 @@ describe('AI hybrid retrieval', () => {
     expect(result.calculation?.formula).not.toContain('12.4 USD/monthly')
   })
 
+  it('handles reverse-phrased yearly-to-monthly discount questions for the selected offer', () => {
+    const rows = [
+      {
+        id: 'vps-pricing',
+        source_id: 'source-1',
+        source,
+        chunk_text: [
+          '### Wagon VPS x4 - ◆ RYZEN™ CPU 2 CoreCPU 4GBRAM 40 GBNVME FREEBACKUP',
+          'Starting at: - Price: $5.40/mo $6.50 17% OFF',
+          '### Wagon VPS x8 - ◆ RYZEN™ CPU 4 CoreCPU 8GBRAM 60 GBNVME FREEBACKUP',
+          'Starting at: - Price: $7.04/mo $8.80 20% OFF',
+        ].join('\n'),
+      },
+      {
+        id: 'course',
+        source_id: 'source-1',
+        source,
+        chunk_text: '### Automation Course Business\nCurrent price $6.80/month. Total: $81.60 billed per Year.',
+      },
+    ]
+
+    const result = hybridRetrieveFromRows({
+      question: 'if i buy 4gb vps yearly discounted what should be the monthly price i will get',
+      rows,
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.calculation).toMatchObject({ status: 'computed', value: 5.4, unit: 'USD/monthly' })
+    expect(result.chunks.join('\n')).toContain('Selected requested offer/entity')
+  })
+
+  it('rejects final answers that mix facts from neighboring offers or unrelated products', () => {
+    const rows = [
+      {
+        id: 'mixed',
+        source_id: 'source-1',
+        source,
+        chunk_text: [
+          '### Wagon VPS x4 - ◆ RYZEN™ CPU 2 CoreCPU 4GBRAM 40 GBNVME FREEBACKUP',
+          'Starting at: - Price: $5.40/mo $6.50 17% OFF',
+          '### Wagon VPS x8 - ◆ RYZEN™ CPU 4 CoreCPU 8GBRAM 60 GBNVME FREEBACKUP',
+          'Starting at: - Price: $7.04/mo $8.80 20% OFF',
+          '### Automation Business Plan',
+          'Price: $6.80/mo. Total: $81.60 billed per Year.',
+        ].join('\n'),
+      },
+    ]
+    const result = hybridRetrieveFromRows({ question: '4gb ram vps yearly discounted price', rows })
+    const evidence = result.chunks
+
+    expect(result.calculation).toMatchObject({ status: 'computed', value: 64.8 })
+    expect(validateGroundedAnswer({
+      question: '4gb ram vps yearly discounted price',
+      answer: 'Plan: 4GB VPS. Monthly Price: $6.80. Yearly Total: $81.60. Resources: 4 Core CPU, 8GB RAM, 60GB NVMe Storage.',
+      evidence,
+      calculation: result.calculation,
+      fallback: 'Fallback',
+    })).toEqual({ ok: false, reason: 'cross_entity_fact_mix', answer: 'Fallback' })
+    expect(validateGroundedAnswer({
+      question: '4gb ram vps yearly discounted price',
+      answer: 'Wagon VPS x4 has 2 Core CPU, 4GB RAM, 40GB NVMe Storage. The discounted monthly price is $5.40/mo, regular price is $6.50/mo, and yearly discounted total is $64.80/year.',
+      evidence,
+      calculation: result.calculation,
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
+  })
+
   it('prefers an explicitly stored billing total over deriving one from monthly pricing', () => {
     const rows = [
       {
