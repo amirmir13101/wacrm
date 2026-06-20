@@ -1909,6 +1909,12 @@ function selectStructuredPricingOffer(
           score -= 80
         }
       }
+      if (scope.answerMode === 'single_offer_exact' && scope.weakPlanNames.length > 0) {
+        const weakNameMatched = scope.weakPlanNames.some((name) =>
+          entityContainsTerm(entityHaystack, name) || entityContainsTerm(sourceHaystack, name),
+        )
+        if (!weakNameMatched) score -= 120
+      }
       if (scope.requestedEntity) {
         const normalizedRequestedEntity = normalizeEntityKey(scope.requestedEntity)
         if (entityContainsTerm(entityHaystack, normalizedRequestedEntity)) {
@@ -2004,8 +2010,7 @@ function scoreOfferFamilyMatch(requestedFamily: string | null, offer: Structured
   const familyTerms = tokenize(requestedFamily)
   if (familyTerms.length === 0) return 0
   const haystack = normalizeEntityKey(structuredOfferSearchText(offer))
-  const compactHaystack = haystack.replace(/\s+/g, '')
-  const matched = familyTerms.filter((term) => haystack.includes(term) || compactHaystack.includes(term.replace(/\s+/g, ''))).length
+  const matched = familyTerms.filter((term) => entityContainsTerm(haystack, term)).length
   if (matched === 0) return 0
   const ratio = matched / familyTerms.length
   const exactFamily = offer.product_family && entityContainsTerm(normalizeEntityKey(offer.product_family), normalizeEntityKey(requestedFamily))
@@ -2017,10 +2022,17 @@ function scoreOfferSpecMatch(requestedSpecs: readonly string[], offer: Structure
   const offerSpecs = extractSpecClaims(structuredOfferSearchText(offer))
   let matched = 0
   for (const spec of requestedSpecs) {
-    if (offerSpecs.has(spec)) matched += 1
+    if ([...offerSpecs].some((offerSpec) => specsAreCompatible(spec, offerSpec))) matched += 1
   }
   if (matched === 0) return 0
   return Math.round((matched / requestedSpecs.length) * 80)
+}
+
+function specsAreCompatible(requestedSpec: string, offerSpec: string): boolean {
+  if (requestedSpec === offerSpec) return true
+  const requested = requestedSpec.toLowerCase()
+  const offered = offerSpec.toLowerCase()
+  return requested.length >= 3 && offered.startsWith(requested) && /\d/.test(requested)
 }
 
 function offerHasBillingForTarget(offer: StructuredPricingOffer, targetPeriod: BillingPeriod): boolean {
@@ -2039,7 +2051,13 @@ function offerMatchesRequestedScope(offer: StructuredPricingOffer, scope: OfferQ
 
 function entityContainsTerm(haystack: string, term: string): boolean {
   if (!haystack || !term) return false
-  return haystack.includes(term) || haystack.replace(/\s+/g, '').includes(term.replace(/\s+/g, ''))
+  const normalizedHaystack = normalizeEntityKey(haystack)
+  const normalizedTerm = normalizeEntityKey(term)
+  if (!normalizedHaystack || !normalizedTerm) return false
+  if (normalizedTerm.length <= 3 && !/\d/.test(normalizedTerm)) {
+    return normalizedHaystack.split(/\s+/).includes(normalizedTerm)
+  }
+  return normalizedHaystack.includes(normalizedTerm) || normalizedHaystack.replace(/\s+/g, '').includes(normalizedTerm.replace(/\s+/g, ''))
 }
 
 function storedBillingTotal(

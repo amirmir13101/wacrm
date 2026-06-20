@@ -983,10 +983,18 @@ describe('AI hybrid retrieval', () => {
 function buildProductionPricingRows() {
   return [
     {
+      id: 'homepage',
+      source_id: 'source-1',
+      source: { ...source, title: 'VPSWagon homepage' },
+      source_url: 'https://www.vpswagon.com/',
+      heading_path: 'Homepage > Hero',
+      chunk_text: '### Enterprise Infrastructure\nCloud Infrastructure Built for Innovation. Startup Friendly Pricing - High-performance Web Hosting, VPS & Dedicated Servers powered by modern hardware. Trusted by many countries. Rs. 12 marketing counter.',
+    },
+    {
       id: 'web-hosting',
       source_id: 'source-1',
       source: { ...source, title: 'Web Hosting pricing' },
-      source_url: 'https://example.test/web-hosting/',
+      source_url: 'https://www.vpswagon.com/web-hosting/',
       heading_path: 'Web Hosting > Pricing',
       chunk_text: [
         '### Web Hosting',
@@ -1003,7 +1011,7 @@ function buildProductionPricingRows() {
       id: 'vps',
       source_id: 'source-1',
       source: { ...source, title: 'VPS pricing' },
-      source_url: 'https://example.test/vps/',
+      source_url: 'https://www.vpswagon.com/vps/',
       heading_path: 'VPS > Pricing',
       chunk_text: [
         '### Wagon VPS x8',
@@ -1015,7 +1023,7 @@ function buildProductionPricingRows() {
       id: 'n8n',
       source_id: 'source-1',
       source: { ...source, title: 'Automation pricing' },
-      source_url: 'https://example.test/n8n-hosting/',
+      source_url: 'https://www.vpswagon.com/n8n-hosting/',
       heading_path: 'Automation > n8n Hosting',
       chunk_text: [
         '### Automation Pro Plan',
