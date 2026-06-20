@@ -103,7 +103,17 @@ export interface HybridRetrievalResult {
       readonly rerankReasons: readonly string[]
     }>
     readonly calculationInvoked: boolean
+    readonly fullContextFallback: FullContextFallbackDebug
   }
+}
+
+export interface FullContextFallbackDebug {
+  readonly attempted: boolean
+  readonly outcome: 'not_needed' | 'succeeded' | 'still_fallback' | 'skipped_budget' | 'skipped_empty'
+  readonly estimatedTokens: number
+  readonly tokenBudget: number
+  readonly sourceCount: number
+  readonly sourceTitles: readonly string[]
 }
 
 interface KnowledgeChunkRow {
@@ -125,10 +135,19 @@ interface KnowledgeChunkRow {
   } | null
 }
 
+interface KnowledgeSourceRow {
+  readonly id: string
+  readonly title: string
+  readonly source_type?: string | null
+  readonly status?: string | null
+  readonly content: string
+}
+
 const MAX_EVIDENCE = 6
 const RRF_K = 60
 const MIN_EVIDENCE_SCORE = 0.015
 const MIN_ROBUST_SCORE = 8
+export const DEFAULT_FULL_CONTEXT_FALLBACK_TOKEN_BUDGET = 60000
 
 const QUERY_SYNONYM_GROUPS = [
   ['price', 'pricing', 'cost', 'fee', 'rate', 'charge', 'how much'],
@@ -205,6 +224,7 @@ export async function hybridRetrieveKnowledge(args: {
   readonly contextualQuery?: string | null
   readonly client?: SupabaseClient
   readonly limit?: number
+  readonly fullContextTokenBudget?: number
 }): Promise<HybridRetrievalResult> {
   const admin = args.client ?? supabaseAdmin()
   const queryForEmbedding = [args.contextualQuery, args.question].filter(Boolean).join('\n')
@@ -212,7 +232,10 @@ export async function hybridRetrieveKnowledge(args: {
   const rpcRows = queryEmbedding
     ? await fetchRpcMatches(admin, args.workspaceId, queryForEmbedding || args.question, queryEmbedding.embedding)
     : []
-  const directRows = await fetchWorkspaceChunks(admin, args.workspaceId)
+  const [directRows, activeSources] = await Promise.all([
+    fetchWorkspaceChunks(admin, args.workspaceId),
+    fetchWorkspaceSources(admin, args.workspaceId),
+  ])
   const mergedRows = mergeChunkRows([...rpcRows, ...directRows])
   const variants = expandQuery(args.question)
   const results = await Promise.all(
@@ -229,6 +252,9 @@ export async function hybridRetrieveKnowledge(args: {
     rows: mergedRows,
     results,
     limit: args.limit,
+    fullContextSources: activeSources,
+    fullContextTokenBudget: args.fullContextTokenBudget,
+    workspaceId: args.workspaceId,
   })
 }
 
@@ -237,20 +263,28 @@ export function hybridRetrieveFromRows(args: {
   readonly contextualQuery?: string | null
   readonly rows: readonly KnowledgeChunkRow[]
   readonly limit?: number
+  readonly workspaceId?: string
+  readonly fullContextTokenBudget?: number
 }): HybridRetrievalResult {
+  const rows = args.workspaceId
+    ? args.rows.filter((row) => !row.workspace_id || row.workspace_id === args.workspaceId)
+    : args.rows
   const variants = expandQuery(args.question)
   const results = variants.map((question) => retrieveSingleQueryFromRows({
     question,
     contextualQuery: args.contextualQuery,
-    rows: args.rows,
+    rows,
     limit: Math.max(args.limit ?? MAX_EVIDENCE, 12),
   }))
   return mergeExpandedRetrievalResults({
     originalQuestion: args.question,
     contextualQuery: args.contextualQuery,
-    rows: args.rows,
+    rows,
     results,
     limit: args.limit,
+    fullContextSources: buildFullContextSourcesFromRows(rows),
+    fullContextTokenBudget: args.fullContextTokenBudget,
+    workspaceId: args.workspaceId,
   })
 }
 
@@ -351,6 +385,7 @@ function retrieveSingleQueryFromRows(args: {
         rerankReasons: item.rerankReasons,
       })),
       calculationInvoked: analysis.calculationIntent.hasIntent,
+      fullContextFallback: emptyFullContextFallbackDebug('not_needed'),
     },
   }
 }
@@ -361,6 +396,9 @@ function mergeExpandedRetrievalResults(args: {
   readonly rows: readonly KnowledgeChunkRow[]
   readonly results: readonly HybridRetrievalResult[]
   readonly limit?: number
+  readonly fullContextSources?: readonly KnowledgeSourceRow[]
+  readonly fullContextTokenBudget?: number
+  readonly workspaceId?: string
 }): HybridRetrievalResult {
   const analysis = analyzeRetrievalQuestion(args.originalQuestion, args.contextualQuery)
   const byId = new Map<string, RetrievalCandidate>()
@@ -386,6 +424,29 @@ function mergeExpandedRetrievalResults(args: {
       : null
   const factGuidanceBlock = buildFactGuidanceBlock(analysis, reranked)
   const primary = args.results[0]
+  const shouldTryFullContextFallback = fallbackReason === 'no_relevant_knowledge'
+  const fullContextFallback = shouldTryFullContextFallback
+    ? buildFullContextFallback({
+        analysis,
+        sources: args.fullContextSources ?? buildFullContextSourcesFromRows(args.rows),
+        tokenBudget: readFullContextFallbackTokenBudget(args.fullContextTokenBudget),
+      })
+    : {
+        ...emptyFullContextFallbackDebug('not_needed'),
+        tokenBudget: readFullContextFallbackTokenBudget(args.fullContextTokenBudget),
+      }
+  const effectiveFallbackReason = fullContextFallback.outcome === 'succeeded' ? null : fallbackReason
+  const fullContextChunks = fullContextFallback.outcome === 'succeeded'
+    ? [formatFullContextFallbackBlock(args.fullContextSources ?? buildFullContextSourcesFromRows(args.rows))]
+    : []
+  if (args.workspaceId && fullContextFallback.attempted) {
+    console.info('[ai-chatbot] full-context fallback', {
+      workspaceId: args.workspaceId,
+      outcome: fullContextFallback.outcome,
+      estimatedTokens: fullContextFallback.estimatedTokens,
+      sourceCount: fullContextFallback.sourceCount,
+    })
+  }
 
   return {
     analysis: {
@@ -394,12 +455,13 @@ function mergeExpandedRetrievalResults(args: {
     },
     evidence: reranked,
     chunks: [
-      ...reranked.map(formatEvidenceBlock),
+      ...fullContextChunks,
+      ...(fullContextChunks.length > 0 ? [] : reranked.map(formatEvidenceBlock)),
       ...(factGuidanceBlock ? [factGuidanceBlock] : []),
       ...(calculationBlock ? [calculationBlock] : []),
     ],
     calculation,
-    fallbackReason,
+    fallbackReason: effectiveFallbackReason,
     debug: {
       formula: 'rrf',
       activeChunkCount: primary?.debug.activeChunkCount ?? args.rows.length,
@@ -422,6 +484,7 @@ function mergeExpandedRetrievalResults(args: {
         rerankReasons: candidate.rerankReasons,
       })),
       calculationInvoked: analysis.calculationIntent.hasIntent,
+      fullContextFallback,
     },
   }
 }
@@ -524,7 +587,8 @@ export function validateGroundedAnswer(args: {
     allowedNumbers.add(normalizeNumberString(args.calculation.value.toFixed(2)))
   }
   for (const number of extractNumberStrings(answer)) {
-    if (!allowedNumbers.has(normalizeNumberString(number))) {
+    const normalizedNumber = normalizeNumberString(number)
+    if (!allowedNumbers.has(normalizedNumber) && !isTraceableDerivedNumber(Number(normalizedNumber), args.evidence.join('\n'))) {
       return { ok: false, reason: 'unsupported_numeric_fact', answer: args.fallback }
     }
   }
@@ -556,6 +620,24 @@ async function fetchWorkspaceChunks(client: SupabaseClient, workspaceId: string)
     .eq('source.status', 'active')
   if (error) throw new Error(error.message)
   return (data ?? []) as unknown as KnowledgeChunkRow[]
+}
+
+async function fetchWorkspaceSources(client: SupabaseClient, workspaceId: string): Promise<KnowledgeSourceRow[]> {
+  const { data, error } = await client
+    .from('ai_knowledge_sources')
+    .select('id, title, source_type, status, content')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'active')
+  if (error) throw new Error(error.message)
+  return (data ?? [])
+    .filter((source) => typeof source.content === 'string' && source.content.trim())
+    .map((source) => ({
+      id: String(source.id),
+      title: String(source.title ?? 'Knowledge source'),
+      source_type: typeof source.source_type === 'string' ? source.source_type : null,
+      status: typeof source.status === 'string' ? source.status : null,
+      content: String(source.content),
+    }))
 }
 
 async function fetchRpcMatches(
@@ -795,6 +877,7 @@ function cleanComparisonEntity(value: string): string {
 function extractEntityTerms(question: string, terms: readonly string[], intents: RetrievalIntents, contextualQuery = ''): string[] {
   const generic = new Set([
     'price', 'pricing', 'cost', 'fee', 'rate', 'charge', 'charges', 'monthly', 'yearly',
+    'total', 'billed', 'billing', 'equivalent',
     'plan', 'plans', 'package', 'packages', 'product', 'products', 'service', 'services',
     'menu', 'item', 'items', 'course', 'courses', 'treatment', 'appointment', 'booking',
     'available', 'sell', 'sells', 'offer', 'offers', 'include', 'includes', 'feature',
@@ -1078,6 +1161,128 @@ function buildCandidateReasons(scores: {
   return reasons
 }
 
+function readFullContextFallbackTokenBudget(override?: number): number {
+  if (typeof override === 'number' && Number.isFinite(override) && override > 0) return Math.floor(override)
+  const configured = Number(process.env.AI_FULL_CONTEXT_FALLBACK_TOKEN_BUDGET ?? '')
+  return Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : DEFAULT_FULL_CONTEXT_FALLBACK_TOKEN_BUDGET
+}
+
+function emptyFullContextFallbackDebug(outcome: FullContextFallbackDebug['outcome']): FullContextFallbackDebug {
+  return {
+    attempted: false,
+    outcome,
+    estimatedTokens: 0,
+    tokenBudget: DEFAULT_FULL_CONTEXT_FALLBACK_TOKEN_BUDGET,
+    sourceCount: 0,
+    sourceTitles: [],
+  }
+}
+
+function buildFullContextFallback(args: {
+  readonly analysis: RetrievalQuestionAnalysis
+  readonly sources: readonly KnowledgeSourceRow[]
+  readonly tokenBudget: number
+}): FullContextFallbackDebug {
+  const sources = args.sources
+    .filter((source) => source.status !== 'archived' && source.content.trim())
+    .map((source) => ({ ...source, content: normalizeKnowledgeForFullContext(source.content) }))
+    .filter((source) => source.content)
+  const sourceTitles = sources.map((source) => source.title).slice(0, 20)
+  const estimatedTokens = estimateTokenCount(formatFullContextFallbackBlock(sources))
+  if (sources.length === 0) {
+    return {
+      attempted: true,
+      outcome: 'skipped_empty',
+      estimatedTokens: 0,
+      tokenBudget: args.tokenBudget,
+      sourceCount: 0,
+      sourceTitles: [],
+    }
+  }
+  if (estimatedTokens > args.tokenBudget) {
+    return {
+      attempted: true,
+      outcome: 'skipped_budget',
+      estimatedTokens,
+      tokenBudget: args.tokenBudget,
+      sourceCount: sources.length,
+      sourceTitles,
+    }
+  }
+  const combined = sources.map((source) => `${source.title}\n${source.content}`).join('\n\n')
+  return {
+    attempted: true,
+    outcome: fullContextLikelyContainsAnswer(args.analysis, combined) ? 'succeeded' : 'still_fallback',
+    estimatedTokens,
+    tokenBudget: args.tokenBudget,
+    sourceCount: sources.length,
+    sourceTitles,
+  }
+}
+
+function buildFullContextSourcesFromRows(rows: readonly KnowledgeChunkRow[]): KnowledgeSourceRow[] {
+  const bySource = new Map<string, KnowledgeSourceRow>()
+  rows
+    .filter((row) => row.chunk_text && row.source?.status !== 'archived')
+    .forEach((row, index) => {
+      const sourceId = row.source_id ?? row.source?.id ?? `source-${index}`
+      const existing = bySource.get(sourceId)
+      const title = row.source?.title ?? readMetadataString(row.metadata, 'title') ?? 'Knowledge source'
+      const content = existing ? `${existing.content}\n\n${row.chunk_text}` : row.chunk_text
+      bySource.set(sourceId, {
+        id: sourceId,
+        title,
+        source_type: row.source?.source_type ?? null,
+        status: row.source?.status ?? 'active',
+        content,
+      })
+    })
+  return [...bySource.values()]
+}
+
+function formatFullContextFallbackBlock(sources: readonly KnowledgeSourceRow[]): string {
+  return [
+    'Full active workspace knowledge fallback context.',
+    'Use only the facts present below. If the requested fact is not present, return the configured fallback message exactly.',
+    ...sources.map((source, index) => [
+      `\n[Full source ${index + 1}] ${source.title}`,
+      `Source type: ${source.source_type ?? 'knowledge'}`,
+      normalizeKnowledgeForFullContext(source.content),
+    ].join('\n')),
+  ].join('\n')
+}
+
+function normalizeKnowledgeForFullContext(value: string): string {
+  return value
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim()
+}
+
+function fullContextLikelyContainsAnswer(analysis: RetrievalQuestionAnalysis, text: string): boolean {
+  const normalized = text.toLowerCase()
+  const entityMatched =
+    analysis.entityTerms.length === 0 ||
+    analysis.entityTerms.some((term) => normalized.includes(term.toLowerCase()) || normalized.replace(/\s+/g, '').includes(term.toLowerCase().replace(/\s+/g, '')))
+  if (analysis.intents.contact) {
+    return /(?:https?:\/\/)?wa\.me\/\d+|whatsapp:\S+|tel:\s*\+?\d|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\+?\d[\d\s().-]{7,}\d/i.test(text)
+  }
+  if (analysis.intents.pricing) return entityMatched && containsPriceFact(text) && !hasTextualSameLabelPriceConflict(text)
+  if (analysis.intents.policy) return entityMatched && /\b(policy|refund|return|exchange|cancel|cancellation|delivery|shipping|terms)\b/i.test(text)
+  if (analysis.intents.hours) return /\b(hours?|open|closed?|monday|tuesday|wednesday|thursday|friday|saturday|sunday|am|pm)\b/i.test(text)
+  if (analysis.intents.location) return /\b(address|location|branch|street|road|city|country|office)\b/i.test(text)
+  if (analysis.intents.company || analysis.intents.ownership) {
+    return /\b(company number|registration number|registered number|legal entity|operated by|owned by|founder|owner|behind)\b/i.test(text) || extractLegalEntityNames(text).length > 0
+  }
+  if (analysis.intents.date) return /\b(founded|launched|established|created|built|published|updated|modified|lastmod|sitemap date|page date|20\d{2}-\d{2}-\d{2})\b/i.test(text)
+  if (analysis.intents.productOrService) return entityMatched && /\b(product|service|package|plan|menu|course|treatment|appointment|booking|available|offer)\b/i.test(text)
+  const matchedTerms = analysis.terms.filter((term) => normalized.includes(term)).length
+  return analysis.terms.length > 0 && matchedTerms >= Math.min(2, analysis.terms.length)
+}
+
 function containsPriceFact(text: string): boolean {
   return /(?:\$|rs\.?|pkr|usd|eur|gbp)\s*\d+(?:[.,]\d+)?|\bprice\s*:\s*\d+(?:[.,]\d+)?|\b\d+(?:[.,]\d+)?\s*\/\s*(?:mo|month|monthly|year|yearly|annual)\b|\b\d+(?:[.,]\d+)?\s*(?:mo|month|monthly|year|yearly|annual)\b/i.test(text)
 }
@@ -1150,6 +1355,13 @@ function selectCalculationPriceFact(
       if (questionNumbers.has(roundCalculationNumber(fact.amount))) score += 100
       if (preferredSourcePeriod && fact.period === preferredSourcePeriod) score += 50
       if (targetPeriod && fact.period === targetPeriod) score += 15
+      if (asksForOriginalPrice(analysis.question)) {
+        if (isOriginalPriceFact(fact)) score += 70
+        if (isCurrentPriceFact(fact)) score -= 20
+      } else {
+        if (isCurrentPriceFact(fact)) score += 70
+        if (isOriginalPriceFact(fact)) score -= analysis.calculationIntent.percentage ? 0 : 25
+      }
       if (analysis.calculationIntent.percentage && /\b(regular|original|monthly|price)\b/.test(fact.context)) score += 20
       if (analysis.calculationIntent.periodConversion && fact.isTotal) score += 25
       if (analysis.entityTerms.some((term) => fact.context.includes(term))) score += 10
@@ -1175,6 +1387,31 @@ function roundCalculationNumber(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
+function asksForOriginalPrice(question: string): boolean {
+  return /\b(original|regular|before discount|before sale|list price|base price|standard price|undiscounted)\b/i.test(question)
+}
+
+function isOriginalPriceFact(fact: ExtractedPriceFact): boolean {
+  return /\b(original|regular|before discount|before sale|list price|base price|standard price|was|undiscounted)\b/i.test(fact.localContext)
+}
+
+function isCurrentPriceFact(fact: ExtractedPriceFact): boolean {
+  return /\b(current|discounted|sale|now|today|effective|after discount|special|offer|promo|save|deal)\b/i.test(fact.localContext)
+    || (fact.isTotal && /\b(discount|billed|total)\b/i.test(fact.localContext))
+}
+
+function hasTextualSameLabelPriceConflict(text: string): boolean {
+  const byLabel = new Map<string, Set<number>>()
+  for (const match of text.matchAll(/\b([a-z0-9][a-z0-9 -]{1,60}?)\s+price\s+is\s+(?:\$|usd|gbp|eur|pkr|rs\.?)?\s*(\d+(?:[.,]\d+)?)/gi)) {
+    const label = normalizeConflictLabel(match[1] ?? '')
+    if (!label) continue
+    const values = byLabel.get(label) ?? new Set<number>()
+    values.add(roundCalculationNumber(Number((match[2] ?? '').replace(',', '.'))))
+    byLabel.set(label, values)
+  }
+  return [...byLabel.values()].some((values) => values.size > 1)
+}
+
 interface ExtractedPriceFact {
   readonly kind: 'price'
   readonly amount: number
@@ -1182,6 +1419,7 @@ interface ExtractedPriceFact {
   readonly period: BillingPeriod | null
   readonly label: string | null
   readonly context: string
+  readonly localContext: string
   readonly isTotal: boolean
   readonly sourceChunkId: string
 }
@@ -1201,6 +1439,7 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
     const hasExplicitPriceMarker = Boolean(match[1] || match[3] || match[4])
     if (!hasExplicitPriceMarker && /^[a-z%]/i.test(afterMatch)) continue
     const context = text.slice(Math.max(0, match.index - 80), (match.index ?? 0) + match[0].length + 80).toLowerCase()
+    const localContext = text.slice(Math.max(0, match.index - 45), (match.index ?? 0) + match[0].length + 35).toLowerCase()
     if (!/(price|cost|fee|rate|plan|package|per|\/|month|year|week|day|\$|rs|pkr|usd|eur|gbp)/i.test(context)) continue
     const period = normalizePeriod(match[4] ?? '') ?? inferPricePeriod(context)
     facts.push({
@@ -1210,6 +1449,7 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
       period,
       label: extractNearbyLabel(text, match.index ?? 0),
       context,
+      localContext,
       isTotal: /\b(total|billed|invoice|charged)\b/.test(context),
       sourceChunkId: candidate.id,
     })
@@ -1406,6 +1646,48 @@ function extractExactClaimSignals(answer: string): string[] {
 
 function extractNumberStrings(value: string): string[] {
   return [...value.matchAll(/\b\d+(?:[.,]\d+)?\b/g)].map((match) => match[0])
+}
+
+function isTraceableDerivedNumber(target: number, evidence: string): boolean {
+  if (!Number.isFinite(target)) return false
+  const numbers = extractNumberStrings(evidence)
+    .map((value) => Number(normalizeNumberString(value)))
+    .filter((value) => Number.isFinite(value))
+    .slice(0, 80)
+  const roundedTarget = roundCalculationNumber(target)
+  const derived = new Set<number>()
+  const add = (value: number) => {
+    if (Number.isFinite(value) && value >= 0 && value < 1_000_000_000) derived.add(roundCalculationNumber(value))
+  }
+  for (const number of numbers) {
+    for (const factor of [2, 3, 4, 7, 12, 30, 52, 365]) {
+      add(number * factor)
+      add(number / factor)
+    }
+  }
+  for (const left of numbers) {
+    for (const right of numbers) {
+      if (left === right) continue
+      add(left + right)
+      add(Math.abs(left - right))
+      add(left * right)
+      if (right !== 0) add(left / right)
+      if (left !== 0) add(right / left)
+      if (right >= 0 && right <= 100) {
+        const discounted = left * (1 - right / 100)
+        const markedUp = left * (1 + right / 100)
+        add(discounted)
+        add(markedUp)
+        for (const factor of [4, 12, 52, 365]) {
+          add(discounted * factor)
+          add(discounted / factor)
+          add(markedUp * factor)
+          add(markedUp / factor)
+        }
+      }
+    }
+  }
+  return derived.has(roundedTarget)
 }
 
 function normalizeNumberString(value: string): string {

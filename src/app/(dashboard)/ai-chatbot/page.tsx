@@ -214,6 +214,14 @@ interface RetrievalDebug {
       unit: string
       formula: string
     } | null
+    fullContextFallback: {
+      attempted: boolean
+      outcome: "not_needed" | "succeeded" | "still_fallback" | "skipped_budget" | "skipped_empty"
+      estimatedTokens: number
+      tokenBudget: number
+      sourceCount: number
+      sourceTitles: string[]
+    }
   }
 }
 
@@ -1524,6 +1532,25 @@ export default function AiChatbotPage() {
                     <p className="mt-3 text-xs text-emerald-200">
                       Calculation: {testAnswer.debug.retrieval.calculation.value} {testAnswer.debug.retrieval.calculation.unit}
                     </p>
+                  )}
+                  {testAnswer.debug.retrieval.fullContextFallback && (
+                    <div className="mt-3 rounded-lg border border-emerald-900 bg-[#06170f] p-3 text-xs text-[#b9e8d8]">
+                      <p className="font-semibold uppercase tracking-wide text-emerald-300">Full-context fallback</p>
+                      <p className="mt-1">
+                        {testAnswer.debug.retrieval.fullContextFallback.attempted ? "Attempted" : "Not needed"} ·{" "}
+                        {testAnswer.debug.retrieval.fullContextFallback.outcome.replaceAll("_", " ")}
+                      </p>
+                      <p className="mt-1">
+                        Tokens: {testAnswer.debug.retrieval.fullContextFallback.estimatedTokens.toLocaleString()} /{" "}
+                        {testAnswer.debug.retrieval.fullContextFallback.tokenBudget.toLocaleString()} · Sources:{" "}
+                        {testAnswer.debug.retrieval.fullContextFallback.sourceCount}
+                      </p>
+                      {testAnswer.debug.retrieval.fullContextFallback.sourceTitles.length > 0 && (
+                        <p className="mt-1 break-words text-[#8fb7aa]">
+                          Sources: {testAnswer.debug.retrieval.fullContextFallback.sourceTitles.join(", ")}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
 

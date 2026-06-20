@@ -493,6 +493,120 @@ describe('AI hybrid retrieval', () => {
     expect(result.calculation).toMatchObject({ status: 'computed', value: 1.7 })
   })
 
+  it('uses full-context fallback only when hybrid retrieval would otherwise miss existing active knowledge', () => {
+    const rows = [
+      {
+        id: 'link-only-contact',
+        workspace_id: 'workspace-a',
+        source_id: 'source-1',
+        source,
+        chunk_text: 'Chat with our team here: https://wa.me/447478060494',
+      },
+    ]
+
+    const result = hybridRetrieveFromRows({
+      question: 'urgent help desk',
+      rows,
+      workspaceId: 'workspace-a',
+    })
+    const normalHit = hybridRetrieveFromRows({
+      question: 'phone number',
+      rows: [{ ...rows[0], chunk_text: 'Phone number: +44 7478 060494. WhatsApp: https://wa.me/447478060494' }],
+      workspaceId: 'workspace-a',
+    })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.debug.fullContextFallback).toMatchObject({ attempted: true, outcome: 'succeeded' })
+    expect(result.chunks.join('\n')).toContain('Full active workspace knowledge fallback context')
+    expect(result.chunks.join('\n')).toContain('wa.me/447478060494')
+    expect(normalHit.debug.fullContextFallback).toMatchObject({ attempted: false, outcome: 'not_needed' })
+  })
+
+  it('skips full-context fallback cleanly when active knowledge exceeds the budget', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'urgent help desk',
+      rows: [
+        {
+          id: 'huge',
+          source_id: 'source-1',
+          source,
+          chunk_text: `General knowledge ${'filler text '.repeat(1000)} https://wa.me/447478060494`,
+        },
+      ],
+      fullContextTokenBudget: 10,
+    })
+
+    expect(result.fallbackReason).toBe('no_relevant_knowledge')
+    expect(result.debug.fullContextFallback).toMatchObject({ attempted: true, outcome: 'skipped_budget' })
+  })
+
+  it('does not leak other workspace rows into full-context fallback', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'support phone number',
+      workspaceId: 'workspace-a',
+      rows: [
+        {
+          id: 'workspace-a',
+          workspace_id: 'workspace-a',
+          source_id: 'source-1',
+          source,
+          chunk_text: 'Workspace A public information lists service categories only.',
+        },
+        {
+          id: 'workspace-b',
+          workspace_id: 'workspace-b',
+          source_id: 'source-2',
+          source: { ...source, id: 'source-2', title: 'Other workspace knowledge' },
+          chunk_text: 'Workspace B WhatsApp: https://wa.me/15559999999',
+        },
+      ],
+    })
+
+    expect(result.fallbackReason).toBe('no_relevant_knowledge')
+    expect(result.chunks.join('\n')).not.toContain('15559999999')
+    expect(result.debug.fullContextFallback.sourceTitles).not.toContain('Other workspace knowledge')
+  })
+
+  it('keeps fallback when full active knowledge still does not contain the requested fact', () => {
+    const result = hybridRetrieveFromRows({
+      question: 'Do you sell laptops?',
+      rows: [{ id: 'services', source_id: 'source-1', source, chunk_text: 'We provide accounting services and tax filing support.' }],
+    })
+
+    expect(result.fallbackReason).toBe('no_relevant_knowledge')
+    expect(result.debug.fullContextFallback).toMatchObject({ attempted: true, outcome: 'still_fallback' })
+  })
+
+  it('defaults derived calculations to the current discounted price unless original price is requested', () => {
+    const rows = [
+      {
+        id: 'pricing',
+        source_id: 'source-1',
+        source,
+        chunk_text: 'Pro package regular monthly price: $10/month. Current discounted price: $8/month.',
+      },
+    ]
+    const current = hybridRetrieveFromRows({ question: 'What is the yearly total for Pro package?', rows })
+    const original = hybridRetrieveFromRows({ question: 'What is the yearly total for the original regular Pro package price?', rows })
+
+    expect(current.calculation).toMatchObject({ status: 'computed', value: 96 })
+    expect(original.calculation).toMatchObject({ status: 'computed', value: 120 })
+  })
+
+  it('accepts chained deterministic numbers traceable to evidence and still rejects invented numbers', () => {
+    const evidence = ['Plan regular price is $20/month. Discount is 15% off.']
+    expect(validateGroundedAnswer({
+      answer: 'The discounted yearly total is $204/year.',
+      evidence,
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
+    expect(validateGroundedAnswer({
+      answer: 'The discounted yearly total is $209/year.',
+      evidence,
+      fallback: 'Fallback',
+    })).toEqual({ ok: false, reason: 'unsupported_numeric_fact', answer: 'Fallback' })
+  })
+
   it('rejects unsupported numeric facts from mocked model answers', () => {
     const validation = validateGroundedAnswer({
       answer: 'The price is $99/month.',

@@ -171,6 +171,7 @@ function buildSafeDebug(args: {
             formula: args.retrieval.calculation.formula,
           }
         : null,
+      fullContextFallback: args.retrieval.debug.fullContextFallback,
     },
   }
 }
