@@ -299,6 +299,38 @@ describe('AI chatbot knowledge helpers', () => {
     vi.unstubAllEnvs()
   })
 
+  it('uses grounded extractive facts when the configured provider returns a billing error', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 402,
+      json: async () => ({ error: { message: 'Payment required' } }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await generateChatbotAnswer({
+      question: 'what is X1005 Enterprise price?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      chunks: [
+        [
+          'Derived fact guidance from selected source evidence:',
+          '- Selected requested offer/entity: X1005 Enterprise Dedicated Server',
+          '- Selected offer current/effective price: USD 209/monthly',
+          '- For a single requested item, answer only from the selected offer/entity facts above.',
+        ].join('\n'),
+      ],
+      requireProvider: true,
+    })
+
+    expect(result.status).toBe('answered')
+    expect(result.reason).toBe('provider_http_402_knowledge_preview')
+    expect(result.answer).toContain('X1005 Enterprise')
+    expect(result.answer).toContain('USD 209/monthly')
+
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
   it('detects opt-out messages before AI auto-reply', () => {
     expect(isOptOutMessage('STOP')).toBe(true)
     expect(isOptOutMessage('unsubscribe')).toBe(true)

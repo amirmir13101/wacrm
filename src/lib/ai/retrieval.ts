@@ -214,6 +214,17 @@ const GENERIC_PLAN_NAMES = new Set([
   'free',
 ])
 
+const CATALOG_TIER_TERMS = new Set([
+  ...GENERIC_PLAN_NAMES,
+  'eco',
+  'economical',
+  'performance',
+  'popular',
+  'new',
+  'cheapest',
+  'recommended',
+])
+
 const PERIOD_WORDS = new Set([
   'daily',
   'day',
@@ -243,7 +254,11 @@ const OFFER_FAMILY_STOP_TERMS = new Set([
   'package',
   'packages',
   'price',
+  'prices',
   'pricing',
+  'costs',
+  'fees',
+  'rates',
   'cost',
   'fee',
   'rate',
@@ -1012,14 +1027,14 @@ function includesSemanticSignal(value: string, signal: string): boolean {
 function detectRetrievalIntents(question: string): RetrievalIntents {
   const normalized = question.toLowerCase()
   return {
-    pricing: /\b(price|pricing|cost|fee|rate|charge|charges|how much|monthly|yearly|plan|package)\b/.test(normalized),
-    policy: /\b(refund|return|exchange|cancel|cancellation|money back|terms?|policy|warranty)\b/.test(normalized),
+    pricing: /\b(price|prices|pricing|cost|costs|fee|fees|rate|rates|charge|charges|how much|monthly|yearly|plan|plans|package|packages)\b/.test(normalized),
+    policy: /\b(refund|refunds|refundable|nonrefundable|non-refundable|return|returns|exchange|cancel|cancellation|money back|guarantee|terms?|policy|policies|privacy|warranty|retain|retention|keep data|customer data)\b/.test(normalized),
     hours: /\b(hours?|open|close|closed|closing|timing|schedule|when are you open)\b/.test(normalized),
-    contact: /\b(contact|support|email|phone|call|whatsapp|help desk|ticket)\b/.test(normalized),
+    contact: /\b(contact|support|email|phone|call|whatsapp|help desk|ticket|live chat|human support|real human)\b/.test(normalized),
     location: /\b(location|address|where|office|branch|map|city|country)\b/.test(normalized),
     faq: /\b(faq|question|help|how do i|can i|do you|does it|is there)\b/.test(normalized),
-    productOrService: /\b(product|service|plan|package|menu|item|course|treatment|appointment|booking|available|sell|offer|include|includes|feature|spec)\b/.test(normalized),
-    company: /\b(company|business|legal|entity|registration|registered|company number|incorporated|limited|ltd|llc|inc)\b/.test(normalized),
+    productOrService: /\b(product|products|service|services|plan|plans|package|packages|menu|item|items|course|courses|treatment|appointment|booking|available|sell|sells|offer|offers|include|includes|feature|features|spec|specs)\b/.test(normalized),
+    company: /\b(company|legal|entity|registration|registered|company number|incorporated|limited|ltd|llc|inc)\b/.test(normalized),
     ownership: /\b(owner|owned|founder|founded by|behind|run by|operated by|director|ceo)\b/.test(normalized),
     date: /\b(date|built|created|founded|launched|launch|started|established|published|updated|modified|page date|sitemap)\b/.test(normalized),
     comparison: /\b(compare|comparison|difference|different|vs|versus|better|which one|between)\b/.test(normalized),
@@ -1074,6 +1089,7 @@ function cleanComparisonEntity(value: string): string {
 function extractEntityTerms(question: string, terms: readonly string[], intents: RetrievalIntents, contextualQuery = ''): string[] {
   const generic = new Set([
     'price', 'pricing', 'cost', 'fee', 'rate', 'charge', 'charges', 'monthly', 'yearly',
+    'prices', 'costs', 'fees', 'rates', 'list', 'all', 'options', 'option', 'available',
     'total', 'billed', 'billing', 'equivalent',
     'plan', 'plans', 'package', 'packages', 'product', 'products', 'service', 'services',
     'menu', 'item', 'items', 'course', 'courses', 'treatment', 'appointment', 'booking',
@@ -1090,7 +1106,11 @@ function extractEntityTerms(question: string, terms: readonly string[], intents:
   ])
   const entities = new Set<string>()
   for (const term of terms) {
-    if (!generic.has(term)) entities.add(term)
+    if (GENERIC_PLAN_NAMES.has(term) && (intents.pricing || intents.productOrService)) {
+      entities.add(term)
+    } else if (!generic.has(term)) {
+      entities.add(term)
+    }
   }
   for (const term of tokenize(contextualQuery)) {
     if (!generic.has(term)) entities.add(term)
@@ -1225,6 +1245,7 @@ function inferRequestedFamily(
       !SPEC_CONTEXT_TERMS.has(term) &&
       !specs.has(term.replace(/\s+/g, '')) &&
       !isSpecEntityTerm(term) &&
+      !isVariantCodeEntityTerm(term) &&
       !/^\d+(?:\.\d+)?$/.test(term),
     )
   if (familyTerms.length === 0) return null
@@ -1252,7 +1273,7 @@ function extractRequestedEntityPhrase(question: string): string | null {
 
 function cleanRequestedEntityPhrase(value: string): string | null {
   const cleaned = value
-    .replace(/\b(?:the|a|an|of|for|plan|package|service|product|item|course|menu|treatment|appointment|price|pricing|cost|fee|rate|yearly|annual|monthly|weekly|daily|discounted|original|regular|current|total|billed|billing|what|is|are|should|be|if)\b/g, ' ')
+    .replace(/\b(?:the|a|an|of|for|plan|plans|package|packages|service|services|product|products|item|items|course|courses|menu|treatment|appointment|price|prices|pricing|cost|costs|fee|fees|rate|rates|yearly|annual|monthly|weekly|daily|discounted|original|regular|current|total|billed|billing|list|all|what|is|are|should|be|if)\b/g, ' ')
     .replace(/\b\d+(?:[.,]\d+)?\s*(?:usd|pkr|eur|gbp|\$|rs\.?)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -1264,6 +1285,8 @@ function shouldTreatPhraseAsSpecificEntity(phrase: string): boolean {
   if (terms.length === 0) return false
   if (terms.some((term) => GENERIC_PLAN_NAMES.has(term))) return true
   if (terms.some((term) => isSpecEntityTerm(term))) return true
+  if (terms.some((term) => isVariantCodeEntityTerm(term))) return true
+  if (terms.length >= 2 && terms.some((term) => /\d/.test(term))) return true
   return terms.length >= 3
 }
 
@@ -1278,6 +1301,11 @@ function readRequestedPeriod(value: string): BillingPeriod | null {
 
 function isSpecEntityTerm(term: string): boolean {
   return /\b\d+(?:[.,]\d+)?\s*(?:gb|tb|mb|kb|cores?|core|cpu|ram|storage|nvme|ssd|kg|g|mg|ml|l|hours?|days?|weeks?|months?|years?|sessions?|users?|seats?|people|servings?)\b/i.test(term.replace(/(\d)([a-z])/gi, '$1 $2'))
+}
+
+function isVariantCodeEntityTerm(term: string): boolean {
+  const normalized = normalizeEntityKey(term).replace(/\s+/g, '')
+  return /^(?:x\d{1,4}|[a-z]{1,4}\d{2,}[a-z0-9-]*|\d{2,}[a-z][a-z0-9-]*)$/i.test(normalized)
 }
 
 function scoreEntityTerms(haystack: string, entityTerms: readonly string[]): number {
@@ -1462,9 +1490,20 @@ function filterCategoryPricingEvidence(
 ): RetrievalCandidate[] {
   if (candidates.length <= 1 || analysis.offerScope.answerMode !== 'category_pricing_list') return [...candidates]
   if (!analysis.intents.pricing && !analysis.intents.productOrService) return [...candidates]
-  const matching = candidates.filter((candidate) =>
-    selectCategoryPricingOffers(analysis, extractStructuredPricingOffersFromCandidate(candidate)).length > 0,
-  )
+  const grouped = candidates
+    .map((candidate) => ({
+      candidate,
+      offers: selectCategoryOffersForCandidate(analysis, candidate),
+    }))
+    .filter((group) => group.offers.length > 0)
+    .sort((left, right) =>
+      scoreCandidateCategoryContext(right.candidate, analysis) - scoreCandidateCategoryContext(left.candidate, analysis) ||
+      right.candidate.finalScore - left.candidate.finalScore ||
+      right.offers.length - left.offers.length,
+    )
+  const coherent = grouped.find((group) => group.offers.length >= 3)
+  if (coherent) return [coherent.candidate]
+  const matching = grouped.map((group) => group.candidate)
   return matching.length > 0 ? matching : [...candidates]
 }
 
@@ -1767,7 +1806,9 @@ function calculateFromStructuredPricingOffers(
   candidates: readonly RetrievalCandidate[],
 ): CalculationResult | null {
   const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
-  const offer = selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
+  const offer = selectStructuredPricingOffer(analysis, offers) ??
+    selectLocalRequestedOfferFromEvidence(analysis, candidates) ??
+    selectScopedStructuredPricingOfferFallback(analysis, offers)
   if (!offer) return null
   const sourceIds = [offer.sourceChunkId]
   const targetPeriod = analysis.calculationIntent.targetPeriod
@@ -1965,9 +2006,10 @@ function selectStructuredPricingOffer(
       let entityLabelMatches = 0
       const familyMatchScore = scoreOfferFamilyMatch(scope.requestedFamily, offer)
       const specMatchScore = scoreOfferSpecMatch(scope.requestedVariantSpecs, offer)
+      const relaxFamilyForDistinctiveMatch = canRelaxFamilyForDistinctiveOffer(offer, scope)
       if (scope.requestedFamily) {
         if (familyMatchScore > 0) score += familyMatchScore
-        else score -= scope.answerMode === 'single_offer_exact' ? 90 : 30
+        else score -= relaxFamilyForDistinctiveMatch ? 8 : scope.answerMode === 'single_offer_exact' ? 90 : 30
       }
       if (scope.requestedVariantSpecs.length > 0) {
         if (specMatchScore > 0) {
@@ -2037,9 +2079,14 @@ function selectStructuredPricingOffer(
     const families = new Set(weakMatches.map((item) => normalizeEntityKey(item.offer.product_family ?? '')).filter(Boolean))
     if (weakMatches.length > 1 && families.size > 1) return null
   }
-  const best = scored[0]
+  const labelMatchedScored = scope.answerMode === 'single_offer_exact' && (scope.requestedEntity || scope.weakPlanNames.length > 0 || scope.requestedVariantSpecs.length > 0)
+    ? scored.filter((item) => offerHasDistinctiveRequestedLabelMatch(item.offer, scope))
+    : []
+  if (hasHardIdentifierScope(scope) && labelMatchedScored.length === 0) return null
+  const rankedForSelection = labelMatchedScored.length > 0 ? labelMatchedScored : scored
+  const best = rankedForSelection[0]
   if (scope.requestedVariantSpecs.length > 0) {
-    const specMatchedRaw = scored.filter((item) => scoreOfferSpecMatch(scope.requestedVariantSpecs, item.offer) > 0)
+    const specMatchedRaw = rankedForSelection.filter((item) => scoreOfferSpecMatch(scope.requestedVariantSpecs, item.offer) > 0)
     const specMatched = scope.requestedFamily
       ? specMatchedRaw.filter((item) => scoreOfferFamilyMatch(scope.requestedFamily, item.offer) > 0)
       : specMatchedRaw
@@ -2048,7 +2095,7 @@ function selectStructuredPricingOffer(
     }
   }
   if (!best || best.score < 15) return null
-  const second = scored[1]
+  const second = rankedForSelection[1]
   if (
     scope.answerMode === 'single_offer_exact' &&
     second &&
@@ -2072,7 +2119,8 @@ function selectScopedStructuredPricingOfferFallback(
       const specScore = scoreOfferSpecMatch(scope.requestedVariantSpecs, offer)
       const haystack = normalizeEntityKey(structuredOfferSearchText(offer))
       const weakNameMatched = scope.weakPlanNames.length === 0 || scope.weakPlanNames.some((name) => entityContainsTerm(haystack, name))
-      if (scope.requestedFamily && familyScore <= 0) return null
+      if (!offerHasDistinctiveRequestedLabelMatch(offer, scope)) return null
+      if (scope.requestedFamily && familyScore <= 0 && !canRelaxFamilyForDistinctiveOffer(offer, scope)) return null
       if (scope.requestedVariantSpecs.length > 0 && specScore <= 0) return null
       if (!weakNameMatched) return null
       const requestedEntityScore = scope.requestedEntity && entityContainsTerm(haystack, normalizeEntityKey(scope.requestedEntity)) ? 30 : 0
@@ -2086,6 +2134,101 @@ function selectScopedStructuredPricingOfferFallback(
   return scoped[0]?.offer ?? null
 }
 
+function selectLocalRequestedOfferFromEvidence(
+  analysis: RetrievalQuestionAnalysis,
+  candidates: readonly RetrievalCandidate[],
+): StructuredPricingOffer | null {
+  const scope = analysis.offerScope
+  if (scope.answerMode !== 'single_offer_exact' || !hasHardIdentifierScope(scope)) return null
+  const identifiers = extractRequestedHardIdentifiers(scope)
+  if (identifiers.length === 0) return null
+  for (const candidate of candidates) {
+    for (const identifier of identifiers) {
+      const offer = buildLocalOfferAroundIdentifier(candidate, identifier)
+      if (offer) return offer
+    }
+  }
+  return null
+}
+
+function extractRequestedHardIdentifiers(scope: OfferQueryScope): string[] {
+  const terms = [
+    ...(scope.requestedEntity ? tokenize(scope.requestedEntity) : []),
+    ...scope.requestedVariantSpecs.map((spec) => normalizeEntityKey(spec)),
+  ]
+  return [...new Set(terms.filter((term) => isVariantCodeEntityTerm(term) || isSpecEntityTerm(term) || /\d/.test(term)))]
+}
+
+function buildLocalOfferAroundIdentifier(candidate: RetrievalCandidate, identifier: string): StructuredPricingOffer | null {
+  const text = candidate.chunkText
+  const normalizedIdentifier = normalizeEntityKey(identifier).replace(/\s+/g, '')
+  const match = findIdentifierMatch(text, normalizedIdentifier)
+  if (!match) return null
+  const nextIdentifierIndex = findNextIdentifierIndex(text, match.index + match.text.length)
+  const row = text
+    .slice(match.index, nextIdentifierIndex > match.index ? nextIdentifierIndex : Math.min(text.length, match.index + 520))
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!row) return null
+  const money = extractMoneyMatches(row)
+  const current = money.find((item) => item.index >= 0 && !item.isTotal) ?? null
+  if (!current) return null
+  const nearbyMoney = money.filter((item) => Math.abs(item.index - current.index) <= 140 && roundCalculationNumber(item.amount) !== roundCalculationNumber(current.amount))
+  const original = nearbyMoney.find((item) => item.amount > current.amount && item.currency === current.currency) ?? null
+  const discountPercent = extractDiscountPercent(row)
+  const entity = row
+    .slice(0, current.index)
+    .replace(/^(?:[-*•★✓🔥\s]+)+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180)
+  if (!entity || !entityContainsTerm(normalizeEntityKey(entity), normalizedIdentifier)) return null
+  const offer: StructuredPricingOffer = {
+    kind: 'pricing_offer',
+    entity,
+    entity_name: entity,
+    entity_type: inferOfferEntityType(entity, row),
+    product_family: inferProductFamilyFromOffer(entity, row),
+    category_path: candidate.headingPath ? candidate.headingPath.split(/\s*>\s*/).filter(Boolean) : [],
+    variant_specs: extractVariantSpecs(row),
+    current_price: toStructuredPriceValue(current),
+    original_price: original ? toStructuredPriceValue(original) : null,
+    discount_percent: discountPercent,
+    stored_period_totals: {},
+    billing_totals: extractBillingTotals(row),
+    source_url: candidate.sourceUrl,
+    heading_path: candidate.headingPath ? candidate.headingPath.split(/\s*>\s*/).filter(Boolean) : [],
+    source_excerpt: row.slice(0, 400),
+    confidence: 'high',
+    source_origin: 'runtime',
+    source_text: row.slice(0, 1200),
+    context_text: candidate.chunkText.slice(0, 2500),
+    sourceChunkId: candidate.id,
+  }
+  return isLikelyMarketingMetricOffer(offer) ? null : offer
+}
+
+function findIdentifierMatch(text: string, normalizedIdentifier: string): { readonly index: number; readonly text: string } | null {
+  for (const match of text.matchAll(/\b[a-z]{0,6}\d{1,6}[a-z0-9-]*\b/gi)) {
+    const value = match[0] ?? ''
+    if (normalizeEntityKey(value).replace(/\s+/g, '') === normalizedIdentifier) {
+      return { index: match.index ?? 0, text: value }
+    }
+  }
+  const index = normalizeEntityKey(text).indexOf(normalizedIdentifier)
+  return index >= 0 ? null : null
+}
+
+function findNextIdentifierIndex(text: string, startIndex: number): number {
+  for (const match of text.slice(startIndex).matchAll(/\b(?:x\d{1,4}|[a-z]{1,4}\d{2,}[a-z0-9-]*|\d{2,}[a-z][a-z0-9-]*)\b/gi)) {
+    const index = startIndex + (match.index ?? 0)
+    const segmentBeforeNextIdentifier = text.slice(startIndex, index)
+    if (extractMoneyMatches(segmentBeforeNextIdentifier).length === 0) continue
+    if (index > startIndex + 8) return index
+  }
+  return -1
+}
+
 function structuredOfferSearchText(offer: StructuredPricingOffer): string {
   return [
     offer.entity,
@@ -2096,6 +2239,27 @@ function structuredOfferSearchText(offer: StructuredPricingOffer): string {
     offer.heading_path.join(' '),
     offer.source_url,
     offer.source_text,
+  ].filter(Boolean).join('\n')
+}
+
+function structuredOfferLabelText(offer: StructuredPricingOffer): string {
+  return [
+    offer.entity,
+    offer.entity_name,
+    offer.product_family,
+    offer.category_path.join(' '),
+    Object.values(offer.variant_specs).join(' '),
+    offer.heading_path.join(' '),
+  ].filter(Boolean).join('\n')
+}
+
+function structuredOfferCategoryLabelText(offer: StructuredPricingOffer): string {
+  return [
+    offer.entity,
+    offer.entity_name,
+    offer.category_path.join(' '),
+    Object.values(offer.variant_specs).join(' '),
+    offer.heading_path.join(' '),
   ].filter(Boolean).join('\n')
 }
 
@@ -2153,9 +2317,41 @@ function offerMatchesRequestedScope(offer: StructuredPricingOffer, scope: OfferQ
   if (scope.requestedFamily && scoreOfferFamilyMatch(scope.requestedFamily, offer) <= 0) return false
   if (scope.requestedVariantSpecs.length > 0 && scoreOfferSpecMatch(scope.requestedVariantSpecs, offer) <= 0) return false
   if (!scope.requestedEntity && scope.weakPlanNames.length === 0) return true
-  const haystack = normalizeEntityKey(structuredOfferSearchText(offer))
+  const haystack = normalizeEntityKey(structuredOfferCategoryLabelText(offer))
   if (scope.requestedEntity && entityContainsTerm(haystack, normalizeEntityKey(scope.requestedEntity))) return true
   return scope.weakPlanNames.some((name) => entityContainsTerm(haystack, name))
+}
+
+function offerHasDistinctiveRequestedLabelMatch(offer: StructuredPricingOffer, scope: OfferQueryScope): boolean {
+  const requestedTerms = [
+    ...(scope.requestedEntity ? tokenize(scope.requestedEntity) : []),
+    ...scope.weakPlanNames,
+    ...scope.requestedVariantSpecs.map((spec) => normalizeEntityKey(spec)),
+  ]
+  const distinctive = requestedTerms.filter((term) =>
+    GENERIC_PLAN_NAMES.has(term) ||
+    isVariantCodeEntityTerm(term) ||
+    isSpecEntityTerm(term) ||
+    /\d/.test(term),
+  )
+  if (distinctive.length === 0) return true
+  const labelHaystack = normalizeEntityKey(structuredOfferLabelText(offer))
+  const hardTerms = distinctive.filter((term) => isVariantCodeEntityTerm(term) || isSpecEntityTerm(term) || /\d/.test(term))
+  if (hardTerms.length > 0) return hardTerms.some((term) => entityContainsTerm(labelHaystack, term))
+  return distinctive.some((term) => entityContainsTerm(labelHaystack, term))
+}
+
+function canRelaxFamilyForDistinctiveOffer(offer: StructuredPricingOffer, scope: OfferQueryScope): boolean {
+  if (scope.answerMode !== 'single_offer_exact') return false
+  return hasHardIdentifierScope(scope) && offerHasDistinctiveRequestedLabelMatch(offer, scope)
+}
+
+function hasHardIdentifierScope(scope: OfferQueryScope): boolean {
+  const requestedTerms = [
+    ...(scope.requestedEntity ? tokenize(scope.requestedEntity) : []),
+    ...scope.requestedVariantSpecs.map((spec) => normalizeEntityKey(spec)),
+  ]
+  return requestedTerms.some((term) => isVariantCodeEntityTerm(term) || isSpecEntityTerm(term) || /\d/.test(term))
 }
 
 function entityContainsTerm(haystack: string, term: string): boolean {
@@ -2498,7 +2694,7 @@ function readStructuredPricingOffers(facts: Record<string, unknown> | null, sour
         : typeof offer.entity_name === 'string' && offer.entity_name.trim()
           ? offer.entity_name.trim()
           : null
-      return {
+      const normalizedOffer: StructuredPricingOffer = {
         kind: 'pricing_offer',
         entity,
         entity_name: typeof offer.entity_name === 'string' && offer.entity_name.trim() ? offer.entity_name.trim() : entity,
@@ -2520,6 +2716,7 @@ function readStructuredPricingOffers(facts: Record<string, unknown> | null, sour
         context_text: offerSourceText,
         sourceChunkId,
       }
+      return isLikelyMarketingMetricOffer(normalizedOffer) ? null : normalizedOffer
     })
     .filter((offer): offer is StructuredPricingOffer => Boolean(offer))
 }
@@ -2531,7 +2728,16 @@ function readStructuredPriceValue(value: unknown): StructuredPriceValue | null {
   const period = typeof value.period === 'string' ? normalizePeriod(value.period) : null
   const text = typeof value.text === 'string' ? value.text : ''
   if (period && isStandaloneDurationText(text)) return null
+  if (isMisreadTechnicalUnitPriceText(text, currency)) return null
   return Number.isFinite(amount) ? { amount, currency, period, text } : null
+}
+
+function isMisreadTechnicalUnitPriceText(text: string, currency: string): boolean {
+  const normalized = text.trim().toLowerCase().replace(/\s+/g, '')
+  if (!normalized) return false
+  if (/^\d+(?:[.,]\d+)?(?:gbps?|mbps?|tbps?|gbit|mbit|tbit)$/.test(normalized)) return true
+  if (currency.toUpperCase() === 'GBP' && /^\d+(?:[.,]\d+)?gbp?s?$/.test(normalized)) return true
+  return false
 }
 
 function readStructuredBillingTotals(value: unknown): StructuredBillingTotal[] {
@@ -2601,7 +2807,7 @@ function splitPricingBlocks(text: string): string[] {
     if (inlineOffers.length > 1) return inlineOffers
     if (block.length <= 2200) return [block]
     return block
-      .split(/(?=#{2,4}\s+)|(?=\b[A-Z][A-Za-z0-9&+().,\- ]{2,80}\b.{0,120}?(?:\$|USD|GBP|EUR|PKR|Rs\.?))/g)
+      .split(/(?=#{2,4}\s+)|(?=\b[A-Z][A-Za-z0-9&+().,\- ]{2,80}\b.{0,220}?(?:\$|USD|GBP|EUR|PKR|Rs\.?))/g)
       .map((part) => part.trim())
       .filter((part) => part.length >= 20)
   })
@@ -2611,7 +2817,7 @@ function splitInlinePricingOffers(block: string): string[] {
   const moneyCount = extractMoneyMatches(block).length
   if (moneyCount < 3 || block.length < 180) return [block]
   const rawParts = block
-    .split(/(?=\b(?!Total\b|Price\b|Starting\b|From\b|Year\b|Monthly\b|Annual\b|Weekly\b|Daily\b|Quarterly\b|OFF\b|Discount\b|Save\b|CPU\b|Core\b|Cores\b|RAM\b|NVME\b|SSD\b|Storage\b|Traffic\b|Bandwidth\b|Backup\b|Guarantee\b)[A-Z][A-Za-z0-9&+().,'’\- ]{2,90}?\b(?:\s+[-–]\s+|\s+).{0,140}?(?:\$|USD|GBP|EUR|PKR|Rs\.?)\s*\d)/g)
+    .split(/(?=\b(?!Total\b|Price\b|Starting\b|From\b|Year\b|Monthly\b|Annual\b|Weekly\b|Daily\b|Quarterly\b|OFF\b|Discount\b|Save\b|CPU\b|Core\b|Cores\b|RAM\b|NVME\b|SSD\b|Storage\b|Traffic\b|Bandwidth\b|Backup\b|Guarantee\b)[A-Z][A-Za-z0-9&+().,'’\- ]{2,110}?\b(?:\s+[-–]\s+|\s+).{0,220}?(?:\$|USD|GBP|EUR|PKR|Rs\.?)\s*\d)/g)
     .map((part) => part.trim())
     .filter((part) => part.length >= 8)
   const parts: string[] = []
@@ -2699,6 +2905,7 @@ function isLikelyMarketingMetricOffer(offer: StructuredPricingOffer): boolean {
   if (!offer.current_price || offer.current_price.period || offer.original_price || offer.discount_percent !== null) return false
   if (Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0) return false
   const text = [offer.entity, offer.entity_name, offer.product_family, offer.source_text].filter(Boolean).join(' ').toLowerCase()
+  if (tokenize(text).some((term) => isVariantCodeEntityTerm(term))) return false
   if (!/\b(counter|uptime|guarantee|availability|trusted|reviews?|countries|locations|customers|visitors|traffic|support|global|infrastructure)\b/.test(text)) {
     return false
   }
@@ -2712,7 +2919,7 @@ function isLikelyMarketingMetricOffer(offer: StructuredPricingOffer): boolean {
 
 function extractBillingTotals(text: string): StructuredBillingTotal[] {
   const totals: StructuredBillingTotal[] = []
-  const currencyAmount = String.raw`(?:(USD|PKR|EUR|GBP|AED|SAR|Rs\.?|₹|\$|€|£)\s*)?(\d+(?:[.,]\d+)?)(?:\s*(USD|PKR|EUR|GBP|AED|SAR))?`
+  const currencyAmount = String.raw`((?:USD|PKR|EUR|GBP|AED|SAR)\b|Rs\.?|₹|\$|€|£)?\s*(\d+(?:[.,]\d+)?)(?:\s*((?:USD|PKR|EUR|GBP|AED|SAR)\b))?`
   const duration = String.raw`(?:(\d+(?:[.,]\d+)?)\s*)?(days?|weeks?|months?|quarters?|years?|sessions?)`
   const patterns = [
     new RegExp(`${currencyAmount}\\s*(?:billed|charged|invoiced|paid)\\s*(?:per|every|for)\\s*${duration}`, 'gi'),
@@ -2829,7 +3036,7 @@ function extractSourceUrlFromBlock(block: string): string | null {
 
 function extractMoneyMatches(text: string): MoneyMatch[] {
   const matches: MoneyMatch[] = []
-  const pattern = /(?:(USD|PKR|EUR|GBP|AED|SAR|Rs\.?|₹|\$|€|£)\s*)?(\d+(?:[.,]\d+)?)(?:\s*(USD|PKR|EUR|GBP|AED|SAR))?(?:\s*\/?\s*(monthly|month|mo|yearly|year|annual|annually|weekly|week|daily|day|quarterly|quarter))?/gi
+  const pattern = /((?:USD|PKR|EUR|GBP|AED|SAR)\b|Rs\.?|₹|\$|€|£)?\s*(\d+(?:[.,]\d+)?)(?:\s*((?:USD|PKR|EUR|GBP|AED|SAR)\b))?(?:\s*\/?\s*(monthly|month|mo|yearly|year|annual|annually|weekly|week|daily|day|quarterly|quarter))?/gi
   for (const match of text.matchAll(pattern)) {
     const index = match.index ?? 0
     const before = text.slice(Math.max(0, index - 45), index)
@@ -2903,8 +3110,8 @@ function isDiscountPercentSupported(text: string, percent: number): boolean {
     if (isPercentJoinedToCurrencyAmount(text, match.index ?? 0)) return false
     const index = match.index ?? 0
     const context = text.slice(Math.max(0, index - 55), index + match[0].length + 55).toLowerCase()
-    if (/\b(off|discount|save|saving|promo|offer|deal|sale|regular|original|was|now|limited time)\b/.test(context)) return true
     if (/\b(uptime|guarantee|availability|sla|reliability|rating|score|review|traffic|support|satisfaction)\b/.test(context)) return false
+    if (/\b(off|discount|save|saving|promo|offer|deal|sale|regular|original|was|now|limited time)\b/.test(context)) return true
   }
   return false
 }
@@ -3016,6 +3223,8 @@ function detectStructuredOfferConflicts(candidates: readonly RetrievalCandidate[
   }
   const conflicts = new Set<string>()
   for (const offers of byEntity.values()) {
+    const sourceChunkIds = new Set(offers.map((offer) => offer.sourceChunkId))
+    if (sourceChunkIds.size === 1 && offers.length > 1) continue
     if (new Set(offers.map((offer) => roundCalculationNumber(offer.current_price?.amount ?? 0))).size > 1) {
       offers.forEach((offer) => conflicts.add(offer.sourceChunkId))
     }
@@ -3128,7 +3337,7 @@ function buildFactGuidanceBlock(
   if (analysis.intents.pricing || analysis.intents.productOrService) {
     const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
     if (analysis.offerScope.answerMode === 'category_pricing_list') {
-      const matchingOffers = selectCategoryPricingOffers(analysis, offers).slice(0, 10)
+      const matchingOffers = selectCategoryPricingOffersFromCandidates(analysis, candidates).slice(0, 10)
       if (matchingOffers.length > 0) {
         lines.push(`Answer mode: broad category/listing. Keep every price attached to its own offer; do not merge prices across offers.`)
         lines.push(`Requested family/category: ${analysis.offerScope.requestedFamily ?? 'general pricing'}`)
@@ -3137,7 +3346,9 @@ function buildFactGuidanceBlock(
     }
     const offer = analysis.offerScope.answerMode === 'category_pricing_list'
       ? null
-      : selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
+      : selectStructuredPricingOffer(analysis, offers) ??
+        selectLocalRequestedOfferFromEvidence(analysis, candidates) ??
+        selectScopedStructuredPricingOfferFallback(analysis, offers)
     if (offer) {
       const currentPrice = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
       const originalPrice = offer.original_price ? withInferredStructuredPricePeriod(offer.original_price, offer) : null
@@ -3178,9 +3389,22 @@ function selectCategoryPricingOffers(
   const scoped = requestedFamily
     ? offers.filter((offer) => offerMatchesCategoryFamily(requestedFamily, offer))
     : [...offers]
-  const withPrice = scoped.filter((offer) => offer.current_price || offer.original_price || Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0)
+  return selectActionableCategoryPricingOffers(scoped)
+}
+
+function selectActionableCategoryPricingOffers(
+  offers: readonly StructuredPricingOffer[],
+): StructuredPricingOffer[] {
+  const withPrice = offers.filter((offer) => offer.current_price || offer.original_price || Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0)
   const actionable = withPrice.filter(isActionableCategoryPricingOffer)
-  const sourceOffers = actionable.length > 0 ? actionable : withPrice
+  const sourceOffers = (actionable.length > 0 ? actionable : withPrice.filter((offer) =>
+    !looksLikeComparisonTableOffer(offer) &&
+    !looksLikeBillingToggleOnlyOffer(offer) &&
+    !looksLikeCtaOnlyPriceFragment(offer) &&
+    !looksLikeFeatureSpecPriceFragment(offer) &&
+    !isLikelyMarketingMetricOffer(offer),
+  ))
+    .filter((offer, _index, allOffers) => !isLikelyOriginalPriceOnlyDuplicate(offer, allOffers))
   const byName = new Map<string, StructuredPricingOffer>()
   for (const offer of sourceOffers) {
     const key = normalizeEntityKey(offer.entity ?? offer.entity_name ?? offer.source_text.slice(0, 80))
@@ -3188,21 +3412,125 @@ function selectCategoryPricingOffers(
     const current = byName.get(key)
     if (!current || offerCompletenessScore(offer) > offerCompletenessScore(current)) byName.set(key, offer)
   }
-  return [...byName.values()]
+  return dedupeCategoryOffersByLocalPrice([...byName.values()])
+}
+
+function selectCategoryPricingOffersFromCandidates(
+  analysis: RetrievalQuestionAnalysis,
+  candidates: readonly RetrievalCandidate[],
+): StructuredPricingOffer[] {
+  const grouped = candidates
+    .map((candidate) => ({
+      candidate,
+      offers: selectCategoryOffersForCandidate(analysis, candidate),
+    }))
+    .filter((group) => group.offers.length > 0)
+    .sort((left, right) =>
+      scoreCandidateCategoryContext(right.candidate, analysis) - scoreCandidateCategoryContext(left.candidate, analysis) ||
+      right.candidate.finalScore - left.candidate.finalScore ||
+      right.offers.length - left.offers.length,
+    )
+  const coherent = grouped.find((group) => group.offers.length >= 3)
+  if (coherent) return coherent.offers
+  return selectCategoryPricingOffers(analysis, candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate)))
+}
+
+function selectCategoryOffersForCandidate(
+  analysis: RetrievalQuestionAnalysis,
+  candidate: RetrievalCandidate,
+): StructuredPricingOffer[] {
+  const offers = extractStructuredPricingOffersFromCandidate(candidate)
+  const scoped = selectCategoryPricingOffers(analysis, offers)
+  if (scoped.length >= 3) return scoped
+  const localCatalogOffers = extractLocalCatalogOffersForCategory(analysis, candidate)
+  if (localCatalogOffers.length >= 2) return selectActionableCategoryPricingOffers(localCatalogOffers)
+  if (candidateMatchesRequestedCategory(candidate, analysis)) {
+    const unscoped = selectActionableCategoryPricingOffers(offers)
+    if (unscoped.length >= 2) return unscoped
+  }
+  return scoped
+}
+
+function extractLocalCatalogOffersForCategory(
+  analysis: RetrievalQuestionAnalysis,
+  candidate: RetrievalCandidate,
+): StructuredPricingOffer[] {
+  if (!candidateMatchesRequestedCategory(candidate, analysis)) return []
+  const identifiers = extractCatalogRowIdentifiers(candidate.chunkText)
+  return identifiers
+    .map((identifier) => buildLocalOfferAroundIdentifier(candidate, identifier))
+    .filter((offer): offer is StructuredPricingOffer => {
+      if (!offer) return false
+      return analysis.offerScope.requestedFamily
+        ? offerMatchesCategoryFamily(analysis.offerScope.requestedFamily, offer)
+        : true
+    })
+}
+
+function extractCatalogRowIdentifiers(text: string): string[] {
+  const identifiers: string[] = []
+  for (const match of text.matchAll(/\b(?:x\d{1,4}|[a-z]{1,4}\d{2,}[a-z0-9-]*)\b/gi)) {
+    const value = match[0] ?? ''
+    const normalized = normalizeEntityKey(value).replace(/\s+/g, '')
+    if (!isVariantCodeEntityTerm(normalized)) continue
+    const index = match.index ?? 0
+    const after = normalizeEntityKey(text.slice(index + value.length, index + value.length + 80))
+    const before = normalizeEntityKey(text.slice(Math.max(0, index - 40), index))
+    const hasTierSignal = tokenize(after).some((term) => CATALOG_TIER_TERMS.has(term)) ||
+      /\b(?:popular|new|cheapest|recommended|featured)\b/.test(before)
+    if (/^x\d{1,4}$/i.test(normalized) || hasTierSignal) identifiers.push(normalized)
+  }
+  return [...new Set(identifiers)].slice(0, 30)
+}
+
+function candidateMatchesRequestedCategory(candidate: RetrievalCandidate, analysis: RetrievalQuestionAnalysis): boolean {
+  const family = analysis.offerScope.requestedFamily
+  if (!family) return true
+  const terms = tokenize(family)
+  if (terms.length === 0) return true
+  const haystack = normalizeEntityKey([
+    candidate.sourceTitle,
+    candidate.sourceUrl,
+    candidate.headingPath,
+    candidate.searchText,
+  ].filter(Boolean).join('\n'))
+  const matched = terms.filter((term) => entityContainsTerm(haystack, term)).length
+  return matched >= Math.max(1, Math.ceil(terms.length * 0.6))
+}
+
+function scoreCandidateCategoryContext(candidate: RetrievalCandidate, analysis: RetrievalQuestionAnalysis): number {
+  const family = analysis.offerScope.requestedFamily
+  if (!family) return 0
+  const terms = tokenize(family)
+  if (terms.length === 0) return 0
+  const haystack = normalizeEntityKey([
+    candidate.sourceTitle,
+    candidate.sourceUrl,
+    candidate.headingPath,
+    candidate.searchText.slice(0, 2500),
+  ].filter(Boolean).join('\n'))
+  const phrase = normalizeEntityKey(family)
+  const matched = terms.filter((term) => entityContainsTerm(haystack, term)).length
+  let score = matched * 12
+  if (phrase && entityContainsTerm(haystack, phrase)) score += 80
+  if (new RegExp(`\\b(?:page|url|canonical|title|heading|plans?|pricing|catalog|services?|products?)\\b.{0,80}\\b${escapeRegex(phrase)}\\b`, 'i').test(haystack)) score += 35
+  if (terms.length > 1 && !entityContainsTerm(haystack, phrase)) score -= 25
+  return score
 }
 
 function offerMatchesCategoryFamily(requestedFamily: string, offer: StructuredPricingOffer): boolean {
   const terms = tokenize(requestedFamily)
   if (terms.length === 0) return true
-  const haystack = normalizeEntityKey([
-    structuredOfferSearchText(offer),
-    offer.context_text,
-  ].filter(Boolean).join('\n'))
-  if (terms.length === 1) return entityContainsTerm(haystack, terms[0] ?? '')
-  return terms.every((term) => entityContainsTerm(haystack, term))
+  const haystack = normalizeEntityKey(structuredOfferLabelText(offer))
+  if (terms.every((term) => entityContainsTerm(haystack, term))) return true
+  return offerHasRequestedFamilyNearHardIdentifier(offer, terms)
 }
 
 function isActionableCategoryPricingOffer(offer: StructuredPricingOffer): boolean {
+  if (looksLikeComparisonTableOffer(offer)) return false
+  if (looksLikeBillingToggleOnlyOffer(offer)) return false
+  if (looksLikeCtaOnlyPriceFragment(offer)) return false
+  if (looksLikeFeatureSpecPriceFragment(offer)) return false
   if (isLikelyMarketingMetricOffer(offer)) return false
   if (Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0) return true
   const currentPrice = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
@@ -3219,6 +3547,110 @@ function isActionableCategoryPricingOffer(offer: StructuredPricingOffer): boolea
   const hasPriceLabel = /\b(price|cost|fee|rate|starting\s+at|starts?\s+at|from|per)\b/.test(text)
   const looksLikeMarketingCounter = /\b(counter|uptime|guarantee|availability|trusted|reviews?|countries|locations|customers|visitors|traffic|support|global|infrastructure)\b/.test(text)
   return hasPriceLabel && !looksLikeMarketingCounter
+}
+
+function dedupeCategoryOffersByLocalPrice(offers: readonly StructuredPricingOffer[]): StructuredPricingOffer[] {
+  const selected: StructuredPricingOffer[] = []
+  const byPrice = new Map<string, number>()
+  for (const offer of offers) {
+    const price = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
+    const key = price ? `${offer.sourceChunkId}:${price.currency}:${roundCalculationNumber(price.amount)}:${price.period ?? ''}` : null
+    if (!key) {
+      selected.push(offer)
+      continue
+    }
+    const existingIndex = byPrice.get(key)
+    if (existingIndex === undefined) {
+      byPrice.set(key, selected.length)
+      selected.push(offer)
+      continue
+    }
+    const existing = selected[existingIndex]
+    if (existing && categoryOfferQualityScore(offer) > categoryOfferQualityScore(existing) + 2) {
+      selected[existingIndex] = offer
+    }
+  }
+  return selected
+}
+
+function categoryOfferQualityScore(offer: StructuredPricingOffer): number {
+  const label = normalizeEntityKey([offer.entity, offer.entity_name].filter(Boolean).join(' '))
+  return [
+    offer.current_price ? 4 : 0,
+    offer.original_price ? 3 : 0,
+    offer.discount_percent !== null ? 2 : 0,
+    tokenize(label).some((term) => GENERIC_PLAN_NAMES.has(term) || CATALOG_TIER_TERMS.has(term)) ? 4 : 0,
+    tokenize(label).some((term) => isVariantCodeEntityTerm(term)) ? 4 : 0,
+    label.length > 0 && label.length <= 140 ? 2 : 0,
+    looksLikeBillingToggleOnlyOffer(offer) ? -10 : 0,
+    looksLikeComparisonTableOffer(offer) ? -10 : 0,
+    isLikelyMarketingMetricOffer(offer) ? -10 : 0,
+  ].reduce((sum, value) => sum + value, 0)
+}
+
+function looksLikeBillingToggleOnlyOffer(offer: StructuredPricingOffer): boolean {
+  const text = [offer.entity, offer.entity_name, offer.source_text].filter(Boolean).join(' ').toLowerCase()
+  const hasBillingToggle = /\b(?:monthly|yearly|annual|years?)\s+save\s+\d+(?:[.,]\d+)?%|\bsave\s+\d+(?:[.,]\d+)?%/.test(text)
+  const hasBuyLink = /https?:\/\/|panel\/index|rp=\/store|#/.test(text)
+  const hasPlanLabel = tokenize([offer.entity, offer.entity_name].filter(Boolean).join(' ')).some((term) => GENERIC_PLAN_NAMES.has(term))
+  return hasBillingToggle && hasBuyLink && !hasPlanLabel
+}
+
+function looksLikeCtaOnlyPriceFragment(offer: StructuredPricingOffer): boolean {
+  if (!offer.current_price || offer.original_price || Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0) return false
+  const text = [offer.entity, offer.entity_name, offer.source_text].filter(Boolean).join(' ').toLowerCase()
+  const hasCta = /\b(?:buy now|order now|get started|configure|panel\/index|rp=\/store)\b/.test(text)
+  if (!hasCta) return false
+  const labelTerms = tokenize([offer.entity, offer.entity_name].filter(Boolean).join(' '))
+  return !labelTerms.some((term) => GENERIC_PLAN_NAMES.has(term) || CATALOG_TIER_TERMS.has(term) || isVariantCodeEntityTerm(term))
+}
+
+function looksLikeFeatureSpecPriceFragment(offer: StructuredPricingOffer): boolean {
+  if (!offer.current_price || offer.original_price || Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0) return false
+  const label = [offer.entity, offer.entity_name].filter(Boolean).join(' ')
+  const labelTerms = tokenize(label)
+  if (labelTerms.some((term) => GENERIC_PLAN_NAMES.has(term) || CATALOG_TIER_TERMS.has(term) || isVariantCodeEntityTerm(term))) return false
+  return /(?:\*\*|✓|subdomains?|domains?|space|storage|traffic|bandwidth|support|cpanel|apps?|installer|quota|accounts?)/i.test(label)
+}
+
+function isLikelyOriginalPriceOnlyDuplicate(
+  offer: StructuredPricingOffer,
+  offers: readonly StructuredPricingOffer[],
+): boolean {
+  if (!offer.current_price || offer.original_price || Object.keys(offer.stored_period_totals).length > 0 || offer.billing_totals.length > 0) return false
+  const labelTerms = tokenize([offer.entity, offer.entity_name].filter(Boolean).join(' '))
+  const hasOwnPlanLabel = labelTerms.some((term) => GENERIC_PLAN_NAMES.has(term) || CATALOG_TIER_TERMS.has(term) || isVariantCodeEntityTerm(term))
+  if (hasOwnPlanLabel) return false
+  const current = withInferredStructuredPricePeriod(offer.current_price, offer)
+  return offers.some((other) =>
+    other.sourceChunkId === offer.sourceChunkId &&
+    other.original_price &&
+    other.current_price &&
+    roundCalculationNumber(other.original_price.amount) === roundCalculationNumber(current.amount) &&
+    (!current.currency || !other.original_price.currency || current.currency === other.original_price.currency),
+  )
+}
+
+function offerHasRequestedFamilyNearHardIdentifier(offer: StructuredPricingOffer, familyTerms: readonly string[]): boolean {
+  const identifiers = tokenize(structuredOfferLabelText(offer)).filter((term) => isVariantCodeEntityTerm(term))
+  if (identifiers.length === 0) return false
+  const context = normalizeEntityKey(offer.context_text || offer.source_text)
+  for (const identifier of identifiers) {
+    const index = context.indexOf(identifier)
+    if (index < 0) continue
+    const window = context.slice(Math.max(0, index - 140), index + identifier.length + 180)
+    if (familyTerms.every((term) => entityContainsTerm(window, term))) return true
+  }
+  return false
+}
+
+function looksLikeComparisonTableOffer(offer: StructuredPricingOffer): boolean {
+  const text = [offer.entity, offer.entity_name, offer.source_text].filter(Boolean).join(' ').toLowerCase()
+  const providerMentions = text.match(/\bprovider\s+[a-z0-9]\b/g) ?? []
+  return /\|\s*-{3,}\s*\|/.test(text) ||
+    /\btable\s+\d+\b/.test(text) ||
+    providerMentions.length >= 2 ||
+    /\b(?:competitor|comparison|compare all|vs\.?|versus)\b/.test(text) && providerMentions.length >= 1
 }
 
 function formatOfferGuidanceSummary(offer: StructuredPricingOffer): string {
@@ -3250,7 +3682,9 @@ function buildSelectedOfferDebug(
 ): HybridRetrievalResult['debug']['selectedOffer'] {
   if (analysis.offerScope.answerMode === 'category_pricing_list' || analysis.offerScope.answerMode === 'comparison') return null
   const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
-  const offer = selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
+  const offer = selectStructuredPricingOffer(analysis, offers) ??
+    selectLocalRequestedOfferFromEvidence(analysis, candidates) ??
+    selectScopedStructuredPricingOfferFallback(analysis, offers)
   if (!offer) return null
   const currentPrice = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
   const originalPrice = offer.original_price ? withInferredStructuredPricePeriod(offer.original_price, offer) : null

@@ -176,7 +176,7 @@ export function detectCalculationIntent(question: string): {
   readonly targetPeriod: BillingPeriod | null
 } {
   const normalized = question.toLowerCase()
-  const quantityMatch = normalized.match(/\b(?:for|x|qty|quantity)\s*(\d+(?:\.\d+)?)\b/)
+  const quantityMatch = normalized.match(/\b(?:qty|quantity)\s*(\d+(?:\.\d+)?)\b|\bfor\s+(\d+(?:\.\d+)?)\s+(?:units?|items?|people|users?|licenses?|tickets?|sessions?)\b/)
   const targetPeriod = readTargetPeriod(normalized) ?? readPeriod(normalized)
   const mentionsPeriod = /\b(monthly|per month|\/mo|mo|yearly|annual|annually|weekly|daily|per day|per week)\b/.test(normalized)
   const asksBillingTotalConversion =
@@ -186,10 +186,11 @@ export function detectCalculationIntent(question: string): {
   const intent = {
     percentage: /%|\b(discount|off|markup|percent|percentage)\b/.test(normalized),
     periodConversion: asksBillingTotalConversion,
-    bulk: /\b(bulk|quantity|qty|units?|items?|for\s+\d+|x\d+)\b/.test(normalized),
-    proration: /\b(prorat|mid-cycle|mid cycle|remaining days?|upgrade|downgrade|switch)\b/.test(normalized),
+    bulk: /\b(bulk|quantity|qty|units?|items?)\b/.test(normalized) || /\bfor\s+\d+(?:\.\d+)?\s+(?:units?|items?|people|users?|licenses?|tickets?|sessions?)\b/.test(normalized),
+    proration: /\b(prorat|mid-cycle|mid cycle|remaining days?)\b/.test(normalized) ||
+      (/\b(upgrade|downgrade|switch)\b/.test(normalized) && /\b(charge|price|cost|invoice|billing|refund|credit|difference|remaining)\b/.test(normalized)),
     tax: /\b(tax|vat|gst|inclusive|exclusive|including tax|plus tax)\b/.test(normalized),
-    quantity: quantityMatch ? Number(quantityMatch[1]) : null,
+    quantity: quantityMatch ? Number(quantityMatch[1] ?? quantityMatch[2]) : null,
     targetPeriod,
   }
   return { ...intent, hasIntent: intent.percentage || intent.periodConversion || intent.bulk || intent.proration || intent.tax }

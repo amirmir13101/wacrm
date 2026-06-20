@@ -59,7 +59,12 @@ describe('deterministic AI calculation engine', () => {
 
   it('detects calculation intent without false positives for plain lookup questions', () => {
     expect(detectCalculationIntent('What is the Pro plan price?').hasIntent).toBe(false)
+    expect(detectCalculationIntent('Can I upgrade my VPS later?').hasIntent).toBe(false)
+    expect(detectCalculationIntent('What is Wagon VPS x24 price?').hasIntent).toBe(false)
+    expect(detectCalculationIntent('Dedicated server M1007 ECO price').hasIntent).toBe(false)
     expect(detectCalculationIntent('What is the monthly price after 15% off yearly?').hasIntent).toBe(true)
+    expect(detectCalculationIntent('What is the price for 24 users?').bulk).toBe(true)
+    expect(detectCalculationIntent('If I upgrade mid-cycle, what is the remaining charge?').proration).toBe(true)
     expect(detectCalculationIntent('so what should be the monthly price if total is $20.40 yearly').targetPeriod).toBe('monthly')
     expect(detectCalculationIntent('so what should be the monthly price if total is $20.40 yearly').periodConversion).toBe(true)
   })

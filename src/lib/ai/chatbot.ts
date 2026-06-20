@@ -48,6 +48,11 @@ export interface AiAnswerResult {
   readonly providerConfigured: boolean
 }
 
+interface ProviderAnswerResult {
+  readonly content: string | null
+  readonly errorReason: string | null
+}
+
 export const DEFAULT_AI_CHATBOT_SETTINGS = {
   enabled: false,
   tone: 'friendly',
@@ -254,7 +259,7 @@ export async function generateChatbotAnswer(args: {
     if (args.requireProvider) {
       return { status: 'skipped', answer: '', reason: 'ai_provider_missing', usedChunks: args.chunks, providerConfigured }
     }
-    const preview = formatKnowledgePreviewAnswer(question, args.chunks[0])
+    const preview = formatExtractiveKnowledgeAnswer(question, args.chunks, args.calculation) ?? formatKnowledgePreviewAnswer(question, args.chunks[0])
     return {
       status: 'answered',
       answer: preview,
@@ -266,10 +271,20 @@ export async function generateChatbotAnswer(args: {
 
   try {
     const answer = await requestProviderAnswer({ providerConfig, args, question, fallback })
-    if (!answer) {
-      return fallbackResult('empty_ai_response', args.chunks)
+    if (!answer.content) {
+      const preview = formatExtractiveKnowledgeAnswer(question, args.chunks, args.calculation)
+      if (preview) {
+        return {
+          status: 'answered',
+          answer: preview,
+          reason: `${answer.errorReason ?? 'empty_ai_response'}_knowledge_preview`,
+          usedChunks: args.chunks,
+          providerConfigured,
+        }
+      }
+      return fallbackResult(answer.errorReason ?? 'empty_ai_response', args.chunks)
     }
-    const trimmedAnswer = formatForWhatsApp(answer, args.responseIsRTL)
+    const trimmedAnswer = formatForWhatsApp(answer.content, args.responseIsRTL)
     const validation = validateGroundedAnswer({
       answer: trimmedAnswer,
       evidence: args.chunks,
@@ -285,14 +300,15 @@ export async function generateChatbotAnswer(args: {
         fallback,
         retryInstruction: `The previous answer was rejected by the grounding guardrail (${validation.reason}). Answer again using only values that are visibly present in the evidence. For equivalent facts, keep the source representation when possible, such as a contact link instead of inventing a separately formatted phone label.`,
       })
-      const formattedRetry = retryAnswer ? formatForWhatsApp(retryAnswer, args.responseIsRTL) : ''
+      const formattedRetry = retryAnswer.content ? formatForWhatsApp(retryAnswer.content, args.responseIsRTL) : ''
       const retryValidation = formattedRetry
         ? validateGroundedAnswer({ answer: formattedRetry, evidence: args.chunks, calculation: args.calculation, fallback, question })
         : validation
       if (formattedRetry && retryValidation.ok && formattedRetry !== fallback) {
         return { status: 'answered', answer: formattedRetry, reason: 'answered_after_guardrail_retry', usedChunks: args.chunks, providerConfigured }
       }
-      return fallbackResult(retryValidation.ok ? validation.reason : retryValidation.reason, args.chunks)
+      const retryReason = retryAnswer.errorReason ?? (retryValidation.ok ? validation.reason : retryValidation.reason)
+      return fallbackResult(retryReason, args.chunks)
     }
     if (trimmedAnswer === fallback) return fallbackResult('model_fallback', args.chunks)
     return { status: 'answered', answer: trimmedAnswer, reason: 'answered', usedChunks: args.chunks, providerConfigured }
@@ -307,7 +323,7 @@ async function requestProviderAnswer(args: {
   readonly question: string
   readonly fallback: string
   readonly retryInstruction?: string
-}): Promise<string | null> {
+}): Promise<ProviderAnswerResult> {
   const response = await fetch(`${args.providerConfig.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -345,11 +361,100 @@ async function requestProviderAnswer(args: {
     }),
   })
 
-  if (!response.ok) return null
+  if (!response.ok) return { content: null, errorReason: `provider_http_${response.status}` }
   const body = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>
   }
-  return body.choices?.[0]?.message?.content?.trim() ?? null
+  return {
+    content: body.choices?.[0]?.message?.content?.trim() ?? null,
+    errorReason: null,
+  }
+}
+
+function formatExtractiveKnowledgeAnswer(
+  question: string,
+  chunks: readonly string[],
+  calculation?: CalculationResult | null,
+): string | null {
+  if (calculation?.status === 'computed' && calculation.value !== null) {
+    return trimForWhatsApp([
+      `The calculated answer is *${calculation.value} ${calculation.unit}*.`.trim(),
+      calculation.formula ? `Formula: ${calculation.formula}` : '',
+    ].filter(Boolean).join('\n'))
+  }
+
+  const guidance = chunks.find((chunk) => chunk.startsWith('Derived fact guidance from selected source evidence:'))
+  if (!guidance) return null
+  const lines = guidance
+    .split(/\n+/)
+    .map((line) => line.replace(/^-\s*/, '').trim())
+    .filter(Boolean)
+
+  const categoryOffers = readGuidanceValue(lines, 'Matching offers found:')
+  if (categoryOffers) {
+    const offers = categoryOffers.split(/\s+\|\s+/).map((offer) => offer.trim()).filter(Boolean).slice(0, 8)
+    if (offers.length > 0) {
+      return trimForWhatsApp(['The source lists these matching options:', ...offers.map((offer) => `- ${offer}`)].join('\n'))
+    }
+  }
+
+  const entity = readGuidanceValue(lines, 'Selected requested offer/entity:')
+  const currentPrice = readGuidanceValue(lines, 'Selected offer current/effective price:')
+  const originalPrice = readGuidanceValue(lines, 'Selected offer original/regular price:')
+  const discount = readGuidanceValue(lines, 'Selected offer discount percent:')
+  const totals = readGuidanceValue(lines, 'Selected offer stored billing totals:') ?? readGuidanceValue(lines, 'Selected offer billing duration totals:')
+  if (entity && (currentPrice || originalPrice || discount || totals)) {
+    return trimForWhatsApp([
+      `*${entity}*`,
+      currentPrice ? `- Current/effective price: ${currentPrice}` : '',
+      originalPrice ? `- Original/regular price: ${originalPrice}` : '',
+      discount ? `- Discount: ${discount}` : '',
+      totals ? `- Billing total: ${totals}` : '',
+    ].filter(Boolean).join('\n'))
+  }
+
+  const phones = readGuidanceValue(lines, 'Contact phone numbers found in source:')
+  const whatsapp = readGuidanceValue(lines, 'WhatsApp links found in source:')
+  const emails = readGuidanceValue(lines, 'Email addresses found in source:')
+  if (phones || whatsapp || emails) {
+    const isPhoneQuestion = /\b(phone|number|call|tel|telephone)\b/i.test(question)
+    const isWhatsappQuestion = /\b(whatsapp|wa\.me)\b/i.test(question)
+    return trimForWhatsApp([
+      isWhatsappQuestion && whatsapp ? `WhatsApp contact shown in the source: ${whatsapp}` : '',
+      isPhoneQuestion && phones ? `Phone number shown in the source: ${phones}` : '',
+      !isPhoneQuestion && !isWhatsappQuestion && phones ? `Phone: ${phones}` : '',
+      whatsapp && !isWhatsappQuestion ? `WhatsApp: ${whatsapp}` : '',
+      emails ? `Email: ${emails}` : '',
+    ].filter(Boolean).join('\n'))
+  }
+
+  const legalNames = readGuidanceValue(lines, 'Legal/company names found in source:')
+  const companyNumbers = readGuidanceValue(lines, 'Company/registration numbers found in source:')
+  if (legalNames || companyNumbers) {
+    return trimForWhatsApp([
+      legalNames ? `The source lists the company/legal name as *${legalNames}*.` : '',
+      companyNumbers ? `Company/registration number: *${companyNumbers}*.` : '',
+      lines.some((line) => line.includes('does not explicitly name an individual owner'))
+        ? 'It does not explicitly name an individual owner/founder.'
+        : '',
+    ].filter(Boolean).join('\n'))
+  }
+
+  const exactDates = readGuidanceValue(lines, 'Exact founded/launch/created dates found in source:')
+  const pageDates = readGuidanceValue(lines, 'Page or sitemap dates found in source:')
+  if (exactDates || pageDates) {
+    return trimForWhatsApp([
+      exactDates ? `Exact date shown in the source: ${exactDates}.` : 'The source does not provide an exact built/founded/launch date.',
+      pageDates ? `Related page/sitemap dates shown: ${pageDates}.` : '',
+    ].filter(Boolean).join('\n'))
+  }
+
+  return null
+}
+
+function readGuidanceValue(lines: readonly string[], prefix: string): string | null {
+  const line = lines.find((item) => item.toLowerCase().startsWith(prefix.toLowerCase()))
+  return line?.slice(prefix.length).trim() || null
 }
 
 function splitKnowledgeIntoSearchBlocks(text: string): string[] {

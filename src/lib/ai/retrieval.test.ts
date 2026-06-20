@@ -898,7 +898,7 @@ describe('AI hybrid retrieval', () => {
 
     expect(result.fallbackReason).toBeNull()
     expect(result.debug.selectedOffer?.sourceChunkId).toBe('vps')
-    expect(result.debug.selectedOffer?.entity?.toLowerCase()).toContain('vps x8')
+    expect(result.debug.selectedOffer?.entity?.toLowerCase()).toContain('8gb')
     expect(result.calculation).toMatchObject({ status: 'computed', value: 84.48, unit: 'USD/yearly' })
     expect(result.calculation?.sourceChunkIds).toEqual(['vps'])
     expect(result.chunks.join('\n')).not.toMatch(/81\.60 billed per Year/)
@@ -1003,6 +1003,73 @@ describe('AI hybrid retrieval', () => {
       evidence: ['Refund policy: returns accepted within 14 days.'],
       fallback: 'Fallback',
     })).toEqual({ ok: false, reason: 'unsupported_numeric_fact', answer: 'Fallback' })
+  })
+
+  it('does not read technical bandwidth units as GBP prices in dense catalog rows', () => {
+    const metadata = buildChunkSearchMetadata('M1007 ECO 64GB RAM 2×250 GB SSD 10Gbps Network Starting at $51/mo. R1010 Performance 1Gbps Unmetered $137/mo.', 0)
+    const facts = metadata.structured_facts as {
+      pricing_offers?: Array<{ current_price?: { amount?: number; currency?: string; text?: string } }>
+      prices?: string[]
+    }
+
+    expect(facts.pricing_offers?.some((offer) => offer.current_price?.currency === 'GBP')).toBe(false)
+    expect(facts.pricing_offers?.some((offer) => offer.current_price?.text === '10Gbp' || offer.current_price?.text === '1Gbp')).toBe(false)
+    expect(facts.pricing_offers?.some((offer) => offer.current_price?.amount === 51 && offer.current_price.currency === 'USD')).toBe(true)
+    expect(facts.prices).not.toContain('GBP 10')
+  })
+
+  it('selects prices from the local requested SKU row inside dense business catalogs', () => {
+    const rows = [
+      {
+        id: 'catalog',
+        source_id: 'source-1',
+        source,
+        chunk_text: [
+          'Dedicated Server Hosting Enterprise Hardware',
+          'Showing 12 of 12 plans',
+          '★ CHEAPEST M1007 ECO Single Xeon E5-2650v2 64GB RAM 10Gbps Network Starting at $51/mo Configure',
+          '★ POPULAR R1010 Performance AMD Ryzen 7 5700X 500 GB 1Gbps Unmetered $137/mo',
+          '★ NEW PRODUCT X1005 Enterprise Dual Xeon E5-2699v3 384GB RAM 2×1920 GB SSD $209/mo',
+        ].join(' '),
+      },
+    ]
+
+    const x1005 = hybridRetrieveFromRows({ question: 'what is X1005 Enterprise price?', rows })
+    const m1007 = hybridRetrieveFromRows({ question: 'what is M1007 ECO price?', rows })
+    const r1010 = hybridRetrieveFromRows({ question: 'what is R1010 Performance price?', rows })
+
+    expect(x1005.debug.selectedOffer?.currentPrice).toMatchObject({ amount: 209, currency: 'USD', period: 'monthly' })
+    expect(m1007.debug.selectedOffer?.currentPrice).toMatchObject({ amount: 51, currency: 'USD', period: 'monthly' })
+    expect(r1010.debug.selectedOffer?.currentPrice).toMatchObject({ amount: 137, currency: 'USD', period: 'monthly' })
+    expect(x1005.chunks.join('\n')).toContain('X1005 Enterprise')
+    expect(x1005.chunks.join('\n')).not.toContain('Selected offer current/effective price: USD 51')
+  })
+
+  it('keeps broad category pricing lists on the coherent catalog/card group', () => {
+    const rows = [
+      {
+        id: 'mixed-overview',
+        source_id: 'source-1',
+        source,
+        chunk_text: 'A VPS is a virtual server. A Dedicated Server gives hardware resources. Pro Hosting $0.90 30% OFF $0.63/mo. M1007 ECO $51/mo.',
+      },
+      {
+        id: 'vps-cards',
+        source_id: 'source-1',
+        source,
+        chunk_text: '### Choose VPS Plans\nWagon VPS x4 $5.40/mo $6.50 17% OFF. Wagon VPS x8 $7.04/mo $8.80 20% OFF. Wagon VPS X12 $9.20 $11.50. Wagon VPS X24 $12.40 $15.50. Wagon VPS x32 $15.60 $19.50.',
+      },
+    ]
+
+    const result = hybridRetrieveFromRows({ question: 'list all VPS plans with prices', rows })
+    const evidence = result.chunks.join('\n')
+
+    expect(evidence).toContain('Matching offers found')
+    expect(evidence).toContain('VPS x4')
+    expect(evidence).toContain('USD 5.4/monthly')
+    expect(evidence).toContain('X12')
+    expect(evidence).not.toContain('M1007 ECO')
+    expect(evidence).not.toContain('USD 0.63/monthly')
   })
 })
 
