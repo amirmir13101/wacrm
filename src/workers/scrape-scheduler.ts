@@ -37,6 +37,9 @@ export interface SchedulerDependencies {
 const POLL_INTERVAL_MS = 5 * 60 * 1_000
 const CRAWL_POLL_MS = 5_000
 const MAX_CRAWL_POLLS = 720
+const MEMORY_CLEANUP_HOUR_UTC = 2
+
+let lastMemoryCleanupDate: string | null = null
 
 loadEnvironment({ path: '.env.local', quiet: true })
 loadEnvironment({ path: '.env', quiet: true })
@@ -66,6 +69,60 @@ export async function processDueSchedules(dependencies: SchedulerDependencies): 
     .limit(5)
   if (error) throw new Error(error.message)
   await Promise.allSettled(((data ?? []) as DueSchedule[]).map((schedule) => processSchedule(schedule, dependencies)))
+}
+
+export async function processMemoryRetentionCleanup(client: SupabaseClient, now = new Date()): Promise<{
+  readonly workspaceCount: number
+  readonly memoriesCleared: number
+  readonly summariesDeleted: number
+}> {
+  const { data, error } = await client
+    .from('ai_chatbot_provider_settings')
+    .select('workspace_id, memory_retention_days')
+    .not('memory_retention_days', 'is', null)
+  if (error) throw new Error(error.message)
+
+  let workspaceCount = 0
+  let memoriesCleared = 0
+  let summariesDeleted = 0
+  for (const row of (data ?? []) as Array<{ workspace_id: string; memory_retention_days: number | null }>) {
+    if (!row.memory_retention_days) continue
+    workspaceCount += 1
+    const cutoff = new Date(now.getTime() - row.memory_retention_days * 24 * 60 * 60 * 1_000).toISOString()
+    const cleared = await client
+      .from('ai_contact_memories')
+      .update({
+        memory_enabled: false,
+        memory_summary: null,
+        key_facts: {},
+        topics_discussed: [],
+        unresolved_questions: [],
+        updated_at: now.toISOString(),
+      })
+      .eq('workspace_id', row.workspace_id)
+      .lt('last_conversation_at', cutoff)
+      .select('id')
+    if (cleared.error) throw new Error(cleared.error.message)
+    memoriesCleared += (cleared.data ?? []).length
+
+    const deleted = await client
+      .from('ai_conversation_summaries')
+      .delete()
+      .eq('workspace_id', row.workspace_id)
+      .lt('created_at', cutoff)
+      .select('id')
+    if (deleted.error) throw new Error(deleted.error.message)
+    summariesDeleted += (deleted.data ?? []).length
+  }
+  console.info('[ai-memory] retention cleanup completed', { workspaceCount, memoriesCleared, summariesDeleted })
+  return { workspaceCount, memoriesCleared, summariesDeleted }
+}
+
+export async function maybeProcessMemoryRetentionCleanup(client: SupabaseClient, now = new Date()): Promise<void> {
+  const date = now.toISOString().slice(0, 10)
+  if (now.getUTCHours() !== MEMORY_CLEANUP_HOUR_UTC || lastMemoryCleanupDate === date) return
+  lastMemoryCleanupDate = date
+  await processMemoryRetentionCleanup(client, now)
 }
 
 export async function processSchedule(schedule: DueSchedule, dependencies: SchedulerDependencies): Promise<void> {
@@ -265,6 +322,9 @@ async function main(): Promise<void> {
     sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   }
   for (;;) {
+    await maybeProcessMemoryRetentionCleanup(client).catch((error) => {
+      console.error('[ai-memory] retention cleanup failed', { error: safeError(error) })
+    })
     await processDueSchedules(dependencies).catch((error) => {
       console.error('[scrape-scheduler] poll failed', { error: safeError(error) })
     })

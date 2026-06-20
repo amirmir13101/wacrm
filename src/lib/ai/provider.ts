@@ -28,6 +28,17 @@ export interface AiProviderPublicSettings {
   readonly defaultResponseLanguage: string
   readonly supportedLanguages: readonly string[] | null
   readonly translationModel: string | null
+  readonly memoryEnabled: boolean
+  readonly memorySummarizeAfter: number
+  readonly memoryRetentionDays: number | null
+  readonly memoryClearOnHuman: boolean
+}
+
+export interface AiMemorySettings {
+  readonly memoryEnabled: boolean
+  readonly memorySummarizeAfter: number
+  readonly memoryRetentionDays: number | null
+  readonly memoryClearOnHuman: boolean
 }
 
 export interface AiProviderResolvedConfig {
@@ -71,6 +82,10 @@ interface ProviderRow {
   readonly default_response_language?: string | null
   readonly supported_languages?: string[] | null
   readonly translation_model?: string | null
+  readonly memory_enabled?: boolean | null
+  readonly memory_summarize_after?: number | null
+  readonly memory_retention_days?: number | null
+  readonly memory_clear_on_human?: boolean | null
 }
 
 export function normalizeProvider(value: unknown): AiProvider {
@@ -147,7 +162,7 @@ export function readApiKeyLast4(apiKey: string): string {
 export async function getPublicProviderSettings(workspaceId: string): Promise<AiProviderPublicSettings> {
   const { data, error } = await supabaseAdmin()
     .from('ai_chatbot_provider_settings')
-    .select('workspace_id, provider, model, base_url, encrypted_api_key, api_key_last4, api_key_configured_at, last_tested_at, last_test_status, last_test_error, embeddings_enabled, embedding_model, embedding_dimensions, last_embedding_tested_at, last_embedding_test_status, last_embedding_test_error, multilingual_enabled, default_response_language, supported_languages, translation_model')
+    .select('workspace_id, provider, model, base_url, encrypted_api_key, api_key_last4, api_key_configured_at, last_tested_at, last_test_status, last_test_error, embeddings_enabled, embedding_model, embedding_dimensions, last_embedding_tested_at, last_embedding_test_status, last_embedding_test_error, multilingual_enabled, default_response_language, supported_languages, translation_model, memory_enabled, memory_summarize_after, memory_retention_days, memory_clear_on_human')
     .eq('workspace_id', workspaceId)
     .maybeSingle<ProviderRow>()
 
@@ -180,6 +195,10 @@ export async function getPublicProviderSettings(workspaceId: string): Promise<Ai
       defaultResponseLanguage: 'auto',
       supportedLanguages: null,
       translationModel: null,
+      memoryEnabled: true,
+      memorySummarizeAfter: 5,
+      memoryRetentionDays: 90,
+      memoryClearOnHuman: false,
     }
   }
   const embeddingSupported = providerSupportsEmbeddings(data.provider)
@@ -210,6 +229,10 @@ export async function getPublicProviderSettings(workspaceId: string): Promise<Ai
     defaultResponseLanguage: data.default_response_language || 'auto',
     supportedLanguages: normalizeSupportedLanguages(data.supported_languages),
     translationModel: data.translation_model ?? null,
+    memoryEnabled: data.memory_enabled !== false,
+    memorySummarizeAfter: clampMemorySummarizeAfter(data.memory_summarize_after),
+    memoryRetentionDays: normalizeMemoryRetentionDays(data.memory_retention_days),
+    memoryClearOnHuman: Boolean(data.memory_clear_on_human),
   }
 }
 
@@ -226,14 +249,18 @@ export async function saveProviderSettings(args: {
   readonly defaultResponseLanguage?: string | null
   readonly supportedLanguages?: readonly string[] | null
   readonly translationModel?: string | null
+  readonly memoryEnabled?: boolean
+  readonly memorySummarizeAfter?: number | null
+  readonly memoryRetentionDays?: number | null
+  readonly memoryClearOnHuman?: boolean
 }): Promise<AiProviderPublicSettings> {
   const admin = supabaseAdmin()
   const apiKey = args.apiKey?.trim()
   const previous = await admin
     .from('ai_chatbot_provider_settings')
-    .select('encrypted_api_key, api_key_last4, api_key_configured_at')
+    .select('encrypted_api_key, api_key_last4, api_key_configured_at, memory_enabled, memory_summarize_after, memory_retention_days, memory_clear_on_human')
     .eq('workspace_id', args.workspaceId)
-    .maybeSingle<Pick<ProviderRow, 'encrypted_api_key' | 'api_key_last4' | 'api_key_configured_at'>>()
+    .maybeSingle<Pick<ProviderRow, 'encrypted_api_key' | 'api_key_last4' | 'api_key_configured_at' | 'memory_enabled' | 'memory_summarize_after' | 'memory_retention_days' | 'memory_clear_on_human'>>()
 
   if (previous.error) throw new Error(previous.error.message)
 
@@ -261,6 +288,14 @@ export async function saveProviderSettings(args: {
       default_response_language: normalizeLanguageCode(args.defaultResponseLanguage || 'auto'),
       supported_languages: normalizeSupportedLanguages(args.supportedLanguages),
       translation_model: args.translationModel?.trim() ? args.translationModel.trim().slice(0, 160) : null,
+      memory_enabled: args.memoryEnabled ?? previous.data?.memory_enabled ?? true,
+      memory_summarize_after: args.memorySummarizeAfter === undefined
+        ? clampMemorySummarizeAfter(previous.data?.memory_summarize_after)
+        : clampMemorySummarizeAfter(args.memorySummarizeAfter),
+      memory_retention_days: args.memoryRetentionDays === undefined
+        ? normalizeMemoryRetentionDays(previous.data?.memory_retention_days)
+        : normalizeMemoryRetentionDays(args.memoryRetentionDays),
+      memory_clear_on_human: args.memoryClearOnHuman ?? previous.data?.memory_clear_on_human ?? false,
       last_embedding_test_status: apiKey || args.embeddingsEnabled !== undefined ? 'not_tested' : undefined,
       last_embedding_test_error: apiKey || args.embeddingsEnabled !== undefined ? null : undefined,
     },
@@ -268,6 +303,21 @@ export async function saveProviderSettings(args: {
   )
   if (error) throw new Error(error.message)
   return getPublicProviderSettings(args.workspaceId)
+}
+
+export async function resolveMemorySettings(workspaceId: string): Promise<AiMemorySettings> {
+  const { data, error } = await supabaseAdmin()
+    .from('ai_chatbot_provider_settings')
+    .select('memory_enabled, memory_summarize_after, memory_retention_days, memory_clear_on_human')
+    .eq('workspace_id', workspaceId)
+    .maybeSingle<Pick<ProviderRow, 'memory_enabled' | 'memory_summarize_after' | 'memory_retention_days' | 'memory_clear_on_human'>>()
+  if (error) throw new Error(error.message)
+  return {
+    memoryEnabled: data?.memory_enabled !== false,
+    memorySummarizeAfter: clampMemorySummarizeAfter(data?.memory_summarize_after),
+    memoryRetentionDays: normalizeMemoryRetentionDays(data?.memory_retention_days),
+    memoryClearOnHuman: Boolean(data?.memory_clear_on_human),
+  }
 }
 
 export async function resolveLanguageSettings(workspaceId: string): Promise<{
@@ -469,6 +519,16 @@ function readPositiveInteger(value: string | undefined, fallback: number): numbe
 function clampEmbeddingDimensions(value: number | null | undefined): number {
   if (typeof value !== 'number' || !Number.isInteger(value)) return 1536
   return Math.max(128, Math.min(4096, value))
+}
+
+function clampMemorySummarizeAfter(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return 5
+  return Math.max(3, Math.min(20, value))
+}
+
+function normalizeMemoryRetentionDays(value: number | null | undefined): number | null {
+  if (value === null) return null
+  return [30, 60, 90, 180].includes(value ?? 90) ? (value ?? 90) : 90
 }
 
 function normalizeLanguageCode(value: string | null | undefined): string {

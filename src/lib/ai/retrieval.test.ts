@@ -776,4 +776,24 @@ describe('AI hybrid retrieval', () => {
       fallback: 'Fallback',
     })).toEqual({ ok: true })
   })
+
+  it('uses customer memory as a weak retrieval signal without overriding the current question', () => {
+    const rows = [
+      { id: 'current', source_id: 'source-1', source, chunk_text: 'Refund policy: returns are accepted within 30 days.' },
+      { id: 'memory-topic', source_id: 'source-1', source, chunk_text: 'Acme Pro package includes priority onboarding.' },
+    ]
+
+    const result = hybridRetrieveFromRows({
+      question: 'what is your refund policy?',
+      rows,
+      memoryContext: {
+        topicsDiscussed: ['Acme Pro package'],
+        lastIntent: 'purchase inquiry',
+        unresolvedQuestions: [],
+      },
+    })
+
+    expect(result.debug.selectedChunkIds[0]).toBe('current')
+    expect(result.debug.selectedEvidence.some((candidate) => candidate.reasons.includes('memory_context_weak_match'))).toBe(true)
+  })
 })

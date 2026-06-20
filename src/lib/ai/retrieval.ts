@@ -107,6 +107,12 @@ export interface HybridRetrievalResult {
   }
 }
 
+export interface MemoryRetrievalContext {
+  readonly topicsDiscussed: readonly string[]
+  readonly lastIntent: string | null
+  readonly unresolvedQuestions: readonly string[]
+}
+
 export interface FullContextFallbackDebug {
   readonly attempted: boolean
   readonly outcome: 'not_needed' | 'succeeded' | 'still_fallback' | 'skipped_budget' | 'skipped_empty'
@@ -222,6 +228,7 @@ export async function hybridRetrieveKnowledge(args: {
   readonly workspaceId: string
   readonly question: string
   readonly contextualQuery?: string | null
+  readonly memoryContext?: MemoryRetrievalContext | null
   readonly client?: SupabaseClient
   readonly limit?: number
   readonly fullContextTokenBudget?: number
@@ -242,6 +249,7 @@ export async function hybridRetrieveKnowledge(args: {
     variants.map(async (question) => retrieveSingleQueryFromRows({
       question,
       contextualQuery: args.contextualQuery,
+      memoryContext: args.memoryContext,
       rows: mergedRows,
       limit: Math.max(args.limit ?? MAX_EVIDENCE, 12),
     })),
@@ -249,6 +257,7 @@ export async function hybridRetrieveKnowledge(args: {
   return mergeExpandedRetrievalResults({
     originalQuestion: args.question,
     contextualQuery: args.contextualQuery,
+    memoryContext: args.memoryContext,
     rows: mergedRows,
     results,
     limit: args.limit,
@@ -261,6 +270,7 @@ export async function hybridRetrieveKnowledge(args: {
 export function hybridRetrieveFromRows(args: {
   readonly question: string
   readonly contextualQuery?: string | null
+  readonly memoryContext?: MemoryRetrievalContext | null
   readonly rows: readonly KnowledgeChunkRow[]
   readonly limit?: number
   readonly workspaceId?: string
@@ -273,12 +283,14 @@ export function hybridRetrieveFromRows(args: {
   const results = variants.map((question) => retrieveSingleQueryFromRows({
     question,
     contextualQuery: args.contextualQuery,
+    memoryContext: args.memoryContext,
     rows,
     limit: Math.max(args.limit ?? MAX_EVIDENCE, 12),
   }))
   return mergeExpandedRetrievalResults({
     originalQuestion: args.question,
     contextualQuery: args.contextualQuery,
+    memoryContext: args.memoryContext,
     rows,
     results,
     limit: args.limit,
@@ -291,12 +303,13 @@ export function hybridRetrieveFromRows(args: {
 function retrieveSingleQueryFromRows(args: {
   readonly question: string
   readonly contextualQuery?: string | null
+  readonly memoryContext?: MemoryRetrievalContext | null
   readonly rows: readonly KnowledgeChunkRow[]
   readonly limit?: number
 }): HybridRetrievalResult {
   const analysis = analyzeRetrievalQuestion(args.question, args.contextualQuery)
   const activeRows = args.rows.filter((row) => row.chunk_text && row.source?.status !== 'archived')
-  const baseScored = activeRows.map((row, index) => scoreCandidate(row, index, analysis))
+  const baseScored = activeRows.map((row, index) => scoreCandidate(row, index, analysis, args.memoryContext))
   const scored = applyNeighborExpansion(baseScored)
   const exactRanked = rankBy(scored, (item) => item.exactScore)
   const keywordRanked = rankBy(scored, (item) => item.keywordScore)
@@ -396,6 +409,7 @@ function retrieveSingleQueryFromRows(args: {
 function mergeExpandedRetrievalResults(args: {
   readonly originalQuestion: string
   readonly contextualQuery?: string | null
+  readonly memoryContext?: MemoryRetrievalContext | null
   readonly rows: readonly KnowledgeChunkRow[]
   readonly results: readonly HybridRetrievalResult[]
   readonly limit?: number
@@ -710,7 +724,12 @@ async function fetchRpcMatches(
   }))
 }
 
-function scoreCandidate(row: KnowledgeChunkRow, index: number, analysis: RetrievalQuestionAnalysis): RetrievalCandidate {
+function scoreCandidate(
+  row: KnowledgeChunkRow,
+  index: number,
+  analysis: RetrievalQuestionAnalysis,
+  memoryContext?: MemoryRetrievalContext | null,
+): RetrievalCandidate {
   const metadataText = [
     row.source?.title,
     row.source_url ?? readMetadataString(row.metadata, 'source_url'),
@@ -723,7 +742,8 @@ function scoreCandidate(row: KnowledgeChunkRow, index: number, analysis: Retriev
     const normalized = signal.toLowerCase()
     return score + (haystack.includes(normalized) ? 10 : 0)
   }, 0)
-  const keywordScore = analysis.terms.reduce((score, term) => score + countOccurrences(haystack, term), 0)
+  const memoryScore = scoreMemoryContext(haystack, analysis.question, memoryContext)
+  const keywordScore = analysis.terms.reduce((score, term) => score + countOccurrences(haystack, term), 0) + memoryScore
   const entityScore = scoreEntityTerms(haystack, analysis.entityTerms)
   const phraseScore = scorePhrases(haystack, [...analysis.entityPhrases, ...analysis.queryVariants])
   const headingScore = scoreHeadingAndSource(headingHaystack, analysis)
@@ -743,6 +763,7 @@ function scoreCandidate(row: KnowledgeChunkRow, index: number, analysis: Retriev
     vectorScore,
     noisePenalty,
   })
+  const enrichedReasons = memoryScore > 0 ? [...reasons, 'memory_context_weak_match'] : reasons
   return {
     id: row.id ?? `${row.source_id ?? 'chunk'}:${index}`,
     sourceId: row.source_id ?? null,
@@ -767,7 +788,7 @@ function scoreCandidate(row: KnowledgeChunkRow, index: number, analysis: Retriev
     rrfScore: 0,
     finalScore: 0,
     conflictPenalty: 0,
-    reasons,
+    reasons: enrichedReasons,
     rerankScore: 0,
     rerankReasons: [],
   }
@@ -782,6 +803,22 @@ function replaceSignalPreservingCase(value: string, signal: string, replacement:
     .replace(/\bnumber\s+number\b/gi, 'number')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function scoreMemoryContext(
+  haystack: string,
+  question: string,
+  memoryContext?: MemoryRetrievalContext | null,
+): number {
+  if (!memoryContext) return 0
+  const currentTerms = new Set(tokenize(question))
+  const topicTerms = memoryContext.topicsDiscussed.flatMap(tokenize).filter((term) => !currentTerms.has(term))
+  const intentTerms = memoryContext.lastIntent ? tokenize(memoryContext.lastIntent).filter((term) => !currentTerms.has(term)) : []
+  const unresolvedTerms = memoryContext.unresolvedQuestions.flatMap(tokenize)
+  const weakTopicScore = topicTerms.reduce((score, term) => score + (haystack.includes(term) ? 0.3 : 0), 0)
+  const weakIntentScore = intentTerms.reduce((score, term) => score + (haystack.includes(term) ? 0.2 : 0), 0)
+  const unresolvedOverlap = unresolvedTerms.filter((term) => currentTerms.has(term) && haystack.includes(term)).length
+  return Math.min(6, weakTopicScore + weakIntentScore + unresolvedOverlap * 1.5)
 }
 
 function normalizeComparableText(value: string): string {

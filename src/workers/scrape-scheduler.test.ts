@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   processDueSchedules,
+  processMemoryRetentionCleanup,
   processSchedule,
   recoverStaleRuns,
   type DueSchedule,
@@ -58,6 +59,19 @@ describe('scheduled scrape worker', () => {
     expect(resolveKey).toHaveBeenCalledWith('workspace-a')
     expect(resolveKey).toHaveBeenCalledWith('workspace-b')
   })
+
+  it('cleans expired AI memory without deleting contacts or conversations', async () => {
+    const fake = createFakeClient({
+      providerSettings: [{ workspace_id: 'workspace-a', memory_retention_days: 30 }],
+      updatedRows: [{ id: 'memory-a' }],
+      deletedRows: [{ id: 'summary-a' }],
+    })
+    const result = await processMemoryRetentionCleanup(fake.client, new Date('2026-06-20T02:00:00.000Z'))
+
+    expect(result).toEqual({ workspaceCount: 1, memoriesCleared: 1, summariesDeleted: 1 })
+    expect(fake.events.some((event) => event.startsWith('contacts:delete'))).toBe(false)
+    expect(fake.events.some((event) => event.startsWith('conversations:delete'))).toBe(false)
+  })
 })
 
 function dependencies(
@@ -77,7 +91,9 @@ function dependencies(
 function createFakeClient(options: {
   readonly historyId?: string
   readonly updatedRows?: readonly { readonly id: string }[]
+  readonly deletedRows?: readonly { readonly id: string }[]
   readonly dueSchedules?: readonly DueSchedule[]
+  readonly providerSettings?: readonly { readonly workspace_id: string; readonly memory_retention_days: number | null }[]
 }) {
   const events: string[] = []
   const client = {
@@ -88,9 +104,11 @@ function createFakeClient(options: {
         select() { events.push(`${table}:select`); return builder },
         insert(value: unknown) { operation = 'insert'; payload = value; events.push(`${table}:insert:${JSON.stringify(value)}`); return builder },
         update(value: unknown) { operation = 'update'; payload = value; events.push(`${table}:update:${JSON.stringify(value)}`); return builder },
+        delete() { operation = 'delete'; events.push(`${table}:delete`); return builder },
         eq(column: string, value: unknown) { events.push(`${table}:eq:${column}:${String(value)}`); return builder },
         lt(column: string, value: unknown) { events.push(`${table}:lt:${column}:${String(value)}`); return builder },
         lte(column: string, value: unknown) { events.push(`${table}:lte:${column}:${String(value)}`); return builder },
+        not(column: string, operator: string, value: unknown) { events.push(`${table}:not:${column}:${operator}:${String(value)}`); return builder },
         order() { return builder },
         limit() { return builder },
         single() {
@@ -102,8 +120,14 @@ function createFakeClient(options: {
         then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
           const data = table === 'ai_scrape_schedules' && operation === 'query'
             ? options.dueSchedules ?? []
+            : table === 'ai_chatbot_provider_settings' && operation === 'query'
+              ? options.providerSettings ?? []
             : table === 'ai_import_history' && operation === 'update'
               ? options.updatedRows ?? []
+              : operation === 'update'
+                ? options.updatedRows ?? []
+                : operation === 'delete'
+                  ? options.deletedRows ?? []
               : null
           return Promise.resolve({ data, error: null, payload }).then(resolve, reject)
         },

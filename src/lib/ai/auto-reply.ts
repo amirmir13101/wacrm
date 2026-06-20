@@ -11,7 +11,14 @@ import {
   type AiChatbotSettings,
 } from '@/lib/ai/chatbot'
 import { detectLanguage, type DetectedLanguage } from '@/lib/ai/language'
+import {
+  buildMemoryRetrievalContext,
+  formatMemoryContext,
+  loadContactMemory,
+  summarizeConversation,
+} from '@/lib/ai/memory'
 import { resolveLanguageSettings } from '@/lib/ai/provider'
+import { resolveMemorySettings, type AiMemorySettings } from '@/lib/ai/provider'
 import { hybridRetrieveKnowledge } from '@/lib/ai/retrieval'
 import { translateFromEnglish, translateToEnglish } from '@/lib/ai/translation'
 import { logKnowledgeGap } from '@/lib/ai/knowledge-gaps'
@@ -92,7 +99,7 @@ export async function maybeHandleAiAutoReply(args: {
 
     const { data: conversation } = await admin
       .from('conversations')
-      .select('id, contact:contacts(phone)')
+      .select('id, contact_id, contact:contacts(phone)')
       .eq('id', args.conversationId)
       .eq('workspace_id', args.workspaceId)
       .maybeSingle()
@@ -100,11 +107,19 @@ export async function maybeHandleAiAutoReply(args: {
       ? conversation?.contact[0]
       : conversation?.contact
     const phone = typeof contact?.phone === 'string' ? contact.phone : ''
+    const contactId = typeof conversation?.contact_id === 'string' ? conversation.contact_id : ''
 
     if (phone) {
+      const memorySettings = await resolveMemorySettings(args.workspaceId).catch(() => ({
+        memoryEnabled: true,
+        memorySummarizeAfter: 5,
+        memoryRetentionDays: 90,
+        memoryClearOnHuman: false,
+      }))
       await sendConfiguredAiMessage({
         workspaceId: args.workspaceId,
         conversationId: args.conversationId,
+        contactId,
         inboundMessageId: args.inboundMessageId,
         customerText,
         phone,
@@ -114,6 +129,8 @@ export async function maybeHandleAiAutoReply(args: {
         controlStatus: 'needs_human',
         controlReason: 'human_handoff_requested',
         client: admin,
+        memorySettings,
+        summaryTrigger: 'needs_human',
       })
       return
     }
@@ -174,7 +191,7 @@ export async function maybeHandleAiAutoReply(args: {
 
   const { data: conversation, error: conversationError } = await admin
     .from('conversations')
-    .select('id, status, assigned_agent_id, contact:contacts(phone)')
+    .select('id, status, assigned_agent_id, contact_id, contact:contacts(phone)')
     .eq('id', args.conversationId)
     .eq('workspace_id', args.workspaceId)
     .maybeSingle()
@@ -220,6 +237,17 @@ export async function maybeHandleAiAutoReply(args: {
   }
 
   let retrieval: Awaited<ReturnType<typeof hybridRetrieveKnowledge>>
+  const contactId = typeof conversation.contact_id === 'string' ? conversation.contact_id : ''
+  const memorySettings = await resolveMemorySettings(args.workspaceId).catch(() => ({
+    memoryEnabled: true,
+    memorySummarizeAfter: 5,
+    memoryRetentionDays: 90,
+    memoryClearOnHuman: false,
+  }))
+  const contactMemory = memorySettings.memoryEnabled && contactId
+    ? await loadContactMemory(args.workspaceId, contactId)
+    : null
+  const memoryContext = contactMemory ? formatMemoryContext(contactMemory) : null
   const multilingual = await prepareMultilingualQuestion({
     workspaceId: args.workspaceId,
     customerText,
@@ -235,6 +263,7 @@ export async function maybeHandleAiAutoReply(args: {
       workspaceId: args.workspaceId,
       question: retrievalQuestion,
       contextualQuery: conversationContext,
+      memoryContext: memorySettings.memoryEnabled ? buildMemoryRetrievalContext(contactMemory) : null,
       client: admin,
     })
   } catch {
@@ -258,6 +287,7 @@ export async function maybeHandleAiAutoReply(args: {
     await sendConfiguredAiMessage({
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
+      contactId,
       inboundMessageId: args.inboundMessageId,
       customerText,
       phone,
@@ -267,6 +297,8 @@ export async function maybeHandleAiAutoReply(args: {
       controlStatus: 'ai_active',
       controlReason: retrieval.fallbackReason ?? 'no_relevant_knowledge',
       client: admin,
+      memorySettings,
+      summaryTrigger: 'fallback',
     })
     return
   }
@@ -279,6 +311,7 @@ export async function maybeHandleAiAutoReply(args: {
     requireProvider: true,
     calculation: retrieval.calculation,
     conversationContext: retrieval.analysis.contextualQuery,
+    memoryContext,
     responseIsRTL: multilingual.responseLanguage?.isRTL,
     gapContext: {
       retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
@@ -301,6 +334,7 @@ export async function maybeHandleAiAutoReply(args: {
       await sendConfiguredAiMessage({
         workspaceId: args.workspaceId,
         conversationId: args.conversationId,
+        contactId,
         inboundMessageId: args.inboundMessageId,
         customerText,
         phone,
@@ -310,6 +344,8 @@ export async function maybeHandleAiAutoReply(args: {
         controlStatus: 'needs_human',
         controlReason: answer.reason || 'human_handoff',
         client: admin,
+        memorySettings,
+        summaryTrigger: 'needs_human',
       })
       return
     }
@@ -334,6 +370,7 @@ export async function maybeHandleAiAutoReply(args: {
     await sendConfiguredAiMessage({
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
+      contactId,
       inboundMessageId: args.inboundMessageId,
       customerText,
       phone,
@@ -343,6 +380,8 @@ export async function maybeHandleAiAutoReply(args: {
       controlStatus: 'ai_active',
       controlReason: answer.reason || 'answer_not_found',
       client: admin,
+      memorySettings,
+      summaryTrigger: 'fallback',
     })
     return
   }
@@ -437,6 +476,14 @@ export async function maybeHandleAiAutoReply(args: {
       response: finalAnswer,
       client: admin,
     })
+    triggerMemorySummarization({
+      workspaceId: args.workspaceId,
+      contactId,
+      conversationId: args.conversationId,
+      client: admin,
+      settings: memorySettings,
+      trigger: 'after_ai_reply',
+    })
   } catch {
     await logAiChatbotEvent({
       workspaceId: args.workspaceId,
@@ -507,9 +554,81 @@ function languageAllowed(code: string, supportedLanguages: readonly string[] | n
   return !supportedLanguages || supportedLanguages.includes(code)
 }
 
+function triggerMemorySummarization(args: {
+  readonly workspaceId: string
+  readonly contactId: string | null
+  readonly conversationId: string
+  readonly client: ReturnType<typeof supabaseAdmin>
+  readonly settings?: AiMemorySettings
+  readonly trigger: 'after_ai_reply' | 'fallback' | 'needs_human'
+}): void {
+  if (!args.contactId || args.settings?.memoryEnabled === false) return
+  const contactId = args.contactId
+  void (async () => {
+    try {
+      const settings = args.settings ?? await resolveMemorySettings(args.workspaceId)
+      if (!settings.memoryEnabled) return
+      if (!await shouldSummarizeConversation({ ...args, settings })) return
+      const messages = await fetchConversationMessagesForMemory({
+        conversationId: args.conversationId,
+        client: args.client,
+      })
+      if (messages.length === 0) return
+      console.info('[ai-memory] summarization triggered', {
+        workspace_id: args.workspaceId,
+        contact_id: contactId,
+      })
+      await summarizeConversation(args.workspaceId, contactId, args.conversationId, messages, settings)
+    } catch {
+      // Memory must never block or break WhatsApp replies.
+    }
+  })()
+}
+
+async function shouldSummarizeConversation(args: {
+  readonly workspaceId: string
+  readonly conversationId: string
+  readonly client: ReturnType<typeof supabaseAdmin>
+  readonly settings: AiMemorySettings
+  readonly trigger: 'after_ai_reply' | 'fallback' | 'needs_human'
+}): Promise<boolean> {
+  if (args.trigger === 'fallback' || args.trigger === 'needs_human') return true
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString()
+  const [{ count: recentSummaryCount }, { count: aiMessageCount }] = await Promise.all([
+    args.client
+      .from('ai_conversation_summaries')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', args.workspaceId)
+      .eq('conversation_id', args.conversationId)
+      .gte('summarized_at', since),
+    args.client
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('conversation_id', args.conversationId)
+      .eq('sender_type', 'bot'),
+  ])
+  if ((recentSummaryCount ?? 0) > 0) return false
+  return (aiMessageCount ?? 0) >= args.settings.memorySummarizeAfter
+}
+
+async function fetchConversationMessagesForMemory(args: {
+  readonly conversationId: string
+  readonly client: ReturnType<typeof supabaseAdmin>
+}): Promise<Array<{ sender_type: string | null; content_text: string | null; created_at: string | null }>> {
+  const { data } = await args.client
+    .from('messages')
+    .select('sender_type, content_text, created_at')
+    .eq('conversation_id', args.conversationId)
+    .not('content_text', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(20)
+  return (data ?? []).reverse()
+}
+
 async function sendConfiguredAiMessage(args: {
   readonly workspaceId: string
   readonly conversationId: string
+  readonly contactId?: string | null
   readonly inboundMessageId: string
   readonly customerText: string
   readonly phone: string
@@ -519,6 +638,8 @@ async function sendConfiguredAiMessage(args: {
   readonly controlStatus: 'ai_active' | 'needs_human'
   readonly controlReason: string
   readonly client: ReturnType<typeof supabaseAdmin>
+  readonly memorySettings?: AiMemorySettings
+  readonly summaryTrigger?: 'after_ai_reply' | 'fallback' | 'needs_human'
 }): Promise<boolean> {
   const text = args.text.trim()
   if (!text) return false
@@ -620,6 +741,14 @@ async function sendConfiguredAiMessage(args: {
       reason: args.controlReason,
       status: args.controlStatus,
       client: args.client,
+    })
+    triggerMemorySummarization({
+      workspaceId: args.workspaceId,
+      contactId: args.contactId ?? null,
+      conversationId: args.conversationId,
+      client: args.client,
+      settings: args.memorySettings,
+      trigger: args.summaryTrigger ?? (args.controlStatus === 'needs_human' ? 'needs_human' : args.status === 'fallback' ? 'fallback' : 'after_ai_reply'),
     })
     return true
   } catch {

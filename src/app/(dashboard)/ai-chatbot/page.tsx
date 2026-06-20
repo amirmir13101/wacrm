@@ -168,6 +168,10 @@ interface ProviderSettings {
   defaultResponseLanguage: string
   supportedLanguages: string[] | null
   translationModel: string | null
+  memoryEnabled: boolean
+  memorySummarizeAfter: number
+  memoryRetentionDays: number | null
+  memoryClearOnHuman: boolean
 }
 
 interface TestAnswer {
@@ -831,6 +835,10 @@ export default function AiChatbotPage() {
           default_response_language: draftProvider.defaultResponseLanguage,
           supported_languages: draftProvider.supportedLanguages,
           translation_model: draftProvider.translationModel,
+          memory_enabled: draftProvider.memoryEnabled,
+          memory_summarize_after: draftProvider.memorySummarizeAfter,
+          memory_retention_days: draftProvider.memoryRetentionDays,
+          memory_clear_on_human: draftProvider.memoryClearOnHuman,
         }),
       })
       const body = await res.json().catch(() => ({}))
@@ -1316,6 +1324,71 @@ export default function AiChatbotPage() {
                 Multilingual support is off. Non-English messages will use the normal retrieval path.
               </p>
             )}
+          </div>
+          <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4 lg:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-emerald-50">Customer memory</p>
+                <p className="mt-1 text-xs text-[#9dbfb5]">
+                  Remember returning customers across conversations using concise summaries, topics, language preference, and unresolved questions.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-[#9dbfb5]">Memory enabled</span>
+                <Switch
+                  checked={draftProvider.memoryEnabled}
+                  disabled={!canManage}
+                  onCheckedChange={(checked) => setDraftProvider({ ...draftProvider, memoryEnabled: checked })}
+                />
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-emerald-50">Summarize after AI replies</span>
+                <input
+                  className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                  disabled={!canManage || !draftProvider.memoryEnabled}
+                  min={3}
+                  max={20}
+                  type="number"
+                  value={draftProvider.memorySummarizeAfter}
+                  onChange={(event) => setDraftProvider({ ...draftProvider, memorySummarizeAfter: Math.max(3, Math.min(20, Number(event.target.value) || 5)) })}
+                />
+                <p className="text-xs text-[#9dbfb5]">Default 5. Conversation summaries are fire-and-forget.</p>
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-emerald-50">Memory retention</span>
+                <select
+                  className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                  disabled={!canManage || !draftProvider.memoryEnabled}
+                  value={draftProvider.memoryRetentionDays ?? "forever"}
+                  onChange={(event) => setDraftProvider({
+                    ...draftProvider,
+                    memoryRetentionDays: event.target.value === "forever" ? null : Number(event.target.value),
+                  })}
+                >
+                  <option value={30}>30 days</option>
+                  <option value={60}>60 days</option>
+                  <option value={90}>90 days</option>
+                  <option value={180}>180 days</option>
+                  <option value="forever">Forever</option>
+                </select>
+                <p className="text-xs text-[#9dbfb5]">Expired memory is cleared by the scheduler without deleting contacts.</p>
+              </label>
+              <div className="rounded-lg border border-emerald-900 bg-[#03100b] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-emerald-50">Auto-clear on Human Needed</span>
+                  <Switch
+                    checked={draftProvider.memoryClearOnHuman}
+                    disabled={!canManage || !draftProvider.memoryEnabled}
+                    onCheckedChange={(checked) => setDraftProvider({ ...draftProvider, memoryClearOnHuman: checked })}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-[#9dbfb5]">
+                  Useful for sensitive support contexts. Conversation summaries remain audit-safe until retention cleanup.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 

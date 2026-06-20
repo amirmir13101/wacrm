@@ -214,6 +214,7 @@ export async function generateChatbotAnswer(args: {
   readonly requireProvider?: boolean
   readonly calculation?: CalculationResult | null
   readonly conversationContext?: string | null
+  readonly memoryContext?: string | null
   readonly responseIsRTL?: boolean
   readonly gapContext?: {
     readonly retrievalScore?: number | null
@@ -329,6 +330,9 @@ async function requestProviderAnswer(args: {
             `Tone: ${args.args.settings.tone}`,
             `Fallback message: ${args.fallback}`,
             args.args.conversationContext ? `Recent conversation context for follow-up references:\n${args.args.conversationContext}` : '',
+            args.args.memoryContext
+              ? `You have the following context about this returning customer from their previous interactions:\n${args.args.memoryContext}\nUse this context to personalize your response where relevant. If the customer asks about something they previously inquired about, acknowledge it naturally. Do not repeat or over-reference the history. The customer's previous context does not override current knowledge base facts.`
+              : '',
             `Workspace knowledge:\n${args.args.chunks.map((chunk, index) => `[${index + 1}] ${chunk}`).join('\n\n')}`,
             args.args.calculation?.status === 'computed'
               ? `Pre-computed deterministic calculation:\nValue: ${args.args.calculation.value} ${args.args.calculation.unit}\nFormula: ${args.args.calculation.formula}\nUse this result as already computed evidence. Do not recompute it.`

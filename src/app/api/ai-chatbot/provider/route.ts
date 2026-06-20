@@ -48,6 +48,10 @@ export async function PUT(request: Request) {
   const defaultResponseLanguage = readText(body.default_response_language, 'auto', 24)
   const supportedLanguages = readLanguageList(body.supported_languages)
   const translationModel = readText(body.translation_model, '', 160)
+  const memoryEnabled = body.memory_enabled !== false
+  const memorySummarizeAfter = readInteger(body.memory_summarize_after, 5)
+  const memoryRetentionDays = readRetentionDays(body.memory_retention_days)
+  const memoryClearOnHuman = body.memory_clear_on_human === true
 
   if (!providerSupportsChat(provider)) {
     const settings = await saveProviderSettings({
@@ -63,6 +67,10 @@ export async function PUT(request: Request) {
       defaultResponseLanguage,
       supportedLanguages,
       translationModel,
+      memoryEnabled,
+      memorySummarizeAfter,
+      memoryRetentionDays,
+      memoryClearOnHuman,
     })
     return NextResponse.json({
       settings,
@@ -87,6 +95,10 @@ export async function PUT(request: Request) {
     defaultResponseLanguage,
     supportedLanguages,
     translationModel,
+    memoryEnabled,
+    memorySummarizeAfter,
+    memoryRetentionDays,
+    memoryClearOnHuman,
   })
 
   return NextResponse.json({ settings })
@@ -128,4 +140,15 @@ function readLanguageList(value: unknown): string[] | null {
     return languages.length > 0 ? [...new Set(languages)].slice(0, 50) : null
   }
   return null
+}
+
+function readInteger(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return fallback
+  return value
+}
+
+function readRetentionDays(value: unknown): number | null {
+  if (value === null || value === 'forever') return null
+  if (typeof value !== 'number' || !Number.isInteger(value)) return 90
+  return [30, 60, 90, 180].includes(value) ? value : 90
 }

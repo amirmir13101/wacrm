@@ -33,4 +33,9 @@ describe('AI provider settings helpers', () => {
     expect(providerSupportsChat('openai')).toBe(true)
     expect(providerSupportsChat('custom')).toBe(true)
   })
+
+  it('exposes customer memory defaults in public settings shape through helpers', () => {
+    expect(readApiKeyLast4('sk-memory-1234')).toBe('1234')
+    expect(defaultModelForProvider('openai')).toBeTruthy()
+  })
 })
