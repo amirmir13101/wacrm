@@ -586,16 +586,25 @@ export function validateGroundedAnswer(args: {
     allowedNumbers.add(normalizeNumberString(String(args.calculation.value)))
     allowedNumbers.add(normalizeNumberString(args.calculation.value.toFixed(2)))
   }
+  const phoneNumberFragments = extractPhoneNumberFragments(answer)
   for (const number of extractNumberStrings(answer)) {
     const normalizedNumber = normalizeNumberString(number)
+    if (phoneNumberFragments.has(normalizedNumber)) continue
     if (!allowedNumbers.has(normalizedNumber) && !isTraceableDerivedNumber(Number(normalizedNumber), args.evidence.join('\n'))) {
       return { ok: false, reason: 'unsupported_numeric_fact', answer: args.fallback }
     }
   }
 
   const claims = extractExactClaimSignals(answer)
+  const evidenceCanonicalFacts = extractCanonicalExactFacts(args.evidence.join('\n'))
   for (const claim of claims) {
-    if (!evidenceText.includes(claim.toLowerCase())) {
+    const canonicalClaims = extractCanonicalExactFacts(claim)
+    const normalizedClaim = claim.toLowerCase()
+    const hasCanonicalSupport = canonicalClaims.length > 0
+      ? canonicalClaims.some((canonicalClaim) => evidenceCanonicalFacts.includes(canonicalClaim))
+      : false
+    const traceableMoney = isMoneyClaimTraceable(claim, args.evidence.join('\n'), args.calculation)
+    if (!evidenceText.includes(normalizedClaim) && !hasCanonicalSupport && !traceableMoney) {
       return { ok: false, reason: 'unsupported_exact_fact', answer: args.fallback }
     }
   }
@@ -1291,6 +1300,9 @@ function calculateFromEvidence(
   analysis: RetrievalQuestionAnalysis,
   candidates: readonly RetrievalCandidate[],
 ): CalculationResult | null {
+  const structuredResult = calculateFromStructuredPricingOffers(analysis, candidates)
+  if (structuredResult) return structuredResult
+
   const facts = candidates.flatMap((candidate) => extractNumericFactsFromCandidate(candidate))
   const priceFacts = facts.filter((fact): fact is ExtractedPriceFact => fact.kind === 'price')
   const percentFacts = facts.filter((fact): fact is ExtractedPercentFact => fact.kind === 'percent')
@@ -1334,6 +1346,141 @@ function calculateFromEvidence(
   }
 
   return result
+}
+
+function calculateFromStructuredPricingOffers(
+  analysis: RetrievalQuestionAnalysis,
+  candidates: readonly RetrievalCandidate[],
+): CalculationResult | null {
+  const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
+  const offer = selectStructuredPricingOffer(analysis, offers)
+  if (!offer) return null
+  const sourceIds = [offer.sourceChunkId]
+  const targetPeriod = analysis.calculationIntent.targetPeriod
+  const wantsOriginal = asksForOriginalPrice(analysis.question)
+  const basePrice = wantsOriginal ? offer.original_price ?? offer.current_price : offer.current_price
+
+  if (analysis.calculationIntent.periodConversion && targetPeriod) {
+    const stored = offer.stored_period_totals[targetPeriod]
+    if (stored && !wantsOriginal) {
+      return storedBillingTotal(stored.amount, targetPeriod, sourceIds, stored.currency)
+    }
+    const storedSource = !wantsOriginal ? selectStoredPeriodSource(offer.stored_period_totals, targetPeriod) : null
+    if (storedSource?.period) {
+      return convertBillingTotal(storedSource.amount, storedSource.period, targetPeriod, sourceIds, storedSource.currency)
+    }
+    if (!basePrice && !wantsOriginal && offer.original_price?.period && offer.discount_percent !== null) {
+      const discounted = applyPercentage(offer.original_price.amount, offer.discount_percent, 'discount', sourceIds, offer.original_price.currency)
+      if (discounted.status !== 'computed' || discounted.value === null) return discounted
+      return convertBillingTotal(discounted.value, offer.original_price.period, targetPeriod, sourceIds, offer.original_price.currency)
+    }
+    if (!basePrice?.period) return null
+    return convertBillingTotal(basePrice.amount, basePrice.period, targetPeriod, sourceIds, basePrice.currency)
+  }
+
+  if (analysis.calculationIntent.percentage) {
+    const percent = offer.discount_percent
+    const priceForPercent = wantsOriginal ? offer.original_price ?? offer.current_price : offer.original_price ?? offer.current_price
+    if (!priceForPercent || percent === null) return null
+    return applyPercentage(priceForPercent.amount, percent, /markup/i.test(analysis.question) ? 'markup' : 'discount', sourceIds, priceForPercent.currency)
+  }
+
+  if (analysis.calculationIntent.bulk && analysis.calculationIntent.quantity && basePrice) {
+    return bulkOrTieredPrice(basePrice.amount, analysis.calculationIntent.quantity, sourceIds, [], basePrice.currency)
+  }
+
+  if (analysis.calculationIntent.tax && basePrice) {
+    const percent = offer.discount_percent
+    if (percent === null) return null
+    return applyTax(basePrice.amount, percent, /\b(inclusive|including)\b/i.test(analysis.question) ? 'inclusive' : 'exclusive', sourceIds, basePrice.currency)
+  }
+
+  return null
+}
+
+function selectStoredPeriodSource(
+  totals: Partial<Record<BillingPeriod, StructuredPriceValue>>,
+  targetPeriod: BillingPeriod,
+): StructuredPriceValue | null {
+  const preference: BillingPeriod[] = targetPeriod === 'monthly'
+    ? ['yearly', 'quarterly', 'weekly', 'daily']
+    : targetPeriod === 'yearly'
+      ? ['monthly', 'quarterly', 'weekly', 'daily']
+      : ['yearly', 'monthly', 'quarterly', 'weekly', 'daily']
+  for (const period of preference) {
+    const value = totals[period]
+    if (value?.period) return value
+  }
+  return null
+}
+
+function selectStructuredPricingOffer(
+  analysis: RetrievalQuestionAnalysis,
+  offers: readonly StructuredPricingOffer[],
+): StructuredPricingOffer | null {
+  if (offers.length === 0) return null
+  const scored = offers
+    .map((offer, index) => {
+      const entityHaystack = normalizeEntityKey(offer.entity ?? '')
+      const sourceHaystack = normalizeEntityKey(offer.source_text)
+      let score = offers.length - index
+      let entityLabelMatches = 0
+      for (const phrase of analysis.entityPhrases) {
+        const normalizedPhrase = normalizeEntityKey(phrase)
+        if (entityContainsTerm(entityHaystack, normalizedPhrase)) {
+          score += 90
+          entityLabelMatches += 1
+        } else if (entityContainsTerm(sourceHaystack, normalizedPhrase)) score += 10
+      }
+      for (const term of analysis.entityTerms) {
+        const normalizedTerm = normalizeEntityKey(term)
+        if (!normalizedTerm) continue
+        if (entityContainsTerm(entityHaystack, normalizedTerm)) {
+          score += /\d/.test(term) ? 55 : 25
+          entityLabelMatches += 1
+        }
+        else if (entityContainsTerm(sourceHaystack, normalizedTerm)) score += /\d/.test(term) ? 12 : 5
+      }
+      for (const number of analysis.numbers) {
+        if (entityContainsTerm(entityHaystack, String(number))) {
+          score += 25
+          entityLabelMatches += 1
+        }
+      }
+      if (analysis.calculationIntent.targetPeriod && offer.stored_period_totals[analysis.calculationIntent.targetPeriod]) score += 40
+      if (offer.current_price) score += 10
+      if (offer.original_price && offer.discount_percent !== null) score += 10
+      if (analysis.entityTerms.length > 0 && entityLabelMatches === 0) score -= 45
+      return { offer, score }
+    })
+    .sort((left, right) => right.score - left.score)
+  const best = scored[0]
+  if (!best || best.score < 15) return null
+  const second = scored[1]
+  if (second && best.score - second.score < 5 && !analysis.entityTerms.some((term) => entityContainsTerm(normalizeEntityKey(best.offer.entity ?? ''), normalizeEntityKey(term)))) {
+    return null
+  }
+  return best.offer
+}
+
+function entityContainsTerm(haystack: string, term: string): boolean {
+  if (!haystack || !term) return false
+  return haystack.includes(term) || haystack.replace(/\s+/g, '').includes(term.replace(/\s+/g, ''))
+}
+
+function storedBillingTotal(
+  amount: number,
+  period: BillingPeriod,
+  sourceChunkIds: readonly string[],
+  currency = '',
+): CalculationResult {
+  return {
+    status: 'computed',
+    value: roundCalculationNumber(amount),
+    formula: `Stored ${period} total from source = ${roundCalculationNumber(amount)} ${currency}/${period}`,
+    unit: `${currency}/${period}`.trim(),
+    sourceChunkIds,
+  }
 }
 
 function selectCalculationPriceFact(
@@ -1392,12 +1539,20 @@ function asksForOriginalPrice(question: string): boolean {
 }
 
 function isOriginalPriceFact(fact: ExtractedPriceFact): boolean {
-  return /\b(original|regular|before discount|before sale|list price|base price|standard price|was|undiscounted)\b/i.test(fact.localContext)
+  return isOriginalPriceContext(fact.localContext)
 }
 
 function isCurrentPriceFact(fact: ExtractedPriceFact): boolean {
-  return /\b(current|discounted|sale|now|today|effective|after discount|special|offer|promo|save|deal)\b/i.test(fact.localContext)
+  return isCurrentPriceContext(fact.localContext)
     || (fact.isTotal && /\b(discount|billed|total)\b/i.test(fact.localContext))
+}
+
+function isOriginalPriceContext(value: string): boolean {
+  return /\b(original|regular|before discount|before sale|list price|base price|standard price|was|undiscounted|struck|strikethrough)\b/i.test(value)
+}
+
+function isCurrentPriceContext(value: string): boolean {
+  return /\b(current|discounted|sale|now|today|effective|after discount|special|offer|promo|save|deal)\b/i.test(value)
 }
 
 function hasTextualSameLabelPriceConflict(text: string): boolean {
@@ -1422,6 +1577,34 @@ interface ExtractedPriceFact {
   readonly localContext: string
   readonly isTotal: boolean
   readonly sourceChunkId: string
+}
+
+interface StructuredPriceValue {
+  readonly amount: number
+  readonly currency: string
+  readonly period: BillingPeriod | null
+  readonly text: string
+}
+
+interface StructuredPricingOffer {
+  readonly kind: 'pricing_offer'
+  readonly entity: string | null
+  readonly current_price: StructuredPriceValue | null
+  readonly original_price: StructuredPriceValue | null
+  readonly discount_percent: number | null
+  readonly stored_period_totals: Partial<Record<BillingPeriod, StructuredPriceValue>>
+  readonly source_text: string
+  readonly sourceChunkId: string
+}
+
+interface MoneyMatch {
+  readonly amount: number
+  readonly currency: string
+  readonly period: BillingPeriod | null
+  readonly text: string
+  readonly index: number
+  readonly localContext: string
+  readonly isTotal: boolean
 }
 
 interface ExtractedPercentFact {
@@ -1466,6 +1649,237 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
   return facts.filter((fact) => ('amount' in fact ? Number.isFinite(fact.amount) : Number.isFinite(fact.value)))
 }
 
+function extractStructuredPricingOffersFromCandidate(candidate: RetrievalCandidate): StructuredPricingOffer[] {
+  const persisted = readStructuredPricingOffers(candidate.structuredFacts, candidate.id)
+  const derived = extractStructuredPricingOffers(candidate.chunkText, candidate.id)
+  const bySignature = new Map<string, StructuredPricingOffer>()
+  for (const offer of [...persisted, ...derived]) {
+    const signature = [
+      normalizeEntityKey(offer.entity ?? offer.source_text.slice(0, 80)),
+      offer.current_price ? `${offer.current_price.currency}:${roundCalculationNumber(offer.current_price.amount)}:${offer.current_price.period ?? ''}` : '',
+      offer.original_price ? `${offer.original_price.currency}:${roundCalculationNumber(offer.original_price.amount)}:${offer.original_price.period ?? ''}` : '',
+      Object.entries(offer.stored_period_totals).map(([period, value]) => `${period}:${value.currency}:${roundCalculationNumber(value.amount)}`).join('|'),
+    ].join('|')
+    if (!bySignature.has(signature)) bySignature.set(signature, offer)
+  }
+  return [...bySignature.values()]
+}
+
+function readStructuredPricingOffers(facts: Record<string, unknown> | null, sourceChunkId: string): StructuredPricingOffer[] {
+  const offers = Array.isArray(facts?.pricing_offers) ? facts.pricing_offers : []
+  return offers
+    .map((offer): StructuredPricingOffer | null => {
+      if (!isRecord(offer)) return null
+      const current = readStructuredPriceValue(offer.current_price)
+      const original = readStructuredPriceValue(offer.original_price)
+      const stored: Partial<Record<BillingPeriod, StructuredPriceValue>> = {}
+      if (isRecord(offer.stored_period_totals)) {
+        for (const period of ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'] as const) {
+          const value = readStructuredPriceValue(offer.stored_period_totals[period])
+          if (value) stored[period] = value
+        }
+      }
+      if (!current && !original && Object.keys(stored).length === 0) return null
+      return {
+        kind: 'pricing_offer',
+        entity: typeof offer.entity === 'string' && offer.entity.trim() ? offer.entity.trim() : null,
+        current_price: current,
+        original_price: original,
+        discount_percent: typeof offer.discount_percent === 'number' && Number.isFinite(offer.discount_percent) ? offer.discount_percent : null,
+        stored_period_totals: stored,
+        source_text: typeof offer.source_text === 'string' ? offer.source_text : '',
+        sourceChunkId,
+      }
+    })
+    .filter((offer): offer is StructuredPricingOffer => Boolean(offer))
+}
+
+function readStructuredPriceValue(value: unknown): StructuredPriceValue | null {
+  if (!isRecord(value)) return null
+  const amount = typeof value.amount === 'number' ? value.amount : Number.NaN
+  const currency = typeof value.currency === 'string' ? value.currency : ''
+  const period = typeof value.period === 'string' ? normalizePeriod(value.period) : null
+  const text = typeof value.text === 'string' ? value.text : ''
+  return Number.isFinite(amount) ? { amount, currency, period, text } : null
+}
+
+function extractStructuredPricingOffers(text: string, sourceChunkId = 'chunk'): StructuredPricingOffer[] {
+  return splitPricingBlocks(text)
+    .map((block) => buildStructuredPricingOffer(block, sourceChunkId))
+    .filter((offer): offer is StructuredPricingOffer => Boolean(offer))
+}
+
+function splitPricingBlocks(text: string): string[] {
+  const normalized = text
+    .replace(/\r\n/g, '\n')
+    .replace(/(?!^)\s*(#{2,4}\s+)/g, '\n$1')
+    .replace(/(\n\s*[-*]\s+Price:\s*)/gi, '\n$1')
+  const headingBlocks = normalized
+    .split(/\n(?=#{2,4}\s+)/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+  const blocks = headingBlocks.length > 1 ? headingBlocks : normalized.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
+  return blocks.flatMap((block) => {
+    const inlineOffers = splitInlinePricingOffers(block)
+    if (inlineOffers.length > 1) return inlineOffers
+    if (block.length <= 2200) return [block]
+    return block
+      .split(/(?=#{2,4}\s+)|(?=\b[A-Z][A-Za-z0-9&+().,\- ]{2,80}\b.{0,120}?(?:\$|USD|GBP|EUR|PKR|Rs\.?))/g)
+      .map((part) => part.trim())
+      .filter((part) => part.length >= 20)
+  })
+}
+
+function splitInlinePricingOffers(block: string): string[] {
+  const moneyCount = extractMoneyMatches(block).length
+  if (moneyCount < 3 || block.length < 180) return [block]
+  const rawParts = block
+    .split(/(?=\b(?!Total\b|Price\b|Starting\b|From\b|Year\b|Monthly\b|Annual\b|Weekly\b|Daily\b|Quarterly\b|OFF\b|Discount\b|Save\b)[A-Z][A-Za-z0-9&+().,'’\- ]{2,90}?\b(?:\s+[-–]\s+|\s+).{0,140}?(?:\$|USD|GBP|EUR|PKR|Rs\.?)\s*\d)/g)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 8)
+  const parts: string[] = []
+  let prefix = ''
+  for (const part of rawParts) {
+    const combined = [prefix, part].filter(Boolean).join(' ').trim()
+    if (containsPriceFact(part)) {
+      parts.push(combined)
+      prefix = ''
+    } else {
+      prefix = combined
+    }
+  }
+  if (parts.length <= 1) return [block]
+  return parts
+}
+
+function buildStructuredPricingOffer(block: string, sourceChunkId: string): StructuredPricingOffer | null {
+  if (!containsPriceFact(block)) return null
+  const money = extractMoneyMatches(block)
+  if (money.length === 0) return null
+  const discountPercent = extractDiscountPercent(block)
+  const entity = extractPricingEntityName(block)
+  const stored: Partial<Record<BillingPeriod, StructuredPriceValue>> = {}
+  for (const match of money) {
+    const period = match.period ?? inferPricePeriod(match.localContext)
+    if (match.isTotal && period) {
+      stored[period] = toStructuredPriceValue({ ...match, period })
+    }
+  }
+
+  const nonTotals = money.filter((match) => !match.isTotal)
+  const pair = findDiscountPricePair(nonTotals, discountPercent)
+  const roleBasedCurrent = nonTotals.find((match) => isCurrentPriceContext(match.localContext))
+  const roleBasedOriginal = nonTotals.find((match) => isOriginalPriceContext(match.localContext))
+  const fallbackCurrent = discountPercent !== null && roleBasedOriginal ? null : nonTotals.find((match) => match.period) ?? nonTotals[0] ?? null
+  const current = pair?.current ?? roleBasedCurrent ?? fallbackCurrent
+  const original = pair?.original ?? roleBasedOriginal ?? null
+  const currentValue = current ? toStructuredPriceValue(current) : null
+  const originalValue = original && (!current || roundCalculationNumber(original.amount) !== roundCalculationNumber(current.amount))
+    ? toStructuredPriceValue(original)
+    : null
+  if (!currentValue && !originalValue && Object.keys(stored).length === 0) return null
+  return {
+    kind: 'pricing_offer',
+    entity,
+    current_price: currentValue,
+    original_price: originalValue,
+    discount_percent: discountPercent,
+    stored_period_totals: stored,
+    source_text: block.slice(0, 1200),
+    sourceChunkId,
+  }
+}
+
+function extractMoneyMatches(text: string): MoneyMatch[] {
+  const matches: MoneyMatch[] = []
+  const pattern = /(?:(USD|PKR|EUR|GBP|AED|SAR|Rs\.?|₹|\$|€|£)\s*)?(\d+(?:[.,]\d+)?)(?:\s*(USD|PKR|EUR|GBP|AED|SAR))?(?:\s*\/?\s*(monthly|month|mo|yearly|year|annual|annually|weekly|week|daily|day|quarterly|quarter))?/gi
+  for (const match of text.matchAll(pattern)) {
+    const index = match.index ?? 0
+    const before = text.slice(Math.max(0, index - 45), index)
+    const after = text.slice(index + match[0].length, index + match[0].length + 55)
+    const localContext = `${before}${match[0]}${after}`.toLowerCase()
+    const hasCurrency = Boolean(match[1] || match[3])
+    const hasPeriod = Boolean(match[4])
+    if (!hasCurrency && !hasPeriod) continue
+    const amount = Number(match[2]?.replace(',', '.'))
+    if (!Number.isFinite(amount)) continue
+    matches.push({
+      amount,
+      currency: normalizeCurrency(match[1] ?? match[3] ?? '$'),
+      period: normalizePeriod(match[4] ?? '') ?? inferPricePeriod(localContext),
+      text: match[0],
+      index,
+      localContext,
+      isTotal: /\b(total|billed|invoice|charged|due)\b/i.test(before),
+    })
+  }
+  return matches
+}
+
+function extractDiscountPercent(text: string): number | null {
+  for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*%\s*(?:off|discount|save|saving|promo|offer)?|(?:off|discount|save|saving)\s*(\d+(?:[.,]\d+)?)\s*%/gi)) {
+    const value = Number((match[1] ?? match[2] ?? '').replace(',', '.'))
+    if (Number.isFinite(value) && value > 0 && value < 100) return value
+  }
+  return null
+}
+
+function findDiscountPricePair(matches: readonly MoneyMatch[], discountPercent: number | null): { readonly current: MoneyMatch; readonly original: MoneyMatch } | null {
+  if (matches.length < 2) return null
+  const candidates: Array<{ readonly current: MoneyMatch; readonly original: MoneyMatch; readonly score: number }> = []
+  for (let index = 0; index < matches.length - 1; index += 1) {
+    for (let nextIndex = index + 1; nextIndex < matches.length; nextIndex += 1) {
+      const left = matches[index]
+      const right = matches[nextIndex]
+      if (!left || !right) continue
+      if (left.currency && right.currency && left.currency !== right.currency) continue
+      if (Math.abs(left.index - right.index) > 120) continue
+      const combined = `${left.localContext} ${right.localContext}`
+      const hasDiscountSignal = discountPercent !== null || /\b(discount|off|save|saving|promo|offer|deal|sale|was|now|regular|original)\b/i.test(combined)
+      if (!hasDiscountSignal) continue
+      if (roundCalculationNumber(left.amount) === roundCalculationNumber(right.amount)) continue
+      const current = left.amount < right.amount ? left : right
+      const original = left.amount > right.amount ? left : right
+      let score = 0
+      if (discountPercent !== null) score += 50
+      if (isCurrentPriceContext(current.localContext)) score += 30
+      if (isOriginalPriceContext(original.localContext)) score += 30
+      if (current.index < original.index) score += 5
+      candidates.push({ current, original, score })
+    }
+  }
+  return candidates.sort((left, right) => right.score - left.score)[0] ?? null
+}
+
+function toStructuredPriceValue(match: MoneyMatch): StructuredPriceValue {
+  return {
+    amount: roundCalculationNumber(match.amount),
+    currency: match.currency,
+    period: match.period,
+    text: match.text,
+  }
+}
+
+function extractPricingEntityName(block: string): string | null {
+  const lines = block.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+  const heading = lines.find((line) => /^#{2,4}\s+/.test(line))
+  const raw = (heading ?? lines[0] ?? '')
+    .replace(/^#{2,4}\s+/, '')
+    .replace(/^[-*]\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const withoutPriceOnly = raw.replace(/^(?:\$|USD|GBP|EUR|PKR|Rs\.?)\s*\d+(?:[.,]\d+)?(?:\s*[-–]\s*)?/i, '').trim()
+  const beforeFirstMoney = withoutPriceOnly
+    .split(/(?:\$|USD|GBP|EUR|PKR|Rs\.?)\s*\d+(?:[.,]\d+)?/i)[0]
+    ?.replace(/\b(?:price|cost|fee|rate)\s*:?\s*$/i, '')
+    .trim()
+  const candidate = (beforeFirstMoney && beforeFirstMoney.length >= 3 ? beforeFirstMoney : withoutPriceOnly || raw)
+    .slice(0, 160)
+    .trim()
+  if (!candidate || !/[A-Za-z]/.test(candidate)) return null
+  return candidate
+}
+
 function extractPricingTiers(candidates: readonly RetrievalCandidate[]) {
   return candidates.flatMap((candidate) =>
     [...candidate.searchText.matchAll(/(?:minimum|min|from|over|above|for)\s+(\d+)\s+(?:units?|items?).{0,80}?(\d+(?:[.,]\d+)?)/gi)].map((match) => ({
@@ -1477,7 +1891,11 @@ function extractPricingTiers(candidates: readonly RetrievalCandidate[]) {
 }
 
 function detectCandidateConflicts(candidates: readonly RetrievalCandidate[]): Set<string> {
-  const prices = candidates.flatMap((candidate) => extractNumericFactsFromCandidate(candidate).filter((fact): fact is ExtractedPriceFact => fact.kind === 'price'))
+  const structuredConflictIds = detectStructuredOfferConflicts(candidates)
+  const candidatesWithoutDiscountOffers = candidates.filter((candidate) =>
+    !extractStructuredPricingOffersFromCandidate(candidate).some((offer) => offer.original_price || offer.discount_percent !== null),
+  )
+  const prices = candidatesWithoutDiscountOffers.flatMap((candidate) => extractNumericFactsFromCandidate(candidate).filter((fact): fact is ExtractedPriceFact => fact.kind === 'price'))
   const byLabel = new Map<string, ExtractedPriceFact[]>()
   for (const price of prices) {
     const label = normalizeConflictLabel(price.label)
@@ -1486,12 +1904,33 @@ function detectCandidateConflicts(candidates: readonly RetrievalCandidate[]): Se
     byLabel.set(key, [...(byLabel.get(key) ?? []), price])
   }
   const conflicting = new Set<string>()
+  structuredConflictIds.forEach((id) => conflicting.add(id))
   for (const group of byLabel.values()) {
     if (new Set(group.map((fact) => fact.amount)).size > 1) {
       group.forEach((fact) => conflicting.add(fact.sourceChunkId))
     }
   }
   return conflicting
+}
+
+function detectStructuredOfferConflicts(candidates: readonly RetrievalCandidate[]): Set<string> {
+  const byEntity = new Map<string, StructuredPricingOffer[]>()
+  for (const candidate of candidates) {
+    for (const offer of extractStructuredPricingOffersFromCandidate(candidate)) {
+      if (!offer.current_price || offer.original_price || offer.discount_percent !== null) continue
+      const entity = normalizeConflictLabel(offer.entity)
+      if (!entity) continue
+      const key = `${entity}:${offer.current_price.currency}:${offer.current_price.period ?? ''}`.toLowerCase()
+      byEntity.set(key, [...(byEntity.get(key) ?? []), offer])
+    }
+  }
+  const conflicts = new Set<string>()
+  for (const offers of byEntity.values()) {
+    if (new Set(offers.map((offer) => roundCalculationNumber(offer.current_price?.amount ?? 0))).size > 1) {
+      offers.forEach((offer) => conflicts.add(offer.sourceChunkId))
+    }
+  }
+  return conflicts
 }
 
 function normalizeConflictLabel(label: string | null): string | null {
@@ -1522,6 +1961,15 @@ function normalizeConflictLabel(label: string | null): string | null {
   if (generic.has(normalized)) return null
 
   return normalized.length >= 3 ? normalized.slice(0, 80) : null
+}
+
+function normalizeEntityKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/(?:\$|rs\.?|pkr|usd|eur|gbp)\s*\d+(?:[.,]\d+)?/gi, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function formatEvidenceBlock(candidate: RetrievalCandidate): string {
@@ -1624,6 +2072,15 @@ function extractStructuredFacts(text: string): Record<string, unknown> {
   return {
     prices: [...text.matchAll(/(?:\$|Rs\.?|PKR|USD|EUR|GBP)\s*\d+(?:[.,]\d+)?/gi)].map((match) => match[0]),
     percentages: [...text.matchAll(/\d+(?:[.,]\d+)?\s*%/g)].map((match) => match[0]),
+    pricing_offers: extractStructuredPricingOffers(text).map((offer) => ({
+      kind: offer.kind,
+      entity: offer.entity,
+      current_price: offer.current_price,
+      original_price: offer.original_price,
+      discount_percent: offer.discount_percent,
+      stored_period_totals: offer.stored_period_totals,
+      source_text: offer.source_text,
+    })),
   }
 }
 
@@ -1637,11 +2094,109 @@ function extractExactSignals(question: string): string[] {
 }
 
 function extractExactClaimSignals(answer: string): string[] {
+  const ignoredAcronyms = new Set(['USD', 'PKR', 'EUR', 'GBP', 'AED', 'SAR'])
   return [
     ...answer.matchAll(/\b[A-Z]{2,}[A-Z0-9-]*\b/g),
     ...answer.matchAll(/\+?\d[\d\s().-]{7,}\d/g),
     ...answer.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi),
-  ].map((match) => match[0])
+    ...answer.matchAll(/https?:\/\/[^\s)]+/gi),
+    ...answer.matchAll(/(?:\$|Rs\.?|PKR|USD|EUR|GBP)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:USD|PKR|EUR|GBP)/gi),
+    ...answer.matchAll(/\b(?:\d{4}-\d{2}-\d{2}|[A-Z][a-z]{2,9}\s+\d{1,2},?\s+\d{4})\b/g),
+  ].map((match) => match[0]).filter((claim) => !ignoredAcronyms.has(claim))
+}
+
+function extractCanonicalExactFacts(value: string): string[] {
+  const facts = new Set<string>()
+  for (const match of value.matchAll(/(?:https?:\/\/)?wa\.me\/(\d+)|tel:\s*(\+?\d[\d\s().-]{7,}\d)|\+?\d[\d\s().-]{7,}\d/gi)) {
+    const raw = match[1] ?? match[2] ?? match[0]
+    const digits = raw.replace(/\D/g, '')
+    if (digits.length >= 8) facts.add(`phone:${digits}`)
+  }
+  for (const match of value.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)) {
+    facts.add(`email:${match[0].toLowerCase()}`)
+  }
+  for (const match of value.matchAll(/https?:\/\/[^\s)]+|(?:https?:\/\/)?wa\.me\/\d+/gi)) {
+    facts.add(`url:${canonicalUrl(match[0])}`)
+  }
+  for (const match of value.matchAll(/(?:(USD|PKR|EUR|GBP|AED|SAR|Rs\.?|₹|\$|€|£)\s*)?(\d+(?:[.,]\d+)?)(?:\s*(USD|PKR|EUR|GBP|AED|SAR))?/gi)) {
+    const hasCurrency = Boolean(match[1] || match[3])
+    if (!hasCurrency) continue
+    const amount = Number((match[2] ?? '').replace(',', '.'))
+    if (Number.isFinite(amount)) facts.add(`money:${normalizeCurrency(match[1] ?? match[3] ?? '$')}:${roundCalculationNumber(amount)}`)
+  }
+  for (const match of value.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
+    facts.add(`date:${match[1]}-${match[2]}-${match[3]}`)
+  }
+  for (const match of value.matchAll(/\b([A-Z][a-z]{2,9})\s+(\d{1,2}),?\s+(\d{4})\b/g)) {
+    const month = monthNumber(match[1] ?? '')
+    const day = String(match[2] ?? '').padStart(2, '0')
+    if (month) facts.add(`date:${match[3]}-${month}-${day}`)
+  }
+  return [...facts]
+}
+
+function extractPhoneNumberFragments(value: string): Set<string> {
+  const fragments = new Set<string>()
+  for (const match of value.matchAll(/(?:https?:\/\/)?wa\.me\/(\d+)|tel:\s*(\+?\d[\d\s().-]{7,}\d)|\+?\d[\d\s().-]{7,}\d/gi)) {
+    const raw = match[1] ?? match[2] ?? match[0]
+    const digits = raw.replace(/\D/g, '')
+    if (digits.length < 8) continue
+    fragments.add(normalizeNumberString(digits))
+    for (const part of raw.matchAll(/\d+(?:[.,]\d+)?/g)) fragments.add(normalizeNumberString(part[0]))
+  }
+  return fragments
+}
+
+function isMoneyClaimTraceable(claim: string, evidence: string, calculation?: CalculationResult | null): boolean {
+  const match = claim.match(/(?:(USD|PKR|EUR|GBP|AED|SAR|Rs\.?|₹|\$|€|£)\s*)?(\d+(?:[.,]\d+)?)(?:\s*(USD|PKR|EUR|GBP|AED|SAR))?/i)
+  if (!match || !(match[1] || match[3])) return false
+  const amount = Number((match[2] ?? '').replace(',', '.'))
+  if (!Number.isFinite(amount)) return false
+  if (calculation?.status === 'computed' && calculation.value !== null && roundCalculationNumber(calculation.value) === roundCalculationNumber(amount)) return true
+  return isTraceableDerivedNumber(amount, evidence)
+}
+
+function canonicalUrl(value: string): string {
+  const cleaned = value.trim().replace(/[),.;!?]+$/g, '')
+  const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`
+  try {
+    const parsed = new URL(withProtocol)
+    parsed.hash = ''
+    const normalizedPath = parsed.pathname.replace(/\/+$/, '') || '/'
+    return `${parsed.protocol}//${parsed.hostname.toLowerCase()}${normalizedPath}${parsed.search}`.replace(/\/$/, '')
+  } catch {
+    return value.toLowerCase().replace(/\/+$/, '')
+  }
+}
+
+function monthNumber(value: string): string | null {
+  const months: Record<string, string> = {
+    jan: '01',
+    january: '01',
+    feb: '02',
+    february: '02',
+    mar: '03',
+    march: '03',
+    apr: '04',
+    april: '04',
+    may: '05',
+    jun: '06',
+    june: '06',
+    jul: '07',
+    july: '07',
+    aug: '08',
+    august: '08',
+    sep: '09',
+    sept: '09',
+    september: '09',
+    oct: '10',
+    october: '10',
+    nov: '11',
+    november: '11',
+    dec: '12',
+    december: '12',
+  }
+  return months[value.toLowerCase()] ?? null
 }
 
 function extractNumberStrings(value: string): string[] {

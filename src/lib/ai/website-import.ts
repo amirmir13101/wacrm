@@ -754,6 +754,11 @@ export function extractWebsiteKnowledgeText(html: string, pageUrl?: string): str
 export function cleanHtmlToText(html: string): string {
   const $ = load(html)
   $('script, style, noscript, svg, head, nav, header, footer, aside, form, button').remove()
+  $('del, s, strike, [style*="line-through" i]').each((_index, element) => {
+    const text = normalizeExtractedText($(element).text())
+    if (!text || !/(\$|Â£|â‚¬|â‚¹|rs\.?|pkr|usd|eur|gbp)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:usd|eur|gbp|pkr)/i.test(text)) return
+    $(element).text(` original price ${text} `)
+  })
   $('br').replaceWith('\n')
   $('p, div, section, article, li, h1, h2, h3, h4, h5, h6, tr').each((_index, element) => {
     $(element).append('\n')

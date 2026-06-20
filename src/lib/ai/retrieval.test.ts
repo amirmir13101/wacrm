@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { expandQuery, hybridRetrieveFromRows, rerankCandidates, validateGroundedAnswer } from './retrieval'
+import { buildChunkSearchMetadata, expandQuery, hybridRetrieveFromRows, rerankCandidates, validateGroundedAnswer } from './retrieval'
 
 const source = { id: 'source-1', title: 'Business knowledge', source_type: 'website', status: 'active' }
 
@@ -593,6 +593,87 @@ describe('AI hybrid retrieval', () => {
     expect(original.calculation).toMatchObject({ status: 'computed', value: 120 })
   })
 
+  it('uses flattened current discount pricing for a multi-plan infrastructure chunk without bleeding into neighbors', () => {
+    const rows = [
+      {
+        id: 'vps-pricing',
+        source_id: 'source-1',
+        source,
+        chunk_text: [
+          '### Wagon VPS x4 - ◆ RYZEN™ CPU 2 CoreCPU 4GBRAM 40 GBNVME FREEBACKUP',
+          'Starting at: - Price: $5.40/mo $6.50 17% OFF',
+          '### Wagon VPS x8 - ◆ RYZEN™ CPU 4 CoreCPU 8GBRAM 60 GBNVME FREEBACKUP',
+          'Starting at: - Price: $7.04/mo $8.80 20% OFF',
+          '### Wagon VPS X24 - ◆ RYZEN™ CPU 6 CoreCPU 24GBRAM 240 GBNVME FREEBACKUP',
+          'Starting at: - Price: $12.40/mo $15.50 20% OFF',
+        ].join('\n'),
+      },
+    ]
+
+    const result = hybridRetrieveFromRows({ question: '4gb ram vps price yearly price and monthly', rows })
+
+    expect(result.calculation).toMatchObject({ status: 'computed', value: 64.8, unit: 'USD/yearly' })
+    expect(result.calculation?.formula).toContain('5.4 USD/monthly')
+    expect(result.calculation?.formula).not.toContain('6.5 USD/monthly')
+    expect(result.calculation?.formula).not.toContain('12.4 USD/monthly')
+  })
+
+  it('prefers an explicitly stored billing total over deriving one from monthly pricing', () => {
+    const rows = [
+      {
+        id: 'n8n-basic',
+        source_id: 'source-1',
+        source,
+        chunk_text: '### Basic n8n 4GB Great for small teams $2.00 1.70 15% OFF Total: $20.40 billed per Year - Price: 1.70/mo',
+      },
+    ]
+
+    const result = hybridRetrieveFromRows({ question: 'Price of basic plan of n8n yearly discounted price', rows })
+
+    expect(result.calculation).toMatchObject({ status: 'computed', value: 20.4, unit: 'USD/yearly' })
+    expect(result.calculation?.formula).toContain('Stored yearly total')
+  })
+
+  it('generalizes discount pairs across restaurant, clinic, and course fixtures', () => {
+    const rows = [
+      {
+        id: 'restaurant',
+        source_id: 'source-1',
+        source,
+        chunk_text: '### Family Pasta Meal Subscription\nSeasonal menu deal: Price $18.00/month $24.00/month 25% off. Serves 4 people.',
+      },
+      {
+        id: 'clinic',
+        source_id: 'source-1',
+        source,
+        chunk_text: '### Dental Care Membership\nService fee: now $45 monthly, was $60 monthly. Save 25%. Appointment required.',
+      },
+      {
+        id: 'course',
+        source_id: 'source-1',
+        source,
+        chunk_text: '### Beginner English Course\nEarly-bird fee USD 120 monthly, original USD 150 monthly, 20% discount.',
+      },
+    ]
+
+    const restaurant = hybridRetrieveFromRows({ question: 'yearly price for Family Pasta Meal Subscription', rows })
+    const clinic = hybridRetrieveFromRows({ question: 'yearly price for Dental Care Membership', rows })
+    const course = hybridRetrieveFromRows({ question: 'yearly price for Beginner English Course', rows })
+
+    expect(restaurant.calculation).toMatchObject({ status: 'computed', value: 216 })
+    expect(clinic.calculation).toMatchObject({ status: 'computed', value: 540 })
+    expect(course.calculation).toMatchObject({ status: 'computed', value: 1440 })
+  })
+
+  it('stores generic structured pricing offers in chunk metadata for re-chunk backfills', () => {
+    const metadata = buildChunkSearchMetadata('### Course Plus\nEarly bird price: USD 120/month. Original price USD 150/month. 20% discount.', 0)
+    const facts = metadata.structured_facts as { pricing_offers?: Array<{ current_price?: { amount?: number }; original_price?: { amount?: number }; discount_percent?: number }> }
+
+    expect(facts.pricing_offers?.[0]?.current_price?.amount).toBe(120)
+    expect(facts.pricing_offers?.[0]?.original_price?.amount).toBe(150)
+    expect(facts.pricing_offers?.[0]?.discount_percent).toBe(20)
+  })
+
   it('accepts chained deterministic numbers traceable to evidence and still rejects invented numbers', () => {
     const evidence = ['Plan regular price is $20/month. Discount is 15% off.']
     expect(validateGroundedAnswer({
@@ -614,5 +695,18 @@ describe('AI hybrid retrieval', () => {
       fallback: 'Fallback',
     })
     expect(validation).toEqual({ ok: false, reason: 'unsupported_numeric_fact', answer: 'Fallback' })
+  })
+
+  it('normalizes exact guardrail facts across phone links, money, dates, emails, and urls', () => {
+    expect(validateGroundedAnswer({
+      answer: 'The contact shown in the source is +44 7478 060494.',
+      evidence: ['Contact link: https://wa.me/447478060494'],
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
+    expect(validateGroundedAnswer({
+      answer: 'The fee is USD 120/month. Email SUPPORT@EXAMPLE.COM. See https://example.com/contact/. Date: March 6, 2026.',
+      evidence: ['Fee: $120/month. Email support@example.com. See https://example.com/contact. Page date: 2026-03-06.'],
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
   })
 })

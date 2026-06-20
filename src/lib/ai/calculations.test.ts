@@ -32,6 +32,20 @@ describe('deterministic AI calculation engine', () => {
     expect(yearly.value).toBe(24)
   })
 
+  it('keeps period conversion math independent from price selection', () => {
+    expect(convertBillingTotal(5.4, 'monthly', 'yearly', ['monthly-current'], 'USD')).toMatchObject({
+      status: 'computed',
+      value: 64.8,
+      unit: 'USD/yearly',
+    })
+    expect(convertBillingTotal(64.8, 'yearly', 'monthly', ['yearly-total'], 'USD')).toMatchObject({
+      status: 'computed',
+      value: 5.4,
+      unit: 'USD/monthly',
+    })
+    expect(convertBillingTotal(120, 'monthly', 'yearly', ['course-monthly'], 'USD').value).toBe(1440)
+  })
+
   it('computes per-unit totals and lets explicit bulk tiers override flat multiplication', () => {
     expect(bulkOrTieredPrice(5, 10, ['unit']).value).toBe(50)
     expect(bulkOrTieredPrice(5, 10, ['unit'], [{ minQuantity: 10, unitPrice: 4, sourceChunkId: 'tier' }]).value).toBe(40)

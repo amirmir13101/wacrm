@@ -270,6 +270,35 @@ describe('AI chatbot knowledge helpers', () => {
     vi.unstubAllEnvs()
   })
 
+  it('retries once after a guardrail rejection and can answer with an equivalent contact channel', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'The phone number is +1 555 999 9999.' } }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'The contact method shown in the source is https://wa.me/447478060494.' } }] }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await generateChatbotAnswer({
+      question: 'support phone number',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      chunks: ['Contact support through WhatsApp: https://wa.me/447478060494'],
+      requireProvider: true,
+    })
+
+    expect(result.status).toBe('answered')
+    expect(result.reason).toBe('answered_after_guardrail_retry')
+    expect(result.answer).toContain('wa.me/447478060494')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
   it('detects opt-out messages before AI auto-reply', () => {
     expect(isOptOutMessage('STOP')).toBe(true)
     expect(isOptOutMessage('unsubscribe')).toBe(true)
