@@ -1813,7 +1813,7 @@ function inferStructuredPricePeriod(
   value: StructuredPriceValue,
   offer: StructuredPricingOffer,
 ): BillingPeriod | null {
-  const evidence = [offer.source_text, offer.source_excerpt].filter(Boolean).join('\n')
+  const evidence = [offer.source_text, offer.source_excerpt, offer.context_text].filter(Boolean).join('\n')
   const amount = roundCalculationNumber(value.amount)
   const currency = value.currency
   const matchingMoney = extractMoneyMatches(evidence)
@@ -2314,6 +2314,7 @@ interface StructuredPricingOffer {
   readonly confidence: 'high' | 'medium' | 'low'
   readonly source_origin: 'persisted' | 'runtime'
   readonly source_text: string
+  readonly context_text: string
   readonly sourceChunkId: string
 }
 
@@ -2394,7 +2395,7 @@ function extractStructuredPricingOffersFromCandidate(candidate: RetrievalCandida
 
 function enrichOfferWithCandidateMetadata(
   offer: StructuredPricingOffer,
-  candidate: Pick<RetrievalCandidate, 'sourceUrl' | 'headingPath' | 'sourceTitle'>,
+  candidate: Pick<RetrievalCandidate, 'sourceUrl' | 'headingPath' | 'sourceTitle' | 'chunkText'>,
 ): StructuredPricingOffer {
   const headingPath = candidate.headingPath
     ? candidate.headingPath.split(/\s*>\s*/).map((part) => part.trim()).filter(Boolean)
@@ -2415,6 +2416,7 @@ function enrichOfferWithCandidateMetadata(
       candidate.sourceUrl ? `URL: ${candidate.sourceUrl}` : '',
       offer.source_text,
     ].filter(Boolean).join('\n').slice(0, 1400),
+    context_text: candidate.chunkText.slice(0, 2500),
   }
 }
 
@@ -2492,6 +2494,7 @@ function readStructuredPricingOffers(facts: Record<string, unknown> | null, sour
         confidence: readOfferConfidence(offer.confidence),
         source_origin: 'persisted',
         source_text: typeof offer.source_text === 'string' ? offer.source_text : '',
+        context_text: typeof offer.source_text === 'string' ? offer.source_text : '',
         sourceChunkId,
       }
     })
@@ -2663,6 +2666,7 @@ function buildStructuredPricingOffer(block: string, sourceChunkId: string): Stru
     confidence: currentValue || Object.keys(stored).length > 0 || billingTotals.length > 0 ? 'high' : 'low',
     source_origin: 'runtime',
     source_text: block.slice(0, 1200),
+    context_text: block.slice(0, 1200),
     sourceChunkId,
   }
 }
