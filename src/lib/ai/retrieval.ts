@@ -2886,6 +2886,7 @@ function isBillingDurationCountMatch(before: string, value: string, after: strin
 
 function extractDiscountPercent(text: string): number | null {
   for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*%\s*(?:off|discount|save|saving|promo|offer|deal|sale)|(?:off|discount|save|saving|promo|offer|deal|sale)\s*(\d+(?:[.,]\d+)?)\s*%/gi)) {
+    if (isPercentJoinedToCurrencyAmount(text, match.index ?? 0)) continue
     const value = Number((match[1] ?? match[2] ?? '').replace(',', '.'))
     if (Number.isFinite(value) && value > 0 && value < 100) return value
   }
@@ -2899,12 +2900,18 @@ function isDiscountPercentSupported(text: string, percent: number): boolean {
   for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*%/g)) {
     const value = Number((match[1] ?? '').replace(',', '.'))
     if (!Number.isFinite(value) || roundCalculationNumber(value) !== target) continue
+    if (isPercentJoinedToCurrencyAmount(text, match.index ?? 0)) return false
     const index = match.index ?? 0
     const context = text.slice(Math.max(0, index - 55), index + match[0].length + 55).toLowerCase()
     if (/\b(off|discount|save|saving|promo|offer|deal|sale|regular|original|was|now|limited time)\b/.test(context)) return true
     if (/\b(uptime|guarantee|availability|sla|reliability|rating|score|review|traffic|support|satisfaction)\b/.test(context)) return false
   }
   return false
+}
+
+function isPercentJoinedToCurrencyAmount(text: string, percentIndex: number): boolean {
+  const before = text.slice(Math.max(0, percentIndex - 12), percentIndex)
+  return /(?:[$€£]|rs\.?|pkr|usd|eur|gbp|aed|sar)\s*$/i.test(before)
 }
 
 function findDiscountPricePair(matches: readonly MoneyMatch[], discountPercent: number | null): { readonly current: MoneyMatch; readonly original: MoneyMatch } | null {

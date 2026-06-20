@@ -837,6 +837,13 @@ describe('AI hybrid retrieval', () => {
     expect(facts.prices).toContain('Rs. 12')
   })
 
+  it('does not treat joined currency and percent artifacts as discounts', () => {
+    const metadata = buildChunkSearchMetadata('Plan card text got flattened as $0.9030% OFF without a separator.', 0)
+    const facts = metadata.structured_facts as { pricing_offers?: Array<{ discount_percent?: number | null }> }
+
+    expect(facts.pricing_offers?.[0]?.discount_percent ?? null).toBeNull()
+  })
+
   it('answers Pro Hosting yearly price from the scoped web-hosting offer, not the duration count', () => {
     const rows = buildProductionPricingRows()
 
