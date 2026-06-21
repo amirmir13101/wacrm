@@ -482,7 +482,7 @@ function retrieveSingleQueryFromRows(args: {
   const fallbackReason =
     fused.length === 0
       ? ambiguousWeakOffer ? 'ambiguous_offer' : 'no_relevant_knowledge'
-      : calculationRequested && !calculation
+      : calculationRequested && !calculation && !hasRelatedStructuredBillingEvidence(analysis, fused)
         ? 'cannot_compute'
       : calculation && calculation.status !== 'computed'
         ? calculation.status
@@ -565,7 +565,7 @@ function mergeExpandedRetrievalResults(args: {
   const fallbackReason =
     reranked.length === 0
       ? ambiguousWeakOffer ? 'ambiguous_offer' : 'no_relevant_knowledge'
-      : calculationRequested && !calculation
+      : calculationRequested && !calculation && !hasRelatedStructuredBillingEvidence(analysis, reranked)
         ? 'cannot_compute'
         : calculation && calculation.status !== 'computed'
           ? calculation.status
@@ -1762,6 +1762,12 @@ function calculateFromEvidence(
 ): CalculationResult | null {
   const structuredResult = calculateFromStructuredPricingOffers(analysis, candidates)
   if (structuredResult) return structuredResult
+  if (
+    analysis.offerScope.answerMode === 'single_offer_exact' &&
+    candidates.some((candidate) => extractStructuredPricingOffersFromCandidate(candidate).length > 0)
+  ) {
+    return null
+  }
 
   const facts = candidates.flatMap((candidate) => extractNumericFactsFromCandidate(candidate))
   const priceFacts = facts.filter((fact): fact is ExtractedPriceFact => fact.kind === 'price')
@@ -1806,6 +1812,25 @@ function calculateFromEvidence(
   }
 
   return result
+}
+
+function hasRelatedStructuredBillingEvidence(
+  analysis: RetrievalQuestionAnalysis,
+  candidates: readonly RetrievalCandidate[],
+): boolean {
+  if (!analysis.intents.pricing || analysis.offerScope.answerMode !== 'single_offer_exact') return false
+  const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
+  const offer = selectStructuredPricingOffer(analysis, offers) ??
+    selectLocalRequestedOfferFromEvidence(analysis, candidates) ??
+    selectScopedStructuredPricingOfferFallback(analysis, offers)
+  if (!offer) return false
+  if (analysis.calculationIntent.percentage && offer.discount_percent === null) return false
+  return Boolean(
+    offer.current_price ||
+    offer.original_price ||
+    Object.keys(offer.stored_period_totals).length > 0 ||
+    offer.billing_totals.length > 0,
+  )
 }
 
 function shouldInvokeDeterministicCalculation(analysis: RetrievalQuestionAnalysis): boolean {
@@ -1871,6 +1896,10 @@ function calculateFromStructuredPricingOffers(
     }
     const durationTotal = !wantsOriginal ? selectBillingTotalForTarget(offer.billing_totals, targetPeriod) : null
     if (durationTotal) {
+      const requestedYears = targetPeriod === 'yearly' ? readRequestedYearCount(analysis.question) : null
+      if (requestedYears === 1 && durationTotal.duration_unit === 'year' && durationTotal.duration_count > 1) {
+        return null
+      }
       return convertStructuredBillingTotal(durationTotal, targetPeriod, sourceIds)
     }
     const storedSource = !wantsOriginal ? selectStoredPeriodSource(offer.stored_period_totals, targetPeriod) : null
@@ -2699,11 +2728,9 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
 function extractStructuredPricingOffersFromCandidate(candidate: RetrievalCandidate): StructuredPricingOffer[] {
   const persisted = readStructuredPricingOffers(candidate.structuredFacts, candidate.id).map((offer) => enrichOfferWithCandidateMetadata(offer, candidate))
   const derived = extractStructuredPricingOffers(candidate.chunkText, candidate.id).map((offer) => enrichOfferWithCandidateMetadata(offer, candidate))
-  const repaired = persisted
-    .map((offer) => repairPersistedOfferFromRuntimeEvidence(offer, derived))
-    .filter((offer): offer is StructuredPricingOffer => Boolean(offer))
+  const persistedOrRepaired = persisted.map((offer) => repairPersistedOfferFromRuntimeEvidence(offer, derived) ?? offer)
   const bySignature = new Map<string, StructuredPricingOffer>()
-  for (const offer of [...persisted, ...derived, ...repaired]) {
+  for (const offer of [...persistedOrRepaired, ...derived]) {
     const signature = [
       normalizeEntityKey(offer.entity ?? offer.source_text.slice(0, 80)),
       offer.current_price ? `${offer.current_price.currency}:${roundCalculationNumber(offer.current_price.amount)}:${offer.current_price.period ?? ''}` : '',
@@ -2886,9 +2913,40 @@ function readStructuredPricingOffers(facts: Record<string, unknown> | null, sour
         context_text: offerSourceText,
         sourceChunkId,
       }
-      return isLikelyMarketingMetricOffer(normalizedOffer) ? null : normalizedOffer
+      const repairedOffer = repairDiscountedPersistedOffer(normalizedOffer)
+      return isLikelyMarketingMetricOffer(repairedOffer) ? null : repairedOffer
     })
     .filter((offer): offer is StructuredPricingOffer => Boolean(offer))
+}
+
+function repairDiscountedPersistedOffer(offer: StructuredPricingOffer): StructuredPricingOffer {
+  if (!offer.current_price || offer.original_price || offer.discount_percent === null) return offer
+  const current = withInferredStructuredPricePeriod(offer.current_price, offer)
+  if (current.period !== 'monthly') return offer
+  const discountMultiplier = 1 - offer.discount_percent / 100
+  if (discountMultiplier <= 0 || discountMultiplier >= 1) return offer
+  const total = offer.billing_totals.find((item) => item.duration_unit !== 'session' && item.duration_count > 0)
+  if (!total) return offer
+  const periodsPerUnit = periodsPerDurationUnit(total.duration_unit)
+  if (!periodsPerUnit) return offer
+  const coveredYears = total.duration_count / periodsPerUnit
+  const periodsCovered = coveredYears * 12
+  const totalFromCurrent = roundCalculationNumber(current.amount * periodsCovered)
+  const totalFromDiscountedCurrent = roundCalculationNumber(current.amount * discountMultiplier * periodsCovered)
+  if (roundCalculationNumber(total.amount) !== totalFromDiscountedCurrent || roundCalculationNumber(total.amount) === totalFromCurrent) {
+    return offer
+  }
+  const discounted = roundCalculationNumber(current.amount * discountMultiplier)
+  return {
+    ...offer,
+    current_price: {
+      ...current,
+      amount: discounted,
+      text: `${discounted}`,
+    },
+    original_price: current,
+    confidence: 'high',
+  }
 }
 
 function readStructuredPriceValue(value: unknown): StructuredPriceValue | null {

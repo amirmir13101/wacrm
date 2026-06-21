@@ -853,9 +853,10 @@ describe('AI hybrid retrieval', () => {
     expect(result.debug.answerMode).toBe('single_offer_exact')
     expect(result.debug.selectedOffer?.entity?.toLowerCase()).toContain('pro hosting')
     expect(result.debug.selectedOffer?.productFamily?.toLowerCase()).toContain('hosting')
-    expect(result.calculation).toMatchObject({ status: 'computed', value: 7.56, unit: 'USD/yearly' })
-    expect(result.calculation?.formula).toContain('22.68 USD billed per 3 years')
-    expect(result.calculation?.formula).not.toContain('3 USD/yearly')
+    expect(result.calculation).toBeNull()
+    expect(result.chunks.join('\n')).toContain('USD 0.63/monthly')
+    expect(result.chunks.join('\n')).toContain('USD 0.9')
+    expect(result.chunks.join('\n')).toContain('USD 22.68 per 3 years')
     expect(result.chunks.join('\n')).toContain('USD 0.63/monthly')
     expect(result.chunks.join('\n')).toContain('USD 0.9')
   })
@@ -869,7 +870,7 @@ describe('AI hybrid retrieval', () => {
     expect(result.debug.requestedFamily).toBe('web hosting')
     expect(result.debug.selectedOffer?.entity?.toLowerCase()).toContain('pro hosting')
     expect(result.debug.selectedOffer?.sourceChunkId).toBe('web-hosting')
-    expect(result.calculation).toMatchObject({ status: 'computed', value: 7.56 })
+    expect(result.calculation).toBeNull()
     expect(result.chunks.join('\n')).not.toMatch(/Automation Pro|Wagon VPS x8/)
   })
 
@@ -1181,7 +1182,8 @@ describe('AI hybrid retrieval', () => {
 
     expect(result.debug.selectedOffer?.entity?.toLowerCase()).toContain('pro hosting')
     expect(result.debug.selectedOffer?.sourceChunkId).toBe('web-hosting')
-    expect(result.calculation).toMatchObject({ status: 'computed' })
+    expect(result.calculation).toBeNull()
+    expect(result.chunks.join('\n')).toContain('Pro Hosting')
   })
 
   it('routes refund cancellation questions to policy evidence, not pricing or contact cards', () => {
