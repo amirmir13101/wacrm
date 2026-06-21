@@ -2726,7 +2726,9 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
 }
 
 function extractStructuredPricingOffersFromCandidate(candidate: RetrievalCandidate): StructuredPricingOffer[] {
-  const persisted = readStructuredPricingOffers(candidate.structuredFacts, candidate.id).map((offer) => enrichOfferWithCandidateMetadata(offer, candidate))
+  const persisted = readStructuredPricingOffers(candidate.structuredFacts, candidate.id)
+    .map((offer) => enrichOfferWithCandidateMetadata(offer, candidate))
+    .map((offer) => repairFlattenedCurrentOriginalPriceEvidence(offer))
   const derived = extractStructuredPricingOffers(candidate.chunkText, candidate.id).map((offer) => enrichOfferWithCandidateMetadata(offer, candidate))
   const persistedOrRepaired = persisted.map((offer) => repairPersistedOfferFromRuntimeEvidence(offer, derived) ?? offer)
   const bySignature = new Map<string, StructuredPricingOffer>()
@@ -2742,6 +2744,85 @@ function extractStructuredPricingOffersFromCandidate(candidate: RetrievalCandida
     if (!current || offerCompletenessScore(offer) > offerCompletenessScore(current)) bySignature.set(signature, offer)
   }
   return [...bySignature.values()]
+}
+
+function repairFlattenedCurrentOriginalPriceEvidence(offer: StructuredPricingOffer): StructuredPricingOffer {
+  if (!offer.current_price || offer.original_price) return offer
+  const context = [offer.source_text, offer.context_text, offer.source_excerpt].filter(Boolean).join('\n')
+  if (!context.trim()) return offer
+  const entityWindow = extractOfferLocalContextWindow(context, offer.entity)
+  const match = readFlattenedCurrentOriginalPricePair(entityWindow) ?? readFlattenedCurrentOriginalPricePair(context)
+  if (!match) return offer
+  const current = withInferredStructuredPricePeriod(offer.current_price, offer)
+  if (roundCalculationNumber(current.amount) !== roundCalculationNumber(match.original.amount)) return offer
+  if (match.current.amount >= match.original.amount) return offer
+  const discountPercent = roundCalculationNumber((1 - match.current.amount / match.original.amount) * 100)
+  return {
+    ...offer,
+    current_price: {
+      ...match.current,
+      currency: match.current.currency || current.currency,
+      period: match.current.period ?? current.period,
+    },
+    original_price: {
+      ...match.original,
+      currency: match.original.currency || current.currency,
+      period: match.original.period ?? current.period,
+    },
+    discount_percent: offer.discount_percent ?? (discountPercent > 0 && discountPercent < 100 ? discountPercent : null),
+    confidence: 'high',
+    source_origin: offer.source_origin === 'persisted' ? 'runtime' : offer.source_origin,
+  }
+}
+
+function extractOfferLocalContextWindow(context: string, entity: string | null): string {
+  if (!entity) return context.slice(0, 900)
+  const normalized = context.toLowerCase()
+  const index = normalized.indexOf(entity.toLowerCase())
+  if (index < 0) return context.slice(0, 900)
+  return context.slice(Math.max(0, index - 180), index + 900)
+}
+
+function readFlattenedCurrentOriginalPricePair(text: string): {
+  readonly current: StructuredPriceValue
+  readonly original: StructuredPriceValue
+} | null {
+  const money = String.raw`(?:(USD|PKR|EUR|GBP|AED|SAR|Rs\.?|\$|€|£)\s*)?(\d+(?:[.,]\d+)?)\s*(?:USD|PKR|EUR|GBP|AED|SAR)?`
+  const period = String.raw`(?:\s*(?:/|per\s+)?\s*(mo|month|monthly|year|yearly|annual|annually|week|weekly|day|daily|quarter|quarterly))?`
+  const patterns = [
+    new RegExp(`${money}\\s*(?:\\d+(?:[.,]\\d+)?\\s*%\\s*(?:off|discount|save)\\s*)?[-–—:]\\s*(?:starting\\s+at|price|sale\\s+price|now|current(?:\\s+price)?)\\s*:?\\s*${money}${period}`, 'i'),
+    new RegExp(`(?:starting\\s+at|price|sale\\s+price|now|current(?:\\s+price)?)\\s*:?\\s*${money}${period}.{0,80}?(?:was|before|regular|original|list|old|~~)\\s*${money}`, 'i'),
+  ]
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    if (!match) continue
+    if (pattern === patterns[0]) {
+      const originalCurrency = normalizeCurrency(match[1] ?? '$')
+      const originalAmount = Number((match[2] ?? '').replace(',', '.'))
+      const currentCurrency = normalizeCurrency(match[3] ?? match[1] ?? '$')
+      const currentAmount = Number((match[4] ?? '').replace(',', '.'))
+      const normalizedPeriod = normalizePeriod(match[5] ?? '') ?? inferPricePeriod(match[0])
+      if (Number.isFinite(originalAmount) && Number.isFinite(currentAmount)) {
+        return {
+          original: { amount: originalAmount, currency: originalCurrency, period: normalizedPeriod, text: match[2] ?? '' },
+          current: { amount: currentAmount, currency: currentCurrency, period: normalizedPeriod, text: match[4] ?? '' },
+        }
+      }
+    } else {
+      const currentCurrency = normalizeCurrency(match[1] ?? '$')
+      const currentAmount = Number((match[2] ?? '').replace(',', '.'))
+      const normalizedPeriod = normalizePeriod(match[3] ?? '') ?? inferPricePeriod(match[0])
+      const originalCurrency = normalizeCurrency(match[4] ?? match[1] ?? '$')
+      const originalAmount = Number((match[5] ?? '').replace(',', '.'))
+      if (Number.isFinite(originalAmount) && Number.isFinite(currentAmount)) {
+        return {
+          original: { amount: originalAmount, currency: originalCurrency, period: normalizedPeriod, text: match[5] ?? '' },
+          current: { amount: currentAmount, currency: currentCurrency, period: normalizedPeriod, text: match[2] ?? '' },
+        }
+      }
+    }
+  }
+  return null
 }
 
 function repairPersistedOfferFromRuntimeEvidence(

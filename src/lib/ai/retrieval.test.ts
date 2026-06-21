@@ -1082,10 +1082,10 @@ describe('AI hybrid retrieval', () => {
         heading_path: 'Web Hosting > Pricing',
         chunk_text: [
           '### Web Hosting',
-          '#### Pro Hosting',
-          '3-Years Save 30% 2-Years Save 20% 1-Year Save 10% Monthly',
-          'Starting at: $0.63/mo ~~$0.90~~ 30% OFF',
-          'Total: $22.68 billed per 3 Years',
+          '### FREE Hosting - Price: 0.00/mo',
+          '### Pro Hosting $0.90 30% OFF - Price: 0.63/mo Total: $22.68 billed per 3 Years 5 DomainsUsage Right 5 GBDisk Space UnlimitedTraffic UnlimitedSubdomains - ✓20 Email Accounts',
+          '### Ultimate Hosting $4.00 - Price: 2.80/mo Total: $100.80 billed per 3 Years UnlimitedDomains UnlimitedDisk Space - ✓Unlimited Email Accounts ✓VIP 24/7 Support',
+          '### Choose The Right Hosting Plan ### 3-Years Save 30% 2-Years Save 20% 1-Year Save 10% Monthly',
         ].join('\n'),
         structured_facts: {
           pricing_offers: [
@@ -1110,20 +1110,6 @@ describe('AI hybrid retrieval', () => {
               ],
               source_text: 'Pro Hosting $0.90 30% OFF $22.68 billed per 3 Years',
             },
-          ],
-        },
-      },
-    ]
-
-    const price = hybridRetrieveFromRows({ question: 'Ultimate hosting price', rows: [
-      {
-        id: 'ultimate-hosting',
-        source_id: 'source-1',
-        source,
-        heading_path: 'Web Hosting > Pricing',
-        chunk_text: '#### Ultimate Hosting\nStarting at: $2.80/mo ~~$4.00~~ 30% OFF\nTotal: $100.80 billed per 3 Years',
-        structured_facts: {
-          pricing_offers: [
             {
               entity: 'Ultimate Hosting',
               entity_name: 'Ultimate Hosting',
@@ -1131,15 +1117,26 @@ describe('AI hybrid retrieval', () => {
               product_family: 'hosting',
               current_price: { amount: 4, currency: 'USD', period: 'monthly', text: '$4.00' },
               original_price: null,
-              discount_percent: 30,
+              discount_percent: null,
               stored_period_totals: {},
-              billing_totals: [{ amount: 100.8, currency: 'USD', duration_count: 3, duration_unit: 'year', label: '3 years billing total', source_text: '$100.80 billed per 3 Years' }],
-              source_text: 'Ultimate Hosting $4.00 30% OFF $100.80 billed per 3 Years',
+              billing_totals: [
+                {
+                  amount: 100.8,
+                  currency: 'USD',
+                  duration_count: 3,
+                  duration_unit: 'year',
+                  label: '3 years billing total',
+                  source_text: '$100.80 billed per 3 Years',
+                },
+              ],
+              source_text: '### Ultimate Hosting $4.00 - Price: 2.80/mo Total: $100.80 billed per 3 Years UnlimitedDomains UnlimitedDisk Space - ✓Unlimited Email Accounts',
             },
           ],
         },
       },
-    ] })
+    ]
+
+    const price = hybridRetrieveFromRows({ question: 'Ultimate hosting price', rows })
     const yearly = hybridRetrieveFromRows({ question: 'If I buy Pro Hosting for one year, what will be the price?', rows })
 
     expect(yearly.debug.selectedOffer?.currentPrice).toMatchObject({ amount: 0.63, period: 'monthly' })
