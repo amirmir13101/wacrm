@@ -4243,8 +4243,9 @@ function validateSingleEntityFactConsistency(args: {
   }
   const evidenceText = args.evidence.join('\n')
   const offers = extractStructuredPricingOffers(evidenceText, 'answer-evidence')
-  if (offers.length === 0) return null
-  const targetOffer = selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
+  const guidedOffer = extractSelectedOfferFromGuidance(evidenceText)
+  if (offers.length === 0 && !guidedOffer) return null
+  const targetOffer = guidedOffer ?? selectStructuredPricingOffer(analysis, offers) ?? selectScopedStructuredPricingOfferFallback(analysis, offers)
   if (!targetOffer) return null
   const targetText = [targetOffer.entity, targetOffer.source_text].filter(Boolean).join('\n')
   const allowedMoney = new Set<number>()
@@ -4273,6 +4274,84 @@ function validateSingleEntityFactConsistency(args: {
     if (questionSpecs.has(spec) && compactTargetText.includes(spec.replace(/\s+/g, '').toLowerCase())) continue
     return 'cross_entity_fact_mix'
   }
+  return null
+}
+
+function extractSelectedOfferFromGuidance(evidenceText: string): StructuredPricingOffer | null {
+  if (!/Selected requested offer\/entity:/i.test(evidenceText)) return null
+  const block = evidenceText
+    .split(/\n(?=Chunk ID:|Source:|Derived fact guidance|$)/)
+    .find((part) => /Selected requested offer\/entity:/i.test(part)) ?? evidenceText
+  const entity = block.match(/Selected requested offer\/entity:\s*(.+)/i)?.[1]?.trim() ?? null
+  if (!entity) return null
+  const family = block.match(/Selected offer family\/category:\s*(.+)/i)?.[1]?.trim() ?? null
+  const current = readGuidedPriceLine(block, /Selected offer current\/effective price:\s*([A-Z]{3})\s+(\d+(?:[.,]\d+)?)(?:\/(\w+))?/i)
+  const original = readGuidedPriceLine(block, /Selected offer original\/regular price:\s*([A-Z]{3})\s+(\d+(?:[.,]\d+)?)(?:\/(\w+))?/i)
+  const discountMatch = block.match(/Selected offer discount percent:\s*(\d+(?:[.,]\d+)?)\s*%/i)
+  const discountPercent = discountMatch ? Number(discountMatch[1]?.replace(',', '.')) : null
+  const billingTotals: StructuredBillingTotal[] = []
+  for (const match of block.matchAll(/Selected offer billing duration totals:\s*([A-Z]{3})\s+(\d+(?:[.,]\d+)?)\s+per\s+(\d+(?:[.,]\d+)?)\s+(days?|weeks?|months?|quarters?|years?|sessions?)/gi)) {
+    const amount = Number((match[2] ?? '').replace(',', '.'))
+    const durationCount = Number((match[3] ?? '').replace(',', '.'))
+    const unit = normalizeDurationUnit(match[4] ?? '')
+    if (Number.isFinite(amount) && Number.isFinite(durationCount) && unit) {
+      billingTotals.push({
+        amount,
+        currency: normalizeCurrency(match[1] ?? 'USD'),
+        duration_count: durationCount,
+        duration_unit: unit,
+        label: `${durationCount} ${unit}${durationCount === 1 ? '' : 's'} billing total`,
+        source_text: match[0],
+        period: unit === 'year' ? 'yearly' : unit === 'month' ? 'monthly' : unit === 'week' ? 'weekly' : unit === 'day' ? 'daily' : null,
+      })
+    }
+  }
+  if (!current && !original && billingTotals.length === 0) return null
+  return {
+    kind: 'pricing_offer',
+    entity,
+    entity_name: entity,
+    entity_type: 'plan',
+    product_family: family,
+    category_path: [],
+    variant_specs: {},
+    current_price: current,
+    original_price: original,
+    discount_percent: Number.isFinite(discountPercent) ? discountPercent : null,
+    stored_period_totals: {},
+    billing_totals: billingTotals,
+    source_url: null,
+    heading_path: [],
+    source_excerpt: block.slice(0, 400),
+    confidence: 'high',
+    source_origin: 'runtime',
+    source_text: block,
+    context_text: block,
+    sourceChunkId: 'selected-guidance',
+  }
+}
+
+function readGuidedPriceLine(block: string, pattern: RegExp): StructuredPriceValue | null {
+  const match = block.match(pattern)
+  if (!match) return null
+  const amount = Number((match[2] ?? '').replace(',', '.'))
+  if (!Number.isFinite(amount)) return null
+  return {
+    amount,
+    currency: normalizeCurrency(match[1] ?? 'USD'),
+    period: normalizePeriod(match[3] ?? ''),
+    text: match[0],
+  }
+}
+
+function normalizeDurationUnit(value: string): StructuredBillingTotal['duration_unit'] | null {
+  const normalized = value.toLowerCase()
+  if (normalized.startsWith('day')) return 'day'
+  if (normalized.startsWith('week')) return 'week'
+  if (normalized.startsWith('month')) return 'month'
+  if (normalized.startsWith('quarter')) return 'quarter'
+  if (normalized.startsWith('year')) return 'year'
+  if (normalized.startsWith('session')) return 'session'
   return null
 }
 

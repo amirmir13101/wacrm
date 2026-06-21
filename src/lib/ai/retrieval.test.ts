@@ -1145,6 +1145,13 @@ describe('AI hybrid retrieval', () => {
     expect(yearly.calculation?.formula).toContain('10% discount')
     expect(price.debug.selectedOffer?.currentPrice).toMatchObject({ amount: 2.8, period: 'monthly' })
     expect(price.debug.selectedOffer?.originalPrice).toMatchObject({ amount: 4, period: 'monthly' })
+    expect(validateGroundedAnswer({
+      question: 'Ultimate hosting price',
+      answer: 'Ultimate Hosting is $2.80/month. The original price is $4.00/month, and the 3-year billing total shown is $100.80.',
+      evidence: price.chunks,
+      calculation: price.calculation,
+      fallback: 'Fallback',
+    })).toEqual({ ok: true })
   })
 
   it('distinguishes true monthly billing from yearly discounted monthly equivalents', () => {
