@@ -280,7 +280,7 @@ export async function generateChatbotAnswer(args: {
     if (args.requireProvider) {
       return { status: 'skipped', answer: '', reason: 'ai_provider_missing', usedChunks: args.chunks, providerConfigured }
     }
-    const preview = formatExtractiveKnowledgeAnswer(question, args.chunks, args.calculation) ?? formatKnowledgePreviewAnswer(question, args.chunks[0])
+    const preview = formatFallbackKnowledgeAnswer(question, args.chunks, args.calculation)
     return {
       status: 'answered',
       answer: preview,
@@ -293,7 +293,7 @@ export async function generateChatbotAnswer(args: {
   try {
     const answer = await requestProviderAnswer({ providerConfig, args, question, fallback })
     if (!answer.content) {
-      const preview = formatExtractiveKnowledgeAnswer(question, args.chunks, args.calculation)
+      const preview = formatFallbackKnowledgeAnswer(question, args.chunks, args.calculation)
       if (preview) {
         return {
           status: 'answered',
@@ -306,6 +306,18 @@ export async function generateChatbotAnswer(args: {
       return fallbackResult(answer.errorReason ?? 'empty_ai_response', args.chunks, { providerError: answer.providerError })
     }
     const trimmedAnswer = formatForWhatsApp(answer.content, args.responseIsRTL)
+    if (looksLikeModelUncertainty(trimmedAnswer, fallback)) {
+      const preview = formatFallbackKnowledgeAnswer(question, args.chunks, args.calculation)
+      if (preview && preview !== fallback) {
+        return {
+          status: 'answered',
+          answer: preview,
+          reason: 'model_uncertainty_knowledge_preview',
+          usedChunks: args.chunks,
+          providerConfigured,
+        }
+      }
+    }
     const validation = validateGroundedAnswer({
       answer: trimmedAnswer,
       evidence: args.chunks,
@@ -329,12 +341,34 @@ export async function generateChatbotAnswer(args: {
         return { status: 'answered', answer: formattedRetry, reason: 'answered_after_guardrail_retry', usedChunks: args.chunks, providerConfigured }
       }
       const retryReason = retryAnswer.errorReason ?? (retryValidation.ok ? validation.reason : retryValidation.reason)
+      const preview = formatFallbackKnowledgeAnswer(question, args.chunks, args.calculation)
+      if (preview && preview !== fallback) {
+        return {
+          status: 'answered',
+          answer: preview,
+          reason: `${retryReason}_knowledge_preview`,
+          usedChunks: args.chunks,
+          providerConfigured,
+        }
+      }
       return fallbackResult(retryReason, args.chunks, {
         providerError: retryAnswer.providerError,
         guardrailReason: retryValidation.ok ? validation.reason : retryValidation.reason,
       })
     }
-    if (trimmedAnswer === fallback) return fallbackResult('model_fallback', args.chunks)
+    if (trimmedAnswer === fallback) {
+      const preview = formatFallbackKnowledgeAnswer(question, args.chunks, args.calculation)
+      if (preview && preview !== fallback) {
+        return {
+          status: 'answered',
+          answer: preview,
+          reason: 'model_fallback_knowledge_preview',
+          usedChunks: args.chunks,
+          providerConfigured,
+        }
+      }
+      return fallbackResult('model_fallback', args.chunks)
+    }
     return { status: 'answered', answer: trimmedAnswer, reason: 'answered', usedChunks: args.chunks, providerConfigured }
   } catch (error) {
     const providerError = providerConfig
@@ -447,6 +481,8 @@ function formatExtractiveKnowledgeAnswer(
     .map((line) => line.replace(/^-\s*/, '').trim())
     .filter(Boolean)
 
+  if (!guidanceSupportsQuestion(question, lines)) return null
+
   const categoryOffers = readGuidanceValue(lines, 'Matching offers found:')
   if (categoryOffers) {
     const offers = categoryOffers.split(/\s+\|\s+/).map((offer) => offer.trim()).filter(Boolean).slice(0, 8)
@@ -552,9 +588,51 @@ function formatExtractiveKnowledgeAnswer(
   return null
 }
 
+function formatFallbackKnowledgeAnswer(
+  question: string,
+  chunks: readonly string[],
+  calculation?: CalculationResult | null,
+): string {
+  const sourceChunks = chunks.filter((chunk) => !chunk.startsWith('Derived fact guidance from selected source evidence:'))
+  const sourcePreview = formatKnowledgePreviewAnswer(question, (sourceChunks.length > 0 ? sourceChunks : chunks).join('\n\n'))
+  const guidancePreview = formatExtractiveKnowledgeAnswer(question, chunks, calculation)
+  if (sourceChunks.length > 0 && shouldPreferSourcePreview(question)) {
+    return sourcePreview || guidancePreview || trimForWhatsApp(chunks[0] ?? '')
+  }
+  return guidancePreview || sourcePreview || trimForWhatsApp(chunks[0] ?? '')
+}
+
+function shouldPreferSourcePreview(question: string): boolean {
+  return /(?:\b(?:original|discounted|discount|monthly|yearly|annual|two years?|three years?|specs?|included|features?|test ip|starting price|cheapest|list|compare|email|whatsapp|phone|contact|ticket|company|legal|owner|number)\b|[23]-year)/i.test(question)
+}
+
+function looksLikeModelUncertainty(answer: string, fallback: string): boolean {
+  if (!answer || answer === fallback) return true
+  return /\b(?:not sure|don[’']?t see|do not see|don[’']?t have|do not have|not available|not listed|cannot find|can[’']?t find)\b/i.test(answer)
+}
+
 function readGuidanceValue(lines: readonly string[], prefix: string): string | null {
   const line = lines.find((item) => item.toLowerCase().startsWith(prefix.toLowerCase()))
   return line?.slice(prefix.length).trim() || null
+}
+
+function guidanceSupportsQuestion(question: string, lines: readonly string[]): boolean {
+  const text = lines.join(' ').toLowerCase()
+  const required = extractPreviewTerms(question).filter((term) =>
+    /^(?:x\d+|\d+gb|m\d+|r\d+|x\d{4}|karachi|singapore|premium|ultimate|starter|business|basic|pro|dedicated|reseller|n8n|vps)$/i.test(term),
+  )
+  for (const term of required) {
+    if (!text.includes(term.toLowerCase())) return false
+  }
+  const duration = question.match(/\b(?:1-year|2-year|3-year|one year|two years?|three years?)\b/i)?.[0]
+  if (duration) {
+    const normalized = duration.toLowerCase()
+      .replace('one year', '1-year')
+      .replace(/two years?/, '2-year')
+      .replace(/three years?/, '3-year')
+    if (!text.includes(normalized) && !text.includes(normalized.replace('-', ' '))) return false
+  }
+  return true
 }
 
 function splitKnowledgeIntoSearchBlocks(text: string): string[] {
@@ -640,23 +718,202 @@ function looksLikeBusinessKnowledgeBlock(value: string): boolean {
 function formatKnowledgePreviewAnswer(question: string, chunk: string): string {
   if (!isStructuredBusinessQuestion(question)) return trimForWhatsApp(chunk)
 
-  const lines = chunk
+  const relevantSection = selectRelevantKnowledgeSections(question, chunk)
+  const sourceText = relevantSection || chunk
+  const lines = sourceText
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((line) => !/^url:/i.test(line) && !/^page:/i.test(line))
+    .filter((line) => !/^(url|page|chunk id|source|heading):/i.test(line))
+    .filter((line) => !/^(full active workspace knowledge fallback context|use only the facts present below|if the requested fact is not present|\[full source \d+\])/i.test(line))
+    .filter((line) => !/\b(?:do not answer|do not use|should generally not be used|not be used for core customer answers)\b/i.test(line))
+    .filter((line) => !(/\bn8n\b/i.test(question) && /\breseller\b/i.test(line) && !/\bn8n\b/i.test(line)))
 
-  const heading = lines.find((line) => /^#{2,4}\s+/.test(line))?.replace(/^#{2,4}\s+/, '')
+  const heading = lines.find((line) => /^#{2,4}\s+/.test(line))?.replace(/^#{2,4}\s+/, '') ??
+    lines.find((line) => /^Plan name:\s*/i.test(line))?.replace(/^Plan name:\s*/i, '')
   const bullets = lines
-    .filter((line) => /^[-*]\s+/.test(line) || /(\$|£|€|₹|rs\.?|pkr|usd|\/mo|monthly|yearly|ram|cpu|storage|core|gb|tb)/i.test(line))
-    .slice(0, 8)
+    .filter((line) => previewLineHasAnswerFact(line) || scorePreviewLine(question, line) >= 16)
+    .sort((left, right) => scorePreviewLine(question, right) - scorePreviewLine(question, left))
+    .slice(0, 10)
     .map((line) => line.replace(/^[-*]\s+/, '- '))
 
   if (heading || bullets.length > 0) {
     return trimForWhatsApp([heading ? `*${heading}*` : '', ...bullets].filter(Boolean).join('\n'))
   }
 
-  return trimForWhatsApp(chunk)
+  const requestedVariantCodes = extractPreviewVariantCodes(question)
+  if (requestedVariantCodes.length > 0 && requestedVariantCodes.some((code) => !previewContainsTerm(sourceText.toLowerCase(), code))) {
+    return `The source does not provide details for ${requestedVariantCodes.join(', ')}.`
+  }
+
+  return trimForWhatsApp(sourceText)
+}
+
+function previewLineHasAnswerFact(line: string): boolean {
+  return /^[-*]\s+/.test(line) ||
+    /(\$|£|€|₹|rs\.?|pkr|usd|\/mo|monthly|yearly|billing|discount|ram|cpu|storage|core|gb|tb|nvme|email|whatsapp|wa\.me|support|ticket|company|number|legal|\b\d{1,3}(?:\.\d{1,3}){3}\b)/i.test(line)
+}
+
+function selectRelevantKnowledgeSections(question: string, text: string): string | null {
+  const rawSections = text
+    .replace(/\r\n/g, '\n')
+    .replace(/\s+(?=(?:[A-Z]{1,4}\d{3,}[A-Z0-9-]*\s+[A-Z][A-Za-z0-9-]*)\b)/g, '\n')
+    .split(/\n(?=(?:#{1,6}\s+|[-–]{5,}|\d+(?:\.\d+)+\s+[^\n]+|Q:\s*|Plan name:|Category:|Support email:|Sales email:|WhatsApp|VPS locations|Dedicated server|Refund|Privacy|Terms))/i)
+    .flatMap((section) => section.split(/\n(?=[A-Z]{1,4}\d{3,}[A-Z0-9-]*\s+[^\n]+)/))
+    .map((section) => section.trim())
+    .filter((section) => section.length >= 20)
+  const sections = mergePreviewHeadingFragments(rawSections)
+  if (sections.length === 0) return null
+
+  const terms = extractPreviewTerms(question)
+  const scored = sections
+    .map((section) => ({ section, score: scorePreviewSection(section, terms, question) }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score || left.section.length - right.section.length)
+
+  if (scored.length === 0) return null
+  const wantsMultiple = /\b(list|all|compare|which|what services|plans|prices)\b/i.test(question)
+  return scored
+    .slice(0, wantsMultiple ? 5 : 1)
+    .map((item) => item.section)
+    .join('\n\n')
+}
+
+function mergePreviewHeadingFragments(sections: readonly string[]): string[] {
+  const merged: string[] = []
+  for (let index = 0; index < sections.length; index += 1) {
+    const section = sections[index] ?? ''
+    if (looksLikePreviewHeadingFragment(section)) {
+      const parts = [section]
+      while (index + 1 < sections.length) {
+        const next = sections[index + 1] ?? ''
+        parts.push(next)
+        index += 1
+        if (!looksLikePreviewHeadingFragment(next)) break
+      }
+      while (index + 1 < sections.length && shouldAttachPreviewPlanFragment(parts.join('\n'), sections[index + 1] ?? '')) {
+        parts.push(sections[index + 1] ?? '')
+        index += 1
+      }
+      merged.push(parts.join('\n'))
+      continue
+    }
+    if (/^Plan name:/i.test(section)) {
+      const parts = [section]
+      while (index + 1 < sections.length && shouldAttachPreviewPlanFragment(parts.join('\n'), sections[index + 1] ?? '')) {
+        parts.push(sections[index + 1] ?? '')
+        index += 1
+      }
+      merged.push(parts.join('\n'))
+      continue
+    }
+    merged.push(section)
+  }
+  return merged
+}
+
+function shouldAttachPreviewPlanFragment(current: string, next: string): boolean {
+  if (!/\bPlan name:/i.test(current)) return false
+  if (looksLikePreviewHeadingFragment(next)) return false
+  if (/^(?:Q:|Plan name:|Support email:|Sales email:|WhatsApp|VPS locations|Dedicated server|Refund|Privacy|Terms)\b/i.test(next.trim())) return false
+  return true
+}
+
+function looksLikePreviewHeadingFragment(section: string): boolean {
+  const lines = section.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+  if (lines.length > 3 || section.length > 220) return false
+  if (/^(?:#{1,6}\s+|[-â€“]{5,}|\d+(?:\.\d+)+\s+)/i.test(lines[0] ?? '')) return true
+  if (lines.some((line) => previewLineHasAnswerFact(line))) return false
+  return false
+}
+
+function scorePreviewSection(section: string, terms: readonly string[], question: string): number {
+  const sanitizedSection = section
+    .split(/\n+/)
+    .filter((line) => !/\b(?:do not answer|do not use|should generally not be used|not be used for core customer answers)\b/i.test(line))
+    .join('\n')
+  const haystack = sanitizedSection.toLowerCase()
+  let score = terms.reduce((sum, term) => sum + (previewContainsTerm(haystack, term) ? 10 : 0), 0)
+  const lead = haystack.slice(0, 300)
+  const requestedVariantCodes = extractPreviewVariantCodes(question)
+  if (requestedVariantCodes.length > 0 && requestedVariantCodes.some((code) => !previewContainsTerm(haystack, code))) score -= 200
+  score += terms.reduce((sum, term) => sum + (previewContainsTerm(lead, term) ? 18 : 0), 0)
+  if (terms.length > 1 && terms.every((term) => previewContainsTerm(lead, term))) score += 45
+  const labelTerms = extractPreviewLabelTerms(question)
+  if (labelTerms.length > 0) {
+    const leadLabelMatches = labelTerms.filter((term) => previewContainsTerm(lead, term)).length
+    const bodyLabelMatches = labelTerms.filter((term) => previewContainsTerm(haystack, term)).length
+    score += leadLabelMatches * 22 + bodyLabelMatches * 4
+    if (labelTerms.length > 1 && labelTerms.every((term) => previewContainsTerm(lead, term))) score += 70
+    if (/\b(?:specs?|included|features?|resources?|price|pricing|cost|monthly|yearly|annual)\b/i.test(question)) {
+      const requiredLeadMatches = Math.min(2, labelTerms.length)
+      if (leadLabelMatches < requiredLeadMatches) score -= (requiredLeadMatches - leadLabelMatches) * 30
+    }
+  }
+  const phrase = terms.join(' ')
+  if (phrase.length > 3 && haystack.includes(phrase)) score += 25
+  if (phrase.length > 3 && lead.includes(phrase)) score += 40
+  if (isPricingQuestion(question) && /(?:price|monthly|yearly|billing|discount|total|[$£€]|usd|pkr|rs\.?)/i.test(sanitizedSection)) score += 12
+  if (/\b(?:starting|starts?\s+at|starting\s+price|cheapest)\b/i.test(question) && /\b(?:starter|free|entry|basic|starting\s+at|starts?\s+at|cheapest)\b/i.test(lead)) score += 45
+  if (/\b(?:do not answer|do not use|should generally not be used|not be used for core customer answers)\b/i.test(section)) score -= 80
+  if (/\bn8n\b/i.test(question) && /\breseller\b/i.test(section)) score -= 90
+  if (!/\breseller\b/i.test(question) && /\breseller\b/i.test(lead)) score -= 70
+  if (/\bspecs?|included|features?|resources?\b/i.test(question) && /\b(cpu|ram|storage|nvme|included|features?|resources?|domains?|email|ssl|backup)\b/i.test(section)) score += 12
+  if (/\b(location|test ip|ip)\b/i.test(question) && /\b\d{1,3}(?:\.\d{1,3}){3}\b/.test(section)) score += 12
+  if (/\bcontact|email|whatsapp|support|ticket\b/i.test(question) && /\b(email|whatsapp|support|ticket|contact|wa\.me|@)\b/i.test(section)) score += 12
+  return score
+}
+
+function scorePreviewLine(question: string, line: string): number {
+  const haystack = line.toLowerCase()
+  let score = extractPreviewTerms(question).reduce((sum, term) => sum + (previewContainsTerm(haystack, term) ? 10 : 0), 0)
+  if (isPricingQuestion(question) && /(?:price|monthly|yearly|billing|discount|total|[$£€]|usd|pkr|rs\.?)/i.test(line)) score += 8
+  if (/\bspecs?|included|features?|resources?\b/i.test(question) && /\b(cpu|ram|storage|nvme|included|features?|resources?|domains?|email|ssl|backup)\b/i.test(line)) score += 8
+  if (/\b(location|test ip|ip)\b/i.test(question) && /\b\d{1,3}(?:\.\d{1,3}){3}\b/.test(line)) score += 8
+  if (/\b(company|legal|number|owner)\b/i.test(question) && /\b(company|legal|number|ltd|limited|owner)\b/i.test(line)) score += 8
+  if (/\bn8n\b/i.test(question) && /\bn8n\b/i.test(line)) score += 10
+  if (/\bvps\b/i.test(question) && /\bvps\b/i.test(line)) score += 10
+  if (/\bdedicated\b/i.test(question) && /\bdedicated\b/i.test(line)) score += 10
+  if (/\b(email|whatsapp|phone|contact|ticket|support)\b/i.test(question) && /\b(email|whatsapp|phone|contact|ticket|support|wa\.me|@)\b/i.test(line)) score += 8
+  if (/\b(better|self-host(?:ing)?|technical|knowledge|workflows?|hardware|fails?|replace|high-traffic|cheapest|upgrade)\b/i.test(question) && /\b(yes|no|managed|self-host(?:ing)?|technical|knowledge|workflows?|hardware|fails?|replace|dedicated|high-traffic|cheapest|upgrade|support)\b/i.test(line)) score += 12
+  return score
+}
+
+function previewContainsTerm(haystack: string, term: string): boolean {
+  if (!term) return false
+  if (/^[a-z0-9-]+$/i.test(term)) return new RegExp(`(?:^|[^a-z0-9])${escapeRegex(term)}(?:$|[^a-z0-9])`, 'i').test(haystack)
+  return haystack.includes(term)
+}
+
+function extractPreviewTerms(question: string): string[] {
+  const stopWords = new Set([
+    'what', 'which', 'who', 'how', 'can', 'does', 'do', 'are', 'is', 'the', 'your', 'you',
+    'for', 'with', 'and', 'only', 'one', 'buy', 'give', 'me', 'all', 'list', 'price',
+    'monthly', 'yearly', 'year', 'month', 'total', 'plan', 'plans',
+  ])
+  const hardTerms = Array.from(question.toLowerCase().matchAll(/\b(?:x\d{1,4}|\d+\s*-?\s*years?|monthly|yearly|annual|\d+\s*(?:gb|tb|mb|core|cores|cpu|ram))\b/g))
+    .map((match) => (match[0] ?? '').replace(/\s+/g, '').replace(/years?$/, 'year'))
+    .filter(Boolean)
+  return [...new Set([...hardTerms, ...tokenize(question).filter((term) => !stopWords.has(term))])]
+}
+
+function extractPreviewVariantCodes(question: string): string[] {
+  return [...new Set(Array.from(question.toLowerCase().matchAll(/\b[a-z]{1,4}\d{3,}[a-z0-9-]*\b/g)).map((match) => match[0] ?? '').filter(Boolean))]
+}
+
+function extractPreviewLabelTerms(question: string): string[] {
+  const genericTerms = new Set([
+    'what', 'which', 'who', 'how', 'can', 'does', 'do', 'are', 'is', 'the', 'your', 'you',
+    'for', 'with', 'and', 'only', 'one', 'two', 'three', 'buy', 'give', 'me', 'all', 'list',
+    'price', 'pricing', 'cost', 'monthly', 'yearly', 'annual', 'year', 'month', 'total',
+    'plan', 'plans', 'package', 'packages', 'spec', 'specs', 'feature', 'features',
+    'included', 'include', 'includes', 'resources', 'billing', 'discount', 'original',
+    'current', 'difference', 'compare', 'best', 'good', 'starting', 'cheapest',
+  ])
+  const hardTerms = Array.from(question.toLowerCase().matchAll(/\b(?:x\d{1,4}|\d+\s*-?\s*years?|\d+\s*(?:gb|tb|mb|core|cores|cpu|ram))\b/g))
+    .map((match) => (match[0] ?? '').replace(/\s+/g, '').replace(/years?$/, 'year'))
+    .filter(Boolean)
+  return [...new Set([...hardTerms, ...tokenize(question).filter((term) => !genericTerms.has(term))])]
 }
 
 function extractIdentityTerms(question: string): string[] {
@@ -690,7 +947,7 @@ function scoreIdentityTerms(haystack: string, identityTerms: readonly string[]):
 function isStructuredBusinessQuestion(question: string): boolean {
   return (
     isPricingQuestion(question) ||
-    /\b(hours?|open|delivery|shipping|refund|return|location|address|booking|appointment|duration|includes?)\b/i.test(question)
+    /\b(hours?|open|delivery|shipping|refund|return|location|address|booking|appointment|duration|includes?|included|features?|specs?|test ip|ip|support|email|whatsapp|phone|contact|ticket|company|legal|number|owner|connect|integrations?|gmail|slack|openai|apis?|webhooks?|better|self-host(?:ing)?|technical|knowledge|workflows?|hardware|fails?|replace|dedicated|server|servers|high-traffic|cheapest|upgrade)\b/i.test(question)
   )
 }
 

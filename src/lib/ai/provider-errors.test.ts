@@ -25,6 +25,14 @@ describe('safe AI provider error parsing', () => {
 
   it('classifies rate limits, invalid keys, and invalid models generically', () => {
     expect(buildSafeProviderError({
+      status: 402,
+      provider: 'openrouter',
+      model: 'openai/gpt-4o-mini',
+      requestType: 'chat',
+      errorMessage: 'Payment required',
+    })).toMatchObject({ category: 'provider_quota_or_billing', reason: 'provider_quota_or_billing' })
+
+    expect(buildSafeProviderError({
       status: 429,
       provider: 'openrouter',
       model: 'openai/gpt-4o-mini',

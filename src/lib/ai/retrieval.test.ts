@@ -31,6 +31,46 @@ describe('AI hybrid retrieval', () => {
     expect(results.every((result) => result.evidence[0]?.id === 'pricing')).toBe(true)
   })
 
+  it('does not treat FAQ-style question labels as pricing offer entities', async () => {
+    const result = await hybridRetrieveFromRows({
+      question: 'What is n8n Pro 8GB monthly price?',
+      rows: [
+        {
+          id: 'faq-noise',
+          source_id: 'source-1',
+          source,
+          chunk_text: [
+            'Q: What are Reseller Pro specs?',
+            'Reseller Pro price is $13.99/month and includes 4 Core CPU, 8GB RAM, 60GB NVMe.',
+          ].join('\n'),
+          structured_facts: {
+            pricing_offers: [{
+              entity: 'What are Reseller Pro specs?',
+              entity_name: 'What are Reseller Pro specs?',
+              product_family: 'reseller specs',
+              current_price: { amount: 13.99, currency: 'USD', period: 'monthly', text: '$13.99/month' },
+              source_text: 'Q: What are Reseller Pro specs? Reseller Pro price is $13.99/month.',
+            }],
+          },
+        },
+        {
+          id: 'n8n-pro',
+          source_id: 'source-1',
+          source,
+          chunk_text: [
+            'Plan name: n8n Pro 8GB',
+            'Monthly/list price without yearly discount: $4.00/month',
+            'Specs: 4 Core CPU, 8GB RAM, 80GB NVMe Storage',
+          ].join('\n'),
+        },
+      ],
+    })
+
+    expect(result.debug.selectedOffer?.entity).not.toBe('What are Reseller Pro specs?')
+    expect(result.chunks.join('\n')).toContain('n8n Pro 8GB')
+    expect(result.chunks.join('\n')).toContain('$4.00/month')
+  })
+
   it('reranks exact and answer-bearing evidence above weak keyword and navigation matches', () => {
     const base = hybridRetrieveFromRows({
       question: 'refund policy',
@@ -646,7 +686,8 @@ describe('AI hybrid retrieval', () => {
 
     expect(result.fallbackReason).toBeNull()
     expect(result.calculation).toMatchObject({ status: 'computed', value: 5.4, unit: 'USD/monthly' })
-    expect(result.chunks.join('\n')).toContain('Selected requested offer/entity')
+    expect(result.chunks.join('\n')).toContain('Full active workspace knowledge fallback context')
+    expect(result.chunks.join('\n')).toContain('Computed fact: 5.4 USD/monthly')
   })
 
   it('rejects final answers that mix facts from neighboring offers or unrelated products', () => {
@@ -912,7 +953,7 @@ describe('AI hybrid retrieval', () => {
 
     expect(result.fallbackReason).toBeNull()
     expect(result.debug.selectedOffer?.sourceChunkId).toBe('vps')
-    expect(result.chunks.join('\n')).toContain('USD 7.04/monthly')
+    expect(result.chunks.join('\n')).toContain('$7.04')
     expect(validateGroundedAnswer({
       question: '8gb ram vps price',
       answer: 'Wagon VPS x8 is $7.04/mo. It includes 4 Core CPU, 8GB RAM, and 60GB NVMe.',

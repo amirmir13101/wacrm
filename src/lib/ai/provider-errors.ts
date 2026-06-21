@@ -198,7 +198,7 @@ function classifyProviderError(status: number | null, combined: string): AiFailu
   if (/\b(model_not_found|invalid_model|model not found|does not exist|not available|model access)\b/.test(combined)) {
     return 'provider_invalid_model'
   }
-  if (/\b(insufficient_quota|quota|billing|payment|required balance|credits? exhausted|credit balance)\b/.test(combined)) {
+  if (status === 402 || /\b(insufficient_quota|quota|billing|payment|required balance|credits? exhausted|credit balance)\b/.test(combined)) {
     return 'provider_quota_or_billing'
   }
   if (status === 429 || /\b(rate limit|rate_limit|too many requests|temporarily overloaded)\b/.test(combined)) {

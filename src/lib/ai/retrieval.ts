@@ -576,7 +576,7 @@ function mergeExpandedRetrievalResults(args: {
       : null
   const factGuidanceBlock = buildFactGuidanceBlock(analysis, reranked)
   const primary = args.results[0]
-  const shouldTryFullContextFallback = shouldAttemptFullContextFallback(fallbackReason, analysis, reranked)
+  const shouldTryFullContextFallback = shouldAttemptFullContextFallback(fallbackReason, analysis, reranked, calculation)
   const fullContextFallback = shouldTryFullContextFallback
     ? buildFullContextFallback({
         analysis,
@@ -594,8 +594,11 @@ function mergeExpandedRetrievalResults(args: {
     !calculation && calculationRequested && fullContextFallback.outcome === 'succeeded'
       ? buildFullContextCalculationCandidates(args.fullContextSources ?? buildFullContextSourcesFromRows(args.rows), analysis, args.limit ?? MAX_EVIDENCE)
       : []
+  const discardPreFullContextCalculation = fullContextFallback.outcome === 'succeeded' && (readRequestedYearCount(analysis.question) ?? 0) > 1
   const effectiveCalculation =
-    calculation ?? (fullContextCalculationCandidates.length > 0 ? calculateFromEvidence(analysis, fullContextCalculationCandidates) : null)
+    discardPreFullContextCalculation
+      ? null
+      : calculation ?? (fullContextCalculationCandidates.length > 0 ? calculateFromEvidence(analysis, fullContextCalculationCandidates) : null)
   const recoveredByFullContext = fullContextFallback.outcome === 'succeeded' &&
     (!calculationRequested || effectiveCalculation?.status === 'computed')
   const effectiveFallbackReason = recoveredByFullContext ? null : fallbackReason
@@ -606,6 +609,9 @@ function mergeExpandedRetrievalResults(args: {
   const effectiveFactGuidanceBlock = factGuidanceBlock ?? (
     fullContextCalculationCandidates.length > 0 ? buildFactGuidanceBlock(analysis, fullContextCalculationCandidates) : null
   )
+  const safeFactGuidanceBlock = fullContextFallback.outcome === 'succeeded'
+    ? null
+    : effectiveFactGuidanceBlock
   if (args.workspaceId && fullContextFallback.attempted) {
     console.info('[ai-chatbot] full-context fallback', {
       workspaceId: args.workspaceId,
@@ -624,7 +630,7 @@ function mergeExpandedRetrievalResults(args: {
     chunks: [
       ...fullContextChunks,
       ...(fullContextChunks.length > 0 ? [] : reranked.map(formatEvidenceBlock)),
-      ...(effectiveFactGuidanceBlock ? [effectiveFactGuidanceBlock] : []),
+      ...(safeFactGuidanceBlock ? [safeFactGuidanceBlock] : []),
       ...(effectiveCalculationBlock ? [effectiveCalculationBlock] : []),
     ],
     calculation: effectiveCalculation,
@@ -1034,7 +1040,7 @@ function detectRetrievalIntents(question: string): RetrievalIntents {
     policy: /\b(refund|refunds|refundable|nonrefundable|non-refundable|return|returns|exchange|cancel|cancellation|money back|guarantee|terms?|policy|policies|privacy|warranty|retain|retention|keep data|customer data)\b/.test(normalized),
     hours: /\b(hours?|open|close|closed|closing|timing|schedule|when are you open)\b/.test(normalized),
     contact: /\b(contact|support|email|phone|call|whatsapp|help desk|ticket|live chat|human support|real human)\b/.test(normalized),
-    location: /\b(location|address|where|office|branch|map|city|country)\b/.test(normalized),
+    location: /\b(location|address|where|office|branch|map|city|country|test ip|test ips|\bip\b)\b/.test(normalized),
     faq: /\b(faq|question|help|how do i|can i|do you|does it|is there)\b/.test(normalized),
     productOrService: /\b(product|products|service|services|plan|plans|package|packages|menu|item|items|course|courses|treatment|appointment|booking|available|sell|sells|offer|offers|include|includes|feature|features|spec|specs)\b/.test(normalized),
     company: /\b(company|legal|entity|registration|registered|company number|incorporated|limited|ltd|llc|inc)\b/.test(normalized),
@@ -1280,7 +1286,7 @@ function extractRequestedEntityPhrase(question: string): string | null {
 
 function cleanRequestedEntityPhrase(value: string): string | null {
   const cleaned = value
-    .replace(/\b(?:the|a|an|of|for|plan|plans|package|packages|service|services|product|products|item|items|course|courses|menu|treatment|appointment|price|prices|pricing|cost|costs|fee|fees|rate|rates|yearly|annual|monthly|weekly|daily|discounted|original|regular|current|total|billed|billing|list|all|what|is|are|should|be|if)\b/g, ' ')
+    .replace(/\b(?:the|a|an|of|for|and|plan|plans|package|packages|service|services|product|products|item|items|course|courses|menu|treatment|appointment|price|prices|pricing|cost|costs|fee|fees|rate|rates|yearly|annual|monthly|weekly|daily|discounted|original|regular|current|total|billed|billing|list|all|what|is|are|should|be|if|buy|only|one|two|three)\b/g, ' ')
     .replace(/\b\d+(?:[.,]\d+)?\s*(?:usd|pkr|eur|gbp|\$|rs\.?)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -1398,6 +1404,32 @@ function findAnswerFactIndexes(text: string, analysis: RetrievalQuestionAnalysis
   if (analysis.intents.ownership) patterns.push(/\b(owner|owned by|founder|founded by|operated by|behind|company behind)\b/gi)
   if (analysis.intents.date) patterns.push(/\b\d{4}-\d{2}-\d{2}\b|\b(?:published|updated|modified|lastmod|page date|sitemap|founded|launched|created)\b/gi)
   return patterns.flatMap((pattern) => [...text.matchAll(pattern)].map((match) => match.index ?? 0))
+}
+
+function selectedTextHasRequestedTermsNearAnswerFact(
+  selectedText: string,
+  requestedTerms: readonly string[],
+  analysis: RetrievalQuestionAnalysis,
+): boolean {
+  const distinctiveTerms = requestedTerms.filter((term) =>
+    !/^(?:hosting|server|servers|plan|plans|price|pricing|specs?|and)$/.test(term),
+  )
+  const terms = distinctiveTerms.length > 0 ? distinctiveTerms : requestedTerms
+  if (terms.length === 0) return true
+  const answerIndexes = findAnswerFactIndexes(selectedText, analysis)
+  if (answerIndexes.length === 0) return false
+  return answerIndexes.some((answerIndex) => {
+    const window = selectedText.slice(Math.max(0, answerIndex - 250), answerIndex + 250)
+    if (!terms.every((term) => new RegExp(`(?:^|[^a-z0-9])${escapeRegex(term)}(?:$|[^a-z0-9])`, 'i').test(window))) return false
+    const requestedTier = terms.find((term) => CATALOG_TIER_TERMS.has(term) || GENERIC_PLAN_NAMES.has(term))
+    if (!requestedTier) return true
+    const closeAnswerWindow = selectedText.slice(Math.max(0, answerIndex - 120), answerIndex + 120)
+    const hasRequestedTierNearAnswer = new RegExp(`(?:^|[^a-z0-9])${escapeRegex(requestedTier)}(?:$|[^a-z0-9])`, 'i').test(closeAnswerWindow)
+    const conflictingTierNearAnswer = [...CATALOG_TIER_TERMS, ...GENERIC_PLAN_NAMES]
+      .filter((term) => term !== requestedTier && term.length >= 3)
+      .some((term) => new RegExp(`(?:^|[^a-z0-9])${escapeRegex(term)}(?:$|[^a-z0-9])`, 'i').test(closeAnswerWindow))
+    return hasRequestedTierNearAnswer || !conflictingTierNearAnswer
+  })
 }
 
 function scoreNoisePenalty(text: string, analysis: RetrievalQuestionAnalysis): number {
@@ -1603,7 +1635,15 @@ function shouldAttemptFullContextFallback(
   fallbackReason: string | null,
   analysis: RetrievalQuestionAnalysis,
   candidates: readonly RetrievalCandidate[],
+  calculation?: CalculationResult | null,
 ): boolean {
+  const hasHardVariantInQuestion = /\b(?:x\d{1,4}|\d+\s*(?:gb|tb|core|cores|cpu|ram))\b/i.test(analysis.question)
+  if (
+    calculation?.status === 'computed' &&
+    (readRequestedYearCount(analysis.question) ?? 0) <= 1 &&
+    !hasHardVariantInQuestion &&
+    analysis.offerScope.weakPlanNames.length === 0
+  ) return false
   if (
     fallbackReason &&
     analysis.offerScope.weakPlanNames.length > 0 &&
@@ -1615,7 +1655,121 @@ function shouldAttemptFullContextFallback(
   if (fallbackReason && new Set(['no_relevant_knowledge', 'cannot_compute', 'ambiguous_offer', 'weak_selected_evidence', 'family_mismatch', 'conflicting_facts']).has(fallbackReason)) {
     return true
   }
+  if (!fallbackReason && candidates.length > 0) {
+    const selectedText = candidates.map((candidate) => candidate.chunkText).join('\n').toLowerCase()
+    const hasAnswerBearingCandidate = candidates.some((candidate) => candidate.answerScore > 0)
+    if (analysis.intents.recommendation && hasAnswerBearingCandidate) return false
+    if (analysis.offerScope.weakPlanNames.length > 0) {
+      const missingWeakPlan = analysis.offerScope.weakPlanNames.some((name) => !selectedText.includes(name))
+      if (missingWeakPlan) return true
+    }
+    if (analysis.intents.location) {
+      const requestedLocationTerms = analysis.entityTerms.filter((term) =>
+        !/^(?:vps|location|locations|test|ips?|server|servers|hosting)$/.test(term),
+      )
+      if (requestedLocationTerms.length > 0 && requestedLocationTerms.some((term) => !selectedText.includes(term))) return true
+      if (/\b(?:list|all).*(?:locations?|test\s*ips?|ips?)\b/i.test(analysis.question) && !/\b\d{1,3}(?:\.\d{1,3}){3}\b/.test(selectedText)) return true
+    }
+    if (analysis.offerScope.answerMode === 'missing_or_ambiguous' && analysis.terms.length >= 2) return true
+    if (analysis.offerScope.answerMode === 'comparison' && (analysis.intents.pricing || !hasAnswerBearingCandidate)) return true
+    if (analysis.intents.pricing && /\b(?:starting|starts?\s+at|starting\s+price|cheapest)\b/i.test(analysis.question)) return true
+    const hasVariantCode = /\b[a-z]{0,4}x?\d{1,4}\b/i.test(analysis.question) || analysis.offerScope.requestedVariantSpecs.length > 0
+    const wantsExactLocationFact = analysis.intents.location && /\b(test\s*ip|ip)\b/i.test(analysis.question)
+    const wantsExactCatalogFact = /\b(cheapest|specs?|included|features?)\b/i.test(analysis.question)
+    const wantsIntegrationFact = /\b(integrations?|connect|gmail|slack|openai|apis?|webhooks?|zapier)\b/i.test(analysis.question)
+    const requestedYears = readRequestedYearCount(analysis.question)
+    if (requestedYears && requestedYears > 1) return true
+    if (wantsExactLocationFact) return true
+    if (wantsExactCatalogFact && !hasAnswerBearingCandidate) return true
+    if (wantsIntegrationFact && !/\b(integrations?|connect|gmail|slack|openai|apis?|webhooks?|zapier)\b/i.test(selectedText)) return true
+    if (analysis.offerScope.requestedFamily) {
+      const familyTerms = tokenize(analysis.offerScope.requestedFamily)
+      const selectedContainsFamily = familyTerms.length === 0 || familyTerms.every((term) => selectedText.includes(term))
+      const selectedContainsMoney = /(?:[$€£₹]|usd|pkr|rs\.?|\bprice\b|\bmonthly\b|\byearly\b|\/mo)/i.test(selectedText)
+      const selectedContainsRequestedSpecs = analysis.offerScope.requestedVariantSpecs.length > 0 &&
+        analysis.offerScope.requestedVariantSpecs.every((spec) => selectedText.replace(/\s+/g, '').includes(spec.replace(/\s+/g, '').toLowerCase()))
+      if (!analysis.offerScope.requestedEntity && selectedContainsRequestedSpecs && selectedContainsFamily && selectedContainsMoney) return false
+      const hasScopedStructuredOffer = candidates.some((candidate) =>
+        extractStructuredPricingOffersFromCandidate(candidate).some((offer) => scoreOfferFamilyMatch(analysis.offerScope.requestedFamily, offer) > 0),
+      )
+      const hasDistinctiveScopedOffer = candidates.some((candidate) =>
+        extractStructuredPricingOffersFromCandidate(candidate).some((offer) =>
+          scoreOfferFamilyMatch(analysis.offerScope.requestedFamily, offer) > 0 &&
+          offerHasDistinctiveRequestedLabelMatch(offer, analysis.offerScope),
+        ),
+      )
+      if (
+        hasDistinctiveScopedOffer &&
+        analysis.offerScope.answerMode === 'single_offer_exact' &&
+        (analysis.intents.pricing || /\b(specs?|included|features?|resources?)\b/i.test(analysis.question)) &&
+        (!analysis.offerScope.requestedEntity ||
+          selectedTextHasRequestedTermsNearAnswerFact(selectedText, tokenize(analysis.offerScope.requestedEntity).filter((term) => !PERIOD_WORDS.has(term)), analysis))
+      ) {
+        return false
+      }
+      if (
+        analysis.offerScope.requestedEntity &&
+        !hasDistinctiveScopedOffer &&
+        analysis.offerScope.answerMode === 'single_offer_exact' &&
+        (analysis.intents.pricing || /\b(specs?|included|features?|resources?)\b/i.test(analysis.question))
+      ) {
+        return true
+      }
+      if (analysis.offerScope.requestedEntity && !hasDistinctiveScopedOffer) {
+        const compactSelected = selectedText.replace(/\s+/g, '')
+        const compactRequested = analysis.offerScope.requestedEntity.toLowerCase().replace(/\s+/g, '')
+        if (compactRequested.length >= 4 && !compactSelected.includes(compactRequested)) return true
+      }
+      if (
+        analysis.offerScope.answerMode === 'single_offer_exact' &&
+        analysis.offerScope.requestedEntity &&
+        analysis.offerScope.requestedVariantSpecs.length > 0 &&
+        !selectedText.replace(/\s+/g, '').includes(analysis.offerScope.requestedEntity.toLowerCase().replace(/\s+/g, ''))
+      ) {
+        return true
+      }
+      if (analysis.offerScope.answerMode === 'single_offer_exact' && analysis.offerScope.requestedEntity && analysis.intents.pricing) {
+        const requestedTerms = tokenize(analysis.offerScope.requestedEntity).filter((term) => !PERIOD_WORDS.has(term))
+        if (!selectedTextHasRequestedTermsNearAnswerFact(selectedText, requestedTerms, analysis)) return true
+        const nearPricePattern = requestedTerms.length > 0
+          ? new RegExp(`${requestedTerms.map(escapeRegex).join('[\\s\\S]{0,80}')}[\\s\\S]{0,500}(?:[$€£₹]|usd|pkr|rs\\.?|price|monthly|yearly|billing|total)`, 'i')
+          : null
+        if (nearPricePattern && !nearPricePattern.test(selectedText)) return true
+      }
+      if (analysis.offerScope.answerMode === 'single_offer_exact' && analysis.offerScope.requestedEntity && /\b(specs?|included|features?|resources?)\b/i.test(analysis.question)) {
+        const requestedTerms = tokenize(analysis.offerScope.requestedEntity).filter((term) => !PERIOD_WORDS.has(term))
+        if (!selectedTextHasRequestedTermsNearAnswerFact(selectedText, requestedTerms, analysis)) return true
+        const missingTierLabel = analysis.offerScope.weakPlanNames.some((name) =>
+          !new RegExp(`(?:plan\\s+name\\s*:|#{1,6}\\s+|\\b\\d+(?:\\.\\d+)+\\s+)[^\\n]{0,120}\\b${escapeRegex(name)}\\b`, 'i').test(selectedText),
+        )
+        if (missingTierLabel) return true
+        const nearSpecPattern = requestedTerms.length > 0
+          ? new RegExp(`${requestedTerms.map(escapeRegex).join('[\\s\\S]{0,80}')}[\\s\\S]{0,500}(?:cpu|ram|memory|storage|nvme|ssd|core|cores|included|features?|resources?)`, 'i')
+          : null
+        if (nearSpecPattern && !nearSpecPattern.test(selectedText)) return true
+      }
+      if (analysis.offerScope.answerMode === 'category_pricing_list' && hasVariantCode) return true
+      if (analysis.offerScope.answerMode === 'category_pricing_list' && !hasScopedStructuredOffer) return true
+      if ((analysis.offerScope.answerMode === 'category_pricing_list' || analysis.offerScope.answerMode === 'single_offer_exact') && (!selectedContainsFamily || !selectedContainsMoney)) {
+        return true
+      }
+    }
+    if (
+      !analysis.offerScope.requestedFamily &&
+      analysis.offerScope.answerMode === 'single_offer_exact' &&
+      analysis.offerScope.requestedEntity &&
+      (analysis.intents.pricing || /\b(specs?|included|features?|resources?)\b/i.test(analysis.question))
+    ) {
+      const requestedTerms = tokenize(analysis.offerScope.requestedEntity).filter((term) => !PERIOD_WORDS.has(term))
+      if (!selectedTextHasRequestedTermsNearAnswerFact(selectedText, requestedTerms, analysis)) return true
+    }
+  }
   if (!fallbackReason && analysis.offerScope.requestedFamily && candidates.length > 0 && analysis.offerScope.answerMode === 'single_offer_exact') {
+    if (analysis.offerScope.requestedEntity && (analysis.intents.pricing || /\b(specs?|included|features?|resources?)\b/i.test(analysis.question))) {
+      const selectedText = candidates.map((candidate) => candidate.chunkText).join('\n').toLowerCase()
+      const requestedTerms = tokenize(analysis.offerScope.requestedEntity).filter((term) => !PERIOD_WORDS.has(term))
+      if (!selectedTextHasRequestedTermsNearAnswerFact(selectedText, requestedTerms, analysis)) return true
+    }
     return !candidates.some((candidate) =>
       extractStructuredPricingOffersFromCandidate(candidate).some((offer) => scoreOfferFamilyMatch(analysis.offerScope.requestedFamily, offer) > 0),
     )
@@ -1739,10 +1893,10 @@ function fullContextLikelyContainsAnswer(analysis: RetrievalQuestionAnalysis, te
   if (analysis.intents.contact) {
     return /(?:https?:\/\/)?wa\.me\/\d+|whatsapp:\S+|tel:\s*\+?\d|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\+?\d[\d\s().-]{7,}\d/i.test(text)
   }
-  if (analysis.intents.pricing) return entityMatched && containsPriceFact(text) && !hasTextualSameLabelPriceConflict(text)
+  if (analysis.intents.pricing) return entityMatched && containsPriceFact(text)
   if (analysis.intents.policy) return entityMatched && /\b(policy|refund|return|exchange|cancel|cancellation|delivery|shipping|terms)\b/i.test(text)
   if (analysis.intents.hours) return /\b(hours?|open|closed?|monday|tuesday|wednesday|thursday|friday|saturday|sunday|am|pm)\b/i.test(text)
-  if (analysis.intents.location) return /\b(address|location|branch|street|road|city|country|office)\b/i.test(text)
+  if (analysis.intents.location) return /\b(address|location|branch|street|road|city|country|office|test\s*ips?)\b/i.test(text) || /\b\d{1,3}(?:\.\d{1,3}){3}\b/.test(text)
   if (analysis.intents.company || analysis.intents.ownership) {
     return /\b(company number|registration number|registered number|legal entity|operated by|owned by|founder|owner|behind)\b/i.test(text) || extractLegalEntityNames(text).length > 0
   }
@@ -1960,7 +2114,7 @@ function selectDurationDiscountForQuestion(
 
 function readRequestedYearCount(question: string): number | null {
   const normalized = question.toLowerCase()
-  const numeric = normalized.match(/\b(\d+(?:[.,]\d+)?)\s*(?:years?|yrs?)\b/)
+  const numeric = normalized.match(/\b(\d+(?:[.,]\d+)?)\s*-?\s*(?:years?|yrs?)\b/)
   if (numeric) return Number((numeric[1] ?? '').replace(',', '.'))
   if (/\b(one|a|an|annual|yearly)\s+(?:year|yr|price|billing|plan|basis)?\b/.test(normalized) || /\bfor\s+one\s+year\b/.test(normalized)) return 1
   return null
@@ -2472,6 +2626,7 @@ function offerHasDistinctiveRequestedLabelMatch(offer: StructuredPricingOffer, s
   )
   if (distinctive.length === 0) return true
   const labelHaystack = normalizeEntityKey(structuredOfferLabelText(offer))
+  if (scope.weakPlanNames.length > 0 && !scope.weakPlanNames.some((name) => entityContainsTerm(labelHaystack, name))) return false
   const hardTerms = distinctive.filter((term) => isVariantCodeEntityTerm(term) || isSpecEntityTerm(term) || /\d/.test(term))
   if (hardTerms.length > 0) return hardTerms.some((term) => entityContainsTerm(labelHaystack, term))
   return distinctive.some((term) => entityContainsTerm(labelHaystack, term))
@@ -3215,11 +3370,15 @@ function buildStructuredPricingOffer(block: string, sourceChunkId: string): Stru
 function cleanOfferEntityName(value: string): string | null {
   const compact = value
     .replace(/^(?:q|question)\s*:\s*/i, '')
+    .replace(/^(?:is|are)\s+/i, '')
     .replace(/^#{2,4}\s+/, '')
     .replace(/^[-*•★✓🔥\s]+/, '')
     .replace(/\s+/g, ' ')
     .trim()
   if (!compact) return null
+  if (/^(?:what|which|who|how|can|do|does|if)\b/i.test(compact) && /[?]|(?:\bprice\b|\bspecs?\b|\bincluded\b)/i.test(compact)) {
+    return null
+  }
   const stopped = compact
     .split(/\b(?:starting at|starts at|price|current price|original price|billing total|total|billed|great for|best for|ideal for|limited time|buy now|order now|configure)\b/i)[0]
     ?.replace(/\s+[-–]\s*$/g, '')

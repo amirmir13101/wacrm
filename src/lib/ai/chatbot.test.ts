@@ -323,7 +323,7 @@ describe('AI chatbot knowledge helpers', () => {
     })
 
     expect(result.status).toBe('answered')
-    expect(result.reason).toBe('provider_http_402_knowledge_preview')
+    expect(result.reason).toBe('provider_quota_or_billing_knowledge_preview')
     expect(result.answer).toContain('X1005 Enterprise')
     expect(result.answer).toContain('USD 209/monthly')
 
@@ -396,6 +396,120 @@ describe('AI chatbot knowledge helpers', () => {
     expect(recommendation.status).toBe('answered')
     expect(recommendation.answer).toContain('high traffic websites')
     expect(recommendation.answer).toContain('mission-critical')
+
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('answers from retrieved source text when the provider returns the configured fallback despite evidence', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: DEFAULT_AI_CHATBOT_SETTINGS.fallback_message } }] }),
+    }))
+
+    const result = await generateChatbotAnswer({
+      question: 'What is Premium Hosting monthly price?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      chunks: [
+        [
+          'Plan name: Premium Hosting',
+          'Monthly/list price without long-term discount: $1.60/month',
+          '3-year discounted monthly equivalent/current price: $1.12/month',
+          '3-year billing total: $40.32 per 3 years',
+        ].join('\n'),
+      ],
+      requireProvider: true,
+    })
+
+    expect(result.status).toBe('answered')
+    expect(result.reason).toBe('model_uncertainty_knowledge_preview')
+    expect(result.answer).toContain('Premium Hosting')
+    expect(result.answer).toContain('$1.60/month')
+
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('keeps named plan specs inside the matching plan section when the model is uncertain', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'I do not see that in the provided information.' } }] }),
+    }))
+
+    const result = await generateChatbotAnswer({
+      question: 'What are n8n Business specs?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      chunks: [
+        [
+          '7.3 n8n Pro 8GB',
+          'Plan name: Pro n8n 8GB',
+          'Category: n8n Hosting',
+          'Best for: Growing businesses',
+          'Monthly/list price without yearly discount: $4.00/month',
+          'Specs:',
+          '- 4 Core CPU',
+          '- 8GB RAM',
+          '- 60GB NVMe Storage',
+          '',
+          '7.4 n8n Business 16GB',
+          'Plan name: Business n8n 16GB',
+          'Category: n8n Hosting',
+          'Best for: Power users and agencies',
+          'Monthly/list price without yearly discount: $8.00/month',
+          'Specs:',
+          '- 6 Core CPU',
+          '- 16GB RAM',
+          '- 120GB NVMe Storage',
+        ].join('\n'),
+      ],
+      requireProvider: true,
+    })
+
+    expect(result.status).toBe('answered')
+    expect(result.reason).toBe('model_uncertainty_knowledge_preview')
+    expect(result.answer).toContain('n8n Business 16GB')
+    expect(result.answer).toContain('6 Core CPU')
+    expect(result.answer).toContain('16GB RAM')
+    expect(result.answer).not.toContain('4 Core CPU')
+
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('uses source text as a safe fallback when a grounded retry still fails guardrails', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'The price is $999/month.' } }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: DEFAULT_AI_CHATBOT_SETTINGS.fallback_message } }] }),
+      }))
+
+    const result = await generateChatbotAnswer({
+      question: 'What is Wagon VPS X12 price and specs?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      chunks: [
+        [
+          'Plan name: Wagon VPS X12',
+          'RAM: 12GB RAM',
+          'Storage: 90GB NVMe',
+          'Monthly/list price: $11.50/month',
+          'Annual discounted monthly equivalent/current price: $9.20/month',
+        ].join('\n'),
+      ],
+      requireProvider: true,
+    })
+
+    expect(result.status).toBe('answered')
+    expect(result.reason).toContain('knowledge_preview')
+    expect(result.answer).toContain('Wagon VPS X12')
+    expect(result.answer).toContain('$11.50/month')
+    expect(result.answer).toContain('12GB RAM')
 
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
