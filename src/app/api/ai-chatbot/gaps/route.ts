@@ -40,19 +40,36 @@ export async function GET() {
       if (fallback.error) {
         return NextResponse.json({ error: fallback.error.message }, { status: 500 })
       }
+      const rows = filterMissingKnowledgeRows((fallback.data ?? []) as KnowledgeGapRow[])
       return NextResponse.json({
-        gaps: groupKnowledgeGaps((fallback.data ?? []) as KnowledgeGapRow[]),
-        total: (fallback.data ?? []).length,
+        gaps: groupKnowledgeGaps(rows),
+        total: rows.length,
         enabled: true,
       })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  const rows = filterMissingKnowledgeRows((data ?? []) as KnowledgeGapRow[])
   return NextResponse.json({
-    gaps: groupKnowledgeGaps((data ?? []) as KnowledgeGapRow[]),
-    language_breakdown: buildLanguageBreakdown((data ?? []) as KnowledgeGapRow[]),
-    total: (data ?? []).length,
+    gaps: groupKnowledgeGaps(rows),
+    language_breakdown: buildLanguageBreakdown(rows),
+    total: rows.length,
     enabled: true,
+  })
+}
+
+function filterMissingKnowledgeRows(rows: readonly KnowledgeGapRow[]): KnowledgeGapRow[] {
+  const missingReasons = new Set([
+    'no_relevant_knowledge',
+    'no_active_knowledge',
+    'model_fallback',
+    'model_fallback_after_retry',
+    'unsupported_claims_after_retry',
+  ])
+  return rows.filter((row) => {
+    if (row.provider_status || row.provider_error_code || row.provider_error_type || row.provider_error_message) return false
+    const category = row.failure_category ?? ''
+    return category === 'missing_knowledge' || missingReasons.has(row.fallback_reason)
   })
 }

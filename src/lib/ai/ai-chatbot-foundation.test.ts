@@ -78,20 +78,17 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(api).toContain('enable_ai_auto_reply')
   })
 
-  it('exposes safe retrieval debug details in the dashboard test flow without secrets', () => {
+  it('keeps old retrieval debug out of the normal dashboard test UI without secrets', () => {
     const route = read('src/app/api/ai-chatbot/test/route.ts')
     const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
 
+    expect(route).toContain('generateSimpleFullKnowledgeAnswer')
     expect(route).toContain('buildSafeDebug')
     expect(route).toContain('embeddingCounts')
-    expect(route).toContain('selectedEvidence')
-    expect(route).toContain('exactCandidatesCount')
-    expect(route).toContain('vectorCandidatesCount')
     expect(route).not.toContain('encrypted_api_key')
-    expect(page).toContain('Retrieval Debug')
-    expect(page).toContain('Selected evidence')
-    expect(page).toContain('Embedding status')
-    expect(page).toContain('Run Backfill')
+    expect(page).toContain('Test Chatbot')
+    expect(page).toContain('Answers are restricted to this workspace knowledge.')
+    expect(page).toContain('legacyDebugAnswer?.debug && false')
     expect(page).toContain('Semantic search may miss some content')
   })
 
@@ -167,20 +164,22 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(chatbot).not.toContain("onConflict: 'message_id'")
   })
 
-  it('routes opt-in multilingual auto-replies through English retrieval and localized final answers', () => {
+  it('keeps legacy multilingual schema but disables translation settings in the simple default flow', () => {
     const autoReply = read('src/lib/ai/auto-reply.ts')
+    const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
     const provider = read('src/lib/ai/provider.ts')
     const migration = read('supabase/migrations/043_ai_language_settings.sql')
 
     expect(migration).toContain('multilingual_enabled BOOLEAN DEFAULT false')
     expect(migration).toContain('detected_language TEXT')
-    expect(autoReply).toContain('prepareMultilingualQuestion')
-    expect(autoReply).toContain('detectLanguage')
-    expect(autoReply).toContain('translateToEnglish')
-    expect(autoReply).toContain('question: retrievalQuestion')
-    expect(autoReply).toContain('translateFromEnglish')
-    expect(autoReply).toContain('text: finalAnswer')
-    expect(autoReply).toContain('originalQuestion: multilingual.originalQuestion')
+    expect(autoReply).toContain('const retrievalQuestion = customerText')
+    expect(autoReply).not.toContain('originalQuestion: multilingual.originalQuestion')
+    expect(page).toContain('multilingual_enabled: false')
+    expect(page).not.toContain('Language settings')
+    expect(page).not.toContain('Multilingual enabled')
+    expect(autoReply).not.toContain('detectLanguage')
+    expect(autoReply).not.toContain('translateToEnglish')
+    expect(autoReply).not.toContain('translateFromEnglish')
     expect(provider).toContain('resolveLanguageSettings')
   })
 
@@ -250,7 +249,7 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(page).toContain('Knowledge gap tracking is not yet enabled.')
   })
 
-  it('keeps semantic re-chunking manual, source-scoped, and workspace-scoped', () => {
+  it('keeps semantic re-chunking backend-safe while hiding rechunk controls from normal UI', () => {
     const helper = read('src/lib/ai/knowledge.ts')
     const route = read('src/app/api/ai-chatbot/rechunk/route.ts')
     const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
@@ -262,8 +261,8 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(route).toContain('export async function POST')
     expect(route).toContain("hasWorkspacePermission(workspace, 'manage_ai_chatbot')")
     expect(route).toContain('source_id')
-    expect(page).toContain('Re-chunk All Sources')
-    expect(page).toContain('Your knowledge content will not change.')
+    expect(page).toContain('false && canManage && loadedState.permissions.canRechunkAll')
+    expect(page).toContain('false && <Button')
   })
 
   it('keeps long knowledge previews inside the dashboard viewport', () => {
@@ -277,10 +276,10 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(page).toContain('{maxLength.toLocaleString()} characters')
   })
 
-  it('shows the owner AI chatbot testing flow', () => {
+  it('hides the old owner AI chatbot testing flow from the normal UI', () => {
     const page = read('src/app/(dashboard)/ai-chatbot/page.tsx')
 
-    expect(page).toContain('AI Chatbot Testing Flow')
+    expect(page).toContain('state && false && (')
     expect(page).toContain('TESTING_FLOW_STEPS')
     expect(page).toContain('Add AI provider API key')
     expect(page).toContain('Confirm AI replies only once')

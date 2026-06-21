@@ -12,17 +12,14 @@ import {
   logAiChatbotEvent,
   type AiChatbotSettings,
 } from '@/lib/ai/chatbot'
-import { detectLanguage, type DetectedLanguage } from '@/lib/ai/language'
 import {
   buildMemoryRetrievalContext,
   formatMemoryContext,
   loadContactMemory,
   summarizeConversation,
 } from '@/lib/ai/memory'
-import { resolveLanguageSettings } from '@/lib/ai/provider'
 import { resolveMemorySettings, type AiMemorySettings } from '@/lib/ai/provider'
 import { hybridRetrieveKnowledge } from '@/lib/ai/retrieval'
-import { translateFromEnglish, translateToEnglish } from '@/lib/ai/translation'
 import { logKnowledgeGap } from '@/lib/ai/knowledge-gaps'
 import {
   AI_HUMAN_REPLY_PAUSE_SECONDS,
@@ -250,11 +247,7 @@ export async function maybeHandleAiAutoReply(args: {
     ? await loadContactMemory(args.workspaceId, contactId)
     : null
   const memoryContext = contactMemory ? formatMemoryContext(contactMemory) : null
-  const multilingual = await prepareMultilingualQuestion({
-    workspaceId: args.workspaceId,
-    customerText,
-  })
-  const retrievalQuestion = multilingual.questionForRetrieval
+  const retrievalQuestion = customerText
   try {
     const conversationContext = await fetchConversationContext({
       conversationId: args.conversationId,
@@ -274,25 +267,16 @@ export async function maybeHandleAiAutoReply(args: {
         requireProvider: true,
         conversationContext,
         memoryContext,
-        responseIsRTL: multilingual.responseLanguage?.isRTL,
         gapContext: {
-          originalQuestion: multilingual.originalQuestion,
-          detectedLanguage: multilingual.detectedLanguage?.code,
+          originalQuestion: null,
+          detectedLanguage: null,
           channel: 'whatsapp',
           conversationId: args.conversationId,
           contactId,
         },
       })
 
-      const localizedSimpleAnswer = await localizeAnswerForCustomer({
-        workspaceId: args.workspaceId,
-        answer: simpleAnswer.answer,
-        responseLanguage: multilingual.responseLanguage,
-      })
-
-      const simpleText = simpleAnswer.status === 'answered' && localizedSimpleAnswer
-        ? localizedSimpleAnswer
-        : simpleAnswer.answer || activeChatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
+      const simpleText = simpleAnswer.answer || activeChatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
 
       await sendConfiguredAiMessage({
         workspaceId: args.workspaceId,
@@ -330,8 +314,8 @@ export async function maybeHandleAiAutoReply(args: {
     await logKnowledgeGap({
       workspaceId: args.workspaceId,
       question: retrievalQuestion,
-      originalQuestion: multilingual.originalQuestion,
-      detectedLanguage: multilingual.detectedLanguage?.code,
+      originalQuestion: null,
+      detectedLanguage: null,
       fallbackReason: retrieval.fallbackReason ?? 'no_relevant_knowledge',
       retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
       chunkCountRetrieved: retrieval.evidence.length,
@@ -368,24 +352,19 @@ export async function maybeHandleAiAutoReply(args: {
     calculation: retrieval.calculation,
     conversationContext: retrieval.analysis.contextualQuery,
     memoryContext,
-    responseIsRTL: multilingual.responseLanguage?.isRTL,
     gapContext: {
       retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
       chunkCountRetrieved: retrieval.evidence.length,
       embeddingUsed: retrieval.evidence.some((candidate) => candidate.vectorScore > 0),
-      originalQuestion: multilingual.originalQuestion,
-      detectedLanguage: multilingual.detectedLanguage?.code,
+      originalQuestion: null,
+      detectedLanguage: null,
       channel: 'whatsapp',
       conversationId: args.conversationId,
       contactId,
     },
   })
 
-  const finalAnswer = await localizeAnswerForCustomer({
-    workspaceId: args.workspaceId,
-    answer: answer.answer,
-    responseLanguage: multilingual.responseLanguage,
-  })
+  const finalAnswer = answer.answer
 
   if (answer.status === 'skipped' || answer.status === 'failed' || !answer.answer) {
     const safeFallback = activeChatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
@@ -543,56 +522,6 @@ export async function maybeHandleAiAutoReply(args: {
       client: admin,
     })
   }
-}
-
-async function prepareMultilingualQuestion(args: {
-  readonly workspaceId: string
-  readonly customerText: string
-}): Promise<{
-  readonly questionForRetrieval: string
-  readonly originalQuestion: string | null
-  readonly detectedLanguage: DetectedLanguage | null
-  readonly responseLanguage: DetectedLanguage | null
-}> {
-  const settings = await resolveLanguageSettings(args.workspaceId).catch(() => ({
-    multilingualEnabled: false,
-    defaultResponseLanguage: 'auto',
-    supportedLanguages: null,
-  }))
-  if (!settings.multilingualEnabled) {
-    return { questionForRetrieval: args.customerText, originalQuestion: null, detectedLanguage: null, responseLanguage: null }
-  }
-  const detected = detectLanguage(args.customerText)
-  if (!detected.needsTranslation || detected.confidence < 0.6 || !languageAllowed(detected.code, settings.supportedLanguages)) {
-    return { questionForRetrieval: args.customerText, originalQuestion: null, detectedLanguage: detected, responseLanguage: null }
-  }
-  const translated = await translateToEnglish(args.customerText, detected, args.workspaceId)
-  const responseLanguage = settings.defaultResponseLanguage === 'auto'
-    ? detected
-    : settings.defaultResponseLanguage === 'en'
-      ? null
-      : { ...detected, code: settings.defaultResponseLanguage, needsTranslation: true }
-  return {
-    questionForRetrieval: translated.success ? translated.translatedText : args.customerText,
-    originalQuestion: args.customerText,
-    detectedLanguage: detected,
-    responseLanguage,
-  }
-}
-
-async function localizeAnswerForCustomer(args: {
-  readonly workspaceId: string
-  readonly answer: string
-  readonly responseLanguage: DetectedLanguage | null
-}): Promise<string> {
-  if (!args.responseLanguage || !args.answer.trim()) return args.answer
-  const translated = await translateFromEnglish(args.answer, args.responseLanguage, args.workspaceId)
-  if (translated.success) return translated.translatedText
-  return `${args.answer}\n\nNote: English response - translation temporarily unavailable.`
-}
-
-function languageAllowed(code: string, supportedLanguages: readonly string[] | null): boolean {
-  return !supportedLanguages || supportedLanguages.includes(code)
 }
 
 function triggerMemorySummarization(args: {

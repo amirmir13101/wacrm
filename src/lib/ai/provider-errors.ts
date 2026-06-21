@@ -128,8 +128,17 @@ export function failureCategoryFromReason(reason: string): AiFailureCategory {
   if (reason === 'provider_invalid_key') return 'provider_invalid_key'
   if (reason === 'provider_invalid_model') return 'provider_invalid_model'
   if (reason.startsWith('provider_') || reason === 'ai_provider_exception' || reason === 'empty_ai_response') return 'provider_error'
-  if (reason === 'no_relevant_knowledge' || reason === 'unsupported_exact_fact') return 'missing_knowledge'
-  if (reason === 'model_fallback' || reason === 'weak_retrieval') return 'weak_retrieval'
+  if (
+    reason === 'no_relevant_knowledge' ||
+    reason === 'no_active_knowledge' ||
+    reason === 'unsupported_exact_fact' ||
+    reason === 'model_fallback' ||
+    reason === 'model_fallback_after_retry' ||
+    reason === 'unsupported_claims_after_retry'
+  ) {
+    return 'missing_knowledge'
+  }
+  if (reason === 'weak_retrieval') return 'weak_retrieval'
   if (reason.includes('guardrail') || reason.includes('ungrounded') || reason.includes('numeric')) return 'guardrail_blocked'
   if (reason === 'cross_entity_fact_mix') return 'cross_entity_fact_mix'
   if (reason === 'calculation_unsupported') return 'calculation_unsupported'

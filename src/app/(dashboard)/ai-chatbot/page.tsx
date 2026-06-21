@@ -859,10 +859,10 @@ export default function AiChatbotPage() {
           embeddings_enabled: draftProvider.embeddingsEnabled,
           embedding_model: draftProvider.embeddingModel,
           embedding_dimensions: draftProvider.embeddingDimensions,
-          multilingual_enabled: draftProvider.multilingualEnabled,
-          default_response_language: draftProvider.defaultResponseLanguage,
-          supported_languages: draftProvider.supportedLanguages,
-          translation_model: draftProvider.translationModel,
+          multilingual_enabled: false,
+          default_response_language: "auto",
+          supported_languages: null,
+          translation_model: null,
           memory_enabled: draftProvider.memoryEnabled,
           memory_summarize_after: draftProvider.memorySummarizeAfter,
           memory_retention_days: draftProvider.memoryRetentionDays,
@@ -1058,6 +1058,9 @@ export default function AiChatbotPage() {
       </div>
     )
   }
+
+  const loadedState = state
+  const legacyDebugAnswer = testAnswer as (TestAnswer & { debug: RetrievalDebug }) | null
 
   return (
     <div className="min-w-0 max-w-full space-y-6 overflow-hidden">
@@ -1358,73 +1361,6 @@ export default function AiChatbotPage() {
           <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4 lg:col-span-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-emerald-50">Language settings</p>
-                <p className="mt-1 text-xs text-[#9dbfb5]">
-                  When enabled, customers can ask in any language. The CRM translates questions to English for retrieval and translates answers back using this workspace AI key.
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-[#9dbfb5]">Multilingual enabled</span>
-                <Switch
-                  checked={draftProvider.multilingualEnabled}
-                  disabled={!canManage}
-                  onCheckedChange={(checked) => setDraftProvider({ ...draftProvider, multilingualEnabled: checked })}
-                />
-              </div>
-            </div>
-            {draftProvider.multilingualEnabled ? (
-              <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                <label className="space-y-2">
-                  <span className="text-sm font-semibold text-emerald-50">Default response language</span>
-                  <select
-                    className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
-                    disabled={!canManage}
-                    value={draftProvider.defaultResponseLanguage}
-                    onChange={(event) => setDraftProvider({ ...draftProvider, defaultResponseLanguage: event.target.value })}
-                  >
-                    <option value="auto">Auto (match customer)</option>
-                    <option value="en">Always English</option>
-                    <option value="ur">Always Urdu</option>
-                    <option value="ar">Always Arabic</option>
-                    <option value="fr">Always French</option>
-                    <option value="es">Always Spanish</option>
-                  </select>
-                </label>
-                <label className="space-y-2">
-                  <span className="text-sm font-semibold text-emerald-50">Supported languages</span>
-                  <input
-                    className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
-                    disabled={!canManage}
-                    value={draftProvider.supportedLanguages?.join(", ") ?? ""}
-                    onChange={(event) => {
-                      const languages = event.target.value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean)
-                      setDraftProvider({ ...draftProvider, supportedLanguages: languages.length > 0 ? languages : null })
-                    }}
-                    placeholder="Leave empty to support all languages"
-                  />
-                  <p className="text-xs text-[#9dbfb5]">Optional ISO codes, comma-separated. Example: ur, ar, fr.</p>
-                </label>
-                <label className="space-y-2">
-                  <span className="text-sm font-semibold text-emerald-50">Translation model</span>
-                  <input
-                    className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
-                    disabled={!canManage}
-                    value={draftProvider.translationModel ?? ""}
-                    onChange={(event) => setDraftProvider({ ...draftProvider, translationModel: event.target.value || null })}
-                    placeholder="Leave empty to use primary model"
-                  />
-                  <p className="text-xs text-[#9dbfb5]">No extra API key needed. Uses this workspace provider key.</p>
-                </label>
-              </div>
-            ) : (
-              <p className="mt-3 text-xs text-[#9dbfb5]">
-                Multilingual support is off. Non-English messages will use the normal retrieval path.
-              </p>
-            )}
-          </div>
-          <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4 lg:col-span-2">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
                 <p className="text-sm font-semibold text-emerald-50">Customer memory</p>
                 <p className="mt-1 text-xs text-[#9dbfb5]">
                   Remember returning customers across conversations using concise summaries, topics, language preference, and unresolved questions.
@@ -1713,32 +1649,32 @@ export default function AiChatbotPage() {
               <p>{testAnswer.answer || "No answer was generated."}</p>
             </div>
           )}
-          {testAnswer?.debug && (
+          {legacyDebugAnswer?.debug && false && (
             <div className="mt-4 rounded-2xl border border-emerald-900/80 bg-[#04130e] p-4 text-sm text-[#d8fff0]">
               <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">Retrieval Debug</p>
-                  <p className="mt-1 break-words text-white">{testAnswer.debug.query}</p>
+                  <p className="mt-1 break-words text-white">{legacyDebugAnswer!.debug.query}</p>
                 </div>
                 <div className="grid gap-2 text-xs text-[#9dbfb5] sm:grid-cols-3">
                   <span className="rounded-full border border-emerald-900 px-3 py-1">
-                    Provider: {testAnswer.debug.providerConfigured ? "configured" : "missing"}
+                    Provider: {legacyDebugAnswer!.debug.providerConfigured ? "configured" : "missing"}
                   </span>
                   <span className="rounded-full border border-emerald-900 px-3 py-1">
-                    Embeddings: {testAnswer.debug.provider?.embeddingsEnabled ? "enabled" : "disabled"}
+                    Embeddings: {legacyDebugAnswer!.debug.provider?.embeddingsEnabled ? "enabled" : "disabled"}
                   </span>
                   <span className="rounded-full border border-emerald-900 px-3 py-1">
-                    Chunks: {testAnswer.debug.retrieval.activeChunkCount}
+                    Chunks: {legacyDebugAnswer!.debug.retrieval.activeChunkCount}
                   </span>
                 </div>
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-4">
                 {[
-                  ["Exact", testAnswer.debug.retrieval.exactCandidatesCount],
-                  ["Keyword", testAnswer.debug.retrieval.keywordCandidatesCount],
-                  ["Vector", testAnswer.debug.retrieval.vectorCandidatesCount],
-                  ["Answer facts", testAnswer.debug.retrieval.answerBearingCandidatesCount],
+                  ["Exact", legacyDebugAnswer!.debug.retrieval.exactCandidatesCount],
+                  ["Keyword", legacyDebugAnswer!.debug.retrieval.keywordCandidatesCount],
+                  ["Vector", legacyDebugAnswer!.debug.retrieval.vectorCandidatesCount],
+                  ["Answer facts", legacyDebugAnswer!.debug.retrieval.answerBearingCandidatesCount],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-xl border border-emerald-950 bg-[#071b14] p-3">
                     <p className="text-xs uppercase tracking-wide text-[#8fb7aa]">{label}</p>
@@ -1751,19 +1687,19 @@ export default function AiChatbotPage() {
                 <div className="rounded-xl border border-emerald-950 bg-[#071b14] p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#8fb7aa]">Embedding status</p>
                   <p className="mt-1 text-xs text-[#9dbfb5]">
-                    Total chunks: {Object.values(testAnswer.debug.embeddingCounts).reduce((sum, count) => sum + count, 0)}
+                    Total chunks: {Object.values(legacyDebugAnswer!.debug.embeddingCounts).reduce((sum, count) => sum + count, 0)}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {Object.entries(testAnswer.debug.embeddingCounts).map(([status, count]) => (
+                    {Object.entries(legacyDebugAnswer!.debug.embeddingCounts).map(([status, count]) => (
                       <span key={status} className="rounded-full bg-emerald-950 px-3 py-1 text-xs">
                         {status}: {count}
                       </span>
                     ))}
                   </div>
-                  {(testAnswer.debug.embeddingCounts.pending ?? 0) > 0 && testAnswer.debug.provider?.embeddingsEnabled && (
+                  {(legacyDebugAnswer!.debug.embeddingCounts.pending ?? 0) > 0 && legacyDebugAnswer!.debug.provider?.embeddingsEnabled && (
                     <div className="mt-3 rounded-lg border border-[#f6c94a]/40 bg-[#f6c94a]/10 p-3">
                       <p className="text-xs text-[#fff0b8]">
-                        {testAnswer.debug.embeddingCounts.pending} chunks are not yet embedded. Semantic search may miss some content.
+                        {legacyDebugAnswer!.debug.embeddingCounts.pending} chunks are not yet embedded. Semantic search may miss some content.
                       </p>
                       <Button
                         className={cn("mt-2 h-8", primaryActionClass)}
@@ -1775,29 +1711,29 @@ export default function AiChatbotPage() {
                       </Button>
                     </div>
                   )}
-                  {testAnswer.debug.retrieval.fallbackReason && (
-                    <p className="mt-3 text-xs text-[#f6c94a]">Fallback: {testAnswer.debug.retrieval.fallbackReason}</p>
+                  {legacyDebugAnswer!.debug.retrieval.fallbackReason && (
+                    <p className="mt-3 text-xs text-[#f6c94a]">Fallback: {legacyDebugAnswer!.debug.retrieval.fallbackReason}</p>
                   )}
-                  {testAnswer.debug.retrieval.calculation && (
+                  {legacyDebugAnswer!.debug.retrieval.calculation && (
                     <p className="mt-3 text-xs text-emerald-200">
-                      Calculation: {testAnswer.debug.retrieval.calculation.value} {testAnswer.debug.retrieval.calculation.unit}
+                      Calculation: {legacyDebugAnswer!.debug.retrieval.calculation!.value} {legacyDebugAnswer!.debug.retrieval.calculation!.unit}
                     </p>
                   )}
-                  {testAnswer.debug.retrieval.fullContextFallback && (
+                  {legacyDebugAnswer!.debug.retrieval.fullContextFallback && (
                     <div className="mt-3 rounded-lg border border-emerald-900 bg-[#06170f] p-3 text-xs text-[#b9e8d8]">
                       <p className="font-semibold uppercase tracking-wide text-emerald-300">Full-context fallback</p>
                       <p className="mt-1">
-                        {testAnswer.debug.retrieval.fullContextFallback.attempted ? "Attempted" : "Not needed"} ·{" "}
-                        {testAnswer.debug.retrieval.fullContextFallback.outcome.replaceAll("_", " ")}
+                        {legacyDebugAnswer!.debug.retrieval.fullContextFallback.attempted ? "Attempted" : "Not needed"} ·{" "}
+                        {legacyDebugAnswer!.debug.retrieval.fullContextFallback.outcome.replaceAll("_", " ")}
                       </p>
                       <p className="mt-1">
-                        Tokens: {testAnswer.debug.retrieval.fullContextFallback.estimatedTokens.toLocaleString()} /{" "}
-                        {testAnswer.debug.retrieval.fullContextFallback.tokenBudget.toLocaleString()} · Sources:{" "}
-                        {testAnswer.debug.retrieval.fullContextFallback.sourceCount}
+                        Tokens: {legacyDebugAnswer!.debug.retrieval.fullContextFallback.estimatedTokens.toLocaleString()} /{" "}
+                        {legacyDebugAnswer!.debug.retrieval.fullContextFallback.tokenBudget.toLocaleString()} · Sources:{" "}
+                        {legacyDebugAnswer!.debug.retrieval.fullContextFallback.sourceCount}
                       </p>
-                      {testAnswer.debug.retrieval.fullContextFallback.sourceTitles.length > 0 && (
+                      {legacyDebugAnswer!.debug.retrieval.fullContextFallback.sourceTitles.length > 0 && (
                         <p className="mt-1 break-words text-[#8fb7aa]">
-                          Sources: {testAnswer.debug.retrieval.fullContextFallback.sourceTitles.join(", ")}
+                          Sources: {legacyDebugAnswer!.debug.retrieval.fullContextFallback.sourceTitles.join(", ")}
                         </p>
                       )}
                     </div>
@@ -1807,7 +1743,7 @@ export default function AiChatbotPage() {
                 <div className="rounded-xl border border-emerald-950 bg-[#071b14] p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#8fb7aa]">Detected intent</p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {Object.entries(testAnswer.debug.retrieval.intents)
+                    {Object.entries(legacyDebugAnswer!.debug.retrieval.intents)
                       .filter(([, enabled]) => enabled)
                       .map(([intent]) => (
                         <span key={intent} className="rounded-full bg-emerald-950 px-3 py-1 text-xs">
@@ -1816,15 +1752,15 @@ export default function AiChatbotPage() {
                       ))}
                   </div>
                   <p className="mt-3 break-words text-xs text-[#9dbfb5]">
-                    Terms: {testAnswer.debug.retrieval.terms.join(", ") || "none"}
+                    Terms: {legacyDebugAnswer!.debug.retrieval.terms.join(", ") || "none"}
                   </p>
                 </div>
               </div>
 
               <div className="mt-4 space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[#8fb7aa]">Selected evidence</p>
-                {testAnswer.debug.retrieval.selectedEvidence.length > 0 ? (
-                  testAnswer.debug.retrieval.selectedEvidence.map((item) => (
+                {legacyDebugAnswer!.debug.retrieval.selectedEvidence.length > 0 ? (
+                  legacyDebugAnswer!.debug.retrieval.selectedEvidence.map((item) => (
                     <div key={item.id} className="rounded-xl border border-emerald-950 bg-[#071b14] p-3">
                       <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                         <div className="min-w-0">
@@ -2319,6 +2255,7 @@ export default function AiChatbotPage() {
         </div>
       </section>
 
+      {state && false && (
       <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="size-5 text-emerald-300" />
@@ -2345,6 +2282,7 @@ export default function AiChatbotPage() {
           ))}
         </div>
       </section>
+      )}
 
       <section className="rounded-2xl border border-[#1f6a4b] bg-[#062017]/80 p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2352,7 +2290,7 @@ export default function AiChatbotPage() {
             <BookOpen className="size-5 text-emerald-300" />
             <h2 className="text-lg font-bold text-white">Knowledge Preview</h2>
           </div>
-          {canManage && state.permissions.canRechunkAll && state.sources.length > 0 && (
+          {state && false && canManage && loadedState.permissions.canRechunkAll && loadedState.sources.length > 0 && (
             <Button
               className="border border-emerald-800 bg-[#07130e] text-emerald-100 hover:bg-emerald-950"
               disabled={rechunkingSourceId !== null}
@@ -2391,7 +2329,7 @@ export default function AiChatbotPage() {
                   </div>
                   {canManage && (
                     <div className="flex shrink-0 items-center gap-1 self-end sm:self-start">
-                      <Button
+                      {false && <Button
                         className="h-9 border border-emerald-900 bg-[#09241a] px-3 text-xs text-emerald-100 hover:bg-emerald-900/60 hover:text-white"
                         disabled={rechunkingSourceId !== null}
                         size="sm"
@@ -2403,7 +2341,7 @@ export default function AiChatbotPage() {
                           ? <Loader2 className="size-3.5 animate-spin" />
                           : <RefreshCw className="size-3.5" />}
                         Re-chunk
-                      </Button>
+                      </Button>}
                       {source.source_type === "website" && (
                         <Button
                           className="h-9 border border-emerald-900 bg-[#09241a] px-3 text-xs text-emerald-100 hover:bg-emerald-900/60 hover:text-white"
@@ -2466,78 +2404,56 @@ export default function AiChatbotPage() {
             No unanswered questions yet. Your chatbot is answering all customer questions from your knowledge base.
           </div>
         ) : (
-          <div className="mt-4 overflow-x-auto rounded-xl border border-emerald-900">
-            <table className="w-full min-w-[1100px] text-left text-sm">
-              <thead className="bg-[#07130e] text-xs uppercase tracking-wide text-[#8fb7aa]">
-                <tr>
-                  <th className="px-4 py-3">Question</th>
-                  <th className="px-4 py-3">Times Asked</th>
-                  <th className="px-4 py-3">Last Asked</th>
-                  <th className="px-4 py-3">Channel</th>
-                  <th className="px-4 py-3">Failure</th>
-                  <th className="px-4 py-3">Technical detail</th>
-                  <th className="px-4 py-3">Evidence</th>
-                  <th className="px-4 py-3">Suggested action</th>
-                  <th className="px-4 py-3">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-emerald-950 bg-[#071b14]">
-                {knowledgeGaps.gaps.slice(0, showAllKnowledgeGaps ? 100 : 20).map((gap) => (
-                  <tr key={`${gap.question}:${gap.failure_category ?? gap.fallback_reason}:${gap.channel ?? "unknown"}`}>
-                    <td className="max-w-md px-4 py-3 font-medium text-white">
-                      <div className="break-words">{gap.question}</div>
-                      {gap.is_stale && (
-                        <span className="mt-2 inline-flex rounded-full border border-emerald-800 bg-emerald-950/40 px-2 py-0.5 text-xs text-emerald-100">
-                          Historical / resolved
+          <div className="mt-4 space-y-3">
+            {knowledgeGaps.gaps.slice(0, showAllKnowledgeGaps ? 100 : 20).map((gap) => (
+              <article
+                key={`${gap.question}:${gap.channel ?? "unknown"}:${gap.last_asked}`}
+                className="min-w-0 overflow-hidden rounded-xl border border-emerald-900 bg-[#071b14] p-4"
+              >
+                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Customer question</p>
+                    <h3 className="mt-1 break-words text-sm font-semibold text-white [overflow-wrap:anywhere]">
+                      {gap.question}
+                    </h3>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#b8cfc7]">
+                      <span className="rounded-full border border-emerald-900 bg-[#09241a] px-3 py-1">
+                        {new Date(gap.last_asked).toLocaleString()}
+                      </span>
+                      <span className="rounded-full border border-emerald-900 bg-[#09241a] px-3 py-1">
+                        Channel: {formatGapChannel(gap.channel)}
+                      </span>
+                      <span className="rounded-full border border-[#f6c94a]/50 bg-[#f6c94a]/10 px-3 py-1 text-[#fff0b8]">
+                        Reason: missing_knowledge
+                      </span>
+                      {gap.count > 1 && (
+                        <span className="rounded-full border border-emerald-900 bg-[#09241a] px-3 py-1">
+                          Asked {gap.count} times
                         </span>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-[#b8cfc7]">{gap.count}</td>
-                    <td className="px-4 py-3 text-[#b8cfc7]">{new Date(gap.last_asked).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-[#b8cfc7]">{formatGapChannel(gap.channel)}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-[#fff0b8]">{formatGapReason(gap.failure_category ?? gap.fallback_reason)}</div>
-                      {gap.provider_status && (
-                        <div className="mt-1 text-xs text-[#9dbfb5]">Provider HTTP {gap.provider_status}</div>
-                      )}
-                      {gap.handoff_triggered && (
-                        <div className="mt-1 text-xs text-[#a7ffd0]">Human handoff triggered</div>
-                      )}
-                    </td>
-                    <td className="max-w-xs px-4 py-3 text-[#b8cfc7]">
-                      <div className="line-clamp-3 break-words">
-                        {gap.provider_error_message || gap.guardrail_reason || gap.technical_reason || gap.fallback_reason}
-                      </div>
-                      {(gap.provider_error_code || gap.provider_error_type) && (
-                        <div className="mt-1 text-xs text-[#9dbfb5]">
-                          {[gap.provider_error_type, gap.provider_error_code].filter(Boolean).join(" / ")}
-                        </div>
-                      )}
-                    </td>
-                    <td className="max-w-xs px-4 py-3 text-[#b8cfc7]">
-                      {gap.selected_source_titles && gap.selected_source_titles.length > 0
-                        ? gap.selected_source_titles.slice(0, 3).join(", ")
-                        : "No selected source recorded"}
-                    </td>
-                    <td className="max-w-xs px-4 py-3 text-[#b8cfc7]">{gap.suggested_action ?? "Review and answer manually if needed."}</td>
-                    <td className="px-4 py-3">
-                      <Button
-                        className="h-9 border border-emerald-800 bg-[#09241a] text-emerald-100 hover:bg-emerald-900/60"
-                        disabled={!canManage}
-                        size="sm"
-                        variant="outline"
-                        onClick={() => addGapToKnowledge(gap)}
-                      >
-                        <Plus className="size-3.5" />
-                        Add to Knowledge Base
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-        {knowledgeGaps.gaps.length > 20 && (
-              <div className="flex items-center justify-between gap-3 border-t border-emerald-950 px-4 py-3">
+                    </div>
+                  </div>
+                  <Button
+                    className="h-9 shrink-0 border border-emerald-800 bg-[#09241a] text-emerald-100 hover:bg-emerald-900/60"
+                    disabled={!canManage}
+                    size="sm"
+                    variant="outline"
+                    onClick={() => addGapToKnowledge(gap)}
+                  >
+                    <Plus className="size-3.5" />
+                    Add to Knowledge Base
+                  </Button>
+                </div>
+                <div className="mt-3 rounded-lg border border-emerald-950 bg-[#04150f] p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#8fb7aa]">Admin note</p>
+                  <p className="mt-1 break-words text-xs text-[#b8cfc7] [overflow-wrap:anywhere]">
+                    {gap.suggested_action ?? "Add the missing answer to the knowledge base."}
+                  </p>
+                </div>
+              </article>
+            ))}
+            {knowledgeGaps.gaps.length > 20 && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-900 bg-[#071b14] px-4 py-3">
                 <p className="text-xs text-[#9dbfb5]">
                   {showAllKnowledgeGaps
                     ? `Showing all ${knowledgeGaps.gaps.length} grouped questions.`
@@ -2724,28 +2640,6 @@ function StatusPill({
   )
 }
 
-function formatGapReason(value: string): string {
-  const labels: Record<string, string> = {
-    provider_error: "Provider error",
-    provider_rate_limited: "Provider rate limited",
-    provider_quota_or_billing: "Provider quota/billing",
-    provider_invalid_key: "Invalid provider key",
-    provider_invalid_model: "Invalid provider model",
-    missing_knowledge: "Missing knowledge",
-    weak_retrieval: "Weak retrieval",
-    guardrail_blocked: "Guardrail blocked",
-    cross_entity_fact_mix: "Cross-entity fact mix",
-    calculation_unsupported: "Calculation unsupported",
-    cooldown: "Cooldown",
-    human_requested: "Human requested",
-    ai_disabled: "AI disabled",
-    unsupported_message_type: "Unsupported message type",
-    webhook_or_send_failure: "Webhook/send failure",
-    unknown_error: "Unknown error",
-  }
-  return labels[value] ?? value.replaceAll("_", " ")
-}
-
 function formatGapChannel(value?: string | null): string {
   if (value === "whatsapp") return "WhatsApp"
   if (value === "dashboard") return "Dashboard"
@@ -2826,3 +2720,4 @@ function TextAreaField({
     </label>
   )
 }
+

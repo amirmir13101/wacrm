@@ -97,7 +97,7 @@ const MAX_CHUNKS = 5
 const PLAN_BLOCK_HEADING = /^#{2,4}\s+/
 const SIMPLE_FULL_KNOWLEDGE_FALLBACK = 'I don’t see that exact detail in the current knowledge base. Please contact support for confirmation.'
 const SIMPLE_PROVIDER_FAILURE_FALLBACK = 'Sorry, I could not answer this right now. Please contact support.'
-const DEFAULT_SIMPLE_FULL_KNOWLEDGE_CHAR_LIMIT = 220_000
+const DEFAULT_SIMPLE_FULL_KNOWLEDGE_CHAR_LIMIT = 200_000
 const INTERNAL_LEAK_PATTERNS = [
   /Full active workspace knowledge fallback context/i,
   /Use only the facts present below/i,
@@ -210,6 +210,16 @@ export async function generateSimpleFullKnowledgeAnswer(args: {
   }
 }): Promise<AiAnswerResult> {
   const question = args.question.trim()
+  const normalConversationAnswer = buildNormalConversationAnswer(question)
+  if (normalConversationAnswer) {
+    return {
+      status: 'answered',
+      answer: normalConversationAnswer,
+      reason: 'normal_conversation',
+      usedChunks: [],
+      providerConfigured: Boolean(await resolveAiProviderConfig(args.workspaceId)),
+    }
+  }
   const knowledge = cleanKnowledgeForSimpleFullMode(args.knowledge)
   const providerConfig = await resolveAiProviderConfig(args.workspaceId)
   const providerConfigured = Boolean(providerConfig)
@@ -230,6 +240,7 @@ export async function generateSimpleFullKnowledgeAnswer(args: {
         conversationId: args.gapContext?.conversationId,
         contactId: args.gapContext?.contactId,
         providerError,
+        failureCategory: answer === SIMPLE_FULL_KNOWLEDGE_FALLBACK ? 'missing_knowledge' : undefined,
       })
     }
     return { status: 'fallback', answer, reason, usedChunks, providerConfigured }
@@ -657,6 +668,8 @@ async function requestSimpleFullKnowledgeProviderAnswer(args: {
             'Do not show internal/debug text.',
             'Do not show source headers, context labels, raw prompt text, or raw knowledge-base instructions.',
             'Do not copy raw Q/A scaffolding unless it is naturally part of the answer.',
+            'If the customer asks in Urdu, Hindi, Roman Urdu, English, or any other language, answer in the same language as the customer.',
+            'If the customer asks a normal greeting or casual message, reply naturally and briefly.',
             'Return only the final customer-facing answer.',
             `If the answer is not present in the knowledge base, say exactly: ${SIMPLE_FULL_KNOWLEDGE_FALLBACK}`,
             'Pricing:',
@@ -729,6 +742,30 @@ function sanitizeCustomerAnswer(value: string): string {
 
 function answerContainsInternalText(answer: string): boolean {
   return INTERNAL_LEAK_PATTERNS.some((pattern) => pattern.test(answer))
+}
+
+function buildNormalConversationAnswer(question: string): string | null {
+  const normalized = question.trim().toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
+  if (!normalized) return null
+  const romanUrdu = /\b(?:main|mein|theek|thek|hoon|hun|aap|ap|kaise|kaisay|kese|shukriya|salam|assalam)\b/i.test(normalized)
+  if (/^(?:hi|hello|hey|salam|assalam o alaikum|assalamu alaikum|aoa)$/.test(normalized)) {
+    return romanUrdu
+      ? 'Wa alaikum assalam! Main theek hoon. Aap bataiye, main kis tarah madad kar sakta hoon?'
+      : 'Hello! How can I help you today?'
+  }
+  if (/^(?:how are you|how are you doing|hello how are you|hi how are you)$/.test(normalized)) {
+    return 'I’m doing well, thank you. How can I help you today?'
+  }
+  if (/^(?:main theek hoon aap kaisay hain|main theek hoon ap kaisay hain|mein theek hoon aap kaisay hain|main thek hoon aap kese hain)$/.test(normalized)) {
+    return 'Main bhi theek hoon, shukriya! Aap bataiye, main kis tarah madad kar sakta hoon?'
+  }
+  if (/^(?:thanks|thank you|ok|okay|theek hai|shukriya|jazakallah)$/.test(normalized)) {
+    return romanUrdu ? 'Shukriya! Agar aap ko koi aur madad chahiye ho to bata dein.' : 'You’re welcome. Let me know if you need anything else.'
+  }
+  if (/^(?:can you help me|can you help|help me|mujhe help chahiye|madad chahiye)$/.test(normalized)) {
+    return romanUrdu ? 'Ji bilkul, aap apna sawal bhej dein.' : 'Yes, of course. Please send your question.'
+  }
+  return null
 }
 
 function appendAssociatedDetailsForSimpleAnswer(args: {
