@@ -2908,7 +2908,7 @@ function enrichOfferWithCandidateMetadata(
       candidate.sourceUrl ? `URL: ${candidate.sourceUrl}` : '',
       offer.source_text,
     ].filter(Boolean).join('\n').slice(0, 1400),
-    context_text: candidate.chunkText.slice(0, 2500),
+    context_text: extractOfferLocalContextWindow(candidate.chunkText, offer.entity ?? offer.entity_name ?? null).slice(0, 2500),
   }
 }
 

@@ -1082,6 +1082,7 @@ describe('AI hybrid retrieval', () => {
         heading_path: 'Web Hosting > Pricing',
         chunk_text: [
           '### Web Hosting',
+          'Intro section '.repeat(260),
           '### FREE Hosting - Price: 0.00/mo',
           '### Pro Hosting $0.90 30% OFF - Price: 0.63/mo Total: $22.68 billed per 3 Years 5 DomainsUsage Right 5 GBDisk Space UnlimitedTraffic UnlimitedSubdomains - ✓20 Email Accounts',
           '### Ultimate Hosting $4.00 - Price: 2.80/mo Total: $100.80 billed per 3 Years UnlimitedDomains UnlimitedDisk Space - ✓Unlimited Email Accounts ✓VIP 24/7 Support',
