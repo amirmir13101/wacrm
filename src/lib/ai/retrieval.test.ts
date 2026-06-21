@@ -1071,6 +1071,182 @@ describe('AI hybrid retrieval', () => {
     expect(evidence).not.toContain('M1007 ECO')
     expect(evidence).not.toContain('USD 0.63/monthly')
   })
+
+  it('repairs stale persisted price roles from runtime strikethrough evidence and computes requested one-year billing', () => {
+    const rows = [
+      {
+        id: 'web-hosting',
+        source_id: 'source-1',
+        source,
+        heading_path: 'Web Hosting > Pricing',
+        chunk_text: [
+          '### Web Hosting',
+          '#### Pro Hosting',
+          '3-Years Save 30% 2-Years Save 20% 1-Year Save 10% Monthly',
+          'Starting at: $0.63/mo ~~$0.90~~ 30% OFF',
+          'Total: $22.68 billed per 3 Years',
+        ].join('\n'),
+        structured_facts: {
+          pricing_offers: [
+            {
+              entity: 'Pro Hosting',
+              entity_name: 'Pro Hosting',
+              entity_type: 'plan',
+              product_family: 'hosting',
+              current_price: { amount: 0.9, currency: 'USD', period: 'monthly', text: '$0.90' },
+              original_price: null,
+              discount_percent: 30,
+              stored_period_totals: {},
+              billing_totals: [
+                {
+                  amount: 22.68,
+                  currency: 'USD',
+                  duration_count: 3,
+                  duration_unit: 'year',
+                  label: '3 years billing total',
+                  source_text: '$22.68 billed per 3 Years',
+                },
+              ],
+              source_text: 'Pro Hosting $0.90 30% OFF $22.68 billed per 3 Years',
+            },
+          ],
+        },
+      },
+    ]
+
+    const price = hybridRetrieveFromRows({ question: 'Ultimate hosting price', rows: [
+      {
+        id: 'ultimate-hosting',
+        source_id: 'source-1',
+        source,
+        heading_path: 'Web Hosting > Pricing',
+        chunk_text: '#### Ultimate Hosting\nStarting at: $2.80/mo ~~$4.00~~ 30% OFF\nTotal: $100.80 billed per 3 Years',
+        structured_facts: {
+          pricing_offers: [
+            {
+              entity: 'Ultimate Hosting',
+              entity_name: 'Ultimate Hosting',
+              entity_type: 'plan',
+              product_family: 'hosting',
+              current_price: { amount: 4, currency: 'USD', period: 'monthly', text: '$4.00' },
+              original_price: null,
+              discount_percent: 30,
+              stored_period_totals: {},
+              billing_totals: [{ amount: 100.8, currency: 'USD', duration_count: 3, duration_unit: 'year', label: '3 years billing total', source_text: '$100.80 billed per 3 Years' }],
+              source_text: 'Ultimate Hosting $4.00 30% OFF $100.80 billed per 3 Years',
+            },
+          ],
+        },
+      },
+    ] })
+    const yearly = hybridRetrieveFromRows({ question: 'If I buy Pro Hosting for one year, what will be the price?', rows })
+
+    expect(yearly.debug.selectedOffer?.currentPrice).toMatchObject({ amount: 0.63, period: 'monthly' })
+    expect(yearly.debug.selectedOffer?.originalPrice).toMatchObject({ amount: 0.9, period: 'monthly' })
+    expect(yearly.calculation).toMatchObject({ status: 'computed', value: 9.72, unit: 'USD/yearly' })
+    expect(yearly.calculation?.formula).toContain('10% discount')
+    expect(price.debug.selectedOffer?.currentPrice).toMatchObject({ amount: 2.8, period: 'monthly' })
+    expect(price.debug.selectedOffer?.originalPrice).toMatchObject({ amount: 4, period: 'monthly' })
+  })
+
+  it('distinguishes true monthly billing from yearly discounted monthly equivalents', () => {
+    const rows = [
+      {
+        id: 'saas-plan',
+        source_id: 'source-1',
+        source,
+        heading_path: 'Subscriptions > Pricing',
+        chunk_text: '### Basic Workflow Plan\nMonthly/list price: $2.00/month. Yearly discounted price: $1.70/month. 15% OFF. Total: $20.40 billed per Year. Specs: 2 Core CPU, 4GB RAM, 40GB NVMe.',
+      },
+    ]
+
+    const monthly = hybridRetrieveFromRows({ question: 'Basic Workflow Plan monthly price', rows })
+    const yearly = hybridRetrieveFromRows({ question: 'Basic Workflow Plan yearly discounted price', rows })
+
+    expect(monthly.calculation).toBeNull()
+    expect(monthly.debug.selectedOffer?.originalPrice ?? monthly.debug.selectedOffer?.currentPrice).toMatchObject({ amount: 2, period: 'monthly' })
+    expect(monthly.chunks.join('\n')).toContain('Customer asked for true month-to-month/monthly billing')
+    expect(yearly.calculation).toMatchObject({ status: 'computed', value: 20.4, unit: 'USD/yearly' })
+    expect(yearly.calculation?.formula).toContain('Stored yearly total')
+  })
+
+  it('uses contextual follow-up details to keep the previous requested plan while changing billing period', () => {
+    const rows = buildProductionPricingRows()
+
+    const result = hybridRetrieveFromRows({
+      question: '1 year price',
+      contextualQuery: 'Customer previously asked about Pro Hosting.',
+      rows,
+    })
+
+    expect(result.debug.selectedOffer?.entity?.toLowerCase()).toContain('pro hosting')
+    expect(result.debug.selectedOffer?.sourceChunkId).toBe('web-hosting')
+    expect(result.calculation).toMatchObject({ status: 'computed' })
+  })
+
+  it('routes refund cancellation questions to policy evidence, not pricing or contact cards', () => {
+    const rows = [
+      {
+        id: 'policy',
+        source_id: 'source-1',
+        source,
+        heading_path: 'Policies > Refunds',
+        chunk_text: 'Refund policy: requesting a refund will result in cancellation or termination of the associated service. Data associated with the cancelled service may be permanently removed, so customers should back up important data before cancellation.',
+      },
+      {
+        id: 'contact',
+        source_id: 'source-1',
+        source,
+        chunk_text: 'Contact support at support@example.com. Pro plan price is $9/month.',
+      },
+    ]
+
+    const result = hybridRetrieveFromRows({ question: 'what happens to my service after refund cancellation?', rows })
+
+    expect(result.debug.answerMode).toBe('policy_or_terms')
+    expect(result.evidence[0]?.id).toBe('policy')
+    expect(result.chunks.join('\n')).toContain('Policy facts found in source')
+    expect(result.chunks.join('\n')).not.toContain('Pro plan price')
+  })
+
+  it('answers recommendation questions from suitability descriptions instead of random price cards', () => {
+    const rows = [
+      {
+        id: 'plans',
+        source_id: 'source-1',
+        source,
+        heading_path: 'Services > Plans',
+        chunk_text: [
+          'Starter Shared Plan is best for small personal websites.',
+          'Business VPS is suitable for demanding workloads and high traffic websites.',
+          'Dedicated Platform is recommended for mission-critical applications and high traffic platforms.',
+          'Starter price is $5/month. Business VPS price is $30/month.',
+        ].join('\n'),
+      },
+    ]
+
+    const result = hybridRetrieveFromRows({ question: 'what plan is good for high traffic websites?', rows })
+
+    expect(result.fallbackReason).toBeNull()
+    expect(result.chunks.join('\n')).toContain('Recommendation evidence found in source')
+    expect(result.chunks.join('\n')).toContain('high traffic websites')
+  })
+
+  it('keeps generic pricing behavior across gym, restaurant, clinic, course, and ecommerce variants', () => {
+    const rows = [
+      { id: 'gym', source_id: 'source-1', source, chunk_text: '### Premium Gym Membership\nMonthly/list price $50/month. Yearly membership save 20%.' },
+      { id: 'restaurant', source_id: 'source-1', source, chunk_text: '### Family Dinner Combo\nMenu price $24. Discounted family deal $18. Serves 4.' },
+      { id: 'clinic', source_id: 'source-1', source, chunk_text: '### Skin Therapy Package\nAppointment fee $70/session. Package total $300 for 5 sessions.' },
+      { id: 'course', source_id: 'source-1', source, chunk_text: '### Advanced Design Course\nCourse fee USD 120/month. Annual plan save 10%.' },
+      { id: 'ecommerce', source_id: 'source-1', source, chunk_text: '### Runner Jacket Variant Blue XL\nCurrent price $75. Original price $99. Shipping $5.' },
+    ]
+
+    expect(hybridRetrieveFromRows({ question: 'Premium Gym Membership yearly price', rows }).calculation).toMatchObject({ status: 'computed', value: 480 })
+    expect(hybridRetrieveFromRows({ question: 'Family Dinner Combo price', rows }).debug.selectedOffer?.sourceChunkId).toBe('restaurant')
+    expect(hybridRetrieveFromRows({ question: 'Skin Therapy Package fee', rows }).evidence[0]?.id).toBe('clinic')
+    expect(hybridRetrieveFromRows({ question: 'Advanced Design Course yearly price', rows }).calculation).toMatchObject({ status: 'computed', value: 1296 })
+    expect(hybridRetrieveFromRows({ question: 'Runner Jacket Blue XL price', rows }).debug.selectedOffer?.currentPrice).toMatchObject({ amount: 75 })
+  })
 })
 
 function buildProductionPricingRows() {

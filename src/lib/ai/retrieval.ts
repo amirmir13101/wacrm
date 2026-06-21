@@ -45,6 +45,7 @@ export interface RetrievalIntents {
   readonly ownership: boolean
   readonly date: boolean
   readonly comparison: boolean
+  readonly recommendation: boolean
 }
 
 export type OfferAnswerMode =
@@ -475,12 +476,13 @@ function retrieveSingleQueryFromRows(args: {
     analysis,
   )
 
-  const calculation = analysis.calculationIntent.hasIntent ? calculateFromEvidence(analysis, fused) : null
+  const calculationRequested = shouldInvokeDeterministicCalculation(analysis)
+  const calculation = calculationRequested ? calculateFromEvidence(analysis, fused) : null
   const ambiguousWeakOffer = hasAmbiguousWeakOfferRows(analysis, activeRows)
   const fallbackReason =
     fused.length === 0
       ? ambiguousWeakOffer ? 'ambiguous_offer' : 'no_relevant_knowledge'
-      : analysis.calculationIntent.hasIntent && !calculation
+      : calculationRequested && !calculation
         ? 'cannot_compute'
       : calculation && calculation.status !== 'computed'
         ? calculation.status
@@ -519,7 +521,7 @@ function retrieveSingleQueryFromRows(args: {
         rerankScore: item.rerankScore,
         rerankReasons: item.rerankReasons,
       })),
-      calculationInvoked: analysis.calculationIntent.hasIntent,
+      calculationInvoked: calculationRequested,
       answerMode: analysis.offerScope.answerMode,
       requestedFamily: analysis.offerScope.requestedFamily,
       requestedEntity: analysis.offerScope.requestedEntity,
@@ -557,12 +559,13 @@ function mergeExpandedRetrievalResults(args: {
     ),
     analysis,
   )
-  const calculation = analysis.calculationIntent.hasIntent ? calculateFromEvidence(analysis, reranked) : null
+  const calculationRequested = shouldInvokeDeterministicCalculation(analysis)
+  const calculation = calculationRequested ? calculateFromEvidence(analysis, reranked) : null
   const ambiguousWeakOffer = hasAmbiguousWeakOfferRows(analysis, args.rows)
   const fallbackReason =
     reranked.length === 0
       ? ambiguousWeakOffer ? 'ambiguous_offer' : 'no_relevant_knowledge'
-      : analysis.calculationIntent.hasIntent && !calculation
+      : calculationRequested && !calculation
         ? 'cannot_compute'
         : calculation && calculation.status !== 'computed'
           ? calculation.status
@@ -588,13 +591,13 @@ function mergeExpandedRetrievalResults(args: {
     ? [formatFullContextFallbackBlock(args.fullContextSources ?? buildFullContextSourcesFromRows(args.rows))]
     : []
   const fullContextCalculationCandidates =
-    !calculation && analysis.calculationIntent.hasIntent && fullContextFallback.outcome === 'succeeded'
+    !calculation && calculationRequested && fullContextFallback.outcome === 'succeeded'
       ? buildFullContextCalculationCandidates(args.fullContextSources ?? buildFullContextSourcesFromRows(args.rows), analysis, args.limit ?? MAX_EVIDENCE)
       : []
   const effectiveCalculation =
     calculation ?? (fullContextCalculationCandidates.length > 0 ? calculateFromEvidence(analysis, fullContextCalculationCandidates) : null)
   const recoveredByFullContext = fullContextFallback.outcome === 'succeeded' &&
-    (!analysis.calculationIntent.hasIntent || effectiveCalculation?.status === 'computed')
+    (!calculationRequested || effectiveCalculation?.status === 'computed')
   const effectiveFallbackReason = recoveredByFullContext ? null : fallbackReason
   const effectiveCalculationBlock =
     effectiveCalculation?.status === 'computed'
@@ -647,7 +650,7 @@ function mergeExpandedRetrievalResults(args: {
         rerankScore: candidate.rerankScore,
         rerankReasons: candidate.rerankReasons,
       })),
-      calculationInvoked: analysis.calculationIntent.hasIntent,
+      calculationInvoked: calculationRequested,
       answerMode: analysis.offerScope.answerMode,
       requestedFamily: analysis.offerScope.requestedFamily,
       requestedEntity: analysis.offerScope.requestedEntity,
@@ -1038,6 +1041,7 @@ function detectRetrievalIntents(question: string): RetrievalIntents {
     ownership: /\b(owner|owned|founder|founded by|behind|run by|operated by|director|ceo)\b/.test(normalized),
     date: /\b(date|built|created|founded|launched|launch|started|established|published|updated|modified|page date|sitemap)\b/.test(normalized),
     comparison: /\b(compare|comparison|difference|different|vs|versus|better|which one|between)\b/.test(normalized),
+    recommendation: /\b(best|better|good|recommend|recommended|suitable|fit|right|which plan|which package|for high|for low|for beginners?|for agencies?|for teams?|for growing|for enterprise|for traffic|heavy use|demanding|mission[-\s]?critical)\b/.test(normalized),
   }
 }
 
@@ -1058,6 +1062,7 @@ function mergeRetrievalIntents(
     ownership: current.ownership || Boolean(context?.ownership),
     date: current.date || Boolean(context?.date),
     comparison: current.comparison || Boolean(context?.comparison) || comparison,
+    recommendation: current.recommendation || Boolean(context?.recommendation),
   }
 }
 
@@ -1118,7 +1123,7 @@ function extractEntityTerms(question: string, terms: readonly string[], intents:
   for (const match of question.matchAll(/\b\d+(?:[.,]\d+)?\s?(?:gb|tb|mb|kb|cores?|cpu|ram|kg|g|mg|ml|l|hours?|hrs?|days?|weeks?|months?|years?|people|persons?|servings?|sq\.?\s?ft|sqm)\b/gi)) {
     entities.add(match[0].toLowerCase().replace(/\s+/g, ''))
   }
-  const hasSpecificIntent = intents.pricing || intents.policy || intents.hours || intents.contact || intents.location || intents.faq || intents.productOrService || intents.company || intents.ownership || intents.date
+  const hasSpecificIntent = intents.pricing || intents.policy || intents.hours || intents.contact || intents.location || intents.faq || intents.productOrService || intents.company || intents.ownership || intents.date || intents.recommendation
   if (!hasSpecificIntent && entities.size === 0) {
     for (const term of terms.slice(0, 3)) entities.add(term)
   }
@@ -1207,6 +1212,8 @@ function buildOfferQueryScope(args: {
     answerMode = 'contact_location_hours'
   } else if (args.intents.policy && !args.intents.pricing) {
     answerMode = 'policy_or_terms'
+  } else if (args.intents.recommendation && args.intents.productOrService && !args.intents.pricing) {
+    answerMode = 'missing_or_ambiguous'
   } else if (args.intents.pricing || args.intents.productOrService) {
     const hasSpecificOfferSignal =
       weakPlanNames.length > 0 ||
@@ -1801,6 +1808,32 @@ function calculateFromEvidence(
   return result
 }
 
+function shouldInvokeDeterministicCalculation(analysis: RetrievalQuestionAnalysis): boolean {
+  if (analysis.calculationIntent.hasIntent) {
+    if (analysis.calculationIntent.percentage) return true
+    if (
+      analysis.calculationIntent.targetPeriod === 'monthly' &&
+      asksForTrueMonthlyBilling(analysis.question) &&
+      !asksForMonthlyEquivalent(analysis.question)
+    ) {
+      return false
+    }
+    return true
+  }
+  if (!analysis.intents.pricing || analysis.offerScope.answerMode !== 'single_offer_exact') return false
+  if (!analysis.offerScope.requestedPeriod) return false
+  if (analysis.offerScope.requestedPeriod === 'monthly' && asksForTrueMonthlyBilling(analysis.question)) return false
+  return /\b(price|cost|fee|rate|total|billing|billed|buy|pay|charge|year|annual|monthly|month)\b/i.test(analysis.question)
+}
+
+function asksForTrueMonthlyBilling(question: string): boolean {
+  return /\b(monthly basis|month[-\s]?to[-\s]?month|only one month|for one month|1 month|one month|monthly billing|monthly price|per month|one-month)\b/i.test(question)
+}
+
+function asksForMonthlyEquivalent(question: string): boolean {
+  return /\b(monthly equivalent|equivalent monthly|if total|from total|yearly.*monthly|annual.*monthly|divid(?:e|ed)|what should be the monthly)\b/i.test(question)
+}
+
 function calculateFromStructuredPricingOffers(
   analysis: RetrievalQuestionAnalysis,
   candidates: readonly RetrievalCandidate[],
@@ -1811,15 +1844,30 @@ function calculateFromStructuredPricingOffers(
     selectScopedStructuredPricingOfferFallback(analysis, offers)
   if (!offer) return null
   const sourceIds = [offer.sourceChunkId]
-  const targetPeriod = analysis.calculationIntent.targetPeriod
+  const targetPeriod = analysis.calculationIntent.targetPeriod ?? analysis.offerScope.requestedPeriod
   const wantsOriginal = asksForOriginalPrice(analysis.question)
   const rawBasePrice = wantsOriginal ? offer.original_price ?? offer.current_price : offer.current_price
   const basePrice = rawBasePrice ? withInferredStructuredPricePeriod(rawBasePrice, offer) : null
 
-  if (analysis.calculationIntent.periodConversion && targetPeriod) {
+  if (analysis.calculationIntent.percentage && offer.discount_percent === null) return null
+
+  if ((analysis.calculationIntent.periodConversion || shouldInvokeDeterministicCalculation(analysis)) && targetPeriod) {
     const stored = offer.stored_period_totals[targetPeriod]
     if (stored && !wantsOriginal) {
       return storedBillingTotal(stored.amount, targetPeriod, sourceIds, stored.currency)
+    }
+    const durationDiscount = !wantsOriginal ? selectDurationDiscountForQuestion(offer, analysis.question, targetPeriod) : null
+    const originalMonthly = selectMonthlyListPriceForDurationDiscount(offer)
+    if (durationDiscount !== null && originalMonthly && targetPeriod === 'yearly') {
+      const discountedMonthly = roundCalculationNumber(originalMonthly.amount * (1 - durationDiscount / 100))
+      const yearlyTotal = roundCalculationNumber(discountedMonthly * 12)
+      return {
+        status: 'computed',
+        value: yearlyTotal,
+        formula: `${originalMonthly.amount} ${originalMonthly.currency}/monthly with ${durationDiscount}% discount × 12 = ${yearlyTotal} ${originalMonthly.currency}/yearly`,
+        unit: `${originalMonthly.currency}/yearly`.trim(),
+        sourceChunkIds: sourceIds,
+      }
     }
     const durationTotal = !wantsOriginal ? selectBillingTotalForTarget(offer.billing_totals, targetPeriod) : null
     if (durationTotal) {
@@ -1859,6 +1907,51 @@ function calculateFromStructuredPricingOffers(
   return null
 }
 
+function selectMonthlyListPriceForDurationDiscount(offer: StructuredPricingOffer): StructuredPriceValue | null {
+  const original = offer.original_price ? withInferredStructuredPricePeriod(offer.original_price, offer) : null
+  if (original?.period === 'monthly') return original
+  const current = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
+  if (current?.period === 'monthly' && offer.discount_percent === null) return current
+  if (current?.period === 'monthly' && !offer.original_price) return current
+  return null
+}
+
+function selectDurationDiscountForQuestion(
+  offer: StructuredPricingOffer,
+  question: string,
+  targetPeriod: BillingPeriod,
+): number | null {
+  if (targetPeriod !== 'yearly') return null
+  const requestedYears = readRequestedYearCount(question)
+  if (!requestedYears) return null
+  const text = [offer.source_text, offer.context_text].filter(Boolean).join('\n')
+  const discount = extractDurationDiscountPercent(text, requestedYears, 'year')
+  return discount
+}
+
+function readRequestedYearCount(question: string): number | null {
+  const normalized = question.toLowerCase()
+  const numeric = normalized.match(/\b(\d+(?:[.,]\d+)?)\s*(?:years?|yrs?)\b/)
+  if (numeric) return Number((numeric[1] ?? '').replace(',', '.'))
+  if (/\b(one|a|an|annual|yearly)\s+(?:year|yr|price|billing|plan|basis)?\b/.test(normalized) || /\bfor\s+one\s+year\b/.test(normalized)) return 1
+  return null
+}
+
+function extractDurationDiscountPercent(text: string, count: number, unit: 'year' | 'month'): number | null {
+  const unitPattern = unit === 'year' ? String.raw`years?|yrs?|annual|yearly` : String.raw`months?|mos?`
+  const countPattern = count === 1 ? String.raw`(?:1|one|a|an)?` : escapeRegex(String(count))
+  const patterns = [
+    new RegExp(`\\b${countPattern}\\s*-?\\s*(?:${unitPattern})\\b.{0,40}\\b(?:save|discount|off)\\s*(\\d+(?:[.,]\\d+)?)\\s*%`, 'i'),
+    new RegExp(`\\b(?:save|discount|off)\\s*(\\d+(?:[.,]\\d+)?)\\s*%\\b.{0,40}\\b${countPattern}\\s*-?\\s*(?:${unitPattern})\\b`, 'i'),
+  ]
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    const value = Number((match?.[1] ?? '').replace(',', '.'))
+    if (Number.isFinite(value) && value > 0 && value < 100) return value
+  }
+  return null
+}
+
 function withInferredStructuredPricePeriod(
   value: StructuredPriceValue,
   offer: StructuredPricingOffer,
@@ -1887,6 +1980,20 @@ function inferStructuredPricePeriod(
       return rightTextMatch - leftTextMatch
     })[0]
   if (matchingMoney?.period) return matchingMoney.period
+
+  if (offer.discount_percent !== null && offer.billing_totals.length > 0) {
+    const yearlyTotal = offer.billing_totals.find((total) => total.duration_unit === 'year' && total.duration_count === 1)
+    if (yearlyTotal) {
+      const discountedYearly = roundCalculationNumber(value.amount * (1 - offer.discount_percent / 100) * 12)
+      const undiscountedYearly = roundCalculationNumber(value.amount * 12)
+      if (
+        roundCalculationNumber(yearlyTotal.amount) === discountedYearly ||
+        roundCalculationNumber(yearlyTotal.amount) === undiscountedYearly
+      ) {
+        return 'monthly'
+      }
+    }
+  }
 
   const amountPattern = escapeRegex(String(value.amount)).replace(/\\\./g, '[.,]')
   const amountWithOptionalTrailingZero = amountPattern.includes('[.,]')
@@ -2592,8 +2699,11 @@ function extractNumericFactsFromCandidate(candidate: RetrievalCandidate): Array<
 function extractStructuredPricingOffersFromCandidate(candidate: RetrievalCandidate): StructuredPricingOffer[] {
   const persisted = readStructuredPricingOffers(candidate.structuredFacts, candidate.id).map((offer) => enrichOfferWithCandidateMetadata(offer, candidate))
   const derived = extractStructuredPricingOffers(candidate.chunkText, candidate.id).map((offer) => enrichOfferWithCandidateMetadata(offer, candidate))
+  const repaired = persisted
+    .map((offer) => repairPersistedOfferFromRuntimeEvidence(offer, derived))
+    .filter((offer): offer is StructuredPricingOffer => Boolean(offer))
   const bySignature = new Map<string, StructuredPricingOffer>()
-  for (const offer of [...persisted, ...derived]) {
+  for (const offer of [...persisted, ...derived, ...repaired]) {
     const signature = [
       normalizeEntityKey(offer.entity ?? offer.source_text.slice(0, 80)),
       offer.current_price ? `${offer.current_price.currency}:${roundCalculationNumber(offer.current_price.amount)}:${offer.current_price.period ?? ''}` : '',
@@ -2605,6 +2715,66 @@ function extractStructuredPricingOffersFromCandidate(candidate: RetrievalCandida
     if (!current || offerCompletenessScore(offer) > offerCompletenessScore(current)) bySignature.set(signature, offer)
   }
   return [...bySignature.values()]
+}
+
+function repairPersistedOfferFromRuntimeEvidence(
+  persisted: StructuredPricingOffer,
+  derived: readonly StructuredPricingOffer[],
+): StructuredPricingOffer | null {
+  const match = derived
+    .map((offer) => ({ offer, score: scoreOfferSimilarity(persisted, offer) }))
+    .filter((item) => item.score >= 25)
+    .sort((left, right) =>
+      right.score - left.score ||
+      offerCompletenessScore(right.offer) - offerCompletenessScore(left.offer),
+    )[0]?.offer
+  if (!match) return null
+  const persistedComplete = offerCompletenessScore(persisted)
+  const matchComplete = offerCompletenessScore(match)
+  const runtimeHasBetterPriceRoles =
+    Boolean(match.original_price && !persisted.original_price) ||
+    Boolean(match.discount_percent !== null && persisted.discount_percent === null) ||
+    Boolean(match.current_price && persisted.current_price && match.current_price.amount < persisted.current_price.amount && match.original_price)
+  if (!runtimeHasBetterPriceRoles && matchComplete <= persistedComplete + 2) return null
+  const entity = chooseCleanerOfferEntity(persisted.entity, match.entity)
+  return {
+    ...persisted,
+    entity,
+    entity_name: entity,
+    current_price: match.current_price ?? persisted.current_price,
+    original_price: match.original_price ?? persisted.original_price,
+    discount_percent: match.discount_percent ?? persisted.discount_percent,
+    stored_period_totals: Object.keys(match.stored_period_totals).length > 0 ? match.stored_period_totals : persisted.stored_period_totals,
+    billing_totals: match.billing_totals.length > 0 ? match.billing_totals : persisted.billing_totals,
+    variant_specs: Object.keys(match.variant_specs).length > 0 ? match.variant_specs : persisted.variant_specs,
+    source_text: match.source_text || persisted.source_text,
+    context_text: match.context_text || persisted.context_text,
+    source_excerpt: match.source_excerpt || persisted.source_excerpt,
+    confidence: 'high',
+    source_origin: 'runtime',
+  }
+}
+
+function scoreOfferSimilarity(left: StructuredPricingOffer, right: StructuredPricingOffer): number {
+  const leftText = normalizeEntityKey(structuredOfferLabelText(left))
+  const rightText = normalizeEntityKey(structuredOfferLabelText(right))
+  const leftTerms = tokenize(leftText).filter((term) => !OFFER_FAMILY_STOP_TERMS.has(term))
+  const rightTerms = new Set(tokenize(rightText))
+  const overlap = leftTerms.filter((term) => rightTerms.has(term)).length
+  let score = overlap * 12
+  const leftEntity = normalizeEntityKey(left.entity ?? '')
+  const rightEntity = normalizeEntityKey(right.entity ?? '')
+  if (leftEntity && rightEntity && (entityContainsTerm(leftEntity, rightEntity) || entityContainsTerm(rightEntity, leftEntity))) score += 45
+  if (left.product_family && right.product_family && entityContainsTerm(normalizeEntityKey(left.product_family), normalizeEntityKey(right.product_family))) score += 20
+  return score
+}
+
+function chooseCleanerOfferEntity(left: string | null, right: string | null): string | null {
+  const cleanedLeft = cleanOfferEntityName(left ?? '')
+  const cleanedRight = cleanOfferEntityName(right ?? '')
+  if (!cleanedLeft) return cleanedRight || null
+  if (!cleanedRight) return cleanedLeft
+  return cleanedLeft.length <= cleanedRight.length ? cleanedLeft : cleanedRight
 }
 
 function enrichOfferWithCandidateMetadata(
@@ -2690,9 +2860,9 @@ function readStructuredPricingOffers(facts: Record<string, unknown> | null, sour
         : null
       if (!current && !original && Object.keys(stored).length === 0 && billingTotals.length === 0) return null
       const entity = typeof offer.entity === 'string' && offer.entity.trim()
-        ? offer.entity.trim()
+        ? cleanOfferEntityName(offer.entity.trim())
         : typeof offer.entity_name === 'string' && offer.entity_name.trim()
-          ? offer.entity_name.trim()
+          ? cleanOfferEntityName(offer.entity_name.trim())
           : null
       const normalizedOffer: StructuredPricingOffer = {
         kind: 'pricing_offer',
@@ -2841,7 +3011,7 @@ function buildStructuredPricingOffer(block: string, sourceChunkId: string): Stru
   const billingTotals = extractBillingTotals(block)
   if (money.length === 0 && billingTotals.length === 0) return null
   const discountPercent = extractDiscountPercent(block)
-  const entity = extractPricingEntityName(block)
+  const entity = cleanOfferEntityName(extractPricingEntityName(block) ?? '')
   const productFamily = inferProductFamilyFromOffer(entity, block)
   const headingPath = extractHeadingPathFromBlock(block)
   const stored: Partial<Record<BillingPeriod, StructuredPriceValue>> = {}
@@ -2899,6 +3069,31 @@ function buildStructuredPricingOffer(block: string, sourceChunkId: string): Stru
     sourceChunkId,
   }
   return isLikelyMarketingMetricOffer(offer) ? null : offer
+}
+
+function cleanOfferEntityName(value: string): string | null {
+  const compact = value
+    .replace(/^#{2,4}\s+/, '')
+    .replace(/^[-*•★✓🔥\s]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!compact) return null
+  const stopped = compact
+    .split(/\b(?:starting at|starts at|price|current price|original price|billing total|total|billed|great for|best for|ideal for|limited time|buy now|order now|configure)\b/i)[0]
+    ?.replace(/\s+[-–]\s*$/g, '')
+    .trim() || compact
+  if (stopped.length <= 90) return stopped
+  const terms = stopped.split(/\s+/)
+  const planIndex = terms.findIndex((term) => GENERIC_PLAN_NAMES.has(normalizeEntityKey(term)) || CATALOG_TIER_TERMS.has(normalizeEntityKey(term)))
+  if (planIndex >= 0) {
+    const start = Math.max(0, planIndex - 1)
+    const window = terms.slice(start, planIndex + 5).join(' ')
+      .split(/\b(?:great|best|ideal|for|with|includes?)\b/i)[0]
+      ?.replace(/\s+[-–]\s*$/g, '')
+      .trim()
+    if (window && /[a-z]/i.test(window)) return window.slice(0, 90)
+  }
+  return stopped.slice(0, 90).trim()
 }
 
 function isLikelyMarketingMetricOffer(offer: StructuredPricingOffer): boolean {
@@ -3334,6 +3529,45 @@ function buildFactGuidanceBlock(
     }
   }
 
+  if (analysis.intents.policy) {
+    const policyFacts = extractRelevantSentences(text, analysis, [
+      'refund',
+      'return',
+      'cancel',
+      'cancellation',
+      'terminate',
+      'termination',
+      'service',
+      'data',
+      'policy',
+      'terms',
+    ]).slice(0, 5)
+    if (policyFacts.length > 0) lines.push(`Policy facts found in source: ${policyFacts.join(' | ')}`)
+  }
+
+  if (analysis.intents.recommendation) {
+    const recommendationFacts = extractRelevantSentences(text, analysis, [
+      'best for',
+      'good for',
+      'ideal for',
+      'suitable',
+      'recommended',
+      'high traffic',
+      'demanding',
+      'mission critical',
+      'power users',
+      'agencies',
+      'growing',
+      'enterprise',
+      'workloads',
+      'platforms',
+    ]).slice(0, 6)
+    if (recommendationFacts.length > 0) {
+      lines.push('Answer mode: recommendation. Use suitability/product-description facts only; do not invent a recommendation.')
+      lines.push(`Recommendation evidence found in source: ${recommendationFacts.join(' | ')}`)
+    }
+  }
+
   if (analysis.intents.pricing || analysis.intents.productOrService) {
     const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
     if (analysis.offerScope.answerMode === 'category_pricing_list') {
@@ -3352,6 +3586,8 @@ function buildFactGuidanceBlock(
     if (offer) {
       const currentPrice = offer.current_price ? withInferredStructuredPricePeriod(offer.current_price, offer) : null
       const originalPrice = offer.original_price ? withInferredStructuredPricePeriod(offer.original_price, offer) : null
+      if (analysis.offerScope.requestedPeriod) lines.push(`Requested billing period/detail: ${analysis.offerScope.requestedPeriod}`)
+      if (asksForTrueMonthlyBilling(analysis.question)) lines.push('Customer asked for true month-to-month/monthly billing, not the monthly equivalent of a longer billing total.')
       lines.push(`Selected requested offer/entity: ${offer.entity ?? 'matched offer'}`)
       if (offer.product_family) lines.push(`Selected offer family/category: ${offer.product_family}`)
       if (currentPrice) lines.push(`Selected offer current/effective price: ${formatStructuredPriceValue(currentPrice)}`)
@@ -3379,6 +3615,45 @@ function formatStructuredPriceValue(value: StructuredPriceValue): string {
 
 function formatStructuredBillingTotal(total: StructuredBillingTotal): string {
   return `${total.currency ? `${total.currency} ` : ''}${total.amount} per ${formatDurationCount(total.duration_count, total.duration_unit)}`
+}
+
+function extractRelevantSentences(
+  text: string,
+  analysis: RetrievalQuestionAnalysis,
+  signals: readonly string[],
+): string[] {
+  const normalizedSignals = signals.map((signal) => signal.toLowerCase())
+  const entityTerms = analysis.entityTerms.map((term) => normalizeEntityKey(term)).filter(Boolean)
+  const sentences = text
+    .replace(/\r\n/g, '\n')
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((sentence) => sentence.replace(/^[-*#\s]+/, '').replace(/\s+/g, ' ').trim())
+    .filter((sentence) => sentence.length >= 20 && sentence.length <= 320)
+  const scored = sentences
+    .map((sentence, index) => {
+      const normalized = normalizeEntityKey(sentence)
+      let score = 0
+      for (const signal of normalizedSignals) {
+        if (normalized.includes(normalizeEntityKey(signal))) score += signal.includes(' ') ? 18 : 10
+      }
+      for (const term of entityTerms) {
+        if (term && entityContainsTerm(normalized, term)) score += 6
+      }
+      if (containsPriceFact(sentence)) score += 2
+      return { sentence, score, index }
+    })
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+  const seen = new Set<string>()
+  const selected: string[] = []
+  for (const item of scored) {
+    const key = normalizeEntityKey(item.sentence).slice(0, 120)
+    if (seen.has(key)) continue
+    seen.add(key)
+    selected.push(item.sentence)
+    if (selected.length >= 8) break
+  }
+  return selected
 }
 
 function selectCategoryPricingOffers(

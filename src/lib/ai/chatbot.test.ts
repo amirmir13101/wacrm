@@ -331,6 +331,76 @@ describe('AI chatbot knowledge helpers', () => {
     vi.unstubAllEnvs()
   })
 
+  it('uses extractive billing guidance without converting true monthly billing into yearly equivalents', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({ error: { message: 'Rate limited' } }),
+    }))
+
+    const result = await generateChatbotAnswer({
+      question: 'Can I get Basic Workflow Plan on monthly basis?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      chunks: [
+        [
+          'Derived fact guidance from selected source evidence:',
+          '- Customer asked for true month-to-month/monthly billing, not the monthly equivalent of a longer billing total.',
+          '- Selected requested offer/entity: Basic Workflow Plan',
+          '- Selected offer current/effective price: USD 1.7/monthly',
+          '- Selected offer original/regular price: USD 2/monthly',
+          '- Selected offer discount percent: 15%',
+          '- Selected offer billing duration totals: USD 20.4 per 1 year ($20.40 billed per Year)',
+        ].join('\n'),
+      ],
+      requireProvider: true,
+    })
+
+    expect(result.status).toBe('answered')
+    expect(result.reason).toBe('provider_http_429_knowledge_preview')
+    expect(result.answer).toContain('Monthly/list price: USD 2/monthly')
+    expect(result.answer).toContain('Discounted equivalent shown: USD 1.7/monthly')
+
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('uses extractive policy and recommendation guidance when the provider rate-limits', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({ error: { message: 'Rate limited' } }),
+    }))
+
+    const policy = await generateChatbotAnswer({
+      question: 'what happens to my service after refund cancellation?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      chunks: [
+        'Derived fact guidance from selected source evidence:\n- Policy facts found in source: Requesting a refund will result in cancellation or termination of the associated service. | Data associated with the cancelled service may be permanently removed.',
+      ],
+      requireProvider: true,
+    })
+    const recommendation = await generateChatbotAnswer({
+      question: 'what plan is good for high traffic websites?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      chunks: [
+        'Derived fact guidance from selected source evidence:\n- Answer mode: recommendation. Use suitability/product-description facts only; do not invent a recommendation.\n- Recommendation evidence found in source: Business VPS is suitable for demanding workloads and high traffic websites. | Dedicated Platform is recommended for mission-critical applications and high traffic platforms.',
+      ],
+      requireProvider: true,
+    })
+
+    expect(policy.status).toBe('answered')
+    expect(policy.answer).toContain('cancellation or termination')
+    expect(policy.answer).toContain('permanently removed')
+    expect(recommendation.status).toBe('answered')
+    expect(recommendation.answer).toContain('high traffic websites')
+    expect(recommendation.answer).toContain('mission-critical')
+
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
   it('detects opt-out messages before AI auto-reply', () => {
     expect(isOptOutMessage('STOP')).toBe(true)
     expect(isOptOutMessage('unsubscribe')).toBe(true)

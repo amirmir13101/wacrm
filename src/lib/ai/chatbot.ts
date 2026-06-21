@@ -376,15 +376,16 @@ function formatExtractiveKnowledgeAnswer(
   chunks: readonly string[],
   calculation?: CalculationResult | null,
 ): string | null {
-  if (calculation?.status === 'computed' && calculation.value !== null) {
-    return trimForWhatsApp([
-      `The calculated answer is *${calculation.value} ${calculation.unit}*.`.trim(),
-      calculation.formula ? `Formula: ${calculation.formula}` : '',
-    ].filter(Boolean).join('\n'))
-  }
-
   const guidance = chunks.find((chunk) => chunk.startsWith('Derived fact guidance from selected source evidence:'))
-  if (!guidance) return null
+  if (!guidance) {
+    if (calculation?.status === 'computed' && calculation.value !== null) {
+      return trimForWhatsApp([
+        `The calculated answer is *${calculation.value} ${calculation.unit}*.`.trim(),
+        calculation.formula ? `Formula: ${calculation.formula}` : '',
+      ].filter(Boolean).join('\n'))
+    }
+    return null
+  }
   const lines = guidance
     .split(/\n+/)
     .map((line) => line.replace(/^-\s*/, '').trim())
@@ -398,18 +399,61 @@ function formatExtractiveKnowledgeAnswer(
     }
   }
 
+  const policyFacts = readGuidanceValue(lines, 'Policy facts found in source:')
+  if (policyFacts) {
+    const facts = policyFacts.split(/\s+\|\s+/).map((fact) => fact.trim()).filter(Boolean).slice(0, 4)
+    if (facts.length > 0) return trimForWhatsApp(facts.map((fact) => `- ${fact}`).join('\n'))
+  }
+
+  const recommendationFacts = readGuidanceValue(lines, 'Recommendation evidence found in source:')
+  if (recommendationFacts) {
+    const facts = recommendationFacts.split(/\s+\|\s+/).map((fact) => fact.trim()).filter(Boolean).slice(0, 5)
+    if (facts.length > 0) {
+      return trimForWhatsApp([
+        'Based on the source, these options look relevant:',
+        ...facts.map((fact) => `- ${fact}`),
+      ].join('\n'))
+    }
+  }
+
   const entity = readGuidanceValue(lines, 'Selected requested offer/entity:')
   const currentPrice = readGuidanceValue(lines, 'Selected offer current/effective price:')
   const originalPrice = readGuidanceValue(lines, 'Selected offer original/regular price:')
   const discount = readGuidanceValue(lines, 'Selected offer discount percent:')
   const totals = readGuidanceValue(lines, 'Selected offer stored billing totals:') ?? readGuidanceValue(lines, 'Selected offer billing duration totals:')
+  const requestedPeriod = readGuidanceValue(lines, 'Requested billing period/detail:')
+  const trueMonthly = lines.some((line) => line.includes('true month-to-month/monthly billing'))
   if (entity && (currentPrice || originalPrice || discount || totals)) {
+    if (calculation?.status === 'computed' && calculation.value !== null && requestedPeriod && !trueMonthly) {
+      return trimForWhatsApp([
+        `*${entity}*`,
+        `- ${requestedPeriod === 'yearly' ? 'Yearly price' : 'Calculated price'}: ${calculation.value} ${calculation.unit}`,
+        calculation.formula ? `- Formula: ${calculation.formula}` : '',
+        currentPrice ? `- Current/effective monthly price shown: ${currentPrice}` : '',
+        originalPrice ? `- Original/list price: ${originalPrice}` : '',
+      ].filter(Boolean).join('\n'))
+    }
+    const monthlyListLine = trueMonthly && originalPrice
+      ? `- Monthly/list price: ${originalPrice}`
+      : ''
+    const yearlyEquivalentLine = trueMonthly && currentPrice && currentPrice !== originalPrice
+      ? `- Discounted equivalent shown: ${currentPrice}`
+      : ''
     return trimForWhatsApp([
       `*${entity}*`,
-      currentPrice ? `- Current/effective price: ${currentPrice}` : '',
-      originalPrice ? `- Original/regular price: ${originalPrice}` : '',
+      monthlyListLine,
+      yearlyEquivalentLine,
+      !monthlyListLine && currentPrice ? `- Current/effective price: ${currentPrice}` : '',
+      !monthlyListLine && originalPrice ? `- Original/regular price: ${originalPrice}` : '',
       discount ? `- Discount: ${discount}` : '',
       totals ? `- Billing total: ${totals}` : '',
+    ].filter(Boolean).join('\n'))
+  }
+
+  if (calculation?.status === 'computed' && calculation.value !== null) {
+    return trimForWhatsApp([
+      `The calculated answer is *${calculation.value} ${calculation.unit}*.`.trim(),
+      calculation.formula ? `Formula: ${calculation.formula}` : '',
     ].filter(Boolean).join('\n'))
   }
 
