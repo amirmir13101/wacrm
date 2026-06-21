@@ -53,6 +53,31 @@ export interface AiAnswerResult {
   readonly providerConfigured: boolean
 }
 
+export interface FullKnowledgeAnswerMode {
+  readonly mode: 'simple_full_knowledge' | 'large_kb_retrieval'
+  readonly content: string
+  readonly sourceCount: number
+  readonly totalCharacters: number
+  readonly threshold: number
+  readonly sourceTitles: readonly string[]
+  readonly sourceUrls: readonly string[]
+}
+
+interface KnowledgeSourceQueryClient {
+  readonly from: (table: string) => {
+    readonly select: (columns: string) => {
+      readonly eq: (column: string, value: string) => {
+        readonly eq: (column: string, value: string) => {
+          readonly order: (
+            column: string,
+            options: { readonly ascending: boolean },
+          ) => PromiseLike<{ readonly data: unknown; readonly error?: unknown }>
+        }
+      }
+    }
+  }
+}
+
 interface ProviderAnswerResult {
   readonly content: string | null
   readonly errorReason: string | null
@@ -70,6 +95,26 @@ export const DEFAULT_AI_CHATBOT_SETTINGS = {
 
 const MAX_CHUNKS = 5
 const PLAN_BLOCK_HEADING = /^#{2,4}\s+/
+const SIMPLE_FULL_KNOWLEDGE_FALLBACK = 'I don’t see that exact detail in the current knowledge base. Please contact support for confirmation.'
+const SIMPLE_PROVIDER_FAILURE_FALLBACK = 'Sorry, I could not answer this right now. Please contact support.'
+const DEFAULT_SIMPLE_FULL_KNOWLEDGE_CHAR_LIMIT = 220_000
+const INTERNAL_LEAK_PATTERNS = [
+  /Full active workspace knowledge fallback context/i,
+  /Use only the facts present below/i,
+  /\[Full source/i,
+  /Source type:/i,
+  /Derived fact guidance/i,
+  /model_uncertainty_knowledge_preview/i,
+  /cross_entity_fact_mix_knowledge_preview/i,
+  /provider_quota_or_billing_knowledge_preview/i,
+  /selectedOffer/i,
+  /structured_facts/i,
+  /retrieval debug/i,
+  /fallback reason/i,
+  /debug payload/i,
+  /raw system prompt/i,
+  /raw context-construction prompt/i,
+] as const
 
 export async function isAiProviderConfigured(workspaceId?: string | null): Promise<boolean> {
   return Boolean(await resolveAiProviderConfig(workspaceId))
@@ -93,6 +138,164 @@ export async function getAiPlanAccess(workspaceId: string): Promise<{
 
 export function chunkKnowledgeText(content: string): string[] {
   return semanticChunkText(content).map((chunk) => chunk.text)
+}
+
+export function readSimpleFullKnowledgeThreshold(): number {
+  const configured = Number(process.env.AI_SIMPLE_FULL_KNOWLEDGE_CHAR_LIMIT ?? '')
+  return Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : DEFAULT_SIMPLE_FULL_KNOWLEDGE_CHAR_LIMIT
+}
+
+export async function loadFullKnowledgeAnswerMode(args: {
+  readonly workspaceId: string
+  readonly client: unknown
+  readonly threshold?: number
+}): Promise<FullKnowledgeAnswerMode> {
+  const threshold = args.threshold ?? readSimpleFullKnowledgeThreshold()
+  const queryClient = args.client as KnowledgeSourceQueryClient
+  const { data } = await queryClient
+    .from('ai_knowledge_sources')
+    .select('title, content, updated_at, created_at')
+    .eq('workspace_id', args.workspaceId)
+    .eq('status', 'active')
+    .order('updated_at', { ascending: false })
+
+  const rows = Array.isArray(data) ? data : []
+  const sources = rows
+    .map((row) => isRecord(row) ? row : null)
+    .filter((row): row is Record<string, unknown> => Boolean(row))
+    .map((row) => ({
+      title: typeof row.title === 'string' ? row.title.trim() : 'Knowledge source',
+      url: typeof row.source_url === 'string' ? row.source_url.trim() : '',
+      content: typeof row.content === 'string' ? cleanKnowledgeForSimpleFullMode(row.content) : '',
+    }))
+    .filter((source) => source.content)
+
+  const content = sources
+    .map((source) => [
+      `Source title: ${source.title}`,
+      source.url ? `Source URL: ${source.url}` : '',
+      source.content,
+    ].filter(Boolean).join('\n'))
+    .join('\n\n---\n\n')
+    .trim()
+
+  return {
+    mode: content.length > 0 && content.length <= threshold ? 'simple_full_knowledge' : 'large_kb_retrieval',
+    content,
+    sourceCount: sources.length,
+    totalCharacters: content.length,
+    threshold,
+    sourceTitles: sources.map((source) => source.title).slice(0, 20),
+    sourceUrls: sources.map((source) => source.url).filter(Boolean).slice(0, 20),
+  }
+}
+
+export async function generateSimpleFullKnowledgeAnswer(args: {
+  readonly question: string
+  readonly settings: Pick<AiChatbotSettings, 'tone' | 'fallback_message'>
+  readonly knowledge: string
+  readonly workspaceId?: string | null
+  readonly requireProvider?: boolean
+  readonly conversationContext?: string | null
+  readonly memoryContext?: string | null
+  readonly responseIsRTL?: boolean
+  readonly gapContext?: {
+    readonly originalQuestion?: string | null
+    readonly detectedLanguage?: string | null
+    readonly channel?: string | null
+    readonly conversationId?: string | null
+    readonly contactId?: string | null
+  }
+}): Promise<AiAnswerResult> {
+  const question = args.question.trim()
+  const knowledge = cleanKnowledgeForSimpleFullMode(args.knowledge)
+  const providerConfig = await resolveAiProviderConfig(args.workspaceId)
+  const providerConfigured = Boolean(providerConfig)
+  const usedChunks = knowledge ? [knowledge] : []
+
+  const fallbackResult = async (reason: string, answer = SIMPLE_FULL_KNOWLEDGE_FALLBACK, providerError?: SafeProviderError | null): Promise<AiAnswerResult> => {
+    if (args.workspaceId) {
+      await logKnowledgeGap({
+        workspaceId: args.workspaceId,
+        question,
+        originalQuestion: args.gapContext?.originalQuestion,
+        detectedLanguage: args.gapContext?.detectedLanguage,
+        fallbackReason: reason,
+        retrievalScore: null,
+        chunkCountRetrieved: usedChunks.length,
+        embeddingUsed: false,
+        channel: args.gapContext?.channel,
+        conversationId: args.gapContext?.conversationId,
+        contactId: args.gapContext?.contactId,
+        providerError,
+      })
+    }
+    return { status: 'fallback', answer, reason, usedChunks, providerConfigured }
+  }
+
+  if (!question) return fallbackResult('empty_question')
+  if (!knowledge) return fallbackResult('no_active_knowledge')
+  if (!providerConfig) {
+    if (args.requireProvider) {
+      return { status: 'skipped', answer: '', reason: 'ai_provider_missing', usedChunks, providerConfigured }
+    }
+    return fallbackResult('ai_provider_missing', SIMPLE_PROVIDER_FAILURE_FALLBACK)
+  }
+
+  const first = await requestSimpleFullKnowledgeProviderAnswer({
+    providerConfig,
+    question,
+    knowledge,
+    tone: args.settings.tone,
+    conversationContext: args.conversationContext,
+    memoryContext: args.memoryContext,
+  })
+  if (!first.content) return fallbackResult(first.errorReason ?? 'empty_ai_response', SIMPLE_PROVIDER_FAILURE_FALLBACK, first.providerError)
+
+  const formatted = appendAssociatedDetailsForSimpleAnswer({
+    answer: sanitizeCustomerAnswer(formatForWhatsApp(first.content, args.responseIsRTL)),
+    question,
+    knowledge,
+  })
+  if (!formatted || answerContainsInternalText(formatted)) return fallbackResult('internal_text_blocked')
+
+  const validation = formatted === SIMPLE_FULL_KNOWLEDGE_FALLBACK
+    ? { ok: false as const, unsupported: ['model returned fallback before full-knowledge re-check'] }
+    : validateLightFullKnowledgeAnswer(formatted, knowledge)
+  if (validation.ok) {
+    return { status: 'answered', answer: formatted, reason: 'simple_full_knowledge', usedChunks, providerConfigured }
+  }
+
+  const retry = await requestSimpleFullKnowledgeProviderAnswer({
+    providerConfig,
+    question,
+    knowledge,
+    tone: args.settings.tone,
+    conversationContext: args.conversationContext,
+    memoryContext: args.memoryContext,
+    retryInstruction: [
+      `Your previous answer included unsupported claims or fell back too early: ${validation.unsupported.join(', ')}.`,
+      'Re-check the full knowledge base before falling back.',
+      'For specs/features/details questions, search headings and nearby sections where the important product, plan, service, course, menu, or package words appear together even if the word order is different.',
+      'Answer only with supported facts from that matching section.',
+      `If the exact detail is still not present, return exactly: ${SIMPLE_FULL_KNOWLEDGE_FALLBACK}`,
+    ].join(' '),
+  })
+  if (!retry.content) return fallbackResult(retry.errorReason ?? 'empty_ai_response', SIMPLE_PROVIDER_FAILURE_FALLBACK, retry.providerError)
+
+  const retryFormatted = appendAssociatedDetailsForSimpleAnswer({
+    answer: sanitizeCustomerAnswer(formatForWhatsApp(retry.content, args.responseIsRTL)),
+    question,
+    knowledge,
+  })
+  if (!retryFormatted || answerContainsInternalText(retryFormatted)) return fallbackResult('internal_text_blocked_after_retry')
+  if (retryFormatted === SIMPLE_FULL_KNOWLEDGE_FALLBACK) return fallbackResult('model_fallback_after_retry')
+  const retryValidation = validateLightFullKnowledgeAnswer(retryFormatted, knowledge)
+  if (!retryValidation.ok) return fallbackResult('unsupported_claims_after_retry')
+
+  return { status: 'answered', answer: retryFormatted, reason: 'simple_full_knowledge_retry', usedChunks, providerConfigured }
 }
 
 export function isOptOutMessage(text: string): boolean {
@@ -248,6 +451,7 @@ export async function generateChatbotAnswer(args: {
     details?: {
       readonly providerError?: SafeProviderError | null
       readonly guardrailReason?: string | null
+      readonly answer?: string
     },
   ): Promise<AiAnswerResult> => {
     if (args.workspaceId) {
@@ -267,7 +471,7 @@ export async function generateChatbotAnswer(args: {
         guardrailReason: details?.guardrailReason,
       })
     }
-    return { status: 'fallback', answer: fallback, reason, usedChunks, providerConfigured }
+    return { status: 'fallback', answer: details?.answer ?? fallback, reason, usedChunks, providerConfigured }
   }
 
   if (!question) {
@@ -280,43 +484,23 @@ export async function generateChatbotAnswer(args: {
     if (args.requireProvider) {
       return { status: 'skipped', answer: '', reason: 'ai_provider_missing', usedChunks: args.chunks, providerConfigured }
     }
-    const preview = formatFallbackKnowledgeAnswer(question, args.chunks, args.calculation)
-    return {
-      status: 'answered',
-      answer: preview,
-      reason: 'provider_missing_knowledge_preview',
-      usedChunks: args.chunks,
-      providerConfigured,
-    }
+    return fallbackResult('ai_provider_missing', args.chunks, { answer: SIMPLE_PROVIDER_FAILURE_FALLBACK })
   }
 
   try {
     const answer = await requestProviderAnswer({ providerConfig, args, question, fallback })
     if (!answer.content) {
-      const preview = formatFallbackKnowledgeAnswer(question, args.chunks, args.calculation)
-      if (preview) {
-        return {
-          status: 'answered',
-          answer: preview,
-          reason: `${answer.errorReason ?? 'empty_ai_response'}_knowledge_preview`,
-          usedChunks: args.chunks,
-          providerConfigured,
-        }
-      }
-      return fallbackResult(answer.errorReason ?? 'empty_ai_response', args.chunks, { providerError: answer.providerError })
+      return fallbackResult(answer.errorReason ?? 'empty_ai_response', args.chunks, {
+        providerError: answer.providerError,
+        answer: SIMPLE_PROVIDER_FAILURE_FALLBACK,
+      })
     }
     const trimmedAnswer = formatForWhatsApp(answer.content, args.responseIsRTL)
+    if (answerContainsInternalText(trimmedAnswer)) {
+      return fallbackResult('internal_text_blocked', args.chunks)
+    }
     if (looksLikeModelUncertainty(trimmedAnswer, fallback)) {
-      const preview = formatFallbackKnowledgeAnswer(question, args.chunks, args.calculation)
-      if (preview && preview !== fallback) {
-        return {
-          status: 'answered',
-          answer: preview,
-          reason: 'model_uncertainty_knowledge_preview',
-          usedChunks: args.chunks,
-          providerConfigured,
-        }
-      }
+      return fallbackResult('model_uncertainty', args.chunks)
     }
     const validation = validateGroundedAnswer({
       answer: trimmedAnswer,
@@ -337,36 +521,17 @@ export async function generateChatbotAnswer(args: {
       const retryValidation = formattedRetry
         ? validateGroundedAnswer({ answer: formattedRetry, evidence: args.chunks, calculation: args.calculation, fallback, question })
         : validation
-      if (formattedRetry && retryValidation.ok && formattedRetry !== fallback) {
+      if (formattedRetry && !answerContainsInternalText(formattedRetry) && retryValidation.ok && formattedRetry !== fallback) {
         return { status: 'answered', answer: formattedRetry, reason: 'answered_after_guardrail_retry', usedChunks: args.chunks, providerConfigured }
       }
       const retryReason = retryAnswer.errorReason ?? (retryValidation.ok ? validation.reason : retryValidation.reason)
-      const preview = formatFallbackKnowledgeAnswer(question, args.chunks, args.calculation)
-      if (preview && preview !== fallback) {
-        return {
-          status: 'answered',
-          answer: preview,
-          reason: `${retryReason}_knowledge_preview`,
-          usedChunks: args.chunks,
-          providerConfigured,
-        }
-      }
       return fallbackResult(retryReason, args.chunks, {
         providerError: retryAnswer.providerError,
         guardrailReason: retryValidation.ok ? validation.reason : retryValidation.reason,
+        answer: retryAnswer.providerError ? SIMPLE_PROVIDER_FAILURE_FALLBACK : undefined,
       })
     }
     if (trimmedAnswer === fallback) {
-      const preview = formatFallbackKnowledgeAnswer(question, args.chunks, args.calculation)
-      if (preview && preview !== fallback) {
-        return {
-          status: 'answered',
-          answer: preview,
-          reason: 'model_fallback_knowledge_preview',
-          usedChunks: args.chunks,
-          providerConfigured,
-        }
-      }
       return fallbackResult('model_fallback', args.chunks)
     }
     return { status: 'answered', answer: trimmedAnswer, reason: 'answered', usedChunks: args.chunks, providerConfigured }
@@ -395,7 +560,7 @@ export async function generateChatbotAnswer(args: {
         providerError,
       })
     }
-    return { status: 'failed', answer: fallback, reason: 'ai_provider_exception', usedChunks: args.chunks, providerConfigured }
+    return { status: 'failed', answer: SIMPLE_PROVIDER_FAILURE_FALLBACK, reason: 'ai_provider_exception', usedChunks: args.chunks, providerConfigured }
   }
 }
 
@@ -459,6 +624,244 @@ async function requestProviderAnswer(args: {
     content: body.choices?.[0]?.message?.content?.trim() ?? null,
     errorReason: null,
   }
+}
+
+async function requestSimpleFullKnowledgeProviderAnswer(args: {
+  readonly providerConfig: NonNullable<Awaited<ReturnType<typeof resolveAiProviderConfig>>>
+  readonly question: string
+  readonly knowledge: string
+  readonly tone: AiChatbotTone
+  readonly conversationContext?: string | null
+  readonly memoryContext?: string | null
+  readonly retryInstruction?: string
+}): Promise<ProviderAnswerResult> {
+  const response = await fetch(`${args.providerConfig.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${args.providerConfig.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: args.providerConfig.model,
+      temperature: 0,
+      max_tokens: Number(process.env.AI_CHATBOT_MAX_TOKENS ?? 360),
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You are a business support assistant.',
+            'Answer only from the provided business knowledge base.',
+            'Do not use outside knowledge.',
+            'Do not guess.',
+            'Do not invent facts.',
+            'Do not show internal/debug text.',
+            'Do not show source headers, context labels, raw prompt text, or raw knowledge-base instructions.',
+            'Do not copy raw Q/A scaffolding unless it is naturally part of the answer.',
+            'Return only the final customer-facing answer.',
+            `If the answer is not present in the knowledge base, say exactly: ${SIMPLE_FULL_KNOWLEDGE_FALLBACK}`,
+            'Pricing:',
+            '- If the customer asks monthly / one month / month-to-month, use the monthly/list price.',
+            '- If the customer asks yearly, use the yearly total if listed.',
+            '- If calculation is needed from listed prices/discounts, calculate it and say it is calculated.',
+            '- Keep monthly/list price, discounted monthly equivalent, original price, current price, and billing total separate.',
+            '- Do not mix neighboring plans, products, or service families.',
+            'Matching:',
+            '- Product, plan, service, course, menu, and package word order may vary in customer questions. If the important words appear together in the same heading or section, treat that as a match.',
+            'Location/contact details:',
+            '- If the customer asks whether a location/contact option is available and the same line or section lists an associated IP address, phone number, email, URL, address, or link, include that associated detail.',
+            '- Match normal country/place wording carefully when the knowledge base itself contains the country or place name. Do not use outside facts, but do not miss a listed country because the customer used a normal adjective form.',
+          ].join('\n'),
+        },
+        {
+          role: 'user',
+          content: [
+            `Tone: ${args.tone}`,
+            args.conversationContext ? `Recent conversation context:\n${args.conversationContext}` : '',
+            args.memoryContext ? `Returning customer context:\n${args.memoryContext}` : '',
+            `Business knowledge base:\n${args.knowledge}`,
+            args.retryInstruction ?? '',
+            `Customer question:\n${args.question}`,
+            'Return only the final answer.',
+          ].filter(Boolean).join('\n\n'),
+        },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    const providerError = await parseProviderErrorResponse({
+      response,
+      provider: args.providerConfig.provider,
+      model: args.providerConfig.model,
+      requestType: 'chat',
+    })
+    return { content: null, errorReason: providerError.reason, providerError }
+  }
+
+  const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
+  return {
+    content: body.choices?.[0]?.message?.content?.trim() ?? null,
+    errorReason: null,
+  }
+}
+
+function cleanKnowledgeForSimpleFullMode(value: string): string {
+  return value
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => !/^(full active workspace knowledge fallback context|use only the facts present below|\[full source \d+\]|source type:|derived fact guidance)/i.test(line.trim()))
+    .join('\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim()
+}
+
+function sanitizeCustomerAnswer(value: string): string {
+  return value
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*(?:Q|Question)\s*:.*$/gim, '')
+    .replace(/^\s*(?:A|Answer)\s*:\s*/gim, '')
+    .replace(/^\s*(?:Full active workspace knowledge fallback context|Use only the facts present below|Source type:|Derived fact guidance).*$/gim, '')
+    .replace(/^\s*\[Full source \d+\].*$/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function answerContainsInternalText(answer: string): boolean {
+  return INTERNAL_LEAK_PATTERNS.some((pattern) => pattern.test(answer))
+}
+
+function appendAssociatedDetailsForSimpleAnswer(args: {
+  readonly answer: string
+  readonly question: string
+  readonly knowledge: string
+}): string {
+  const answer = args.answer.trim()
+  if (!answer || answer === SIMPLE_FULL_KNOWLEDGE_FALLBACK || answer === SIMPLE_PROVIDER_FAILURE_FALLBACK) return answer
+  if (!/\b(?:location|available|where|city|country|test ip|ip address|contact|phone|whatsapp|email|link|url|address)\b/i.test(args.question)) {
+    return answer
+  }
+  const normalizedAnswer = normalizeClaimText(answer)
+  const terms = extractAssociatedDetailQueryTerms(args.question)
+  if (terms.length === 0) return answer
+  const details: string[] = []
+  for (const line of args.knowledge.split('\n')) {
+    const normalizedLine = normalizeClaimText(line)
+    if (!terms.some((term) => normalizedLine.includes(term))) continue
+    for (const detail of extractAssociatedDetailsFromLine(line)) {
+      const normalizedDetail = normalizeClaimText(detail)
+      if (normalizedDetail && !normalizedAnswer.includes(normalizedDetail) && !details.some((item) => normalizeClaimText(item) === normalizedDetail)) {
+        details.push(detail)
+      }
+    }
+    if (details.length >= 3) break
+  }
+  if (details.length === 0) return answer
+  return `${answer}\n${details.map((detail) => `${associatedDetailLabel(detail)}: ${detail}`).join('\n')}`.trim()
+}
+
+function extractAssociatedDetailQueryTerms(question: string): string[] {
+  const stopwords = new Set([
+    'what', 'when', 'where', 'which', 'with', 'your', 'have', 'does', 'offer', 'available', 'location',
+    'locations', 'contact', 'number', 'phone', 'link', 'test', 'address', 'email', 'support', 'please',
+  ])
+  const terms = normalizeClaimText(question)
+    .split(/\s+/)
+    .map((term) => term.replace(/[^a-z0-9.-]/g, ''))
+    .filter((term) => term.length >= 4 && !stopwords.has(term))
+  const expanded = new Set<string>()
+  for (const term of terms) {
+    expanded.add(term)
+    if (term.endsWith('i') && term.length > 5) expanded.add(term.slice(0, -1))
+  }
+  return [...expanded]
+}
+
+function extractAssociatedDetailsFromLine(line: string): string[] {
+  return [
+    ...(line.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g) ?? []),
+    ...(line.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi) ?? []),
+    ...(line.match(/\bhttps?:\/\/[^\s)]+/gi) ?? []),
+    ...(line.match(/\b(?:wa\.me|tel:|mailto:)[^\s)]+/gi) ?? []),
+    ...(line.match(/\+\d[\d\s().-]{7,}\d/g) ?? []),
+  ].map((detail) => detail.trim()).filter(Boolean)
+}
+
+function associatedDetailLabel(detail: string): string {
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(detail.trim())) return 'Test IP'
+  if (/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(detail.trim())) return 'Email'
+  if (/^(?:https?:\/\/|wa\.me)/i.test(detail.trim())) return 'Link'
+  if (/^(?:tel:|\+\d)/i.test(detail.trim())) return 'Phone'
+  return 'Detail'
+}
+
+function validateLightFullKnowledgeAnswer(answer: string, knowledge: string): { ok: true } | { ok: false; unsupported: string[] } {
+  if (answerContainsInternalText(answer)) return { ok: false, unsupported: ['internal text'] }
+  if (answer === SIMPLE_FULL_KNOWLEDGE_FALLBACK || answer === SIMPLE_PROVIDER_FAILURE_FALLBACK) return { ok: true }
+  const normalizedKnowledge = normalizeClaimText(knowledge)
+  const claims = extractSpecificClaims(answer)
+  const unsupported = claims.filter((claim) => !claimSupportedByKnowledge(claim, normalizedKnowledge, knowledge))
+  return unsupported.length === 0 ? { ok: true } : { ok: false, unsupported }
+}
+
+function extractSpecificClaims(answer: string): string[] {
+  const patterns = [
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+    /\bhttps?:\/\/[^\s)]+/gi,
+    /\b(?:wa\.me|tel:|mailto:)[^\s)]+/gi,
+    /\b\d{1,3}(?:\.\d{1,3}){3}\b/g,
+    /\+\d[\d\s().-]{7,}\d/g,
+    /\b(?:company|registration)\s+number\s*:?\s*[A-Z0-9-]{4,}\b/gi,
+    /\b(?:\$|USD|PKR|Rs\.?|EUR|GBP|£|€)\s*\d+(?:[.,]\d+)?(?:\s*\/\s*(?:mo|month|year|yr))?\b/gi,
+    /\b\d+(?:[.,]\d+)?\s*(?:USD|PKR|EUR|GBP|dollars?|rupees?|\/mo|\/month|\/year|per month|per year)\b/gi,
+    /\b\d+(?:[.,]\d+)?\s*(?:GB|TB|MB|Core|Cores|CPU|RAM|NVMe|SSD|minutes?|seconds?|hours?|days?|years?)\b/gi,
+    /\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/g,
+  ]
+  return [...new Set(patterns.flatMap((pattern) => answer.match(pattern) ?? []).map(cleanExtractedClaim).filter(Boolean))]
+}
+
+function cleanExtractedClaim(claim: string): string {
+  return claim
+    .trim()
+    .replace(/[),.;:!?]+$/g, '')
+}
+
+function claimSupportedByKnowledge(claim: string, normalizedKnowledge: string, rawKnowledge: string): boolean {
+  const normalizedClaim = normalizeClaimText(claim)
+  if (!normalizedClaim) return true
+  if (normalizedKnowledge.includes(normalizedClaim)) return true
+  const numeric = Number(normalizedClaim.replace(/[^0-9.]/g, ''))
+  if (Number.isFinite(numeric) && numeric > 0 && claimLooksCalculatedFromKnowledge(numeric, rawKnowledge)) return true
+  return false
+}
+
+function claimLooksCalculatedFromKnowledge(value: number, knowledge: string): boolean {
+  const numbers = [...knowledge.matchAll(/\d+(?:[.,]\d+)?/g)]
+    .map((match) => Number((match[0] ?? '').replace(',', '.')))
+    .filter((number) => Number.isFinite(number) && number > 0)
+    .slice(0, 500)
+  for (const left of numbers) {
+    if (/\b(?:year|yearly|annual|annually|billed per year)\b/i.test(knowledge) && Math.abs(left / 12 - value) < 0.02) return true
+    if (/\b(?:month|monthly|\/mo|per month)\b/i.test(knowledge) && Math.abs(left * 12 - value) < 0.02) return true
+    for (const right of numbers) {
+      if (Math.abs(left * right - value) < 0.02) return true
+      if (right !== 0 && Math.abs(left / right - value) < 0.02) return true
+    }
+  }
+  return false
+}
+
+function normalizeClaimText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/https?:\/\//g, '')
+    .replace(/[,*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function formatExtractiveKnowledgeAnswer(
@@ -588,7 +991,7 @@ function formatExtractiveKnowledgeAnswer(
   return null
 }
 
-function formatFallbackKnowledgeAnswer(
+export function formatFallbackKnowledgeAnswer(
   question: string,
   chunks: readonly string[],
   calculation?: CalculationResult | null,

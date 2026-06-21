@@ -3,10 +3,12 @@ import {
   DEFAULT_AI_CHATBOT_SETTINGS,
   aiMessageOfferedHumanHandoff,
   generateChatbotAnswer,
+  generateSimpleFullKnowledgeAnswer,
   getAiPlanAccess,
   isHumanHandoffConfirmation,
   isHumanHandoffRequest,
   isOptOutMessage,
+  loadFullKnowledgeAnswerMode,
   logAiChatbotEvent,
   type AiChatbotSettings,
 } from '@/lib/ai/chatbot'
@@ -259,6 +261,57 @@ export async function maybeHandleAiAutoReply(args: {
       inboundMessageId: args.inboundMessageId,
       client: admin,
     })
+    const fullKnowledge = await loadFullKnowledgeAnswerMode({
+      workspaceId: args.workspaceId,
+      client: admin,
+    })
+    if (fullKnowledge.mode === 'simple_full_knowledge') {
+      const simpleAnswer = await generateSimpleFullKnowledgeAnswer({
+        question: retrievalQuestion,
+        settings: activeChatbotSettings,
+        knowledge: fullKnowledge.content,
+        workspaceId: args.workspaceId,
+        requireProvider: true,
+        conversationContext,
+        memoryContext,
+        responseIsRTL: multilingual.responseLanguage?.isRTL,
+        gapContext: {
+          originalQuestion: multilingual.originalQuestion,
+          detectedLanguage: multilingual.detectedLanguage?.code,
+          channel: 'whatsapp',
+          conversationId: args.conversationId,
+          contactId,
+        },
+      })
+
+      const localizedSimpleAnswer = await localizeAnswerForCustomer({
+        workspaceId: args.workspaceId,
+        answer: simpleAnswer.answer,
+        responseLanguage: multilingual.responseLanguage,
+      })
+
+      const simpleText = simpleAnswer.status === 'answered' && localizedSimpleAnswer
+        ? localizedSimpleAnswer
+        : simpleAnswer.answer || activeChatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
+
+      await sendConfiguredAiMessage({
+        workspaceId: args.workspaceId,
+        conversationId: args.conversationId,
+        contactId,
+        inboundMessageId: args.inboundMessageId,
+        customerText,
+        phone,
+        text: simpleText,
+        status: simpleAnswer.status === 'answered' ? 'answered' : 'fallback',
+        reason: simpleAnswer.reason,
+        controlStatus: 'ai_active',
+        controlReason: simpleAnswer.reason,
+        client: admin,
+        memorySettings,
+        summaryTrigger: simpleAnswer.status === 'answered' ? 'after_ai_reply' : 'fallback',
+      })
+      return
+    }
     retrieval = await hybridRetrieveKnowledge({
       workspaceId: args.workspaceId,
       question: retrievalQuestion,

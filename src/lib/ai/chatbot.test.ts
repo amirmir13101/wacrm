@@ -12,9 +12,11 @@ import {
   chunkKnowledgeText,
   formatForWhatsApp,
   generateChatbotAnswer,
+  generateSimpleFullKnowledgeAnswer,
   isHumanHandoffConfirmation,
   isHumanHandoffRequest,
   isOptOutMessage,
+  loadFullKnowledgeAnswerMode,
   retrieveRelevantChunks,
 } from './chatbot'
 
@@ -165,7 +167,7 @@ describe('AI chatbot knowledge helpers', () => {
     expect(results).toEqual([])
   })
 
-  it('uses structured preview formatting for pricing questions without hallucinating missing prices', async () => {
+  it('does not return structured preview text when a provider is missing', async () => {
     vi.stubEnv('OPENAI_API_KEY', '')
 
     const result = await generateChatbotAnswer({
@@ -179,9 +181,11 @@ describe('AI chatbot knowledge helpers', () => {
       chunks: [],
     })
 
-    expect(result.answer).toContain('*Wagon VPS x4*')
-    expect(result.answer).toContain('- Price: $6.50/mo')
-    expect(result.answer).toContain('\n')
+    expect(result.status).toBe('fallback')
+    expect(result.reason).toBe('ai_provider_missing')
+    expect(result.answer).toBe('Sorry, I could not answer this right now. Please contact support.')
+    expect(result.answer).not.toContain('Wagon VPS x4')
+    expect(result.answer).not.toContain('$6.50/mo')
     expect(missing.answer).toBe(DEFAULT_AI_CHATBOT_SETTINGS.fallback_message)
 
     vi.unstubAllEnvs()
@@ -238,7 +242,7 @@ describe('AI chatbot knowledge helpers', () => {
     expect(formatted).toContain('*Summary*')
   })
 
-  it('uses a safe knowledge preview for dashboard tests when OpenAI is not configured', async () => {
+  it('does not dump knowledge previews when OpenAI is not configured', async () => {
     vi.stubEnv('OPENAI_API_KEY', '')
 
     const result = await generateChatbotAnswer({
@@ -247,9 +251,11 @@ describe('AI chatbot knowledge helpers', () => {
       chunks: ['Support hours are Monday to Friday from 9 AM to 6 PM.'],
     })
 
-    expect(result.status).toBe('answered')
+    expect(result.status).toBe('fallback')
     expect(result.providerConfigured).toBe(false)
-    expect(result.answer).toContain('Support hours')
+    expect(result.reason).toBe('ai_provider_missing')
+    expect(result.answer).toBe('Sorry, I could not answer this right now. Please contact support.')
+    expect(result.answer).not.toContain('Support hours')
 
     vi.unstubAllEnvs()
   })
@@ -299,7 +305,7 @@ describe('AI chatbot knowledge helpers', () => {
     vi.unstubAllEnvs()
   })
 
-  it('uses grounded extractive facts when the configured provider returns a billing error', async () => {
+  it('returns a clean provider fallback when the configured provider returns a billing error', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key')
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
@@ -322,16 +328,17 @@ describe('AI chatbot knowledge helpers', () => {
       requireProvider: true,
     })
 
-    expect(result.status).toBe('answered')
-    expect(result.reason).toBe('provider_quota_or_billing_knowledge_preview')
-    expect(result.answer).toContain('X1005 Enterprise')
-    expect(result.answer).toContain('USD 209/monthly')
+    expect(result.status).toBe('fallback')
+    expect(result.reason).toBe('provider_quota_or_billing')
+    expect(result.answer).toBe('Sorry, I could not answer this right now. Please contact support.')
+    expect(result.answer).not.toContain('Derived fact guidance')
+    expect(result.answer).not.toContain('X1005 Enterprise')
 
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
   })
 
-  it('uses extractive billing guidance without converting true monthly billing into yearly equivalents', async () => {
+  it('does not expose billing guidance when the provider rate-limits', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
@@ -356,16 +363,17 @@ describe('AI chatbot knowledge helpers', () => {
       requireProvider: true,
     })
 
-    expect(result.status).toBe('answered')
-    expect(result.reason).toBe('provider_rate_limited_knowledge_preview')
-    expect(result.answer).toContain('Monthly/list price: USD 2/monthly')
-    expect(result.answer).toContain('Discounted equivalent shown: USD 1.7/monthly')
+    expect(result.status).toBe('fallback')
+    expect(result.reason).toBe('provider_rate_limited')
+    expect(result.answer).toBe('Sorry, I could not answer this right now. Please contact support.')
+    expect(result.answer).not.toContain('Derived fact guidance')
+    expect(result.answer).not.toContain('Monthly/list price')
 
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
   })
 
-  it('uses extractive policy and recommendation guidance when the provider rate-limits', async () => {
+  it('does not expose policy or recommendation guidance when the provider rate-limits', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
@@ -390,18 +398,18 @@ describe('AI chatbot knowledge helpers', () => {
       requireProvider: true,
     })
 
-    expect(policy.status).toBe('answered')
-    expect(policy.answer).toContain('cancellation or termination')
-    expect(policy.answer).toContain('permanently removed')
-    expect(recommendation.status).toBe('answered')
-    expect(recommendation.answer).toContain('high traffic websites')
-    expect(recommendation.answer).toContain('mission-critical')
+    expect(policy.status).toBe('fallback')
+    expect(policy.answer).toBe('Sorry, I could not answer this right now. Please contact support.')
+    expect(policy.answer).not.toContain('Derived fact guidance')
+    expect(recommendation.status).toBe('fallback')
+    expect(recommendation.answer).toBe('Sorry, I could not answer this right now. Please contact support.')
+    expect(recommendation.answer).not.toContain('Derived fact guidance')
 
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
   })
 
-  it('answers from retrieved source text when the provider returns the configured fallback despite evidence', async () => {
+  it('uses a clean fallback when the provider returns the configured fallback despite evidence', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -422,16 +430,16 @@ describe('AI chatbot knowledge helpers', () => {
       requireProvider: true,
     })
 
-    expect(result.status).toBe('answered')
-    expect(result.reason).toBe('model_uncertainty_knowledge_preview')
-    expect(result.answer).toContain('Premium Hosting')
-    expect(result.answer).toContain('$1.60/month')
+    expect(result.status).toBe('fallback')
+    expect(result.reason).toBe('model_uncertainty')
+    expect(result.answer).toBe(DEFAULT_AI_CHATBOT_SETTINGS.fallback_message)
+    expect(result.answer).not.toContain('Premium Hosting')
 
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
   })
 
-  it('keeps named plan specs inside the matching plan section when the model is uncertain', async () => {
+  it('does not expose named plan source text when the model is uncertain', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -467,18 +475,16 @@ describe('AI chatbot knowledge helpers', () => {
       requireProvider: true,
     })
 
-    expect(result.status).toBe('answered')
-    expect(result.reason).toBe('model_uncertainty_knowledge_preview')
-    expect(result.answer).toContain('n8n Business 16GB')
-    expect(result.answer).toContain('6 Core CPU')
-    expect(result.answer).toContain('16GB RAM')
-    expect(result.answer).not.toContain('4 Core CPU')
+    expect(result.status).toBe('fallback')
+    expect(result.reason).toBe('model_uncertainty')
+    expect(result.answer).toBe(DEFAULT_AI_CHATBOT_SETTINGS.fallback_message)
+    expect(result.answer).not.toContain('n8n Business 16GB')
 
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
   })
 
-  it('uses source text as a safe fallback when a grounded retry still fails guardrails', async () => {
+  it('uses a clean fallback when a grounded retry still fails guardrails', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-key')
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce({
@@ -488,6 +494,14 @@ describe('AI chatbot knowledge helpers', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ choices: [{ message: { content: DEFAULT_AI_CHATBOT_SETTINGS.fallback_message } }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'I donâ€™t see that exact detail in the current knowledge base. Please contact support for confirmation.' } }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'I donâ€™t see that exact detail in the current knowledge base. Please contact support for confirmation.' } }] }),
       }))
 
     const result = await generateChatbotAnswer({
@@ -505,11 +519,166 @@ describe('AI chatbot knowledge helpers', () => {
       requireProvider: true,
     })
 
-    expect(result.status).toBe('answered')
-    expect(result.reason).toContain('knowledge_preview')
-    expect(result.answer).toContain('Wagon VPS X12')
-    expect(result.answer).toContain('$11.50/month')
-    expect(result.answer).toContain('12GB RAM')
+    expect(result.status).toBe('fallback')
+    expect(result.reason).not.toContain('knowledge_preview')
+    expect(result.answer).toBe(DEFAULT_AI_CHATBOT_SETTINGS.fallback_message)
+    expect(result.answer).not.toContain('Wagon VPS X12')
+
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('uses simple full knowledge mode for small knowledge bases and large-KB retrieval only above the threshold', async () => {
+    const createClient = (content: string) => ({
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              order: async () => ({
+                data: [{ title: 'Knowledge', source_url: 'https://example.com', content }],
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      }),
+    })
+
+    const small = await loadFullKnowledgeAnswerMode({
+      workspaceId: 'workspace-1',
+      client: createClient('Support email: support@example.com'),
+      threshold: 1_000,
+    })
+    const large = await loadFullKnowledgeAnswerMode({
+      workspaceId: 'workspace-1',
+      client: createClient('A'.repeat(1_500)),
+      threshold: 1_000,
+    })
+
+    expect(small.mode).toBe('simple_full_knowledge')
+    if (small.mode !== 'simple_full_knowledge') throw new Error('Expected simple full knowledge mode')
+    expect(small.content).toContain('support@example.com')
+    expect(large.mode).toBe('large_kb_retrieval')
+  })
+
+  it('answers pricing, location/IP, policy, and FAQ questions from full knowledge with the simple path', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'The yearly discounted monthly equivalent is $1.70/mo, calculated from $20.40/year divided by 12. The total yearly billing is $20.40/year.' } }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Yes, Singapore is listed as a VPS location.' } }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Refund requests cancel or terminate the associated service.' } }] }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const knowledge = [
+      'n8n Basic yearly billing total: $20.40/year.',
+      'VPS locations: Singapore test IP 45.38.210.3.',
+      'Refund policy: Refund requests cancel or terminate the associated service.',
+    ].join('\n')
+
+    const yearly = await generateSimpleFullKnowledgeAnswer({
+      question: 'What is n8n Basic yearly monthly equivalent?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      knowledge,
+    })
+    const location = await generateSimpleFullKnowledgeAnswer({
+      question: 'Do you have Singapore VPS location?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      knowledge,
+    })
+    const policy = await generateSimpleFullKnowledgeAnswer({
+      question: 'What happens after refund cancellation?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      knowledge,
+    })
+
+    expect(yearly.status).toBe('answered')
+    expect(yearly.reason).toBe('simple_full_knowledge')
+    expect(yearly.answer).toContain('$1.70/mo')
+    expect(yearly.answer).toContain('$20.40/year')
+    expect(location.answer).toContain('45.38.210.3')
+    expect(policy.answer).toContain('cancel')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('blocks internal/debug text and raw Q/A scaffolding in simple full knowledge answers', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Full active workspace knowledge fallback context. Use only the facts present below. Support email: support@example.com' } }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Q: What is your support email?\nA: support@example.com' } }] }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const blocked = await generateSimpleFullKnowledgeAnswer({
+      question: 'What is your support email?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      knowledge: 'Support email: support@example.com',
+    })
+    const scaffold = await generateSimpleFullKnowledgeAnswer({
+      question: 'What is your support email?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      knowledge: 'Support email: support@example.com',
+    })
+
+    expect(blocked.status).toBe('fallback')
+    expect(blocked.answer).not.toContain('Full active workspace knowledge fallback context')
+    expect(blocked.answer).not.toContain('Use only the facts present below')
+    expect(scaffold.answer).toBe('support@example.com')
+    expect(scaffold.answer).not.toMatch(/^\s*(Q|A):/m)
+
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('returns clean simple-mode fallbacks for provider errors and unknown questions', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        json: async () => ({ error: { message: 'Rate limited' } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'I don’t see that exact detail in the current knowledge base. Please contact support for confirmation.' } }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'I don’t see that exact detail in the current knowledge base. Please contact support for confirmation.' } }] }),
+      }))
+
+    const providerError = await generateSimpleFullKnowledgeAnswer({
+      question: 'What is your support email?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      knowledge: 'Support email: support@example.com',
+    })
+    const unknown = await generateSimpleFullKnowledgeAnswer({
+      question: 'Do you sell laptops?',
+      settings: DEFAULT_AI_CHATBOT_SETTINGS,
+      knowledge: 'Support email: support@example.com',
+    })
+
+    expect(providerError.status).toBe('fallback')
+    expect(providerError.answer).toBe('Sorry, I could not answer this right now. Please contact support.')
+    expect(providerError.answer).not.toContain('support@example.com')
+    expect(unknown.status).toBe('fallback')
+    expect(unknown.answer).toBe('I don’t see that exact detail in the current knowledge base. Please contact support for confirmation.')
 
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()

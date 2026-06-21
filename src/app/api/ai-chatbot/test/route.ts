@@ -3,9 +3,12 @@ import { NextResponse } from 'next/server'
 import {
   DEFAULT_AI_CHATBOT_SETTINGS,
   generateChatbotAnswer,
+  generateSimpleFullKnowledgeAnswer,
   isAiProviderConfigured,
+  loadFullKnowledgeAnswerMode,
   logAiChatbotEvent,
   type AiChatbotSettings,
+  type FullKnowledgeAnswerMode,
 } from '@/lib/ai/chatbot'
 import { getPublicProviderSettings } from '@/lib/ai/provider'
 import { hybridRetrieveKnowledge } from '@/lib/ai/retrieval'
@@ -43,9 +46,8 @@ export async function POST(request: Request) {
     ...DEFAULT_AI_CHATBOT_SETTINGS,
   }) as AiChatbotSettings
 
-  const retrieval = await hybridRetrieveKnowledge({
+  const fullKnowledge = await loadFullKnowledgeAnswerMode({
     workspaceId: workspace.workspaceId,
-    question,
     client: admin,
   })
   const [providerConfigured, providerSettings, embeddingCounts] = await Promise.all([
@@ -53,6 +55,47 @@ export async function POST(request: Request) {
     getPublicProviderSettings(workspace.workspaceId).catch(() => null),
     countEmbeddingStatuses(admin, workspace.workspaceId),
   ])
+
+  if (fullKnowledge.mode === 'simple_full_knowledge') {
+    const answer = await generateSimpleFullKnowledgeAnswer({
+      question,
+      settings: effectiveSettings,
+      knowledge: fullKnowledge.content,
+      workspaceId: workspace.workspaceId,
+      gapContext: {
+        channel: 'dashboard',
+      },
+    })
+
+    await logAiChatbotEvent({
+      workspaceId: workspace.workspaceId,
+      userMessage: question,
+      aiResponse: answer.answer,
+      status: answer.status,
+      reason: answer.reason,
+    })
+
+    return NextResponse.json({
+      ...answer,
+      answerMode: 'simple_full_knowledge',
+      debug: buildSimpleModeDebug({
+        query: question,
+        workspaceId: workspace.workspaceId,
+        providerConfigured,
+        providerSettings,
+        embeddingCounts,
+        fullKnowledge,
+        fallbackReason: answer.status === 'fallback' ? answer.reason : null,
+      }),
+    })
+  }
+
+  const retrieval = await hybridRetrieveKnowledge({
+    workspaceId: workspace.workspaceId,
+    question,
+    client: admin,
+  })
+
   if (retrieval.fallbackReason) {
     const fallback = effectiveSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
     await logKnowledgeGap({
@@ -123,6 +166,67 @@ export async function POST(request: Request) {
       fallbackReason: answer.status === 'fallback' ? answer.reason : null,
     }),
   })
+}
+
+function buildSimpleModeDebug(args: {
+  readonly query: string
+  readonly workspaceId: string
+  readonly providerConfigured: boolean
+  readonly providerSettings: Awaited<ReturnType<typeof getPublicProviderSettings>> | null
+  readonly embeddingCounts: Record<string, number>
+  readonly fullKnowledge: FullKnowledgeAnswerMode
+  readonly fallbackReason: string | null
+}) {
+  return {
+    query: args.query,
+    queryMode: args.fullKnowledge.mode,
+    workspaceId: args.workspaceId,
+    providerConfigured: args.providerConfigured,
+    provider: args.providerSettings
+      ? {
+          provider: args.providerSettings.provider,
+          model: args.providerSettings.model,
+          baseUrl: args.providerSettings.baseUrl,
+          embeddingsEnabled: args.providerSettings.embeddingsEnabled,
+          embeddingModel: args.providerSettings.embeddingModel,
+          embeddingDimensions: args.providerSettings.embeddingDimensions,
+        }
+      : null,
+    embeddingCounts: args.embeddingCounts,
+    fullKnowledge: {
+      mode: args.fullKnowledge.mode,
+      sourceCount: args.fullKnowledge.sourceCount,
+      totalCharacters: args.fullKnowledge.totalCharacters,
+      threshold: args.fullKnowledge.threshold,
+      sourceTitles: args.fullKnowledge.sourceTitles,
+      sourceUrls: args.fullKnowledge.sourceUrls,
+    },
+    fallbackReason: args.fallbackReason,
+    retrieval: {
+      terms: [],
+      entityTerms: [],
+      entityPhrases: [],
+      queryVariants: [args.query],
+      intents: {},
+      activeChunkCount: 0,
+      exactCandidatesCount: 0,
+      keywordCandidatesCount: 0,
+      vectorCandidatesCount: 0,
+      answerBearingCandidatesCount: 0,
+      selectedChunkIds: [],
+      selectedEvidence: [],
+      fallbackReason: args.fallbackReason,
+      calculation: null,
+      fullContextFallback: {
+        attempted: true,
+        outcome: args.fallbackReason ? 'still_fallback' : 'succeeded',
+        estimatedTokens: Math.ceil(args.fullKnowledge.totalCharacters / 4),
+        tokenBudget: Math.ceil(args.fullKnowledge.threshold / 4),
+        sourceCount: args.fullKnowledge.sourceCount,
+        sourceTitles: [...args.fullKnowledge.sourceTitles],
+      },
+    },
+  }
 }
 
 function uniqueStrings(values: readonly string[]): string[] {
