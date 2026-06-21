@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { backfillWorkspaceEmbeddings } from '@/lib/ai/embedding-backfill'
 import { generateEmbedding, resolveEmbeddingConfig } from '@/lib/ai/embeddings'
+import { safeProviderErrorFromUnknown } from '@/lib/ai/provider-errors'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
@@ -56,12 +57,19 @@ export async function POST(request: Request) {
       dimensions: result?.embedding.length ?? config.dimensions,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Embedding connection test failed.'
+    const safeError = safeProviderErrorFromUnknown({
+      error,
+      provider: config.provider,
+      model: config.model,
+      requestType: 'embeddings',
+    })
+    const message = safeError.adminMessage || 'Embedding connection test failed.'
     await markEmbeddingTest(workspace.workspaceId, false, message)
     return NextResponse.json(
       {
         ok: false,
         message,
+        category: safeError.category,
       },
       { status: 400 },
     )

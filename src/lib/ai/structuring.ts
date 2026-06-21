@@ -1,5 +1,6 @@
 import { buildChunkSearchMetadata } from '@/lib/ai/retrieval'
 import { resolveAiProviderConfig } from '@/lib/ai/provider'
+import { parseProviderErrorResponse, safeProviderErrorFromUnknown } from '@/lib/ai/provider-errors'
 import {
   buildWebsiteKnowledgeDraft,
   type WebsiteImportPage,
@@ -36,6 +37,7 @@ interface StructuringProviderConfig {
   readonly baseUrl: string
   readonly apiKey: string
   readonly model: string
+  readonly provider: string
 }
 
 interface StructuringDependencies {
@@ -210,7 +212,13 @@ export async function structurePageWithProvider(args: {
       }),
     })
     if (!response.ok) {
-      return fallbackStructuredFacts(deterministic, 'unavailable', `AI structuring unavailable: provider error (${response.status}).`)
+      const safeError = await parseProviderErrorResponse({
+        response,
+        provider: args.provider.provider,
+        model: args.provider.model,
+        requestType: 'ai-structuring',
+      })
+      return fallbackStructuredFacts(deterministic, 'unavailable', `AI structuring unavailable: provider error. ${safeError.adminMessage}`)
     }
     const payload = await response.json().catch(() => null)
     const content = readAssistantContent(payload)
@@ -227,8 +235,14 @@ export async function structurePageWithProvider(args: {
         ? null
         : 'AI structuring produced no verifiable facts for this page; using standard extraction.',
     }
-  } catch {
-    return fallbackStructuredFacts(deterministic, 'unavailable', 'AI structuring unavailable: provider error (request failed).')
+  } catch (error) {
+    const safeError = safeProviderErrorFromUnknown({
+      error,
+      provider: args.provider.provider,
+      model: args.provider.model,
+      requestType: 'ai-structuring',
+    })
+    return fallbackStructuredFacts(deterministic, 'unavailable', `AI structuring unavailable: provider error. ${safeError.adminMessage}`)
   } finally {
     if (timeout) clearTimeout(timeout)
   }
@@ -448,7 +462,7 @@ function resolveRemainingStructuringMs(startedAt: number, maxDurationMs?: number
 async function resolveStructuringProvider(workspaceId: string): Promise<StructuringProviderConfig | null> {
   const config = await resolveAiProviderConfig(workspaceId)
   if (!config?.supportedForChat) return null
-  return { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model }
+  return { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, provider: config.provider }
 }
 
 function rankStructuringPages(pages: readonly WebsiteImportPage[]): WebsiteImportPage[] {

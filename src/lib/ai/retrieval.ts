@@ -2975,7 +2975,9 @@ function readStructuredPricingOffers(facts: Record<string, unknown> | null, sour
       const normalizedOffer: StructuredPricingOffer = {
         kind: 'pricing_offer',
         entity,
-        entity_name: typeof offer.entity_name === 'string' && offer.entity_name.trim() ? offer.entity_name.trim() : entity,
+        entity_name: typeof offer.entity_name === 'string' && offer.entity_name.trim()
+          ? cleanOfferEntityName(offer.entity_name.trim())
+          : entity,
         entity_type: readStructuredOfferEntityType(offer.entity_type),
         product_family: typeof offer.product_family === 'string' && offer.product_family.trim() ? offer.product_family.trim() : inferProductFamilyFromOffer(entity, offerSourceText),
         category_path: Array.isArray(offer.category_path) ? offer.category_path.filter((value): value is string => typeof value === 'string' && Boolean(value.trim())).map((value) => value.trim()) : [],
@@ -3212,6 +3214,7 @@ function buildStructuredPricingOffer(block: string, sourceChunkId: string): Stru
 
 function cleanOfferEntityName(value: string): string | null {
   const compact = value
+    .replace(/^(?:q|question)\s*:\s*/i, '')
     .replace(/^#{2,4}\s+/, '')
     .replace(/^[-*•★✓🔥\s]+/, '')
     .replace(/\s+/g, ' ')
@@ -4095,6 +4098,8 @@ function buildSelectedOfferDebug(
   candidates: readonly RetrievalCandidate[],
 ): HybridRetrievalResult['debug']['selectedOffer'] {
   if (analysis.offerScope.answerMode === 'category_pricing_list' || analysis.offerScope.answerMode === 'comparison') return null
+  if (!analysis.intents.pricing && !analysis.intents.productOrService) return null
+  if (analysis.offerScope.answerMode === 'contact_location_hours' || analysis.offerScope.answerMode === 'policy_or_terms') return null
   const offers = candidates.flatMap((candidate) => extractStructuredPricingOffersFromCandidate(candidate))
   const offer = selectStructuredPricingOffer(analysis, offers) ??
     selectLocalRequestedOfferFromEvidence(analysis, candidates) ??

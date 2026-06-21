@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto'
 
 import { resolveAiEmbeddingProviderConfig } from '@/lib/ai/provider'
+import { AiProviderRequestError, parseProviderErrorResponse } from '@/lib/ai/provider-errors'
 
 export interface EmbeddingConfig {
   readonly source: 'workspace' | 'env'
+  readonly provider: string
   readonly apiKey: string
   readonly baseUrl: string
   readonly model: string
@@ -24,6 +26,7 @@ export async function resolveEmbeddingConfig(workspaceId?: string | null): Promi
   const config = await resolveAiEmbeddingProviderConfig(workspaceId)
   return {
     source: config.source,
+    provider: config.provider,
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
     model: config.model,
@@ -70,7 +73,12 @@ export async function generateEmbedding(
   })
 
   if (!response.ok) {
-    throw new Error(`Embedding provider returned HTTP ${response.status}.`)
+    throw new AiProviderRequestError(await parseProviderErrorResponse({
+      response,
+      provider: config.provider,
+      model: config.model,
+      requestType: 'embeddings',
+    }))
   }
 
   const body = (await response.json()) as {

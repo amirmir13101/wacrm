@@ -357,7 +357,7 @@ describe('AI chatbot knowledge helpers', () => {
     })
 
     expect(result.status).toBe('answered')
-    expect(result.reason).toBe('provider_http_429_knowledge_preview')
+    expect(result.reason).toBe('provider_rate_limited_knowledge_preview')
     expect(result.answer).toContain('Monthly/list price: USD 2/monthly')
     expect(result.answer).toContain('Discounted equivalent shown: USD 1.7/monthly')
 

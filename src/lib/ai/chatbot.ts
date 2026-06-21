@@ -1,6 +1,11 @@
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { getWorkspaceTrialStatus } from '@/lib/billing/trial'
 import { resolveAiProviderConfig } from '@/lib/ai/provider'
+import {
+  parseProviderErrorResponse,
+  safeProviderErrorFromUnknown,
+  type SafeProviderError,
+} from '@/lib/ai/provider-errors'
 import { validateGroundedAnswer } from '@/lib/ai/retrieval'
 import type { CalculationResult } from '@/lib/ai/calculations'
 import { semanticChunkText } from '@/lib/ai/chunking'
@@ -51,6 +56,7 @@ export interface AiAnswerResult {
 interface ProviderAnswerResult {
   readonly content: string | null
   readonly errorReason: string | null
+  readonly providerError?: SafeProviderError | null
 }
 
 export const DEFAULT_AI_CHATBOT_SETTINGS = {
@@ -227,13 +233,23 @@ export async function generateChatbotAnswer(args: {
     readonly embeddingUsed?: boolean
     readonly originalQuestion?: string | null
     readonly detectedLanguage?: string | null
+    readonly channel?: string | null
+    readonly conversationId?: string | null
+    readonly contactId?: string | null
   }
 }): Promise<AiAnswerResult> {
   const question = args.question.trim()
   const fallback = args.settings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
   const providerConfig = await resolveAiProviderConfig(args.workspaceId)
   const providerConfigured = Boolean(providerConfig)
-  const fallbackResult = async (reason: string, usedChunks: readonly string[]): Promise<AiAnswerResult> => {
+  const fallbackResult = async (
+    reason: string,
+    usedChunks: readonly string[],
+    details?: {
+      readonly providerError?: SafeProviderError | null
+      readonly guardrailReason?: string | null
+    },
+  ): Promise<AiAnswerResult> => {
     if (args.workspaceId) {
       await logKnowledgeGap({
         workspaceId: args.workspaceId,
@@ -244,6 +260,11 @@ export async function generateChatbotAnswer(args: {
         retrievalScore: args.gapContext?.retrievalScore,
         chunkCountRetrieved: args.gapContext?.chunkCountRetrieved ?? usedChunks.length,
         embeddingUsed: args.gapContext?.embeddingUsed,
+        channel: args.gapContext?.channel,
+        conversationId: args.gapContext?.conversationId,
+        contactId: args.gapContext?.contactId,
+        providerError: details?.providerError,
+        guardrailReason: details?.guardrailReason,
       })
     }
     return { status: 'fallback', answer: fallback, reason, usedChunks, providerConfigured }
@@ -282,7 +303,7 @@ export async function generateChatbotAnswer(args: {
           providerConfigured,
         }
       }
-      return fallbackResult(answer.errorReason ?? 'empty_ai_response', args.chunks)
+      return fallbackResult(answer.errorReason ?? 'empty_ai_response', args.chunks, { providerError: answer.providerError })
     }
     const trimmedAnswer = formatForWhatsApp(answer.content, args.responseIsRTL)
     const validation = validateGroundedAnswer({
@@ -308,11 +329,38 @@ export async function generateChatbotAnswer(args: {
         return { status: 'answered', answer: formattedRetry, reason: 'answered_after_guardrail_retry', usedChunks: args.chunks, providerConfigured }
       }
       const retryReason = retryAnswer.errorReason ?? (retryValidation.ok ? validation.reason : retryValidation.reason)
-      return fallbackResult(retryReason, args.chunks)
+      return fallbackResult(retryReason, args.chunks, {
+        providerError: retryAnswer.providerError,
+        guardrailReason: retryValidation.ok ? validation.reason : retryValidation.reason,
+      })
     }
     if (trimmedAnswer === fallback) return fallbackResult('model_fallback', args.chunks)
     return { status: 'answered', answer: trimmedAnswer, reason: 'answered', usedChunks: args.chunks, providerConfigured }
-  } catch {
+  } catch (error) {
+    const providerError = providerConfig
+      ? safeProviderErrorFromUnknown({
+          error,
+          provider: providerConfig.provider,
+          model: providerConfig.model,
+          requestType: 'chat',
+        })
+      : null
+    if (args.workspaceId) {
+      await logKnowledgeGap({
+        workspaceId: args.workspaceId,
+        question,
+        originalQuestion: args.gapContext?.originalQuestion,
+        detectedLanguage: args.gapContext?.detectedLanguage,
+        fallbackReason: providerError?.reason ?? 'ai_provider_exception',
+        retrievalScore: args.gapContext?.retrievalScore,
+        chunkCountRetrieved: args.gapContext?.chunkCountRetrieved ?? args.chunks.length,
+        embeddingUsed: args.gapContext?.embeddingUsed,
+        channel: args.gapContext?.channel,
+        conversationId: args.gapContext?.conversationId,
+        contactId: args.gapContext?.contactId,
+        providerError,
+      })
+    }
     return { status: 'failed', answer: fallback, reason: 'ai_provider_exception', usedChunks: args.chunks, providerConfigured }
   }
 }
@@ -361,7 +409,15 @@ async function requestProviderAnswer(args: {
     }),
   })
 
-  if (!response.ok) return { content: null, errorReason: `provider_http_${response.status}` }
+  if (!response.ok) {
+    const providerError = await parseProviderErrorResponse({
+      response,
+      provider: args.providerConfig.provider,
+      model: args.providerConfig.model,
+      requestType: 'chat',
+    })
+    return { content: null, errorReason: providerError.reason, providerError }
+  }
   const body = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>
   }

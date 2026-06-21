@@ -18,7 +18,7 @@ export async function GET() {
   const admin = supabaseAdmin()
   const { data, error } = await admin
     .from('ai_knowledge_gaps')
-    .select('question, fallback_reason, retrieval_score, created_at, detected_language')
+    .select('question, fallback_reason, retrieval_score, created_at, detected_language, channel, failure_category, technical_reason, provider_status, provider_error_code, provider_error_type, provider_error_message, selected_source_titles, guardrail_reason, handoff_triggered, suggested_action, resolved_at')
     .eq('workspace_id', workspace.workspaceId)
     .order('created_at', { ascending: false })
     .limit(100)

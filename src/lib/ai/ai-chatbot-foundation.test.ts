@@ -152,7 +152,7 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(autoReply).toContain('sendConfiguredAiMessage')
     expect(autoReply).toContain('activeChatbotSettings.fallback_message.trim()')
     expect(autoReply).toContain('DEFAULT_AI_CHATBOT_SETTINGS.fallback_message')
-    expect(autoReply).toContain('activeChatbotSettings.handover_message.trim()')
+    expect(autoReply).toContain('chatbotSettings?.handover_message?.trim()')
     expect(autoReply).toContain('human_handoff_requested')
     expect(autoReply).toContain("I'll connect you with our team so they can help you better.")
     expect(autoReply).toContain("status: 'fallback'")
@@ -163,6 +163,7 @@ describe('AI chatbot Phase 1 foundation', () => {
     expect(autoReply).toContain("reason: retrieval.fallbackReason ?? 'no_relevant_knowledge'")
     expect(autoReply).toContain("controlStatus: 'ai_active'")
     expect(autoReply).toContain("reason: answer.reason || 'answer_not_found'")
+    expect(autoReply).toContain("answer.reason || 'ai_provider_unavailable'")
     expect(chatbot).not.toContain("onConflict: 'message_id'")
   })
 

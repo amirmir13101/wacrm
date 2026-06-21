@@ -9,6 +9,7 @@ import {
 import type { WebsiteImportResult } from './website-import'
 
 const provider = {
+  provider: 'openai',
   baseUrl: 'https://provider.test/v1',
   apiKey: 'test-key',
   model: 'test-model',

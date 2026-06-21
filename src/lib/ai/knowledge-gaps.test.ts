@@ -28,6 +28,7 @@ describe('AI knowledge gap tracking', () => {
       retrievalScore: 4.5,
       chunkCountRetrieved: 2,
       embeddingUsed: true,
+      channel: 'dashboard',
     }, client)
 
     expect(from).toHaveBeenCalledWith('ai_knowledge_gaps')
@@ -39,14 +40,17 @@ describe('AI knowledge gap tracking', () => {
       fallback_reason: 'no_relevant_knowledge',
       chunk_count_retrieved: 2,
       embedding_used: true,
+      channel: 'dashboard',
+      failure_category: 'missing_knowledge',
+      suggested_action: 'Add the missing answer to the knowledge base.',
     }))
   })
 
-  it('groups repeated questions while preserving the newest row details', () => {
+  it('groups repeated questions by question, category, and channel while preserving the newest row details', () => {
     const grouped = groupKnowledgeGaps([
-      { question: 'Do you repair laptops?', fallback_reason: 'no_relevant_knowledge', retrieval_score: null, created_at: '2026-06-20T10:00:00Z' },
-      { question: 'Do you repair laptops?', fallback_reason: 'weak_evidence', retrieval_score: '4.2', created_at: '2026-06-19T10:00:00Z' },
-      { question: 'Do you deliver?', fallback_reason: 'no_relevant_knowledge', retrieval_score: 2, created_at: '2026-06-18T10:00:00Z' },
+      { question: 'Do you repair laptops?', fallback_reason: 'no_relevant_knowledge', failure_category: 'missing_knowledge', channel: 'dashboard', retrieval_score: null, created_at: '2026-06-20T10:00:00Z' },
+      { question: 'Do you repair laptops?', fallback_reason: 'weak_retrieval', failure_category: 'missing_knowledge', channel: 'dashboard', retrieval_score: '4.2', created_at: '2026-06-19T10:00:00Z' },
+      { question: 'Do you deliver?', fallback_reason: 'no_relevant_knowledge', failure_category: 'missing_knowledge', channel: 'whatsapp', retrieval_score: 2, created_at: '2026-06-18T10:00:00Z' },
     ])
 
     expect(grouped).toHaveLength(2)
@@ -55,6 +59,8 @@ describe('AI knowledge gap tracking', () => {
       count: 2,
       fallback_reason: 'no_relevant_knowledge',
       last_asked: '2026-06-20T10:00:00Z',
+      failure_category: 'missing_knowledge',
+      channel: 'dashboard',
     }))
   })
 

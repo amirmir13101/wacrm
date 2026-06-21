@@ -62,6 +62,17 @@ export async function POST(request: Request) {
       retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
       chunkCountRetrieved: retrieval.evidence.length,
       embeddingUsed: retrieval.evidence.some((candidate) => candidate.vectorScore > 0),
+      channel: 'dashboard',
+      selectedChunkIds: retrieval.debug.selectedChunkIds,
+      selectedSourceIds: uniqueStrings(retrieval.evidence.map((candidate) => candidate.sourceId).filter((value): value is string => Boolean(value))),
+      selectedSourceTitles: uniqueStrings(retrieval.evidence.map((candidate) => candidate.sourceTitle).filter((value): value is string => Boolean(value))),
+      retrievalDebug: {
+        answerMode: retrieval.debug.answerMode,
+        exactCandidatesCount: retrieval.debug.exactCandidatesCount,
+        keywordCandidatesCount: retrieval.debug.keywordCandidatesCount,
+        vectorCandidatesCount: retrieval.debug.vectorCandidatesCount,
+        answerBearingCandidatesCount: retrieval.debug.answerBearingCandidatesCount,
+      },
     }, admin)
     return NextResponse.json({
       status: 'fallback',
@@ -89,6 +100,7 @@ export async function POST(request: Request) {
       retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
       chunkCountRetrieved: retrieval.evidence.length,
       embeddingUsed: retrieval.evidence.some((candidate) => candidate.vectorScore > 0),
+      channel: 'dashboard',
     },
   })
 
@@ -111,6 +123,10 @@ export async function POST(request: Request) {
       fallbackReason: answer.status === 'fallback' ? answer.reason : null,
     }),
   })
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)].slice(0, 20)
 }
 
 async function countEmbeddingStatuses(admin: ReturnType<typeof supabaseAdmin>, workspaceId: string): Promise<Record<string, number>> {

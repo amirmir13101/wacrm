@@ -82,6 +82,19 @@ interface KnowledgeGap {
   fallback_reason: string
   last_asked: string
   retrieval_score: number | null
+  channel?: string | null
+  failure_category?: string
+  technical_reason?: string | null
+  provider_status?: number | null
+  provider_error_code?: string | null
+  provider_error_type?: string | null
+  provider_error_message?: string | null
+  selected_source_titles?: string[]
+  guardrail_reason?: string | null
+  handoff_triggered?: boolean
+  suggested_action?: string
+  resolved_at?: string | null
+  is_stale?: boolean
 }
 
 interface KnowledgeGapsState {
@@ -262,6 +275,7 @@ interface WebsiteImportJob {
   provider_status?: string | null
   import_kind?: "website_import" | "restructure_existing"
   restructure_source_id?: string | null
+  published_source_id?: string | null
   ai_structuring_enabled?: boolean
   ai_structuring_status?: "disabled" | "unavailable" | "running" | "completed" | "partial" | "failed" | null
   ai_structuring_call_cap?: number
@@ -1918,6 +1932,18 @@ export default function AiChatbotPage() {
               <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Import summary</p>
                 <h3 className="mt-1 break-words text-sm font-bold text-white">{websiteImportResult.job.website_url}</h3>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <StatusPill
+                    label={websiteImportResult.job.status === "draft_ready" ? "Draft ready — not live yet" : websiteImportResult.job.status === "completed" ? "Published to chatbot" : websiteImportResult.job.status}
+                    tone={websiteImportResult.job.status === "completed" ? "success" : "warning"}
+                  />
+                  {websiteImportResult.job.status === "draft_ready" && (
+                    <StatusPill label="Publish required" tone="warning" />
+                  )}
+                  {websiteImportResult.job.published_source_id && (
+                    <StatusPill label="Saved and searchable" tone="success" />
+                  )}
+                </div>
                 <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <SummaryMetric label="Included in draft" value={websiteImportResult.job.pages_imported} />
                   <SummaryMetric label="Skipped/excluded" value={websiteImportResult.job.pages_skipped} />
@@ -1992,7 +2018,16 @@ export default function AiChatbotPage() {
               </div>
             ) : (
               <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Review draft before publishing</p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Review draft before publishing</p>
+                <StatusPill
+                  label={websiteImportResult.job.status === "draft_ready" ? "Saved as draft" : "Update saved but not live yet"}
+                  tone="warning"
+                />
+              </div>
+              <p className="mt-2 text-sm text-[#b8cfc7]">
+                This draft is not live in the chatbot until you publish it. Existing published knowledge stays unchanged while you review.
+              </p>
               <label className="mt-3 block space-y-2">
                 <span className="text-sm font-semibold text-emerald-50">Draft title</span>
                 <input
@@ -2349,6 +2384,10 @@ export default function AiChatbotPage() {
                     <h3 className="mt-1 break-words font-semibold text-white [overflow-wrap:anywhere]">
                       {source.title}
                     </h3>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <StatusPill label={source.status === "active" ? "Published to chatbot" : "Archived"} tone={source.status === "active" ? "success" : "warning"} />
+                      {source.status === "active" && <StatusPill label="Saved and searchable" tone="success" />}
+                    </div>
                   </div>
                   {canManage && (
                     <div className="flex shrink-0 items-center gap-1 self-end sm:self-start">
@@ -2428,23 +2467,59 @@ export default function AiChatbotPage() {
           </div>
         ) : (
           <div className="mt-4 overflow-x-auto rounded-xl border border-emerald-900">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[1100px] text-left text-sm">
               <thead className="bg-[#07130e] text-xs uppercase tracking-wide text-[#8fb7aa]">
                 <tr>
                   <th className="px-4 py-3">Question</th>
                   <th className="px-4 py-3">Times Asked</th>
                   <th className="px-4 py-3">Last Asked</th>
-                  <th className="px-4 py-3">Reason</th>
+                  <th className="px-4 py-3">Channel</th>
+                  <th className="px-4 py-3">Failure</th>
+                  <th className="px-4 py-3">Technical detail</th>
+                  <th className="px-4 py-3">Evidence</th>
+                  <th className="px-4 py-3">Suggested action</th>
                   <th className="px-4 py-3">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-emerald-950 bg-[#071b14]">
                 {knowledgeGaps.gaps.slice(0, showAllKnowledgeGaps ? 100 : 20).map((gap) => (
-                  <tr key={gap.question}>
-                    <td className="max-w-md px-4 py-3 font-medium text-white">{gap.question}</td>
+                  <tr key={`${gap.question}:${gap.failure_category ?? gap.fallback_reason}:${gap.channel ?? "unknown"}`}>
+                    <td className="max-w-md px-4 py-3 font-medium text-white">
+                      <div className="break-words">{gap.question}</div>
+                      {gap.is_stale && (
+                        <span className="mt-2 inline-flex rounded-full border border-emerald-800 bg-emerald-950/40 px-2 py-0.5 text-xs text-emerald-100">
+                          Historical / resolved
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-[#b8cfc7]">{gap.count}</td>
                     <td className="px-4 py-3 text-[#b8cfc7]">{new Date(gap.last_asked).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-[#fff0b8]">{gap.fallback_reason.replaceAll("_", " ")}</td>
+                    <td className="px-4 py-3 text-[#b8cfc7]">{formatGapChannel(gap.channel)}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-[#fff0b8]">{formatGapReason(gap.failure_category ?? gap.fallback_reason)}</div>
+                      {gap.provider_status && (
+                        <div className="mt-1 text-xs text-[#9dbfb5]">Provider HTTP {gap.provider_status}</div>
+                      )}
+                      {gap.handoff_triggered && (
+                        <div className="mt-1 text-xs text-[#a7ffd0]">Human handoff triggered</div>
+                      )}
+                    </td>
+                    <td className="max-w-xs px-4 py-3 text-[#b8cfc7]">
+                      <div className="line-clamp-3 break-words">
+                        {gap.provider_error_message || gap.guardrail_reason || gap.technical_reason || gap.fallback_reason}
+                      </div>
+                      {(gap.provider_error_code || gap.provider_error_type) && (
+                        <div className="mt-1 text-xs text-[#9dbfb5]">
+                          {[gap.provider_error_type, gap.provider_error_code].filter(Boolean).join(" / ")}
+                        </div>
+                      )}
+                    </td>
+                    <td className="max-w-xs px-4 py-3 text-[#b8cfc7]">
+                      {gap.selected_source_titles && gap.selected_source_titles.length > 0
+                        ? gap.selected_source_titles.slice(0, 3).join(", ")
+                        : "No selected source recorded"}
+                    </td>
+                    <td className="max-w-xs px-4 py-3 text-[#b8cfc7]">{gap.suggested_action ?? "Review and answer manually if needed."}</td>
                     <td className="px-4 py-3">
                       <Button
                         className="h-9 border border-emerald-800 bg-[#09241a] text-emerald-100 hover:bg-emerald-900/60"
@@ -2647,6 +2722,35 @@ function StatusPill({
       {label}
     </span>
   )
+}
+
+function formatGapReason(value: string): string {
+  const labels: Record<string, string> = {
+    provider_error: "Provider error",
+    provider_rate_limited: "Provider rate limited",
+    provider_quota_or_billing: "Provider quota/billing",
+    provider_invalid_key: "Invalid provider key",
+    provider_invalid_model: "Invalid provider model",
+    missing_knowledge: "Missing knowledge",
+    weak_retrieval: "Weak retrieval",
+    guardrail_blocked: "Guardrail blocked",
+    cross_entity_fact_mix: "Cross-entity fact mix",
+    calculation_unsupported: "Calculation unsupported",
+    cooldown: "Cooldown",
+    human_requested: "Human requested",
+    ai_disabled: "AI disabled",
+    unsupported_message_type: "Unsupported message type",
+    webhook_or_send_failure: "Webhook/send failure",
+    unknown_error: "Unknown error",
+  }
+  return labels[value] ?? value.replaceAll("_", " ")
+}
+
+function formatGapChannel(value?: string | null): string {
+  if (value === "whatsapp") return "WhatsApp"
+  if (value === "dashboard") return "Dashboard"
+  if (value === "web_chat") return "Web chat"
+  return value ? value.replaceAll("_", " ") : "Unknown"
 }
 
 function ToggleControl({

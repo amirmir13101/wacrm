@@ -283,6 +283,9 @@ export async function maybeHandleAiAutoReply(args: {
       retrievalScore: retrieval.evidence[0]?.finalScore ?? null,
       chunkCountRetrieved: retrieval.evidence.length,
       embeddingUsed: retrieval.evidence.some((candidate) => candidate.vectorScore > 0),
+      channel: 'whatsapp',
+      conversationId: args.conversationId,
+      contactId,
     }, admin)
     await sendConfiguredAiMessage({
       workspaceId: args.workspaceId,
@@ -319,6 +322,9 @@ export async function maybeHandleAiAutoReply(args: {
       embeddingUsed: retrieval.evidence.some((candidate) => candidate.vectorScore > 0),
       originalQuestion: multilingual.originalQuestion,
       detectedLanguage: multilingual.detectedLanguage?.code,
+      channel: 'whatsapp',
+      conversationId: args.conversationId,
+      contactId,
     },
   })
 
@@ -329,40 +335,22 @@ export async function maybeHandleAiAutoReply(args: {
   })
 
   if (answer.status === 'skipped' || answer.status === 'failed' || !answer.answer) {
-    const handoffMessage = activeChatbotSettings.handover_message.trim()
-    if (activeChatbotSettings.handover_enabled && handoffMessage) {
-      await sendConfiguredAiMessage({
-        workspaceId: args.workspaceId,
-        conversationId: args.conversationId,
-        contactId,
-        inboundMessageId: args.inboundMessageId,
-        customerText,
-        phone,
-        text: handoffMessage,
-        status: 'fallback',
-        reason: answer.reason || 'human_handoff',
-        controlStatus: 'needs_human',
-        controlReason: answer.reason || 'human_handoff',
-        client: admin,
-        memorySettings,
-        summaryTrigger: 'needs_human',
-      })
-      return
-    }
-    await logAiChatbotEvent({
+    const safeFallback = activeChatbotSettings.fallback_message.trim() || DEFAULT_AI_CHATBOT_SETTINGS.fallback_message
+    await sendConfiguredAiMessage({
       workspaceId: args.workspaceId,
       conversationId: args.conversationId,
-      messageId: args.inboundMessageId,
-      userMessage: customerText,
-      status: answer.status,
-      reason: answer.reason,
-    })
-    await recordAiSkippedReason({
-      workspaceId: args.workspaceId,
-      conversationId: args.conversationId,
-      reason: answer.reason,
-      status: answer.reason === 'ai_provider_missing' ? 'ai_active' : 'needs_human',
+      contactId,
+      inboundMessageId: args.inboundMessageId,
+      customerText,
+      phone,
+      text: safeFallback,
+      status: 'fallback',
+      reason: answer.reason || 'ai_provider_unavailable',
+      controlStatus: 'ai_active',
+      controlReason: answer.reason || 'ai_provider_unavailable',
       client: admin,
+      memorySettings,
+      summaryTrigger: 'fallback',
     })
     return
   }

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { parseProviderErrorResponse } from '@/lib/ai/provider-errors'
 import { decrypt, encrypt } from '@/lib/whatsapp/encryption'
 
 export const AI_PROVIDER_VALUES = ['openai', 'openrouter', 'groq', 'ollama', 'custom', 'anthropic'] as const
@@ -502,10 +503,16 @@ export async function testProviderConnection(workspaceId: string): Promise<{
     })
 
     if (!response.ok) {
-      await markProviderTest(workspaceId, false, `Provider returned HTTP ${response.status}.`)
+      const safeError = await parseProviderErrorResponse({
+        response,
+        provider: config.provider,
+        model: config.model,
+        requestType: 'provider-test',
+      })
+      await markProviderTest(workspaceId, false, safeError.adminMessage)
       return {
         ok: false,
-        message: `Provider returned HTTP ${response.status}.`,
+        message: safeError.adminMessage,
         settings: await getPublicProviderSettings(workspaceId),
       }
     }
