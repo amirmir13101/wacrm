@@ -26,7 +26,7 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin()
     .from('ai_website_import_jobs')
-    .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
+    .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, import_kind, restructure_source_id, ai_structuring_enabled, ai_structuring_status, ai_structuring_call_cap, ai_structuring_pages_attempted, ai_structuring_pages_succeeded, ai_structuring_pages_failed, ai_structuring_fields_kept, ai_structuring_fields_dropped, ai_structuring_summary, created_at, completed_at')
     .eq('workspace_id', workspace.workspaceId)
     .order('created_at', { ascending: false })
     .limit(5)
@@ -106,8 +106,9 @@ export async function POST(request: Request) {
       crawl_provider: 'firecrawl',
       external_crawl_id: crawlId,
       provider_status: 'scraping',
+      import_kind: 'website_import',
     })
-    .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
+    .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, import_kind, restructure_source_id, ai_structuring_enabled, ai_structuring_status, ai_structuring_call_cap, ai_structuring_pages_attempted, ai_structuring_pages_succeeded, ai_structuring_pages_failed, ai_structuring_fields_kept, ai_structuring_fields_dropped, ai_structuring_summary, created_at, completed_at')
     .single()
 
   if (jobError || !job) {

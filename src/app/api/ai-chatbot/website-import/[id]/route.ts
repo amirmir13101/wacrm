@@ -10,6 +10,8 @@ import {
 } from '@/lib/ai/firecrawl'
 import { detectChanges } from '@/lib/ai/change-detection'
 import { replaceKnowledgeSourceWithChunks, saveKnowledgeSourceWithChunks } from '@/lib/ai/knowledge'
+import { resolveAiStructuringSettings } from '@/lib/ai/provider'
+import { enhanceWebsiteImportWithAiStructuring } from '@/lib/ai/structuring'
 import {
   MAX_WEBSITE_DRAFT_CONTENT_LENGTH,
   buildWebsiteImportQualityWarnings,
@@ -19,6 +21,8 @@ import {
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
+
+const JOB_SELECT = 'id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, import_kind, restructure_source_id, ai_structuring_enabled, ai_structuring_status, ai_structuring_call_cap, ai_structuring_pages_attempted, ai_structuring_pages_succeeded, ai_structuring_pages_failed, ai_structuring_fields_kept, ai_structuring_fields_dropped, ai_structuring_summary, created_at, completed_at'
 
 export async function GET(
   _request: Request,
@@ -38,7 +42,7 @@ export async function GET(
   const admin = supabaseAdmin()
   const jobResult = await admin
     .from('ai_website_import_jobs')
-    .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
+    .select(JOB_SELECT)
     .eq('id', id)
     .eq('workspace_id', workspace.workspaceId)
     .maybeSingle()
@@ -65,7 +69,7 @@ export async function GET(
           })
           .eq('id', id)
           .eq('workspace_id', workspace.workspaceId)
-          .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
+          .select(JOB_SELECT)
           .single()
         if (timeoutUpdateError || !timedOutJob) {
           throw new Error(timeoutUpdateError?.message ?? 'Failed to stop stalled Firecrawl import.')
@@ -77,12 +81,18 @@ export async function GET(
       } else {
       const firecrawlStatus = await getFirecrawlCrawlStatus(apiKey, job.external_crawl_id)
       if (firecrawlStatus.status === 'completed') {
-        const result = buildWebsiteImportFromFirecrawl({
+        const baseResult = buildWebsiteImportFromFirecrawl({
           startUrl: job.website_url,
           pages: firecrawlStatus.data,
           errors: firecrawlStatus.errors,
           robotsBlocked: firecrawlStatus.robotsBlocked,
           pageLimit: job.page_limit,
+        })
+        const structuringSettings = await resolveAiStructuringSettings(workspace.workspaceId)
+        const result = await enhanceWebsiteImportWithAiStructuring({
+          workspaceId: workspace.workspaceId,
+          result: baseResult,
+          settings: structuringSettings,
         })
         await admin
           .from('ai_website_import_pages')
@@ -107,12 +117,21 @@ export async function GET(
             draft_content: result.draftContent,
             credits_used: firecrawlStatus.creditsUsed,
             provider_status: firecrawlStatus.status,
+            ai_structuring_enabled: result.aiStructuring?.enabled ?? false,
+            ai_structuring_status: result.aiStructuring?.status ?? (structuringSettings.enabled ? 'failed' : 'disabled'),
+            ai_structuring_call_cap: result.aiStructuring?.callCap ?? structuringSettings.callCap,
+            ai_structuring_pages_attempted: result.aiStructuring?.pagesAttempted ?? 0,
+            ai_structuring_pages_succeeded: result.aiStructuring?.pagesSucceeded ?? 0,
+            ai_structuring_pages_failed: result.aiStructuring?.pagesFailed ?? 0,
+            ai_structuring_fields_kept: result.aiStructuring?.fieldsKept ?? 0,
+            ai_structuring_fields_dropped: result.aiStructuring?.fieldsDropped ?? 0,
+            ai_structuring_summary: result.aiStructuring ?? {},
             error_message: result.pagesImported > 0 ? null : 'Firecrawl completed but no useful website text was found.',
             completed_at: new Date().toISOString(),
           })
           .eq('id', id)
           .eq('workspace_id', workspace.workspaceId)
-          .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
+          .select(JOB_SELECT)
           .single()
         if (updateError || !updatedJob) throw new Error(updateError?.message ?? 'Failed to finalize Firecrawl import.')
         job = updatedJob
@@ -155,7 +174,7 @@ export async function GET(
           })
           .eq('id', id)
           .eq('workspace_id', workspace.workspaceId)
-          .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
+          .select(JOB_SELECT)
           .single()
         if (failedJob) job = failedJob
         await admin.from('ai_import_history').update({
@@ -176,7 +195,7 @@ export async function GET(
           })
           .eq('id', id)
           .eq('workspace_id', workspace.workspaceId)
-          .select('id, website_url, normalized_origin, status, page_limit, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, draft_title, draft_content, published_source_id, error_message, crawl_provider, external_crawl_id, credits_used, provider_status, created_at, completed_at')
+          .select(JOB_SELECT)
           .single()
         if (runningJob) job = runningJob
       }
@@ -194,7 +213,7 @@ export async function GET(
 
   const { data: pages, error: pagesError } = await admin
     .from('ai_website_import_pages')
-    .select('id, url, canonical_url, title, status, skip_reason, http_status, created_at')
+    .select('id, url, canonical_url, title, status, skip_reason, http_status, structured_facts, structuring_source, structuring_grounding, created_at')
     .eq('import_job_id', id)
     .eq('workspace_id', workspace.workspaceId)
     .order('created_at', { ascending: true })
@@ -206,19 +225,22 @@ export async function GET(
   const pageRows = pages ?? []
   return NextResponse.json({
     job,
-    pages: pageRows,
-    qualityWarnings: buildWebsiteImportQualityWarnings({
-      pages: pageRows.map((page) => ({
-        url: page.url,
-        canonicalUrl: page.canonical_url,
-        title: page.title,
-        cleanedText: null,
-        status: page.status,
-        skipReason: page.skip_reason,
-      })),
-      draftContent: job.draft_content,
-      startUrl: job.website_url,
-    }),
+      pages: pageRows,
+    qualityWarnings: [
+      ...buildWebsiteImportQualityWarnings({
+        pages: pageRows.map((page) => ({
+          url: page.url,
+          canonicalUrl: page.canonical_url,
+          title: page.title,
+          cleanedText: null,
+          status: page.status,
+          skipReason: page.skip_reason,
+        })),
+        draftContent: job.draft_content,
+        startUrl: job.website_url,
+      }),
+      ...buildAiStructuringWarnings(job),
+    ],
   })
 }
 
@@ -243,7 +265,7 @@ export async function PATCH(
   const admin = supabaseAdmin()
   const { data: job, error: jobError } = await admin
     .from('ai_website_import_jobs')
-    .select('id, workspace_id, status, draft_title, draft_content, external_crawl_id')
+    .select('id, workspace_id, status, draft_title, draft_content, external_crawl_id, restructure_source_id')
     .eq('id', id)
     .eq('workspace_id', workspace.workspaceId)
     .maybeSingle()
@@ -282,25 +304,36 @@ export async function PATCH(
   }
 
   try {
-    const { data: linkedHistory } = await admin
-      .from('ai_import_history')
-      .select('source_id')
+    const { data: pageRows } = await admin
+      .from('ai_website_import_pages')
+      .select('canonical_url, url, structured_facts')
       .eq('workspace_id', workspace.workspaceId)
-      .eq('firecrawl_job_id', job.external_crawl_id)
-      .maybeSingle()
-    const source = linkedHistory?.source_id
+      .eq('import_job_id', id)
+    const structuredFactsByUrl = buildStructuredFactsByUrl(pageRows ?? [])
+    const { data: linkedHistory } = job.external_crawl_id
+      ? await admin
+          .from('ai_import_history')
+          .select('source_id')
+          .eq('workspace_id', workspace.workspaceId)
+          .eq('firecrawl_job_id', job.external_crawl_id)
+          .maybeSingle()
+      : { data: null }
+    const targetSourceId = job.restructure_source_id ?? linkedHistory?.source_id ?? null
+    const source = targetSourceId
       ? await replaceKnowledgeSourceWithChunks({
           workspaceId: workspace.workspaceId,
-          sourceId: linkedHistory.source_id,
+          sourceId: targetSourceId,
           title,
           content,
           client: admin,
+          structuredFactsByUrl,
         })
       : await saveKnowledgeSourceWithChunks({
           workspaceId: workspace.workspaceId,
           sourceType: 'website',
           title,
           content,
+          structuredFactsByUrl,
         })
 
     const { data: updatedJob, error: updateError } = await admin
@@ -318,12 +351,14 @@ export async function PATCH(
       .single()
 
     if (updateError) throw new Error(updateError.message)
-    await admin.from('ai_import_history').update({
-      source_id: source.id,
-      status: 'published',
-      published_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
-    }).eq('workspace_id', workspace.workspaceId).eq('firecrawl_job_id', job.external_crawl_id)
+    if (job.external_crawl_id) {
+      await admin.from('ai_import_history').update({
+        source_id: source.id,
+        status: 'published',
+        published_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      }).eq('workspace_id', workspace.workspaceId).eq('firecrawl_job_id', job.external_crawl_id)
+    }
     return NextResponse.json({ source, job: updatedJob })
   } catch (error) {
     return NextResponse.json(
@@ -353,5 +388,37 @@ function toPageRow(page: WebsiteImportPage, workspaceId: string, importJobId: st
     status: page.status,
     skip_reason: page.skipReason,
     http_status: page.httpStatus,
+    structured_facts: page.structuredFacts ?? null,
+    structuring_source: page.structuringSource ?? 'deterministic',
+    structuring_grounding: page.structuringGrounding ?? {},
   }
+}
+
+function buildStructuredFactsByUrl(rows: readonly Record<string, unknown>[]): Map<string, Record<string, unknown>> {
+  const map = new Map<string, Record<string, unknown>>()
+  for (const row of rows) {
+    const facts = row.structured_facts
+    if (!isRecord(facts)) continue
+    const canonical = typeof row.canonical_url === 'string' ? row.canonical_url : null
+    const url = typeof row.url === 'string' ? row.url : null
+    if (canonical) map.set(canonical, facts)
+    if (url) map.set(url, facts)
+  }
+  return map
+}
+
+function buildAiStructuringWarnings(job: Record<string, unknown>): string[] {
+  if (job.ai_structuring_enabled !== true) return []
+  const attempted = numberValue(job.ai_structuring_pages_attempted)
+  const succeeded = numberValue(job.ai_structuring_pages_succeeded)
+  const dropped = numberValue(job.ai_structuring_fields_dropped)
+  return [`AI structuring: ${succeeded}/${attempted} pages produced grounded facts; ${dropped} fields dropped by grounding validation.`]
+}
+
+function numberValue(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

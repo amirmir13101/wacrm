@@ -17,6 +17,9 @@ export interface WebsiteImportPage {
   readonly status: WebsiteImportPageStatus
   readonly skipReason: string | null
   readonly httpStatus: number | null
+  readonly structuredFacts?: Record<string, unknown> | null
+  readonly structuringSource?: 'deterministic' | 'ai_structured' | 'mixed' | 'disabled' | 'unavailable' | 'failed'
+  readonly structuringGrounding?: Record<string, unknown>
 }
 
 export interface WebsiteImportResult {
@@ -31,6 +34,19 @@ export interface WebsiteImportResult {
   readonly pagesSkipped: number
   readonly pagesFailed: number
   readonly duplicatePages: number
+  readonly aiStructuring?: WebsiteImportStructuringSummary
+}
+
+export interface WebsiteImportStructuringSummary {
+  readonly enabled: boolean
+  readonly status: 'disabled' | 'unavailable' | 'completed' | 'partial' | 'failed'
+  readonly callCap: number
+  readonly pagesAttempted: number
+  readonly pagesSucceeded: number
+  readonly pagesFailed: number
+  readonly fieldsKept: number
+  readonly fieldsDropped: number
+  readonly messages: readonly string[]
 }
 
 export function buildWebsiteImportFromFirecrawl(args: {
@@ -521,7 +537,7 @@ function buildWebsiteKnowledgeDraftResult(pages: readonly WebsiteImportPage[]): 
   const rankedPages = [...importedPages].sort((left, right) => scoreKnowledgePage(right) - scoreKnowledgePage(left))
   const compactedPages = rankedPages.map((page) => ({
     page,
-    text: compactWebsitePageText(page.cleanedText ?? '', repeatedBoilerplateLines),
+    text: compactWebsitePageText(buildPageReviewText(page), repeatedBoilerplateLines),
   }))
   const includedPageUrls = new Set<string>()
 
@@ -575,6 +591,83 @@ function buildWebsiteKnowledgeDraftResult(pages: readonly WebsiteImportPage[]): 
       .slice(0, MAX_IMPORTED_WEBSITE_KNOWLEDGE_CONTENT_LENGTH),
     includedPageUrls,
   }
+}
+
+function buildPageReviewText(page: WebsiteImportPage): string {
+  const base = page.cleanedText ?? ''
+  const proof = buildStructuredFactsReviewText(page)
+  return proof ? `${base}\n\n${proof}` : base
+}
+
+function buildStructuredFactsReviewText(page: WebsiteImportPage): string {
+  const facts = page.structuredFacts
+  if (!facts || page.structuringSource === 'deterministic' || page.structuringSource === 'disabled' || page.structuringSource === 'unavailable') return ''
+  const offers = Array.isArray(facts.pricing_offers) ? facts.pricing_offers : []
+  const contacts = Array.isArray(facts.contact_info) ? facts.contact_info : []
+  const policies = Array.isArray(facts.policies) ? facts.policies : []
+  const faqs = Array.isArray(facts.faqs) ? facts.faqs : []
+  const lines = [
+    '## Verified Structured Facts',
+    `- Structuring source: ${page.structuringSource ?? 'deterministic'}`,
+    `- Source page URL: ${page.canonicalUrl ?? page.url}`,
+    `- Grounding validation: passed ${readGroundingCount(page.structuringGrounding, 'kept')} fields, dropped ${readGroundingCount(page.structuringGrounding, 'dropped')} fields`,
+  ]
+  for (const offer of offers.slice(0, 20)) {
+    if (!isRecord(offer)) continue
+    lines.push(`### Structured offer: ${stringValue(offer.entity) ?? stringValue(offer.entity_name) ?? 'Offer'}`)
+    const category = stringValue(offer.category) ?? stringValue(offer.product_family)
+    if (category) lines.push(`- Category: ${category}`)
+    appendPriceLine(lines, 'Current price', offer.current_price)
+    appendPriceLine(lines, 'Original price', offer.original_price)
+    if (typeof offer.discount_percent === 'number') lines.push(`- Discount percent: ${offer.discount_percent}%`)
+    if (Array.isArray(offer.billing_options)) {
+      for (const option of offer.billing_options.slice(0, 8)) {
+        if (!isRecord(option)) continue
+        const mode = stringValue(option.billing_mode) ?? 'billing option'
+        lines.push(`- Billing option: ${mode}`)
+        appendPriceLine(lines, '  Effective price', option.effective_price)
+        if (isRecord(option.billing_total)) {
+          const total = option.billing_total
+          lines.push(`  - Billing total: ${stringValue(total.currency) ?? 'USD'} ${numberValue(total.amount) ?? ''} per ${numberValue(total.period_count) ?? ''} ${stringValue(total.period_unit) ?? ''}`.trim())
+        }
+      }
+    }
+    const excerpt = stringValue(offer.source_excerpt)
+    if (excerpt) lines.push(`- Source excerpt/proof: ${excerpt.slice(0, 500)}`)
+  }
+  for (const contact of contacts.slice(0, 12)) {
+    if (!isRecord(contact)) continue
+    lines.push(`- Contact fact (${stringValue(contact.type) ?? 'contact'}): ${stringValue(contact.value) ?? ''}`)
+  }
+  for (const policy of policies.slice(0, 8)) {
+    if (!isRecord(policy)) continue
+    lines.push(`- Policy fact (${stringValue(policy.type) ?? 'policy'}): ${stringValue(policy.text) ?? stringValue(policy.value) ?? ''}`)
+  }
+  for (const faq of faqs.slice(0, 8)) {
+    if (!isRecord(faq)) continue
+    lines.push(`- FAQ: ${stringValue(faq.question) ?? ''} — ${stringValue(faq.answer) ?? ''}`)
+  }
+  return lines.length > 4 ? lines.join('\n') : ''
+}
+
+function appendPriceLine(lines: string[], label: string, value: unknown): void {
+  if (!isRecord(value)) return
+  const amount = numberValue(value.amount)
+  if (amount === null) return
+  lines.push(`- ${label}: ${stringValue(value.currency) ?? 'USD'} ${amount}${value.period ? `/${String(value.period)}` : ''}`)
+}
+
+function readGroundingCount(value: Record<string, unknown> | undefined, key: string): number {
+  const count = value?.[key]
+  return typeof count === 'number' && Number.isFinite(count) ? count : 0
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 export function buildWebsiteImportQualityWarnings(args: {

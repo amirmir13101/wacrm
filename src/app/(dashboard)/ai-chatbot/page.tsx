@@ -172,6 +172,8 @@ interface ProviderSettings {
   memorySummarizeAfter: number
   memoryRetentionDays: number | null
   memoryClearOnHuman: boolean
+  aiStructuringEnabled: boolean
+  aiStructuringCallCap: number
 }
 
 interface TestAnswer {
@@ -258,6 +260,16 @@ interface WebsiteImportJob {
   external_crawl_id?: string | null
   credits_used?: number | null
   provider_status?: string | null
+  import_kind?: "website_import" | "restructure_existing"
+  restructure_source_id?: string | null
+  ai_structuring_enabled?: boolean
+  ai_structuring_status?: "disabled" | "unavailable" | "running" | "completed" | "partial" | "failed" | null
+  ai_structuring_call_cap?: number
+  ai_structuring_pages_attempted?: number
+  ai_structuring_pages_succeeded?: number
+  ai_structuring_pages_failed?: number
+  ai_structuring_fields_kept?: number
+  ai_structuring_fields_dropped?: number
 }
 
 interface WebsiteImportPage {
@@ -267,6 +279,7 @@ interface WebsiteImportPage {
   status: "imported" | "skipped" | "failed" | "duplicate"
   skip_reason?: string | null
   http_status?: number | null
+  structuring_source?: "deterministic" | "ai_structured" | "mixed" | "disabled" | "unavailable" | "failed"
 }
 
 interface WebsiteImportResult {
@@ -321,6 +334,7 @@ export default function AiChatbotPage() {
   const [testingEmbeddings, setTestingEmbeddings] = useState(false)
   const [testing, setTesting] = useState(false)
   const [rechunkingSourceId, setRechunkingSourceId] = useState<string | null>(null)
+  const [restructuringSourceId, setRestructuringSourceId] = useState<string | null>(null)
   const [knowledgeGaps, setKnowledgeGaps] = useState<KnowledgeGapsState | null>(null)
   const [showAllKnowledgeGaps, setShowAllKnowledgeGaps] = useState(false)
   const [scrapeSchedules, setScrapeSchedules] = useState<ScrapeSchedule[]>([])
@@ -839,6 +853,8 @@ export default function AiChatbotPage() {
           memory_summarize_after: draftProvider.memorySummarizeAfter,
           memory_retention_days: draftProvider.memoryRetentionDays,
           memory_clear_on_human: draftProvider.memoryClearOnHuman,
+          ai_structuring_enabled: draftProvider.aiStructuringEnabled,
+          ai_structuring_call_cap: draftProvider.aiStructuringCallCap,
         }),
       })
       const body = await res.json().catch(() => ({}))
@@ -951,6 +967,35 @@ export default function AiChatbotPage() {
       toast.error(err instanceof Error ? err.message : "Failed to re-chunk knowledge")
     } finally {
       setRechunkingSourceId(null)
+    }
+  }
+
+  async function restructureSource(source: KnowledgeSource) {
+    if (!window.confirm(
+      `Create a new AI-structured review draft for "${source.title}"? Published knowledge will not change until you review and publish the draft.`,
+    )) return
+    setRestructuringSourceId(source.id)
+    try {
+      const res = await fetch("/api/ai-chatbot/restructure", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source_id: source.id }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? "Failed to create re-structure draft")
+      toast.success("Re-structure draft created. Review it before publishing.")
+      setWebsiteImportResult({
+        job: body.job as WebsiteImportJob,
+        pages: body.pages as WebsiteImportPage[],
+        qualityWarnings: body.qualityWarnings as string[],
+      })
+      setWebsiteDraftTitle(String(body.job?.draft_title ?? `${source.title} restructured draft`))
+      setWebsiteDraftContent(String(body.job?.draft_content ?? ""))
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create re-structure draft")
+    } finally {
+      setRestructuringSourceId(null)
     }
   }
 
@@ -1257,6 +1302,44 @@ export default function AiChatbotPage() {
             {draftProvider.lastEmbeddingTestError && (
               <p className="mt-2 text-xs text-yellow-200">{draftProvider.lastEmbeddingTestError}</p>
             )}
+          </div>
+          <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4 lg:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-emerald-50">AI-enhanced knowledge structuring</p>
+                <p className="mt-1 text-xs text-[#9dbfb5]">
+                  Optional import-time structuring using this chat provider key. It stays off by default and falls back to deterministic extraction if the provider fails.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-[#9dbfb5]">Structuring enabled</span>
+                <Switch
+                  checked={draftProvider.aiStructuringEnabled}
+                  disabled={!canManage || !draftProvider.supportedForChat}
+                  onCheckedChange={(checked) => setDraftProvider({ ...draftProvider, aiStructuringEnabled: checked })}
+                />
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-emerald-50">Call cap/import</span>
+                <input
+                  className="h-11 w-full rounded-lg border border-emerald-700 bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                  disabled={!canManage || !draftProvider.aiStructuringEnabled}
+                  min={0}
+                  max={50}
+                  type="number"
+                  value={draftProvider.aiStructuringCallCap}
+                  onChange={(event) => setDraftProvider({
+                    ...draftProvider,
+                    aiStructuringCallCap: Math.max(0, Math.min(50, Number(event.target.value) || 0)),
+                  })}
+                />
+              </label>
+              <p className="self-end text-xs text-[#9dbfb5]">
+                Highest-value pages are processed first. Pages beyond the cap still use standard deterministic extraction.
+              </p>
+            </div>
           </div>
           <div className="rounded-xl border border-emerald-900 bg-[#07130e]/70 p-4 lg:col-span-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1842,6 +1925,8 @@ export default function AiChatbotPage() {
                   <SummaryMetric label="Duplicates" value={websiteImportResult.job.duplicate_pages} />
                   <SummaryMetric label="Credits used" value={websiteImportResult.job.credits_used ?? "—"} />
                   <SummaryMetric label="Provider" value={websiteImportResult.job.crawl_provider ?? "firecrawl"} />
+                  <SummaryMetric label="AI structured pages" value={`${websiteImportResult.job.ai_structuring_pages_succeeded ?? 0}/${websiteImportResult.job.ai_structuring_pages_attempted ?? 0}`} />
+                  <SummaryMetric label="Grounded fields" value={`${websiteImportResult.job.ai_structuring_fields_kept ?? 0} kept`} />
                 </dl>
                 {websiteImportResult.limits?.trialPreview && (
                   <div className={cn("mt-4 rounded-lg border p-3 text-xs font-semibold", inactiveStateClass)}>
@@ -1884,6 +1969,9 @@ export default function AiChatbotPage() {
                         </span>
                       </div>
                       <p className="mt-1 break-all text-[#9dbfb5]">{page.canonical_url ?? page.url}</p>
+                      {page.structuring_source && (
+                        <p className="mt-1 text-emerald-200">Structuring: {page.structuring_source}</p>
+                      )}
                       {page.skip_reason && (
                         <p className="mt-1 text-[#fff0b8]">Reason: {page.skip_reason}</p>
                       )}
@@ -2277,6 +2365,21 @@ export default function AiChatbotPage() {
                           : <RefreshCw className="size-3.5" />}
                         Re-chunk
                       </Button>
+                      {source.source_type === "website" && (
+                        <Button
+                          className="h-9 border border-emerald-900 bg-[#09241a] px-3 text-xs text-emerald-100 hover:bg-emerald-900/60 hover:text-white"
+                          disabled={restructuringSourceId !== null}
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void restructureSource(source)}
+                          title="Create AI-structured review draft"
+                        >
+                          {restructuringSourceId === source.id
+                            ? <Loader2 className="size-3.5 animate-spin" />
+                            : <ShieldCheck className="size-3.5" />}
+                          Re-structure Draft
+                        </Button>
+                      )}
                       <Button
                         className="text-emerald-100 hover:bg-emerald-900/60 hover:text-white"
                         size="icon"

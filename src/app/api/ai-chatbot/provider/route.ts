@@ -52,6 +52,8 @@ export async function PUT(request: Request) {
   const memorySummarizeAfter = readInteger(body.memory_summarize_after, 5)
   const memoryRetentionDays = readRetentionDays(body.memory_retention_days)
   const memoryClearOnHuman = body.memory_clear_on_human === true
+  const aiStructuringEnabled = body.ai_structuring_enabled === true
+  const aiStructuringCallCap = readInteger(body.ai_structuring_call_cap, 10)
 
   if (!providerSupportsChat(provider)) {
     const settings = await saveProviderSettings({
@@ -71,6 +73,8 @@ export async function PUT(request: Request) {
       memorySummarizeAfter,
       memoryRetentionDays,
       memoryClearOnHuman,
+      aiStructuringEnabled,
+      aiStructuringCallCap,
     })
     return NextResponse.json({
       settings,
@@ -99,6 +103,8 @@ export async function PUT(request: Request) {
     memorySummarizeAfter,
     memoryRetentionDays,
     memoryClearOnHuman,
+    aiStructuringEnabled,
+    aiStructuringCallCap,
   })
 
   return NextResponse.json({ settings })

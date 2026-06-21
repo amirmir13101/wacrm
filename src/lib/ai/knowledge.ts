@@ -176,6 +176,7 @@ export async function saveKnowledgeSourceWithChunks(args: {
   readonly sourceType: AiKnowledgeSourceType
   readonly title: string
   readonly content: string
+  readonly structuredFactsByUrl?: ReadonlyMap<string, Record<string, unknown>>
 }) {
   const admin = supabaseAdmin()
   const { data: source, error: sourceError } = await admin
@@ -198,7 +199,7 @@ export async function saveKnowledgeSourceWithChunks(args: {
   if (chunks.length > 0) {
     const { data: insertedChunks, error: chunksError } = await admin.from('ai_knowledge_chunks').insert(
       chunks.map((chunk, index) => ({
-        ...chunkSearchRow(chunk, index, args.title),
+        ...chunkSearchRow(chunk, index, args.title, args.sourceType, args.structuredFactsByUrl),
         workspace_id: args.workspaceId,
         source_id: source.id,
         chunk_text: chunk.text,
@@ -217,6 +218,7 @@ export async function replaceKnowledgeSourceWithChunks(args: {
   readonly title: string
   readonly content: string
   readonly client?: SupabaseClient
+  readonly structuredFactsByUrl?: ReadonlyMap<string, Record<string, unknown>>
 }) {
   const admin = args.client ?? supabaseAdmin()
   const { data: source, error: sourceError } = await admin
@@ -244,6 +246,7 @@ export async function replaceKnowledgeSourceWithChunks(args: {
       sourceId: args.sourceId,
       title: args.title,
       sourceType: 'website',
+      structuredFactsByUrl: args.structuredFactsByUrl,
     }))
     .select('id')
   if (insertError) throw new Error(insertError.message)
@@ -319,17 +322,25 @@ export function buildKnowledgeChunkRows(args: {
   readonly sourceId: string
   readonly title: string
   readonly sourceType?: AiKnowledgeSourceType
+  readonly structuredFactsByUrl?: ReadonlyMap<string, Record<string, unknown>>
 }): ReadonlyArray<Record<string, unknown>> {
   return args.chunks.map((chunk, index) => ({
-    ...chunkSearchRow(chunk, index, args.title, args.sourceType),
+    ...chunkSearchRow(chunk, index, args.title, args.sourceType, args.structuredFactsByUrl),
     workspace_id: args.workspaceId,
     source_id: args.sourceId,
     chunk_text: chunk.text,
   }))
 }
 
-function chunkSearchRow(chunk: SemanticChunk, index: number, title: string, sourceType?: AiKnowledgeSourceType) {
+function chunkSearchRow(
+  chunk: SemanticChunk,
+  index: number,
+  title: string,
+  sourceType?: AiKnowledgeSourceType,
+  structuredFactsByUrl?: ReadonlyMap<string, Record<string, unknown>>,
+) {
   const metadata = buildChunkSearchMetadata(chunk.text, index)
+  const mergedStructuredFacts = mergePageStructuredFacts(metadata.structured_facts, chunk.text, structuredFactsByUrl)
   const headingPath = chunk.headingPath.length > 0 ? chunk.headingPath.join(' > ') : title
   return {
     search_text: chunk.text,
@@ -338,8 +349,42 @@ function chunkSearchRow(chunk: SemanticChunk, index: number, title: string, sour
     source_url: metadata.source_url,
     heading_path: headingPath,
     chunk_index: index,
-    structured_facts: metadata.structured_facts,
+    structured_facts: mergedStructuredFacts,
     embedding_status: 'pending',
     metadata: { title, source_type: sourceType, index, heading_path: headingPath, ...metadata },
   }
+}
+
+function mergePageStructuredFacts(base: unknown, chunkText: string, structuredFactsByUrl?: ReadonlyMap<string, Record<string, unknown>>) {
+  const baseFacts = isRecord(base) ? { ...base } : {}
+  if (!structuredFactsByUrl || structuredFactsByUrl.size === 0) return baseFacts
+  for (const [url, facts] of structuredFactsByUrl.entries()) {
+    if (!chunkText.includes(url)) continue
+    return mergeStructuredFactRecords(baseFacts, facts)
+  }
+  return baseFacts
+}
+
+function mergeStructuredFactRecords(base: Record<string, unknown>, incoming: Record<string, unknown>): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(incoming)) {
+    if (Array.isArray(value)) {
+      const existing = Array.isArray(merged[key]) ? merged[key] as unknown[] : []
+      const seen = new Set(existing.map((item) => JSON.stringify(item)))
+      merged[key] = [
+        ...existing,
+        ...value.filter((item) => {
+          const signature = JSON.stringify(item)
+          if (seen.has(signature)) return false
+          seen.add(signature)
+          return true
+        }),
+      ]
+    } else if (isRecord(value)) {
+      merged[key] = { ...(isRecord(merged[key]) ? merged[key] : {}), ...value }
+    } else {
+      merged[key] = value
+    }
+  }
+  return merged
 }

@@ -32,6 +32,8 @@ export interface AiProviderPublicSettings {
   readonly memorySummarizeAfter: number
   readonly memoryRetentionDays: number | null
   readonly memoryClearOnHuman: boolean
+  readonly aiStructuringEnabled: boolean
+  readonly aiStructuringCallCap: number
 }
 
 export interface AiMemorySettings {
@@ -86,6 +88,8 @@ interface ProviderRow {
   readonly memory_summarize_after?: number | null
   readonly memory_retention_days?: number | null
   readonly memory_clear_on_human?: boolean | null
+  readonly ai_structuring_enabled?: boolean | null
+  readonly ai_structuring_call_cap?: number | null
 }
 
 export function normalizeProvider(value: unknown): AiProvider {
@@ -162,7 +166,7 @@ export function readApiKeyLast4(apiKey: string): string {
 export async function getPublicProviderSettings(workspaceId: string): Promise<AiProviderPublicSettings> {
   const { data, error } = await supabaseAdmin()
     .from('ai_chatbot_provider_settings')
-    .select('workspace_id, provider, model, base_url, encrypted_api_key, api_key_last4, api_key_configured_at, last_tested_at, last_test_status, last_test_error, embeddings_enabled, embedding_model, embedding_dimensions, last_embedding_tested_at, last_embedding_test_status, last_embedding_test_error, multilingual_enabled, default_response_language, supported_languages, translation_model, memory_enabled, memory_summarize_after, memory_retention_days, memory_clear_on_human')
+    .select('workspace_id, provider, model, base_url, encrypted_api_key, api_key_last4, api_key_configured_at, last_tested_at, last_test_status, last_test_error, embeddings_enabled, embedding_model, embedding_dimensions, last_embedding_tested_at, last_embedding_test_status, last_embedding_test_error, multilingual_enabled, default_response_language, supported_languages, translation_model, memory_enabled, memory_summarize_after, memory_retention_days, memory_clear_on_human, ai_structuring_enabled, ai_structuring_call_cap')
     .eq('workspace_id', workspaceId)
     .maybeSingle<ProviderRow>()
 
@@ -199,6 +203,8 @@ export async function getPublicProviderSettings(workspaceId: string): Promise<Ai
       memorySummarizeAfter: 5,
       memoryRetentionDays: 90,
       memoryClearOnHuman: false,
+      aiStructuringEnabled: false,
+      aiStructuringCallCap: 10,
     }
   }
   const embeddingSupported = providerSupportsEmbeddings(data.provider)
@@ -233,6 +239,8 @@ export async function getPublicProviderSettings(workspaceId: string): Promise<Ai
     memorySummarizeAfter: clampMemorySummarizeAfter(data.memory_summarize_after),
     memoryRetentionDays: normalizeMemoryRetentionDays(data.memory_retention_days),
     memoryClearOnHuman: Boolean(data.memory_clear_on_human),
+    aiStructuringEnabled: Boolean(data.ai_structuring_enabled),
+    aiStructuringCallCap: clampAiStructuringCallCap(data.ai_structuring_call_cap),
   }
 }
 
@@ -253,14 +261,16 @@ export async function saveProviderSettings(args: {
   readonly memorySummarizeAfter?: number | null
   readonly memoryRetentionDays?: number | null
   readonly memoryClearOnHuman?: boolean
+  readonly aiStructuringEnabled?: boolean
+  readonly aiStructuringCallCap?: number | null
 }): Promise<AiProviderPublicSettings> {
   const admin = supabaseAdmin()
   const apiKey = args.apiKey?.trim()
   const previous = await admin
     .from('ai_chatbot_provider_settings')
-    .select('encrypted_api_key, api_key_last4, api_key_configured_at, memory_enabled, memory_summarize_after, memory_retention_days, memory_clear_on_human')
+    .select('encrypted_api_key, api_key_last4, api_key_configured_at, memory_enabled, memory_summarize_after, memory_retention_days, memory_clear_on_human, ai_structuring_enabled, ai_structuring_call_cap')
     .eq('workspace_id', args.workspaceId)
-    .maybeSingle<Pick<ProviderRow, 'encrypted_api_key' | 'api_key_last4' | 'api_key_configured_at' | 'memory_enabled' | 'memory_summarize_after' | 'memory_retention_days' | 'memory_clear_on_human'>>()
+    .maybeSingle<Pick<ProviderRow, 'encrypted_api_key' | 'api_key_last4' | 'api_key_configured_at' | 'memory_enabled' | 'memory_summarize_after' | 'memory_retention_days' | 'memory_clear_on_human' | 'ai_structuring_enabled' | 'ai_structuring_call_cap'>>()
 
   if (previous.error) throw new Error(previous.error.message)
 
@@ -296,6 +306,10 @@ export async function saveProviderSettings(args: {
         ? normalizeMemoryRetentionDays(previous.data?.memory_retention_days)
         : normalizeMemoryRetentionDays(args.memoryRetentionDays),
       memory_clear_on_human: args.memoryClearOnHuman ?? previous.data?.memory_clear_on_human ?? false,
+      ai_structuring_enabled: args.aiStructuringEnabled ?? previous.data?.ai_structuring_enabled ?? false,
+      ai_structuring_call_cap: args.aiStructuringCallCap === undefined
+        ? clampAiStructuringCallCap(previous.data?.ai_structuring_call_cap)
+        : clampAiStructuringCallCap(args.aiStructuringCallCap),
       last_embedding_test_status: apiKey || args.embeddingsEnabled !== undefined ? 'not_tested' : undefined,
       last_embedding_test_error: apiKey || args.embeddingsEnabled !== undefined ? null : undefined,
     },
@@ -303,6 +317,22 @@ export async function saveProviderSettings(args: {
   )
   if (error) throw new Error(error.message)
   return getPublicProviderSettings(args.workspaceId)
+}
+
+export async function resolveAiStructuringSettings(workspaceId: string): Promise<{
+  readonly enabled: boolean
+  readonly callCap: number
+}> {
+  const { data, error } = await supabaseAdmin()
+    .from('ai_chatbot_provider_settings')
+    .select('ai_structuring_enabled, ai_structuring_call_cap')
+    .eq('workspace_id', workspaceId)
+    .maybeSingle<Pick<ProviderRow, 'ai_structuring_enabled' | 'ai_structuring_call_cap'>>()
+  if (error) throw new Error(error.message)
+  return {
+    enabled: Boolean(data?.ai_structuring_enabled),
+    callCap: clampAiStructuringCallCap(data?.ai_structuring_call_cap),
+  }
 }
 
 export async function resolveMemorySettings(workspaceId: string): Promise<AiMemorySettings> {
@@ -519,6 +549,11 @@ function readPositiveInteger(value: string | undefined, fallback: number): numbe
 function clampEmbeddingDimensions(value: number | null | undefined): number {
   if (typeof value !== 'number' || !Number.isInteger(value)) return 1536
   return Math.max(128, Math.min(4096, value))
+}
+
+function clampAiStructuringCallCap(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return 10
+  return Math.max(0, Math.min(50, value))
 }
 
 function clampMemorySummarizeAfter(value: number | null | undefined): number {
