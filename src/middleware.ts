@@ -119,7 +119,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/ai-chatbot', '/settings', '/team', '/admin']
+  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings', '/team', '/admin']
   if (
     !user &&
     (
@@ -216,7 +216,6 @@ export async function middleware(request: NextRequest) {
     (request.nextUrl.pathname.startsWith('/api/automations') &&
       !isCronProtectedAutomation) ||
     request.nextUrl.pathname.startsWith('/api/team') ||
-    request.nextUrl.pathname.startsWith('/api/ai-chatbot') ||
     request.nextUrl.pathname.startsWith('/api/contacts') ||
     request.nextUrl.pathname.startsWith('/api/pricing') ||
     request.nextUrl.pathname.startsWith('/api/admin') ||
@@ -281,12 +280,6 @@ export async function middleware(request: NextRequest) {
       if (method === 'GET' && !hasWorkspacePermission(workspaceMember, 'view_automations')) return deny()
       if (method === 'POST' && !hasWorkspacePermission(workspaceMember, 'create_automations')) return deny()
       if ((method === 'PATCH' || method === 'DELETE') && !hasWorkspacePermission(workspaceMember, 'edit_automations')) return deny()
-    }
-    if (path.startsWith('/api/ai-chatbot')) {
-      if (method === 'GET' && !hasWorkspacePermission(workspaceMember, 'view_ai_chatbot')) return deny()
-      if (path.startsWith('/api/ai-chatbot/test') && !hasWorkspacePermission(workspaceMember, 'view_ai_chatbot')) return deny()
-      if (path.startsWith('/api/ai-chatbot/test')) return supabaseResponse
-      if (method !== 'GET' && !hasWorkspacePermission(workspaceMember, 'manage_ai_chatbot')) return deny()
     }
   }
 

@@ -38,9 +38,10 @@ describe('team permission UI helpers', () => {
       'Pipeline',
       'Broadcasts',
       'Automations',
-      'AI Chatbot',
       'Reports',
     ])
+    expect(mainAccessLabels).not.toContain('AI Chatbot')
+    expect(PERMISSION_GROUPS.map((group) => group.title)).not.toContain('AI Chatbot')
   })
 
   it('marks dangerous permissions clearly', () => {

@@ -51,30 +51,6 @@ interface ContactDetailViewProps {
   onUpdated: () => void;
 }
 
-interface ContactMemoryApiResponse {
-  memory: {
-    contact_id: string;
-    memory_summary: string | null;
-    key_facts: Record<string, string> | null;
-    topics_discussed: string[] | null;
-    last_intent: string | null;
-    sentiment: 'positive' | 'neutral' | 'negative' | null;
-    preferred_language: string | null;
-    unresolved_questions: string[] | null;
-    conversation_count: number | null;
-    last_conversation_at: string | null;
-    memory_enabled: boolean | null;
-  } | null;
-  recentSummaries: Array<{
-    id: string;
-    summary: string | null;
-    intent: string | null;
-    sentiment: 'positive' | 'neutral' | 'negative' | null;
-    resolved: boolean | null;
-    summarized_at: string | null;
-  }>;
-}
-
 function ConsentBadge({ contact }: { contact: Contact }) {
   const status = getContactConsentStatus(contact);
   const styles = {
@@ -138,11 +114,6 @@ export function ContactDetailView({
   // Deals tab
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loadingDeals, setLoadingDeals] = useState(false);
-
-  // AI memory tab
-  const [memoryState, setMemoryState] = useState<ContactMemoryApiResponse | null>(null);
-  const [loadingMemory, setLoadingMemory] = useState(false);
-  const [savingMemory, setSavingMemory] = useState(false);
 
   const fetchContact = useCallback(async () => {
     if (!contactId) return;
@@ -231,19 +202,6 @@ export function ContactDetailView({
     setLoadingDeals(false);
   }, [contactId, supabase]);
 
-  const fetchMemory = useCallback(async () => {
-    if (!contactId) return;
-    setLoadingMemory(true);
-    try {
-      const response = await fetch(`/api/contacts/${contactId}/memory`);
-      if (response.ok) {
-        setMemoryState((await response.json()) as ContactMemoryApiResponse);
-      }
-    } finally {
-      setLoadingMemory(false);
-    }
-  }, [contactId]);
-
   useEffect(() => {
     if (open && contactId) {
       fetchContact();
@@ -251,9 +209,8 @@ export function ContactDetailView({
       fetchNotes();
       fetchCustomFields();
       fetchDeals();
-      fetchMemory();
     }
-  }, [open, contactId, fetchContact, fetchTags, fetchNotes, fetchCustomFields, fetchDeals, fetchMemory]);
+  }, [open, contactId, fetchContact, fetchTags, fetchNotes, fetchCustomFields, fetchDeals]);
 
   async function copyPhone() {
     if (!contact) return;
@@ -329,44 +286,6 @@ export function ContactDetailView({
       toast.error(err instanceof Error ? err.message : 'Failed to update contact');
     } finally {
       setSavingDetails(false);
-    }
-  }
-
-  async function toggleMemoryEnabled(enabled: boolean) {
-    if (!contactId) return;
-    setSavingMemory(true);
-    try {
-      const response = await fetch(`/api/contacts/${contactId}/memory`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ memory_enabled: enabled }),
-      });
-      if (!response.ok) throw new Error('Failed to update AI memory');
-      toast.success(enabled ? 'AI memory enabled' : 'AI memory disabled');
-      await fetchMemory();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update AI memory');
-    } finally {
-      setSavingMemory(false);
-    }
-  }
-
-  async function clearMemory() {
-    if (!contactId) return;
-    const confirmed = window.confirm(
-      "This will clear all stored memory for this contact. Their conversation history remains intact but the chatbot will no longer use past context. This cannot be undone. Continue?",
-    );
-    if (!confirmed) return;
-    setSavingMemory(true);
-    try {
-      const response = await fetch(`/api/contacts/${contactId}/memory`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Failed to clear AI memory');
-      toast.success('AI memory cleared');
-      await fetchMemory();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to clear AI memory');
-    } finally {
-      setSavingMemory(false);
     }
   }
 
@@ -571,12 +490,6 @@ export function ContactDetailView({
                   className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
                 >
                   Deals
-                </TabsTrigger>
-                <TabsTrigger
-                  value="memory"
-                  className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
-                >
-                  AI Memory
                 </TabsTrigger>
               </TabsList>
 
@@ -920,120 +833,6 @@ export function ContactDetailView({
                 )}
               </TabsContent>
 
-              <TabsContent value="memory" className="flex-1 overflow-y-auto px-4 py-3">
-                {loadingMemory ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="size-5 animate-spin text-violet-500" />
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-white">AI Memory</h3>
-                          <p className="mt-1 text-xs text-slate-400">
-                            Used by the chatbot to personalize future replies for this contact.
-                          </p>
-                        </div>
-                        <label className="flex items-center gap-2 text-xs text-slate-300">
-                          <input
-                            type="checkbox"
-                            checked={memoryState?.memory?.memory_enabled !== false}
-                            disabled={savingMemory}
-                            onChange={(event) => void toggleMemoryEnabled(event.target.checked)}
-                            className="size-4 rounded border-slate-700 bg-slate-900 accent-violet-600"
-                          />
-                          Enabled
-                        </label>
-                      </div>
-                      {memoryState?.memory?.memory_enabled === false && (
-                        <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
-                          Memory disabled. This contact&apos;s history will not be used to personalize future chatbot responses.
-                        </p>
-                      )}
-                    </div>
-
-                    {!memoryState?.memory?.memory_summary && !memoryState?.memory?.topics_discussed?.length ? (
-                      <p className="rounded-lg border border-slate-700 bg-slate-900/60 p-4 text-sm text-slate-400">
-                        No memory stored yet. Memory is created automatically after conversations with this contact.
-                      </p>
-                    ) : (
-                      <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
-                        {memoryState.memory.memory_summary && (
-                          <p className="text-sm leading-relaxed text-slate-200">{memoryState.memory.memory_summary}</p>
-                        )}
-                        {(memoryState.memory.topics_discussed ?? []).length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {(memoryState.memory.topics_discussed ?? []).slice(0, 12).map((topic) => (
-                              <Badge key={topic} variant="outline" className="border-violet-500/40 text-violet-200">
-                                {topic}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                        <div className="grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
-                          <span>Last intent: {memoryState.memory.last_intent ?? '—'}</span>
-                          <span>Language: {memoryState.memory.preferred_language ?? '—'}</span>
-                          <span>Conversations: {memoryState.memory.conversation_count ?? 0}</span>
-                          <span>
-                            Last contact:{' '}
-                            {memoryState.memory.last_conversation_at
-                              ? new Date(memoryState.memory.last_conversation_at).toLocaleString()
-                              : '—'}
-                          </span>
-                        </div>
-                        {(memoryState.memory.unresolved_questions ?? []).length > 0 && (
-                          <div>
-                            <p className="mb-1 text-xs font-semibold text-slate-300">Unresolved questions</p>
-                            <ul className="list-disc space-y-1 pl-4 text-xs text-slate-400">
-                              {(memoryState.memory.unresolved_questions ?? []).slice(0, 5).map((question) => (
-                                <li key={question}>{question}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-4">
-                      <h4 className="mb-3 text-sm font-semibold text-white">Recent conversation summaries</h4>
-                      {(memoryState?.recentSummaries ?? []).length === 0 ? (
-                        <p className="text-sm text-slate-500">No summaries yet.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {(memoryState?.recentSummaries ?? []).slice(0, 3).map((summary) => (
-                            <div key={summary.id} className="rounded-md border border-slate-800 bg-slate-950/60 p-3">
-                              <div className="mb-1 flex flex-wrap gap-2 text-[10px] uppercase tracking-wide">
-                                {summary.intent && <Badge variant="outline">{summary.intent}</Badge>}
-                                {summary.sentiment && <Badge variant="outline">{summary.sentiment}</Badge>}
-                                <Badge variant="outline">{summary.resolved ? 'Resolved' : 'Open'}</Badge>
-                              </div>
-                              <p className="text-sm text-slate-300">{summary.summary}</p>
-                              {summary.summarized_at && (
-                                <p className="mt-1 text-xs text-slate-500">{new Date(summary.summarized_at).toLocaleString()}</p>
-                              )}
-                            </div>
-                          ))}
-                          {(memoryState?.recentSummaries ?? []).length > 3 && (
-                            <p className="text-xs text-slate-500">View all summaries coming in a future expanded contact timeline.</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <Button
-                      onClick={() => void clearMemory()}
-                      disabled={savingMemory}
-                      variant="destructive"
-                      className="w-full"
-                      size="sm"
-                    >
-                      {savingMemory ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-                      Clear Memory
-                    </Button>
-                  </div>
-                )}
-              </TabsContent>
             </Tabs>
           </div>
         )}

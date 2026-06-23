@@ -28,9 +28,6 @@ export const WORKSPACE_PERMISSIONS = [
   'create_automations',
   'edit_automations',
   'activate_deactivate_automations',
-  'view_ai_chatbot',
-  'manage_ai_chatbot',
-  'enable_ai_auto_reply',
   'view_pipeline',
   'view_all_deals',
   'view_assigned_deals',
@@ -94,9 +91,6 @@ const MANAGER_PERMISSIONS: WorkspacePermissions = {
   create_automations: true,
   edit_automations: true,
   activate_deactivate_automations: true,
-  view_ai_chatbot: true,
-  manage_ai_chatbot: true,
-  enable_ai_auto_reply: true,
   view_pipeline: true,
   view_all_deals: true,
   create_deals: true,
@@ -175,7 +169,6 @@ export function canAccessDashboardPath(
   if (pathname.startsWith('/pipelines')) return hasWorkspacePermission(subject, 'view_pipeline')
   if (pathname.startsWith('/broadcasts')) return hasWorkspacePermission(subject, 'view_broadcasts')
   if (pathname.startsWith('/automations')) return hasWorkspacePermission(subject, 'view_automations')
-  if (pathname.startsWith('/ai-chatbot')) return hasWorkspacePermission(subject, 'view_ai_chatbot')
   if (pathname.startsWith('/team')) {
     return (
       hasWorkspacePermission(subject, 'view_team') ||
