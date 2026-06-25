@@ -175,6 +175,7 @@ export function canAccessDashboardPath(
   if (pathname.startsWith('/pipelines')) return hasWorkspacePermission(subject, 'view_pipeline')
   if (pathname.startsWith('/broadcasts')) return hasWorkspacePermission(subject, 'view_broadcasts')
   if (pathname.startsWith('/automations')) return hasWorkspacePermission(subject, 'view_automations')
+  if (pathname.startsWith('/ai-chatbot')) return hasWorkspacePermission(subject, 'view_rag_chatbot')
   if (pathname.startsWith('/team')) {
     return (
       hasWorkspacePermission(subject, 'view_team') ||
