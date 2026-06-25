@@ -81,11 +81,12 @@ describe('RAG settings UI shell', () => {
     expect(page).not.toContain('Vector Settings')
   })
 
-  it('keeps future RAG sections visibly disabled', () => {
+  it('keeps later RAG sections visibly disabled while dashboard test chat is active', () => {
     expect(page).toContain('Coming Soon')
     expect(page).toContain('Add Knowledge')
-    expect(page).toContain('Website Import')
     expect(page).toContain('Test Chat')
+    expect(page).toContain('Ask a question from your saved knowledge...')
+    expect(page).toContain('Website Import')
     expect(page).toContain('Logs')
     expect(page).toContain('WhatsApp Auto Reply')
     expect(page).toContain('Not active yet')

@@ -122,6 +122,7 @@ describe('RAG Phase 1 foundation', () => {
           {
             content: `Question: ${request.question}`,
             index: 0,
+            chunkId: 'chunk-1',
             sourceId: 'source-1',
             sourceTitle: 'FAQ',
             similarity: 0.9,
@@ -164,7 +165,7 @@ describe('RAG Phase 1 foundation', () => {
       retrievedChunks: [],
     })
 
-    expect(prompt).toContain('Answer only from the provided knowledge snippets')
+    expect(prompt).toContain('Answer the customer using only the provided knowledge.')
     expect(answer.status).toBe('fallback')
     expect(answer.answer).toBe('I do not see that information in the current knowledge base.')
 

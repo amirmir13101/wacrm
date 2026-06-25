@@ -68,6 +68,19 @@ interface KnowledgeSourceItem {
   readonly content?: string
 }
 
+interface RagChatSource {
+  readonly title: string
+  readonly snippet: string
+  readonly matchQuality: number
+}
+
+interface RagChatResponse {
+  readonly status: 'answered' | 'fallback' | 'provider_error'
+  readonly answer: string
+  readonly sources: ReadonlyArray<RagChatSource>
+  readonly fallbackReason: string | null
+}
+
 const providerLabels: Record<RagProviderType, string> = {
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
@@ -135,6 +148,10 @@ export default function RagChatbotPage() {
   const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeSourceItem | null>(null)
   const [editingKnowledgeId, setEditingKnowledgeId] = useState<string | null>(null)
   const [preparingKnowledgeId, setPreparingKnowledgeId] = useState<string | null>(null)
+  const [chatQuestion, setChatQuestion] = useState('')
+  const [chatAnswer, setChatAnswer] = useState<RagChatResponse | null>(null)
+  const [chatMessage, setChatMessage] = useState<string | null>(null)
+  const [chatLoading, setChatLoading] = useState(false)
 
   const cards = useMemo(() => {
     const providerConfigured = status?.provider.configured === true
@@ -189,6 +206,13 @@ export default function RagChatbotPage() {
   const canManageKnowledge = workspace.has('manage_rag_chatbot')
   const knowledgeCharacters = knowledgeText.length
   const knowledgeOverLimit = knowledgeCharacters > RAG_KNOWLEDGE_CHARACTER_LIMIT
+  const providerReady = status?.provider.configured === true
+  const embeddingsReady = (status?.knowledge.readyEmbeddings ?? 0) > 0
+  const chatUnavailableMessage = !providerReady
+    ? 'Add and test your AI provider key first.'
+    : !embeddingsReady
+      ? 'Prepare your knowledge for chatbot first.'
+      : null
 
   useEffect(() => {
     if (workspace.loading || !canView) {
@@ -411,6 +435,29 @@ export default function RagChatbotPage() {
       )
     } finally {
       setPreparingKnowledgeId(null)
+    }
+  }
+
+  async function askTestChat() {
+    setChatLoading(true)
+    setChatMessage(null)
+    setChatAnswer(null)
+    try {
+      if (chatUnavailableMessage) throw new Error(chatUnavailableMessage)
+
+      const response = await fetch('/api/rag/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: chatQuestion }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Chat request failed.')
+
+      setChatAnswer(payload as RagChatResponse)
+    } catch (chatError) {
+      setChatMessage(chatError instanceof Error ? chatError.message : 'Chat request failed.')
+    } finally {
+      setChatLoading(false)
     }
   }
 
@@ -745,12 +792,108 @@ export default function RagChatbotPage() {
         </div>
       </section>
 
+      <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <MessageSquare className="size-5 text-emerald-300" />
+              <h2 className="text-lg font-bold text-white">Test Chat</h2>
+            </div>
+            <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+              Ask a question from prepared manual knowledge. This dashboard test uses
+              vector search and does not connect to WhatsApp yet.
+            </p>
+          </div>
+          <span className="rounded-full border border-[#315846] bg-[#0d1b15] px-3 py-1 text-xs font-bold text-[#d8fff1]">
+            Dashboard only
+          </span>
+        </div>
+
+        {chatUnavailableMessage && (
+          <div className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+            {chatUnavailableMessage}
+          </div>
+        )}
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+          <div className="space-y-4 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Question</span>
+              <textarea
+                value={chatQuestion}
+                onChange={(event) => setChatQuestion(event.target.value)}
+                placeholder="Ask a question from your saved knowledge..."
+                rows={5}
+                maxLength={2000}
+                disabled={Boolean(chatUnavailableMessage)}
+                className="min-h-32 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-[#8bb4a5]">
+                {chatQuestion.length.toLocaleString()} / 2,000 characters
+              </p>
+              <button
+                type="button"
+                onClick={askTestChat}
+                disabled={chatLoading || Boolean(chatUnavailableMessage) || !chatQuestion.trim()}
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <MessageSquare className="size-4" />
+                {chatLoading ? 'Asking...' : 'Ask'}
+              </button>
+            </div>
+            {chatMessage && (
+              <p className="rounded-xl border border-[#315846] bg-[#07130e] px-3 py-2 text-sm text-[#d8fff1]">
+                {chatMessage}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+              <h3 className="font-bold text-white">Answer</h3>
+              {chatAnswer ? (
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#d8fff1]">
+                  {chatAnswer.answer}
+                </p>
+              ) : (
+                <p className="mt-3 text-sm text-[#8bb4a5]">
+                  The answer will appear here after you ask a question.
+                </p>
+              )}
+            </div>
+
+            {chatAnswer?.sources.length ? (
+              <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
+                <div className="border-b border-[#214b39] px-4 py-3">
+                  <h3 className="font-bold text-white">Retrieved Knowledge</h3>
+                  <p className="text-xs text-[#8bb4a5]">Safe snippets used to answer.</p>
+                </div>
+                <div className="divide-y divide-[#214b39]">
+                  {chatAnswer.sources.map((source, index) => (
+                    <article key={`${source.title}-${index}`} className="space-y-2 px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-sm font-bold text-white">{source.title}</h4>
+                        <span className="rounded-full border border-[#315846] px-2 py-1 text-[11px] font-bold text-[#d8fff1]">
+                          Match quality {Math.round(source.matchQuality * 100)}%
+                        </span>
+                      </div>
+                      <p className="text-sm leading-6 text-[#a9c6bb]">{source.snippet}</p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
       <section>
         <h2 className="mb-3 text-lg font-bold text-white">Coming Soon</h2>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {[
             ['Website Import', Globe],
-            ['Test Chat', MessageSquare],
             ['Logs', Clock],
             ['WhatsApp Auto Reply', Send],
           ].map(([title, Icon]) => (

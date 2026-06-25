@@ -95,12 +95,11 @@ describe('RAG manual knowledge management', () => {
     expect(knowledgeStore).not.toContain('generateRagChunkEmbeddings')
   })
 
-  it('soft archives sources and does not add website import, test chat, or WhatsApp behavior', () => {
+  it('soft archives sources and does not add website import or WhatsApp behavior', () => {
     expect(knowledgeStore).toContain("status: 'archived'")
     expect(knowledgeStore).toContain('deleted_at')
     expect(page).toContain('Website Import')
     expect(page).toContain('Not active yet')
-    expect(page).not.toContain('/api/rag/chat')
     expect(page).not.toContain('/api/rag/website-import')
     expect(webhookRoute).not.toContain('rag')
   })

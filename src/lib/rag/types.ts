@@ -61,6 +61,7 @@ export interface RagEmbeddedChunk extends RagChunk {
 }
 
 export interface RagRetrievedChunk extends RagChunk {
+  readonly chunkId: string
   readonly sourceId: string
   readonly sourceTitle: string
   readonly sourceUrl?: string | null

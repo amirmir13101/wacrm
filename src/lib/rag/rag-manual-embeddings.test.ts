@@ -73,8 +73,7 @@ describe('RAG manual embedding generation', () => {
     expect(page).not.toContain('raw provider')
   })
 
-  it('does not add retrieval chat, Firecrawl import, or WhatsApp behavior in Phase 5', () => {
-    expect(page).not.toContain('/api/rag/chat')
+  it('does not add Firecrawl import or WhatsApp behavior in manual embedding generation', () => {
     expect(page).not.toContain('/api/rag/website-import')
     expect(embeddingStore).not.toContain('match_rag_knowledge_chunks')
     expect(webhookRoute).not.toContain('rag')
