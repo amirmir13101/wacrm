@@ -9,7 +9,7 @@ import {
   RAG_STARTER_PARITY_BEHAVIOR,
   RECOMMENDED_RAG_DATABASE_ADAPTER,
 } from './architecture'
-import { buildRagSystemPrompt, createEmptyRagAnswer } from './chat'
+import { buildRagRetrievalQueries, buildRagSystemPrompt, createEmptyRagAnswer } from './chat'
 import { createRagChunks } from './chunking'
 import { prepareRagKnowledgeSource } from './knowledge'
 import {
@@ -180,9 +180,21 @@ describe('RAG Phase 1 foundation', () => {
     expect(prompt).toContain('You may do simple arithmetic only when the needed numbers are explicitly present')
     expect(prompt).toContain('not an official listed value')
     expect(prompt).toContain('if only a monthly price is present and no exact yearly total')
-    expect(prompt).toContain('monthly price × 12')
+    expect(prompt).toContain('monthly price x 12')
     expect(prompt).toContain('do not use competitor prices or competitor specs')
     expect(prompt).toContain('Do not mix neighboring plans, products, services, locations, packages, or providers.')
+  })
+
+  it('builds focused retrieval queries for combined monthly and yearly questions', () => {
+    expect(buildRagRetrievalQueries('12 gb vps price monthly and yearly')).toEqual([
+      '12 gb vps price monthly and yearly',
+      '12 gb vps price monthly',
+      '12 gb vps price yearly',
+    ])
+
+    expect(buildRagRetrievalQueries('What is your support email?')).toEqual([
+      'What is your support email?',
+    ])
   })
 
   it('masks secrets and sanitizes provider errors', () => {

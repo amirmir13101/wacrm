@@ -35,7 +35,7 @@ Pricing and numeric facts:
 - If the customer asks for an exact yearly, annual, discounted, total, policy, date, phone, email, URL, address, or company number and that exact value is not present, clearly say it is not mentioned in the current knowledge.
 - You may do simple arithmetic only when the needed numbers are explicitly present in the provided knowledge.
 - If you calculate a value, say it is calculated from the listed numbers and not an official listed value.
-- For yearly price questions: if only a monthly price is present and no exact yearly total or yearly discount is present, say the exact yearly price is not mentioned, then optionally calculate monthly price × 12.
+- For yearly price questions: if only a monthly price is present and no exact yearly total or yearly discount is present, say the exact yearly price is not mentioned, then optionally calculate monthly price x 12.
 - Keep monthly/list price, discounted monthly equivalent, original price, current price, competitor price, and billing total separate.
 - If a snippet compares this business with competitors or other providers, do not use competitor prices or competitor specs as the answer for this business.
 - Do not mix neighboring plans, products, services, locations, packages, or providers.
@@ -57,6 +57,37 @@ Question:
 ${request.question}
 
 Return only the final answer.`
+}
+
+export function buildRagRetrievalQueries(question: string): string[] {
+  const clean = cleanQuestion(question)
+  if (!clean) return []
+
+  const variants = new Set<string>([clean])
+  const lower = clean.toLowerCase()
+  const hasMonthly = /\b(monthly|month-to-month|one month|per month|\/mo|month)\b/.test(lower)
+  const hasYearly = /\b(yearly|annual|annually|per year|\/year|year)\b/.test(lower)
+
+  if (hasMonthly && hasYearly) {
+    variants.add(
+      clean
+        .replace(/\b(monthly|month-to-month|one month|per month|\/mo|month)\b/gi, 'monthly')
+        .replace(/\s+(and|&|\/)\s+(yearly|annual|annually|per year|\/year|year)\b/gi, '')
+        .replace(/\b(yearly|annual|annually|per year|\/year|year)\s+(and|&|\/)\s+/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    variants.add(
+      clean
+        .replace(/\b(yearly|annual|annually|per year|\/year|year)\b/gi, 'yearly')
+        .replace(/\s+(and|&|\/)\s+(monthly|month-to-month|one month|per month|\/mo|month)\b/gi, '')
+        .replace(/\b(monthly|month-to-month|one month|per month|\/mo|month)\s+(and|&|\/)\s+/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+  }
+
+  return Array.from(variants).filter(Boolean).slice(0, 5)
 }
 
 export function createEmptyRagAnswer(request: RagAnswerRequest): RagAnswerResult {
@@ -234,6 +265,36 @@ async function retrieveRagChunks(args: {
   return ((data ?? []) as RagVectorMatchRow[]).map(toRetrievedChunk)
 }
 
+async function retrieveRagChunksForQueries(args: {
+  readonly workspaceId: string
+  readonly queries: ReadonlyArray<string>
+  readonly providerConfig: RagResolvedProviderConfig
+  readonly useServiceRetrieval?: boolean
+}): Promise<ReadonlyArray<RagRetrievedChunk>> {
+  const chunksById = new Map<string, RagRetrievedChunk>()
+
+  for (const query of args.queries) {
+    const queryEmbedding = await generateRagEmbedding(query, args.providerConfig)
+    const chunks = await retrieveRagChunks({
+      workspaceId: args.workspaceId,
+      queryEmbedding,
+      useServiceRetrieval: args.useServiceRetrieval,
+    })
+
+    for (const chunk of chunks) {
+      const existing = chunksById.get(chunk.chunkId)
+      if (!existing || chunk.similarity > existing.similarity) {
+        chunksById.set(chunk.chunkId, chunk)
+      }
+    }
+  }
+
+  return Array.from(chunksById.values())
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, 10)
+    .map((chunk, index) => ({ ...chunk, index }))
+}
+
 async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardChatResult> {
   const startedAt = Date.now()
   const question = cleanQuestion(args.question)
@@ -247,10 +308,11 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
 
   try {
     providerConfig = await getDashboardProviderConfig(args.workspaceId)
-    const queryEmbedding = await generateRagEmbedding(question, providerConfig)
-    retrievedChunks = await retrieveRagChunks({
+    const retrievalQueries = buildRagRetrievalQueries(question)
+    retrievedChunks = await retrieveRagChunksForQueries({
       workspaceId: args.workspaceId,
-      queryEmbedding,
+      queries: retrievalQueries,
+      providerConfig,
       useServiceRetrieval: args.useServiceRetrieval,
     })
 
@@ -290,7 +352,7 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
         retrievedChunks,
       }),
       temperature: 0,
-      maxOutputTokens: 300,
+      maxOutputTokens: 160,
     })
 
     const answer = safeAnswer(textResult.text)

@@ -43,12 +43,15 @@ describe('RAG dashboard test chat', () => {
   })
 
   it('uses starter-style vector retrieval: question embedding, top 4, threshold 0.5', () => {
-    expect(chatService).toContain('generateRagEmbedding(question, providerConfig)')
+    expect(chatService).toContain('buildRagRetrievalQueries(question)')
+    expect(chatService).toContain('generateRagEmbedding(query, args.providerConfig)')
+    expect(chatService).toContain('retrieveRagChunksForQueries')
     expect(chatService).toContain('match_rag_knowledge_chunks')
     expect(chatService).toContain('supabase.rpc(rpcName')
     expect(chatService).toContain('p_workspace_id: args.workspaceId')
     expect(chatService).toContain('p_match_count: 4')
     expect(chatService).toContain('p_similarity_threshold: 0.5')
+    expect(chatService).toContain('maxOutputTokens: 160')
   })
 
   it('uses a simple grounded RAG prompt without old CRM complexity', () => {
