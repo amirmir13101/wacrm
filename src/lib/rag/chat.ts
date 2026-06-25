@@ -67,6 +67,14 @@ export function buildRagRetrievalQueries(question: string): string[] {
   const lower = clean.toLowerCase()
   const hasMonthly = /\b(monthly|month-to-month|one month|per month|\/mo|month)\b/.test(lower)
   const hasYearly = /\b(yearly|annual|annually|per year|\/year|year)\b/.test(lower)
+  const combinedParts = clean
+    .split(/\s+(?:and|&)\s+/i)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 4 && part.length <= 160 && part.split(/\s+/).length >= 2)
+
+  if (combinedParts.length > 1 && combinedParts.length <= 4) {
+    for (const part of combinedParts) variants.add(part)
+  }
 
   if (hasMonthly && hasYearly) {
     variants.add(

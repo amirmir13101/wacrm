@@ -80,8 +80,14 @@ describe('RAG manual knowledge management', () => {
     expect(detailRoute).toContain("requireRagPermission('manage_rag_chatbot')")
 
     expect(listRoute).toContain('createRagManualKnowledge')
+    expect(listRoute).toContain('embedRagManualKnowledgeSource')
+    expect(listRoute).toContain('embeddingSummary')
+    expect(listRoute).toContain('sanitizeProviderError')
     expect(detailRoute).toContain('getRagKnowledgeSource')
     expect(detailRoute).toContain('updateRagManualKnowledge')
+    expect(detailRoute).toContain('embedRagManualKnowledgeSource')
+    expect(detailRoute).toContain('embeddingSummary')
+    expect(detailRoute).toContain('sanitizeProviderError')
     expect(detailRoute).toContain('archiveRagKnowledgeSource')
   })
 

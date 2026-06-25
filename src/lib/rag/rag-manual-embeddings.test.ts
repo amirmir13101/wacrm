@@ -63,6 +63,8 @@ describe('RAG manual embedding generation', () => {
 
   it('adds customer-facing preparation controls and status counts without vectors or debug output', () => {
     expect(page).toContain('Prepare for Chatbot')
+    expect(page).toContain('prepared automatically')
+    expect(page).toContain('Retry Prepare')
     expect(page).toContain('ready embeddings')
     expect(page).toContain('failed embeddings')
     expect(page).toContain('embeddingStatusLabel')

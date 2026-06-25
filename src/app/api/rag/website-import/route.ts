@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 
 import { importRagWebsiteKnowledge } from '@/lib/rag/website-import'
+import { embedRagManualKnowledgeSource } from '@/lib/rag/embedding-store'
+import { sanitizeProviderError } from '@/lib/rag/security'
 import { requireRagPermission, safeErrorMessage } from '../_helpers'
 
 export async function POST(request: Request) {
@@ -15,8 +17,19 @@ export async function POST(request: Request) {
       userId: auth.workspace.userId,
       url,
     })
+    const embeddingSummary = await embedRagManualKnowledgeSource({
+      workspaceId: auth.workspace.workspaceId,
+      sourceId: result.source.id,
+    }).catch((error) => ({
+      chunksProcessed: 0,
+      embeddingsCreated: 0,
+      embeddingsSkipped: 0,
+      embeddingsFailed: 0,
+      status: 'failed' as const,
+      message: sanitizeProviderError(error),
+    }))
 
-    return NextResponse.json(result)
+    return NextResponse.json({ ...result, embeddingSummary })
   } catch (error) {
     return NextResponse.json({ error: safeErrorMessage(error) }, { status: 400 })
   }

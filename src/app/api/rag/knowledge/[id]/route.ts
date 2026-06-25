@@ -5,7 +5,9 @@ import {
   getRagKnowledgeSource,
   updateRagManualKnowledge,
 } from '@/lib/rag/knowledge-store'
+import { embedRagManualKnowledgeSource } from '@/lib/rag/embedding-store'
 import { RAG_KNOWLEDGE_CHARACTER_LIMIT } from '@/lib/rag/knowledge'
+import { sanitizeProviderError } from '@/lib/rag/security'
 import { requireRagPermission, safeErrorMessage } from '../../_helpers'
 
 interface RouteContext {
@@ -48,8 +50,21 @@ export async function PATCH(request: Request, context: RouteContext) {
       content,
       status,
     })
+    const embeddingSummary = status === 'active'
+      ? await embedRagManualKnowledgeSource({
+        workspaceId: auth.workspace.workspaceId,
+        sourceId: source.id,
+      }).catch((error) => ({
+        chunksProcessed: 0,
+        embeddingsCreated: 0,
+        embeddingsSkipped: 0,
+        embeddingsFailed: 0,
+        status: 'failed' as const,
+        message: sanitizeProviderError(error),
+      }))
+      : null
 
-    return NextResponse.json({ source, limit: RAG_KNOWLEDGE_CHARACTER_LIMIT })
+    return NextResponse.json({ source, embeddingSummary, limit: RAG_KNOWLEDGE_CHARACTER_LIMIT })
   } catch (error) {
     return NextResponse.json({ error: safeErrorMessage(error) }, { status: 400 })
   }

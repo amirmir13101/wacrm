@@ -628,7 +628,8 @@ export default function RagChatbotPage() {
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[#b8cfc7]">
                 Connect your AI and Firecrawl keys, add manual or website knowledge,
-                prepare it for the chatbot, and test answers in the dashboard.
+                and test answers in the dashboard. New knowledge is prepared automatically
+                when your AI provider key is configured.
               </p>
             </div>
             <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/80 p-3 text-sm text-[#c7ddd5]">
@@ -749,8 +750,8 @@ export default function RagChatbotPage() {
               <h2 className="text-lg font-bold text-white">Website Import</h2>
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Import one website page into the knowledge base. After import, click
-              Prepare for Chatbot to create embeddings.
+              Import one website page into the knowledge base. The CRM prepares
+              embeddings automatically after import when your AI provider key is configured.
             </p>
           </div>
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
@@ -800,8 +801,9 @@ export default function RagChatbotPage() {
               <h2 className="text-lg font-bold text-white">Knowledge Base</h2>
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Add business information manually or from a website page. Knowledge is chunked now,
-              and you can prepare it for chatbot retrieval by creating embeddings.
+              Add business information manually or from a website page. Knowledge is chunked
+              and prepared for chatbot retrieval automatically; use Prepare for Chatbot again
+              only if you need to retry embeddings.
             </p>
           </div>
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
@@ -906,7 +908,7 @@ export default function RagChatbotPage() {
                             className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-300/40 px-2.5 text-xs font-bold text-emerald-100 hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <Sparkles className="size-3.5" />
-                            {preparingKnowledgeId === source.id ? 'Preparing...' : 'Prepare for Chatbot'}
+                          {preparingKnowledgeId === source.id ? 'Preparing...' : 'Retry Prepare'}
                           </button>
                           <button
                             type="button"
@@ -999,7 +1001,7 @@ export default function RagChatbotPage() {
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
               Ask a question from prepared manual or website knowledge. This dashboard test uses
-              vector search and does not connect to WhatsApp yet.
+              the same core RAG answer path as WhatsApp auto-reply when auto-reply is enabled.
             </p>
           </div>
           <span className="rounded-full border border-[#315846] bg-[#0d1b15] px-3 py-1 text-xs font-bold text-[#d8fff1]">

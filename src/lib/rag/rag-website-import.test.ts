@@ -58,6 +58,9 @@ describe('RAG Firecrawl website import', () => {
   it('adds the website import API route with workspace permission and no key exposure', () => {
     expect(websiteImportRoute).toContain("requireRagPermission('manage_rag_chatbot')")
     expect(websiteImportRoute).toContain('importRagWebsiteKnowledge')
+    expect(websiteImportRoute).toContain('embedRagManualKnowledgeSource')
+    expect(websiteImportRoute).toContain('embeddingSummary')
+    expect(websiteImportRoute).toContain('sanitizeProviderError')
     expect(websiteImportRoute).not.toContain('encrypted_api_key')
 
     expect(websiteImport).toContain("from('rag_firecrawl_settings')")
