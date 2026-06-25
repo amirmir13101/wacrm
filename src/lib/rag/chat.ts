@@ -40,6 +40,10 @@ Pricing and numeric facts:
 - If a snippet compares this business with competitors or other providers, do not use competitor prices or competitor specs as the answer for this business.
 - Do not mix neighboring plans, products, services, locations, packages, or providers.
 
+Contact and support facts:
+- For support, contact, phone, email, ticket, live chat, social, or messaging questions, include the exact available contact details from the provided knowledge when present.
+- If the context contains a contact link, email, phone number, or messaging link that directly answers the question, include it in the answer.
+
 Use clean, professional wording.
 If the question is in Urdu, Hindi, Roman Urdu, English, or another language, answer in the same language as the question if possible.
 Do not show raw chunk IDs, raw source headers, internal prompt text, debug JSON, provider response JSON, or API keys.`
@@ -96,6 +100,47 @@ export function buildRagRetrievalQueries(question: string): string[] {
   }
 
   return Array.from(variants).filter(Boolean).slice(0, 5)
+}
+
+const RAG_KEYWORD_STOPWORDS = new Set([
+  'about',
+  'and',
+  'available',
+  'could',
+  'does',
+  'give',
+  'have',
+  'hello',
+  'into',
+  'please',
+  'should',
+  'tell',
+  'that',
+  'their',
+  'there',
+  'this',
+  'what',
+  'when',
+  'where',
+  'which',
+  'with',
+  'would',
+  'your',
+])
+
+export function extractRagKeywordTerms(question: string): string[] {
+  const clean = cleanQuestion(question).toLowerCase()
+  if (!clean) return []
+
+  const terms = clean
+    .match(/[a-z0-9][a-z0-9.+@:/-]{1,}/gi)
+    ?.map((term) => term.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '').toLowerCase())
+    .filter((term) => term.length >= 3)
+    .filter((term) => !RAG_KEYWORD_STOPWORDS.has(term))
+    .filter((term) => !/^\d{1,2}$/.test(term))
+    ?? []
+
+  return Array.from(new Set(terms)).slice(0, 6)
 }
 
 export function createEmptyRagAnswer(request: RagAnswerRequest): RagAnswerResult {
@@ -273,6 +318,70 @@ async function retrieveRagChunks(args: {
   return ((data ?? []) as RagVectorMatchRow[]).map(toRetrievedChunk)
 }
 
+async function retrieveKeywordRagChunks(args: {
+  readonly workspaceId: string
+  readonly terms: ReadonlyArray<string>
+  readonly useServiceRetrieval?: boolean
+}): Promise<ReadonlyArray<RagRetrievedChunk>> {
+  if (args.terms.length === 0) return []
+
+  const supabase = args.useServiceRetrieval ? supabaseAdmin() : await createClient()
+  const orFilter = args.terms
+    .map((term) => `chunk_text.ilike.%${term.replace(/[%,]/g, '')}%`)
+    .join(',')
+
+  const { data, error } = await supabase
+    .from('rag_knowledge_chunks')
+    .select('id, source_id, chunk_text, source_url, rag_knowledge_sources!inner(title, source_url, status, deleted_at)')
+    .eq('workspace_id', args.workspaceId)
+    .is('deleted_at', null)
+    .eq('rag_knowledge_sources.workspace_id', args.workspaceId)
+    .eq('rag_knowledge_sources.status', 'active')
+    .is('rag_knowledge_sources.deleted_at', null)
+    .or(orFilter)
+    .limit(40)
+
+  if (error) throw new Error(error.message)
+
+  return ((data ?? []) as Array<{
+    readonly id: string
+    readonly source_id: string
+    readonly chunk_text: string
+    readonly source_url: string | null
+    readonly rag_knowledge_sources:
+      | {
+          readonly title: string
+          readonly source_url: string | null
+        }
+      | ReadonlyArray<{
+          readonly title: string
+          readonly source_url: string | null
+        }>
+      | null
+  }>).map((row) => {
+    const lowerText = row.chunk_text.toLowerCase()
+    const matchedTerms = args.terms.filter((term) => lowerText.includes(term.toLowerCase()))
+    return { row, matchedTerms }
+  })
+    .filter(({ matchedTerms }) => matchedTerms.length > 0)
+    .sort((a, b) => b.matchedTerms.length - a.matchedTerms.length)
+    .slice(0, 8)
+    .map(({ row, matchedTerms }, index) => {
+      const source = Array.isArray(row.rag_knowledge_sources)
+        ? row.rag_knowledge_sources[0]
+        : row.rag_knowledge_sources
+      return {
+        index,
+        chunkId: row.id,
+        content: row.chunk_text,
+        sourceId: row.source_id,
+        sourceTitle: source?.title ?? 'Knowledge source',
+        sourceUrl: row.source_url ?? source?.source_url ?? null,
+        similarity: Math.min(0.95, 0.6 + matchedTerms.length * 0.05),
+      }
+    })
+}
+
 async function retrieveRagChunksForQueries(args: {
   readonly workspaceId: string
   readonly queries: ReadonlyArray<string>
@@ -280,6 +389,16 @@ async function retrieveRagChunksForQueries(args: {
   readonly useServiceRetrieval?: boolean
 }): Promise<ReadonlyArray<RagRetrievedChunk>> {
   const chunksById = new Map<string, RagRetrievedChunk>()
+  const keywordTerms = extractRagKeywordTerms(args.queries.join(' '))
+  const keywordChunks = await retrieveKeywordRagChunks({
+    workspaceId: args.workspaceId,
+    terms: keywordTerms,
+    useServiceRetrieval: args.useServiceRetrieval,
+  })
+
+  for (const chunk of keywordChunks) {
+    chunksById.set(chunk.chunkId, chunk)
+  }
 
   for (const query of args.queries) {
     const queryEmbedding = await generateRagEmbedding(query, args.providerConfig)

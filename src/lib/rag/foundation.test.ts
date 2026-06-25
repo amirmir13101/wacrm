@@ -9,7 +9,12 @@ import {
   RAG_STARTER_PARITY_BEHAVIOR,
   RECOMMENDED_RAG_DATABASE_ADAPTER,
 } from './architecture'
-import { buildRagRetrievalQueries, buildRagSystemPrompt, createEmptyRagAnswer } from './chat'
+import {
+  buildRagRetrievalQueries,
+  buildRagSystemPrompt,
+  createEmptyRagAnswer,
+  extractRagKeywordTerms,
+} from './chat'
 import { createRagChunks } from './chunking'
 import { prepareRagKnowledgeSource } from './knowledge'
 import {
@@ -183,6 +188,8 @@ describe('RAG Phase 1 foundation', () => {
     expect(prompt).toContain('monthly price x 12')
     expect(prompt).toContain('do not use competitor prices or competitor specs')
     expect(prompt).toContain('Do not mix neighboring plans, products, services, locations, packages, or providers.')
+    expect(prompt).toContain('For support, contact, phone, email, ticket, live chat, social, or messaging questions')
+    expect(prompt).toContain('include it in the answer')
   })
 
   it('builds focused retrieval queries for combined monthly and yearly questions', () => {
@@ -194,6 +201,19 @@ describe('RAG Phase 1 foundation', () => {
 
     expect(buildRagRetrievalQueries('What is your support email?')).toEqual([
       'What is your support email?',
+    ])
+  })
+
+  it('extracts generic keyword terms for exact retrieval supplementation', () => {
+    expect(extractRagKeywordTerms('Whatsapp support available?')).toEqual([
+      'whatsapp',
+      'support',
+    ])
+    expect(extractRagKeywordTerms('12 gb vps price monthly and yearly')).toEqual([
+      'vps',
+      'price',
+      'monthly',
+      'yearly',
     ])
   })
 
