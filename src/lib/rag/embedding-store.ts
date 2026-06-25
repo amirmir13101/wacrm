@@ -95,7 +95,7 @@ function safeProviderConfig(row: RagProviderSettingsRow | null): {
   }
 }
 
-async function getManualSource(
+async function getEmbeddableSource(
   workspaceId: string,
   sourceId: string,
 ): Promise<RagKnowledgeSourceRow | null> {
@@ -104,7 +104,7 @@ async function getManualSource(
     .select('id, metadata')
     .eq('workspace_id', workspaceId)
     .eq('id', sourceId)
-    .eq('source_type', 'manual')
+    .in('source_type', ['manual', 'website'])
     .is('deleted_at', null)
     .maybeSingle()
 
@@ -245,7 +245,7 @@ export async function embedRagManualKnowledgeSource(args: {
   readonly workspaceId: string
   readonly sourceId: string
 }): Promise<RagEmbeddingSummary> {
-  const source = await getManualSource(args.workspaceId, args.sourceId)
+  const source = await getEmbeddableSource(args.workspaceId, args.sourceId)
   if (!source) throw new Error('Knowledge source not found.')
 
   const chunks = await getSourceChunks(args.workspaceId, args.sourceId)

@@ -71,8 +71,8 @@ describe('RAG dashboard test chat', () => {
     expect(chatService).toContain('latency_ms')
   })
 
-  it('keeps Phase 6 dashboard-only with no Firecrawl import or WhatsApp behavior', () => {
-    expect(page).not.toContain('/api/rag/website-import')
+  it('keeps dashboard chat separate from website import and WhatsApp behavior', () => {
+    expect(page).toContain('/api/rag/website-import')
     expect(chatService).not.toContain('rag_website_import')
     expect(webhookRoute).not.toContain('rag')
   })

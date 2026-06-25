@@ -12,7 +12,7 @@ export async function POST() {
     return NextResponse.json({
       firecrawl,
       testMode: 'placeholder',
-      message: 'Firecrawl key was validated locally. Website import is not active yet.',
+      message: 'Firecrawl key was validated locally. Website import is ready.',
     })
   } catch (error) {
     return NextResponse.json({ error: safeErrorMessage(error) }, { status: 400 })

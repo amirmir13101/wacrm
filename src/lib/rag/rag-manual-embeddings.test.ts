@@ -53,11 +53,11 @@ describe('RAG manual embedding generation', () => {
     expect(embeddingStore).toContain("embedding_status: args.status")
   })
 
-  it('adds only the single-source manual embedding API with workspace permission', () => {
+  it('adds only the single-source knowledge embedding API with workspace permission', () => {
     expect(embedRoute).toContain("requireRagPermission('manage_rag_chatbot')")
     expect(embedRoute).toContain('embedRagManualKnowledgeSource')
     expect(embeddingStore).toContain("eq('workspace_id', workspaceId)")
-    expect(embeddingStore).toContain("eq('source_type', 'manual')")
+    expect(embeddingStore).toContain("in('source_type', ['manual', 'website'])")
     expect(embeddingStore).not.toContain("from('ai_")
   })
 
@@ -73,8 +73,7 @@ describe('RAG manual embedding generation', () => {
     expect(page).not.toContain('raw provider')
   })
 
-  it('does not add Firecrawl import or WhatsApp behavior in manual embedding generation', () => {
-    expect(page).not.toContain('/api/rag/website-import')
+  it('does not add WhatsApp behavior in manual embedding generation', () => {
     expect(embeddingStore).not.toContain('match_rag_knowledge_chunks')
     expect(webhookRoute).not.toContain('rag')
   })

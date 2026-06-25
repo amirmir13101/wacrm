@@ -56,7 +56,8 @@ interface RagStatusPayload {
 interface KnowledgeSourceItem {
   readonly id: string
   readonly title: string
-  readonly sourceType: 'manual'
+  readonly sourceType: 'manual' | 'website'
+  readonly sourceUrl: string | null
   readonly status: 'draft' | 'active' | 'archived' | 'failed'
   readonly createdAt: string
   readonly updatedAt: string
@@ -126,6 +127,10 @@ function formatDate(value: string): string {
   }).format(new Date(value))
 }
 
+function sourceTypeLabel(sourceType: KnowledgeSourceItem['sourceType']): string {
+  return sourceType === 'website' ? 'Website' : 'Manual'
+}
+
 export default function RagChatbotPage() {
   const workspace = useWorkspacePermissions()
   const canView = workspace.has('view_rag_chatbot')
@@ -145,6 +150,9 @@ export default function RagChatbotPage() {
   const [knowledgeText, setKnowledgeText] = useState('')
   const [knowledgeMessage, setKnowledgeMessage] = useState<string | null>(null)
   const [knowledgeSaving, setKnowledgeSaving] = useState(false)
+  const [websiteUrl, setWebsiteUrl] = useState('')
+  const [websiteImportMessage, setWebsiteImportMessage] = useState<string | null>(null)
+  const [websiteImporting, setWebsiteImporting] = useState(false)
   const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeSourceItem | null>(null)
   const [editingKnowledgeId, setEditingKnowledgeId] = useState<string | null>(null)
   const [preparingKnowledgeId, setPreparingKnowledgeId] = useState<string | null>(null)
@@ -207,6 +215,7 @@ export default function RagChatbotPage() {
   const knowledgeCharacters = knowledgeText.length
   const knowledgeOverLimit = knowledgeCharacters > RAG_KNOWLEDGE_CHARACTER_LIMIT
   const providerReady = status?.provider.configured === true
+  const firecrawlReady = status?.firecrawl.configured === true
   const embeddingsReady = (status?.knowledge.readyEmbeddings ?? 0) > 0
   const chatUnavailableMessage = !providerReady
     ? 'Add and test your AI provider key first.'
@@ -318,7 +327,7 @@ export default function RagChatbotPage() {
       if (!response.ok) throw new Error(payload.error ?? 'Failed to save Firecrawl key.')
       setStatus((current) => current ? { ...current, firecrawl: payload.firecrawl } : current)
       setFirecrawlKey('')
-      setFirecrawlMessage('Firecrawl key saved. Website import is coming soon.')
+      setFirecrawlMessage('Firecrawl key saved. You can now import a website page.')
     } catch (saveError) {
       setFirecrawlMessage(saveError instanceof Error ? saveError.message : 'Failed to save Firecrawl.')
     } finally {
@@ -339,6 +348,30 @@ export default function RagChatbotPage() {
       setFirecrawlMessage(testError instanceof Error ? testError.message : 'Firecrawl test failed.')
     } finally {
       setFirecrawlSaving(false)
+    }
+  }
+
+  async function importWebsite() {
+    setWebsiteImporting(true)
+    setWebsiteImportMessage(null)
+    try {
+      const response = await fetch('/api/rag/website-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: websiteUrl }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Import failed.')
+
+      setWebsiteUrl('')
+      setSelectedKnowledge(payload.source ?? null)
+      setWebsiteImportMessage(payload.message ?? 'Website imported successfully.')
+      await loadKnowledge()
+      await refreshStatusCounts()
+    } catch (importError) {
+      setWebsiteImportMessage(importError instanceof Error ? importError.message : 'Import failed.')
+    } finally {
+      setWebsiteImporting(false)
     }
   }
 
@@ -485,9 +518,8 @@ export default function RagChatbotPage() {
                 AI Chatbot
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[#b8cfc7]">
-                Connect your AI and Firecrawl keys, add manual knowledge, and prepare it
-                for the chatbot. Website import, test chat, logs, and WhatsApp auto reply
-                are coming in later phases.
+                Connect your AI and Firecrawl keys, add manual or website knowledge,
+                prepare it for the chatbot, and test answers in the dashboard.
               </p>
             </div>
             <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/80 p-3 text-sm text-[#c7ddd5]">
@@ -574,7 +606,7 @@ export default function RagChatbotPage() {
 
         <SettingsCard
           title="Firecrawl Settings"
-          description="Save your Firecrawl key now. Website import is intentionally not active in this phase."
+          description="Save your Firecrawl key so you can import one website page into the knowledge base."
           icon={Globe}
           status={statusLabel(status?.firecrawl.lastTestStatus ?? null, status?.firecrawl.configured === true)}
           statusClassName={statusClasses(status?.firecrawl.lastTestStatus ?? null, status?.firecrawl.configured === true)}
@@ -606,11 +638,62 @@ export default function RagChatbotPage() {
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2">
+              <Globe className="size-5 text-emerald-300" />
+              <h2 className="text-lg font-bold text-white">Website Import</h2>
+            </div>
+            <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+              Import one website page into the knowledge base. After import, click
+              Prepare for Chatbot to create embeddings.
+            </p>
+          </div>
+          <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
+            Single URL
+          </span>
+        </div>
+
+        {!firecrawlReady && (
+          <div className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+            Add your Firecrawl API key first.
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 lg:flex-row lg:items-end">
+          <label className="flex-1 space-y-2">
+            <span className="text-sm font-medium text-[#d8fff1]">Website URL</span>
+            <input
+              value={websiteUrl}
+              onChange={(event) => setWebsiteUrl(event.target.value)}
+              placeholder="https://example.com"
+              disabled={!canManageKnowledge || websiteImporting}
+              className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={importWebsite}
+            disabled={!canManageKnowledge || websiteImporting || !websiteUrl.trim()}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Globe className="size-4" />
+            {websiteImporting ? 'Importing website...' : 'Import Website'}
+          </button>
+        </div>
+        {websiteImportMessage && (
+          <p className="mt-4 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
+            {websiteImportMessage}
+          </p>
+        )}
+      </section>
+
+      <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
               <FileText className="size-5 text-emerald-300" />
               <h2 className="text-lg font-bold text-white">Knowledge Base</h2>
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Add business information the chatbot will use later. Manual knowledge is chunked now,
+              Add business information manually or from a website page. Knowledge is chunked now,
               and you can prepare it for chatbot retrieval by creating embeddings.
             </p>
           </div>
@@ -691,12 +774,12 @@ export default function RagChatbotPage() {
             <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
               <div className="border-b border-[#214b39] px-4 py-3">
                 <h3 className="font-bold text-white">Knowledge List</h3>
-                <p className="text-xs text-[#8bb4a5]">Manual sources only. Website import is not active yet.</p>
+                <p className="text-xs text-[#8bb4a5]">Manual and website sources for the chatbot.</p>
               </div>
               <div className="divide-y divide-[#214b39]">
                 {knowledgeSources.length === 0 ? (
                   <div className="px-4 py-8 text-center text-sm text-[#8bb4a5]">
-                    No manual knowledge added yet.
+                    No knowledge added yet.
                   </div>
                 ) : (
                   knowledgeSources.map((source) => (
@@ -705,7 +788,7 @@ export default function RagChatbotPage() {
                         <div>
                           <h4 className="font-bold text-white">{source.title}</h4>
                           <p className="mt-1 text-xs uppercase tracking-[0.16em] text-emerald-200">
-                            Manual · {source.status}
+                            {sourceTypeLabel(source.sourceType)} · {source.status}
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -753,6 +836,9 @@ export default function RagChatbotPage() {
                         <div>{source.chunkCount.toLocaleString()} chunks</div>
                         <div>{source.readyEmbeddingCount.toLocaleString()} ready embeddings</div>
                         <div>{source.failedEmbeddingCount.toLocaleString()} failed embeddings</div>
+                        {source.sourceUrl && (
+                          <div className="truncate xl:col-span-3">URL: {source.sourceUrl}</div>
+                        )}
                       </dl>
                       <span
                         className={cn(
@@ -773,7 +859,12 @@ export default function RagChatbotPage() {
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
                     <h3 className="font-bold text-white">{selectedKnowledge.title}</h3>
-                    <p className="text-xs text-[#8bb4a5]">Manual · {selectedKnowledge.status}</p>
+                    <p className="text-xs text-[#8bb4a5]">
+                      {sourceTypeLabel(selectedKnowledge.sourceType)} · {selectedKnowledge.status}
+                    </p>
+                    {selectedKnowledge.sourceUrl && (
+                      <p className="mt-1 break-all text-xs text-[#8bb4a5]">{selectedKnowledge.sourceUrl}</p>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -800,7 +891,7 @@ export default function RagChatbotPage() {
               <h2 className="text-lg font-bold text-white">Test Chat</h2>
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Ask a question from prepared manual knowledge. This dashboard test uses
+              Ask a question from prepared manual or website knowledge. This dashboard test uses
               vector search and does not connect to WhatsApp yet.
             </p>
           </div>
@@ -893,7 +984,6 @@ export default function RagChatbotPage() {
         <h2 className="mb-3 text-lg font-bold text-white">Coming Soon</h2>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {[
-            ['Website Import', Globe],
             ['Logs', Clock],
             ['WhatsApp Auto Reply', Send],
           ].map(([title, Icon]) => (

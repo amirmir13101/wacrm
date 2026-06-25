@@ -9,7 +9,8 @@ import {
 export interface RagKnowledgeListItem {
   readonly id: string
   readonly title: string
-  readonly sourceType: 'manual'
+  readonly sourceType: 'manual' | 'website'
+  readonly sourceUrl: string | null
   readonly status: 'draft' | 'active' | 'archived' | 'failed'
   readonly createdAt: string
   readonly updatedAt: string
@@ -28,6 +29,7 @@ interface RagKnowledgeSourceRow {
   readonly id: string
   readonly title: string
   readonly source_type: string
+  readonly source_url?: string | null
   readonly status: string
   readonly cleaned_content: string
   readonly created_at: string
@@ -66,6 +68,10 @@ function normalizeStatus(status: string): RagKnowledgeListItem['status'] {
   return 'active'
 }
 
+function normalizeSourceType(sourceType: string): RagKnowledgeListItem['sourceType'] {
+  return sourceType === 'website' ? 'website' : 'manual'
+}
+
 function toListItem(
   row: RagKnowledgeSourceRow,
   chunkCounts: ReadonlyMap<string, number>,
@@ -90,7 +96,8 @@ function toListItem(
   return {
     id: row.id,
     title: row.title,
-    sourceType: 'manual',
+    sourceType: normalizeSourceType(row.source_type),
+    sourceUrl: row.source_url ?? null,
     status: normalizeStatus(row.status),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -160,9 +167,9 @@ export async function listRagKnowledgeSources(
 ): Promise<ReadonlyArray<RagKnowledgeListItem>> {
   const { data, error } = await supabaseAdmin()
     .from('rag_knowledge_sources')
-    .select('id, title, source_type, status, cleaned_content, created_at, updated_at, metadata')
+    .select('id, title, source_type, source_url, status, cleaned_content, created_at, updated_at, metadata')
     .eq('workspace_id', workspaceId)
-    .eq('source_type', 'manual')
+    .in('source_type', ['manual', 'website'])
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
@@ -183,10 +190,10 @@ export async function getRagKnowledgeSource(args: {
 }): Promise<RagKnowledgeDetail | null> {
   const { data, error } = await supabaseAdmin()
     .from('rag_knowledge_sources')
-    .select('id, title, source_type, status, cleaned_content, created_at, updated_at, metadata')
+    .select('id, title, source_type, source_url, status, cleaned_content, created_at, updated_at, metadata')
     .eq('workspace_id', args.workspaceId)
     .eq('id', args.sourceId)
-    .eq('source_type', 'manual')
+    .in('source_type', ['manual', 'website'])
     .is('deleted_at', null)
     .maybeSingle()
 
@@ -267,7 +274,8 @@ export async function updateRagManualKnowledge(args: {
     workspaceId: args.workspaceId,
     title,
     content: args.content,
-    sourceType: 'manual',
+    sourceType: existing.sourceType,
+    sourceUrl: existing.sourceUrl,
   })
 
   const { error } = await supabaseAdmin()
@@ -276,10 +284,11 @@ export async function updateRagManualKnowledge(args: {
       title: prepared.source.title,
       raw_content: prepared.source.rawContent,
       cleaned_content: prepared.source.cleanedContent,
+      source_url: prepared.source.sourceUrl ?? null,
       status: args.status ?? 'active',
       metadata: {
         character_count: prepared.source.cleanedContent.length,
-        source: 'manual_dashboard',
+        source: existing.sourceType === 'website' ? 'website_import' : 'manual_dashboard',
         version: 1,
         embedding_status: 'not_embedded',
         updated_via: 'manual_dashboard',
@@ -297,6 +306,57 @@ export async function updateRagManualKnowledge(args: {
     sourceId: args.sourceId,
   })
   if (!detail) throw new Error('Knowledge source was not updated.')
+  return detail
+}
+
+export async function createRagWebsiteKnowledge(args: {
+  readonly workspaceId: string
+  readonly userId: string
+  readonly title: string
+  readonly content: string
+  readonly sourceUrl: string
+  readonly finalUrl?: string | null
+}): Promise<RagKnowledgeDetail> {
+  const title = safeRagKnowledgeTitle(args.title) || 'Website knowledge'
+  const prepared = prepareRagKnowledgeSource({
+    workspaceId: args.workspaceId,
+    title,
+    content: args.content,
+    sourceType: 'website',
+    sourceUrl: args.finalUrl ?? args.sourceUrl,
+  })
+
+  const { data: source, error: sourceError } = await supabaseAdmin()
+    .from('rag_knowledge_sources')
+    .insert({
+      workspace_id: args.workspaceId,
+      title: prepared.source.title,
+      source_type: 'website',
+      source_url: prepared.source.sourceUrl ?? args.sourceUrl,
+      status: 'active',
+      raw_content: prepared.source.rawContent,
+      cleaned_content: prepared.source.cleanedContent,
+      created_by: args.userId,
+      metadata: {
+        character_count: prepared.source.cleanedContent.length,
+        imported_by: 'firecrawl',
+        imported_url: args.sourceUrl,
+        final_url: args.finalUrl ?? args.sourceUrl,
+        version: 1,
+        embedding_status: 'not_embedded',
+      },
+    })
+    .select('id')
+    .single()
+
+  if (sourceError) throw new Error(sourceError.message)
+  await replaceRagKnowledgeChunks(args.workspaceId, source.id as string, prepared.chunks)
+
+  const detail = await getRagKnowledgeSource({
+    workspaceId: args.workspaceId,
+    sourceId: source.id as string,
+  })
+  if (!detail) throw new Error('Website knowledge source was not created.')
   return detail
 }
 
@@ -348,7 +408,7 @@ async function replaceRagKnowledgeChunks(
       chunk_index: chunk.index,
       chunk_text: chunk.content,
       content_hash: contentHash(chunk.content),
-      source_url: null,
+      source_url: typeof chunk.metadata?.sourceUrl === 'string' ? chunk.metadata.sourceUrl : null,
       metadata: {
         ...(chunk.metadata ?? {}),
         embedding_status: 'not_embedded',
