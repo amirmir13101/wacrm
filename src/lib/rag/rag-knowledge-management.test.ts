@@ -30,9 +30,9 @@ const webhookRoute = readFileSync(
 )
 
 describe('RAG manual knowledge management', () => {
-  it('uses the shared 200,000 character limit for manual and future website knowledge', () => {
-    expect(RAG_KNOWLEDGE_CHARACTER_LIMIT).toBe(200_000)
-    expect(page).toContain('200,000 character limit')
+  it('uses the shared 500,000 character limit for manual and future website knowledge', () => {
+    expect(RAG_KNOWLEDGE_CHARACTER_LIMIT).toBe(500_000)
+    expect(page).toContain('500,000 character limit')
     expect(page).toContain('RAG_KNOWLEDGE_CHARACTER_LIMIT')
   })
 

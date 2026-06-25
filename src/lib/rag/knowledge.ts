@@ -1,7 +1,7 @@
 import { createRagChunks } from './chunking'
 import type { RagChunk, RagKnowledgeSourceDraft } from './types'
 
-export const RAG_KNOWLEDGE_CHARACTER_LIMIT = 200_000
+export const RAG_KNOWLEDGE_CHARACTER_LIMIT = 500_000
 
 export interface PrepareRagKnowledgeInput {
   readonly workspaceId: string

@@ -805,7 +805,7 @@ export default function RagChatbotPage() {
             </p>
           </div>
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
-            200,000 character limit
+            500,000 character limit
           </span>
         </div>
 

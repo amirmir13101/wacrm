@@ -67,7 +67,7 @@ describe('RAG Firecrawl website import', () => {
     expect(websiteImport).toContain("formats: ['markdown']")
   })
 
-  it('enforces readable content and the shared 200,000 character limit', () => {
+  it('enforces readable content and the shared 500,000 character limit', () => {
     expect(websiteImport).toContain('No readable website content was found.')
     expect(websiteImport).toContain('RAG_KNOWLEDGE_CHARACTER_LIMIT')
     expect(websiteImport).toContain('This website content is too large.')
