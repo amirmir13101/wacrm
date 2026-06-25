@@ -246,14 +246,14 @@ describe('RAG Phase 1 permissions and integration boundaries', () => {
     }
   })
 
-  it('does not connect the new RAG foundation to the WhatsApp webhook yet', () => {
+  it('keeps WhatsApp webhook RAG integration behind a disabled-by-default guard', () => {
     const webhookRoute = readFileSync(
       join(process.cwd(), 'src/app/api/whatsapp/webhook/route.ts'),
       'utf8',
     )
 
-    expect(webhookRoute).not.toContain('enable_rag_auto_reply')
-    expect(webhookRoute).not.toContain('rag/auto-reply')
-    expect(webhookRoute).not.toContain('maybeHandleRagAutoReply')
+    expect(webhookRoute).toContain('getRagAutoReplyRuntimeSettings')
+    expect(webhookRoute).toContain('maybeHandleRagAutoReply')
+    expect(webhookRoute).toContain('if (!settings?.enabled) return')
   })
 })

@@ -82,7 +82,7 @@ describe('RAG Firecrawl website import', () => {
     expect(websiteImport).not.toContain("from('ai_")
   })
 
-  it('adds simple website import UI and keeps WhatsApp untouched', () => {
+  it('adds simple website import UI and keeps WhatsApp auto-reply guarded', () => {
     expect(page).toContain('Website Import')
     expect(page).toContain('https://example.com')
     expect(page).toContain('Import Website')
@@ -91,6 +91,7 @@ describe('RAG Firecrawl website import', () => {
     expect(page).not.toContain('scrape depth')
     expect(page).not.toContain('crawler settings')
     expect(page).not.toContain('raw Firecrawl')
-    expect(webhookRoute).not.toContain('rag')
+    expect(webhookRoute).toContain('getRagAutoReplyRuntimeSettings')
+    expect(webhookRoute).toContain('if (!settings?.enabled) return')
   })
 })

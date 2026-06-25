@@ -44,7 +44,8 @@ describe('RAG dashboard test chat', () => {
 
   it('uses starter-style vector retrieval: question embedding, top 4, threshold 0.5', () => {
     expect(chatService).toContain('generateRagEmbedding(question, providerConfig)')
-    expect(chatService).toContain("supabase.rpc('match_rag_knowledge_chunks'")
+    expect(chatService).toContain('match_rag_knowledge_chunks')
+    expect(chatService).toContain('supabase.rpc(rpcName')
     expect(chatService).toContain('p_workspace_id: args.workspaceId')
     expect(chatService).toContain('p_match_count: 4')
     expect(chatService).toContain('p_similarity_threshold: 0.5')
@@ -71,9 +72,12 @@ describe('RAG dashboard test chat', () => {
     expect(chatService).toContain('latency_ms')
   })
 
-  it('keeps dashboard chat separate from website import and WhatsApp behavior', () => {
+  it('keeps dashboard chat separate from website import while exposing a dedicated WhatsApp answer path', () => {
     expect(page).toContain('/api/rag/website-import')
     expect(chatService).not.toContain('rag_website_import')
-    expect(webhookRoute).not.toContain('rag')
+    expect(chatService).toContain('answerRagDashboardQuestion')
+    expect(chatService).toContain('answerRagWhatsAppQuestion')
+    expect(webhookRoute).toContain('maybeHandleRagAutoReply')
+    expect(webhookRoute).toContain('if (!settings?.enabled) return')
   })
 })

@@ -32,8 +32,20 @@ const firecrawlTestRoute = readFileSync(
   join(process.cwd(), 'src/app/api/rag/firecrawl/test/route.ts'),
   'utf8',
 )
+const logsRoute = readFileSync(
+  join(process.cwd(), 'src/app/api/rag/logs/route.ts'),
+  'utf8',
+)
+const autoReplyRoute = readFileSync(
+  join(process.cwd(), 'src/app/api/rag/auto-reply/route.ts'),
+  'utf8',
+)
 const ragSettings = readFileSync(
   join(process.cwd(), 'src/lib/rag/settings.ts'),
+  'utf8',
+)
+const ragAutoReply = readFileSync(
+  join(process.cwd(), 'src/lib/rag/auto-reply.ts'),
   'utf8',
 )
 const webhookRoute = readFileSync(
@@ -81,8 +93,7 @@ describe('RAG settings UI shell', () => {
     expect(page).not.toContain('Vector Settings')
   })
 
-  it('keeps later RAG sections visibly disabled while website import and test chat are active', () => {
-    expect(page).toContain('Coming Soon')
+  it('activates logs and WhatsApp auto reply sections while website import and test chat remain active', () => {
     expect(page).toContain('Add Knowledge')
     expect(page).toContain('Test Chat')
     expect(page).toContain('Ask a question from your saved knowledge...')
@@ -90,7 +101,11 @@ describe('RAG settings UI shell', () => {
     expect(page).toContain('Import Website')
     expect(page).toContain('Logs')
     expect(page).toContain('WhatsApp Auto Reply')
-    expect(page).toContain('Not active yet')
+    expect(page).toContain('Enable AI replies on WhatsApp')
+    expect(page).toContain('Do not send message if answer is not found')
+    expect(page).toContain('Send fallback message')
+    expect(page).not.toContain('Coming Soon')
+    expect(page).not.toContain('Not active yet')
   })
 })
 
@@ -101,10 +116,13 @@ describe('RAG settings APIs', () => {
       firecrawlRoute,
       providerTestRoute,
       firecrawlTestRoute,
+      logsRoute,
+      autoReplyRoute,
     ].join('\n')
 
     expect(routes).toContain("requireRagPermission('view_rag_chatbot')")
     expect(routes).toContain("requireRagPermission('manage_rag_provider')")
+    expect(routes).toContain("requireRagPermission('enable_rag_auto_reply')")
     expect(routes).not.toContain('view_ai_chatbot')
     expect(routes).not.toContain('manage_ai_chatbot')
     expect(routes).not.toContain('enable_ai_auto_reply')
@@ -130,9 +148,18 @@ describe('RAG settings APIs', () => {
     expect(firecrawlTestRoute).not.toContain('fetch(')
   })
 
-  it('does not connect RAG to WhatsApp auto-reply or the webhook', () => {
-    expect(webhookRoute).not.toContain('rag')
-    expect(webhookRoute).not.toContain('enable_rag_auto_reply')
-    expect(webhookRoute).not.toContain('maybeHandleRagAutoReply')
+  it('adds safe auto reply settings with default disabled behavior', () => {
+    expect(autoReplyRoute).toContain("requireRagPermission('view_rag_chatbot')")
+    expect(autoReplyRoute).toContain("requireRagPermission('enable_rag_auto_reply')")
+    expect(ragAutoReply).toContain('enabled: row?.enabled === true')
+    expect(ragAutoReply).toContain("fallbackMode: normalizeFallbackMode(row?.fallback_mode)")
+    expect(ragAutoReply).toContain("RAG_AUTO_REPLY_DEFAULT_FALLBACK")
+  })
+
+  it('connects the webhook only through the conservative RAG auto-reply guard', () => {
+    expect(webhookRoute).toContain('getRagAutoReplyRuntimeSettings')
+    expect(webhookRoute).toContain('answerRagWhatsAppQuestion')
+    expect(webhookRoute).toContain('maybeHandleRagAutoReply')
+    expect(webhookRoute).toContain('if (!settings?.enabled) return')
   })
 })

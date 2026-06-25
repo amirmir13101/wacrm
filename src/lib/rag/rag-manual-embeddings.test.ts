@@ -73,8 +73,9 @@ describe('RAG manual embedding generation', () => {
     expect(page).not.toContain('raw provider')
   })
 
-  it('does not add WhatsApp behavior in manual embedding generation', () => {
+  it('keeps manual embedding generation separate from guarded WhatsApp auto-reply', () => {
     expect(embeddingStore).not.toContain('match_rag_knowledge_chunks')
-    expect(webhookRoute).not.toContain('rag')
+    expect(webhookRoute).toContain('getRagAutoReplyRuntimeSettings')
+    expect(webhookRoute).toContain('if (!settings?.enabled) return')
   })
 })

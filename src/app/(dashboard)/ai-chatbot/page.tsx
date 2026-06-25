@@ -82,6 +82,27 @@ interface RagChatResponse {
   readonly fallbackReason: string | null
 }
 
+interface RagChatLogItem {
+  readonly id: string
+  readonly createdAt: string
+  readonly channel: 'dashboard' | 'whatsapp'
+  readonly userQuestion: string
+  readonly answer: string | null
+  readonly status: 'answered' | 'fallback' | 'provider_error' | 'failed'
+  readonly fallbackReason: string | null
+  readonly latencyMs: number | null
+  readonly retrievedSourceCount: number
+}
+
+interface RagAutoReplySettings {
+  readonly enabled: boolean
+  readonly fallbackMode: 'do_not_reply' | 'send_fallback'
+  readonly fallbackMessage: string
+  readonly whatsappConnected: boolean
+  readonly providerConfigured: boolean
+  readonly knowledgeReady: boolean
+}
+
 const providerLabels: Record<RagProviderType, string> = {
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
@@ -127,6 +148,15 @@ function formatDate(value: string): string {
   }).format(new Date(value))
 }
 
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
 function sourceTypeLabel(sourceType: KnowledgeSourceItem['sourceType']): string {
   return sourceType === 'website' ? 'Website' : 'Manual'
 }
@@ -160,6 +190,13 @@ export default function RagChatbotPage() {
   const [chatAnswer, setChatAnswer] = useState<RagChatResponse | null>(null)
   const [chatMessage, setChatMessage] = useState<string | null>(null)
   const [chatLoading, setChatLoading] = useState(false)
+  const [logs, setLogs] = useState<RagChatLogItem[]>([])
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [logsMessage, setLogsMessage] = useState<string | null>(null)
+  const [logFilter, setLogFilter] = useState('all')
+  const [autoReply, setAutoReply] = useState<RagAutoReplySettings | null>(null)
+  const [autoReplySaving, setAutoReplySaving] = useState(false)
+  const [autoReplyMessage, setAutoReplyMessage] = useState<string | null>(null)
 
   const cards = useMemo(() => {
     const providerConfigured = status?.provider.configured === true
@@ -204,14 +241,15 @@ export default function RagChatbotPage() {
       },
       {
         title: 'WhatsApp Auto Reply',
-        value: 'Not connected yet',
+        value: autoReply?.enabled ? 'Enabled' : 'Disabled',
         icon: Send,
-        tone: 'soon',
+        tone: autoReply?.enabled ? 'good' : 'muted',
       },
     ] as const
-  }, [status])
+  }, [status, autoReply])
 
   const canManageKnowledge = workspace.has('manage_rag_chatbot')
+  const canEnableAutoReply = workspace.has('enable_rag_auto_reply')
   const knowledgeCharacters = knowledgeText.length
   const knowledgeOverLimit = knowledgeCharacters > RAG_KNOWLEDGE_CHARACTER_LIMIT
   const providerReady = status?.provider.configured === true
@@ -258,7 +296,16 @@ export default function RagChatbotPage() {
   useEffect(() => {
     if (workspace.loading || !canView) return
     loadKnowledge()
+    loadLogs()
+    loadAutoReply()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace.loading, canView])
+
+  useEffect(() => {
+    if (workspace.loading || !canView) return
+    loadLogs()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logFilter, workspace.loading, canView])
 
   async function refreshStatusCounts() {
     const response = await fetch('/api/rag/status')
@@ -348,6 +395,67 @@ export default function RagChatbotPage() {
       setFirecrawlMessage(testError instanceof Error ? testError.message : 'Firecrawl test failed.')
     } finally {
       setFirecrawlSaving(false)
+    }
+  }
+
+  async function loadLogs() {
+    setLogsLoading(true)
+    setLogsMessage(null)
+    try {
+      const params = new URLSearchParams({ limit: '25' })
+      if (logFilter === 'dashboard' || logFilter === 'whatsapp') {
+        params.set('channel', logFilter)
+      } else if (logFilter !== 'all') {
+        params.set('status', logFilter)
+      }
+      const response = await fetch(`/api/rag/logs?${params.toString()}`)
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to load logs.')
+      setLogs(payload.logs ?? [])
+    } catch (loadError) {
+      setLogsMessage(loadError instanceof Error ? loadError.message : 'Failed to load logs.')
+    } finally {
+      setLogsLoading(false)
+    }
+  }
+
+  async function loadAutoReply() {
+    setAutoReplyMessage(null)
+    try {
+      const response = await fetch('/api/rag/auto-reply')
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to load auto reply settings.')
+      setAutoReply(payload.settings)
+    } catch (loadError) {
+      setAutoReplyMessage(
+        loadError instanceof Error ? loadError.message : 'Failed to load auto reply settings.',
+      )
+    }
+  }
+
+  async function saveAutoReply(next?: Partial<RagAutoReplySettings>) {
+    if (!autoReply) return
+    const updated = { ...autoReply, ...(next ?? {}) }
+    setAutoReplySaving(true)
+    setAutoReplyMessage(null)
+    try {
+      const response = await fetch('/api/rag/auto-reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: updated.enabled,
+          fallbackMode: updated.fallbackMode,
+          fallbackMessage: updated.fallbackMessage,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to save auto reply settings.')
+      setAutoReply(payload.settings)
+      setAutoReplyMessage('WhatsApp auto reply settings saved.')
+    } catch (saveError) {
+      setAutoReplyMessage(saveError instanceof Error ? saveError.message : 'Failed to save settings.')
+    } finally {
+      setAutoReplySaving(false)
     }
   }
 
@@ -487,6 +595,7 @@ export default function RagChatbotPage() {
       if (!response.ok) throw new Error(payload.error ?? 'Chat request failed.')
 
       setChatAnswer(payload as RagChatResponse)
+      await loadLogs()
     } catch (chatError) {
       setChatMessage(chatError instanceof Error ? chatError.message : 'Chat request failed.')
     } finally {
@@ -548,8 +657,6 @@ export default function RagChatbotPage() {
                     ? 'bg-emerald-400/15 text-emerald-200'
                     : card.tone === 'warn'
                       ? 'bg-red-400/15 text-red-100'
-                    : card.tone === 'soon'
-                      ? 'bg-amber-300/15 text-amber-100'
                       : 'bg-slate-700/40 text-slate-200',
                 )}
               >
@@ -980,19 +1087,219 @@ export default function RagChatbotPage() {
         </div>
       </section>
 
-      <section>
-        <h2 className="mb-3 text-lg font-bold text-white">Coming Soon</h2>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {[
-            ['Logs', Clock],
-            ['WhatsApp Auto Reply', Send],
-          ].map(([title, Icon]) => (
-            <div key={title as string} className="rounded-2xl border border-dashed border-[#315846] bg-[#0d1b15]/60 p-4 opacity-80">
-              <Icon className="mb-3 size-5 text-[#8bb4a5]" />
-              <p className="font-semibold text-white">{title as string}</p>
-              <p className="mt-1 text-xs text-[#8bb4a5]">Not active yet</p>
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Clock className="size-5 text-emerald-300" />
+                <h2 className="text-lg font-bold text-white">Logs</h2>
+              </div>
+              <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+                Recent chatbot activity for this workspace. Secrets, raw prompts,
+                provider JSON, and embeddings are never shown here.
+              </p>
             </div>
-          ))}
+            <button
+              type="button"
+              onClick={loadLogs}
+              disabled={logsLoading}
+              className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {logsLoading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            {[
+              ['all', 'All'],
+              ['dashboard', 'Dashboard'],
+              ['whatsapp', 'WhatsApp'],
+              ['answered', 'Answered'],
+              ['fallback', 'Fallback'],
+              ['failed', 'Failed'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setLogFilter(value)}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs font-bold transition',
+                  logFilter === value
+                    ? 'border-emerald-300/60 bg-emerald-300/15 text-emerald-100'
+                    : 'border-[#315846] bg-[#0d1b15] text-[#a9c6bb] hover:bg-[#123226]',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {logsMessage && (
+            <p className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
+              {logsMessage}
+            </p>
+          )}
+
+          <div className="divide-y divide-[#214b39] overflow-hidden rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
+            {logs.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-[#8bb4a5]">
+                No chatbot logs yet.
+              </div>
+            ) : (
+              logs.map((log) => (
+                <article key={log.id} className="space-y-3 px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-[#315846] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#d8fff1]">
+                        {log.channel}
+                      </span>
+                      <span className={cn(
+                        'rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+                        log.status === 'answered'
+                          ? 'bg-emerald-400/15 text-emerald-100'
+                          : log.status === 'fallback'
+                            ? 'bg-amber-300/15 text-amber-100'
+                            : 'bg-red-400/15 text-red-100',
+                      )}>
+                        {log.status.replace('_', ' ')}
+                      </span>
+                    </div>
+                    <span className="text-xs text-[#8bb4a5]">{formatDateTime(log.createdAt)}</span>
+                  </div>
+                  <div className="grid gap-3 text-sm lg:grid-cols-2">
+                    <div>
+                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Question</p>
+                      <p className="line-clamp-4 whitespace-pre-wrap text-[#d8fff1]">{log.userQuestion}</p>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Answer</p>
+                      <p className="line-clamp-4 whitespace-pre-wrap text-[#a9c6bb]">
+                        {log.answer || 'No answer recorded.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-xs text-[#8bb4a5]">
+                    <span>{log.retrievedSourceCount} retrieved sources</span>
+                    {typeof log.latencyMs === 'number' && <span>{log.latencyMs} ms latency</span>}
+                    {log.fallbackReason && <span>Fallback: {log.fallbackReason}</span>}
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Send className="size-5 text-emerald-300" />
+                <h2 className="text-lg font-bold text-white">WhatsApp Auto Reply</h2>
+              </div>
+              <p className="text-sm leading-6 text-[#a9c6bb]">
+                Optional RAG replies for inbound WhatsApp text messages. It is OFF by default
+                and never sends debug text.
+              </p>
+            </div>
+            <span className={cn(
+              'shrink-0 rounded-full border px-3 py-1 text-xs font-bold',
+              autoReply?.enabled
+                ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
+                : 'border-[#315846] bg-[#0d1b15] text-[#d8fff1]',
+            )}>
+              {autoReply?.enabled ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
+
+          <div className="mb-5 grid gap-2 text-sm">
+            {[
+              ['WhatsApp', autoReply?.whatsappConnected],
+              ['AI Provider', autoReply?.providerConfigured],
+              ['Knowledge', autoReply?.knowledgeReady],
+            ].map(([label, ready]) => (
+              <div key={label as string} className="flex items-center justify-between rounded-xl border border-[#214b39] bg-[#0d1b15]/70 px-3 py-2">
+                <span className="text-[#a9c6bb]">{label as string}</span>
+                <span className={cn(
+                  'rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+                  ready ? 'bg-emerald-400/15 text-emerald-100' : 'bg-amber-300/15 text-amber-100',
+                )}>
+                  {ready ? 'Ready' : 'Not ready'}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {autoReply ? (
+            <div className="space-y-4">
+              <label className="flex items-start gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                <input
+                  type="checkbox"
+                  checked={autoReply.enabled}
+                  disabled={!canEnableAutoReply || autoReplySaving}
+                  onChange={(event) => saveAutoReply({ enabled: event.target.checked })}
+                  className="mt-1 size-4 accent-emerald-400"
+                />
+                <span>
+                  <span className="block font-bold text-white">Enable AI replies on WhatsApp</span>
+                  <span className="mt-1 block text-sm text-[#a9c6bb]">
+                    When disabled, the webhook behavior stays the same and no AI call is made.
+                  </span>
+                </span>
+              </label>
+
+              <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                <p className="text-sm font-bold text-white">Auto-reply mode</p>
+                <p className="mt-1 text-sm text-[#a9c6bb]">Answer only when knowledge is available.</p>
+              </div>
+
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-[#d8fff1]">Fallback behavior</span>
+                <select
+                  value={autoReply.fallbackMode}
+                  disabled={!canEnableAutoReply || autoReplySaving}
+                  onChange={(event) =>
+                    saveAutoReply({ fallbackMode: event.target.value as RagAutoReplySettings['fallbackMode'] })
+                  }
+                  className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="do_not_reply">Do not send message if answer is not found</option>
+                  <option value="send_fallback">Send fallback message</option>
+                </select>
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-[#d8fff1]">Fallback message</span>
+                <textarea
+                  value={autoReply.fallbackMessage}
+                  disabled={!canEnableAutoReply || autoReplySaving}
+                  rows={4}
+                  maxLength={500}
+                  onChange={(event) =>
+                    setAutoReply((current) => current ? { ...current, fallbackMessage: event.target.value } : current)
+                  }
+                  onBlur={() => saveAutoReply()}
+                  className="w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+
+              {!canEnableAutoReply && (
+                <p className="text-xs text-[#8bb4a5]">
+                  Enable RAG Auto Reply permission is required to change these settings.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
+              Auto reply settings will load after the migration is applied.
+            </p>
+          )}
+
+          {autoReplyMessage && (
+            <p className="mt-4 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
+              {autoReplyMessage}
+            </p>
+          )}
         </div>
       </section>
 

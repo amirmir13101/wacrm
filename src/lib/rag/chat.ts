@@ -84,6 +84,15 @@ export interface RagDashboardChatResult {
   readonly fallbackReason: string | null
 }
 
+interface RagAnswerOptions {
+  readonly workspaceId: string
+  readonly question: string
+  readonly channel: 'dashboard' | 'whatsapp'
+  readonly useServiceRetrieval?: boolean
+  readonly conversationId?: string | null
+  readonly messageId?: string | null
+}
+
 function cleanQuestion(value: string): string {
   return value.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim()
 }
@@ -167,12 +176,17 @@ async function insertRagChatLog(args: {
   readonly retrievalScores: ReadonlyArray<Readonly<Record<string, unknown>>>
   readonly tokenUsage?: Readonly<Record<string, unknown>>
   readonly latencyMs: number
+  readonly channel?: 'dashboard' | 'whatsapp'
+  readonly conversationId?: string | null
+  readonly messageId?: string | null
 }): Promise<void> {
   const { error } = await supabaseAdmin()
     .from('rag_chat_logs')
     .insert({
       workspace_id: args.workspaceId,
-      channel: 'dashboard',
+      channel: args.channel ?? 'dashboard',
+      conversation_id: args.conversationId ?? null,
+      message_id: args.messageId ?? null,
       user_question: args.question,
       answer: args.answer,
       status: args.status,
@@ -189,10 +203,27 @@ async function insertRagChatLog(args: {
   if (error) throw new Error(error.message)
 }
 
-export async function answerRagDashboardQuestion(args: {
+async function retrieveRagChunks(args: {
   readonly workspaceId: string
-  readonly question: string
-}): Promise<RagDashboardChatResult> {
+  readonly queryEmbedding: ReadonlyArray<number>
+  readonly useServiceRetrieval?: boolean
+}): Promise<ReadonlyArray<RagRetrievedChunk>> {
+  const rpcName = args.useServiceRetrieval
+    ? 'match_rag_knowledge_chunks_for_service'
+    : 'match_rag_knowledge_chunks'
+  const supabase = args.useServiceRetrieval ? supabaseAdmin() : await createClient()
+  const { data, error } = await supabase.rpc(rpcName, {
+    p_workspace_id: args.workspaceId,
+    p_query_embedding: args.queryEmbedding,
+    p_match_count: 4,
+    p_similarity_threshold: 0.5,
+  })
+
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as RagVectorMatchRow[]).map(toRetrievedChunk)
+}
+
+async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardChatResult> {
   const startedAt = Date.now()
   const question = cleanQuestion(args.question)
   if (!question) throw new Error('Question is required.')
@@ -206,16 +237,11 @@ export async function answerRagDashboardQuestion(args: {
   try {
     providerConfig = await getDashboardProviderConfig(args.workspaceId)
     const queryEmbedding = await generateRagEmbedding(question, providerConfig)
-    const supabase = await createClient()
-    const { data, error } = await supabase.rpc('match_rag_knowledge_chunks', {
-      p_workspace_id: args.workspaceId,
-      p_query_embedding: queryEmbedding,
-      p_match_count: 4,
-      p_similarity_threshold: 0.5,
+    retrievedChunks = await retrieveRagChunks({
+      workspaceId: args.workspaceId,
+      queryEmbedding,
+      useServiceRetrieval: args.useServiceRetrieval,
     })
-
-    if (error) throw new Error(error.message)
-    retrievedChunks = ((data ?? []) as RagVectorMatchRow[]).map(toRetrievedChunk)
 
     if (retrievedChunks.length === 0) {
       const result: RagDashboardChatResult = {
@@ -236,6 +262,9 @@ export async function answerRagDashboardQuestion(args: {
         retrievedChunkIds: [],
         retrievalScores: [],
         latencyMs: Date.now() - startedAt,
+        channel: args.channel,
+        conversationId: args.conversationId,
+        messageId: args.messageId,
       })
       return result
     }
@@ -279,6 +308,9 @@ export async function answerRagDashboardQuestion(args: {
       })),
       tokenUsage: textResult.usage ? { ...textResult.usage } : {},
       latencyMs: Date.now() - startedAt,
+      channel: args.channel,
+      conversationId: args.conversationId,
+      messageId: args.messageId,
     })
     return result
   } catch (error) {
@@ -298,6 +330,9 @@ export async function answerRagDashboardQuestion(args: {
       retrievedChunkIds: [],
       retrievalScores: [],
       latencyMs: Date.now() - startedAt,
+      channel: args.channel,
+      conversationId: args.conversationId,
+      messageId: args.messageId,
     }).catch(() => undefined)
 
     return {
@@ -307,4 +342,31 @@ export async function answerRagDashboardQuestion(args: {
       fallbackReason: 'provider_error',
     }
   }
+}
+
+export async function answerRagDashboardQuestion(args: {
+  readonly workspaceId: string
+  readonly question: string
+}): Promise<RagDashboardChatResult> {
+  return answerRagQuestion({
+    workspaceId: args.workspaceId,
+    question: args.question,
+    channel: 'dashboard',
+  })
+}
+
+export async function answerRagWhatsAppQuestion(args: {
+  readonly workspaceId: string
+  readonly question: string
+  readonly conversationId?: string | null
+  readonly messageId?: string | null
+}): Promise<RagDashboardChatResult> {
+  return answerRagQuestion({
+    workspaceId: args.workspaceId,
+    question: args.question,
+    channel: 'whatsapp',
+    useServiceRetrieval: true,
+    conversationId: args.conversationId,
+    messageId: args.messageId,
+  })
 }

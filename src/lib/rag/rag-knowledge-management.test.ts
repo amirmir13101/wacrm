@@ -95,10 +95,11 @@ describe('RAG manual knowledge management', () => {
     expect(knowledgeStore).not.toContain('generateRagChunkEmbeddings')
   })
 
-  it('soft archives sources and leaves WhatsApp behavior untouched', () => {
+  it('soft archives sources and keeps WhatsApp RAG behind the disabled-by-default guard', () => {
     expect(knowledgeStore).toContain("status: 'archived'")
     expect(knowledgeStore).toContain('deleted_at')
     expect(page).toContain('Website Import')
-    expect(webhookRoute).not.toContain('rag')
+    expect(webhookRoute).toContain('getRagAutoReplyRuntimeSettings')
+    expect(webhookRoute).toContain('if (!settings?.enabled) return')
   })
 })
