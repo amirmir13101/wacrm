@@ -64,7 +64,7 @@ describe('RAG manual knowledge management', () => {
     expect(page).toContain('Paste your business information, FAQs, pricing, policies, or service details here.')
     expect(page).toContain('Add Knowledge')
     expect(page).toContain('Knowledge List')
-    expect(page).toContain('Not embedded yet')
+    expect(page).toContain('Not embedded')
 
     expect(page).not.toContain('embedding vector')
     expect(page).not.toContain('retrieval score')
@@ -85,13 +85,12 @@ describe('RAG manual knowledge management', () => {
     expect(detailRoute).toContain('archiveRagKnowledgeSource')
   })
 
-  it('uses only new rag tables and creates starter-style chunks without embeddings', () => {
+  it('uses only new rag tables and creates starter-style chunks before embedding', () => {
     expect(knowledgeStore).toContain("from('rag_knowledge_sources')")
     expect(knowledgeStore).toContain("from('rag_knowledge_chunks')")
     expect(knowledgeStore).not.toContain("from('ai_")
     expect(knowledgeStore).toContain('prepareRagKnowledgeSource')
     expect(knowledgeStore).toContain('embedding_status')
-    expect(knowledgeStore).not.toContain("from('rag_embeddings').insert")
     expect(knowledgeStore).not.toContain('generateRagEmbedding')
     expect(knowledgeStore).not.toContain('generateRagChunkEmbeddings')
   })

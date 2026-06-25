@@ -268,9 +268,10 @@ export async function getRagKnowledgeCounts(workspaceId: string): Promise<{
   readonly sources: number
   readonly chunks: number
   readonly readyEmbeddings: number
+  readonly failedEmbeddings: number
 }> {
   const admin = supabaseAdmin()
-  const [sources, chunks, embeddings] = await Promise.all([
+  const [sources, chunks, readyEmbeddings, failedEmbeddings] = await Promise.all([
     admin
       .from('rag_knowledge_sources')
       .select('id', { head: true, count: 'exact' })
@@ -286,15 +287,22 @@ export async function getRagKnowledgeCounts(workspaceId: string): Promise<{
       .select('id', { head: true, count: 'exact' })
       .eq('workspace_id', workspaceId)
       .eq('embedding_status', 'ready'),
+    admin
+      .from('rag_embeddings')
+      .select('id', { head: true, count: 'exact' })
+      .eq('workspace_id', workspaceId)
+      .eq('embedding_status', 'failed'),
   ])
 
   if (sources.error) throw new Error(sources.error.message)
   if (chunks.error) throw new Error(chunks.error.message)
-  if (embeddings.error) throw new Error(embeddings.error.message)
+  if (readyEmbeddings.error) throw new Error(readyEmbeddings.error.message)
+  if (failedEmbeddings.error) throw new Error(failedEmbeddings.error.message)
 
   return {
     sources: sources.count ?? 0,
     chunks: chunks.count ?? 0,
-    readyEmbeddings: embeddings.count ?? 0,
+    readyEmbeddings: readyEmbeddings.count ?? 0,
+    failedEmbeddings: failedEmbeddings.count ?? 0,
   }
 }

@@ -49,6 +49,7 @@ interface RagStatusPayload {
     readonly sources: number
     readonly chunks: number
     readonly readyEmbeddings: number
+    readonly failedEmbeddings: number
   }
 }
 
@@ -61,6 +62,9 @@ interface KnowledgeSourceItem {
   readonly updatedAt: string
   readonly characterCount: number
   readonly chunkCount: number
+  readonly readyEmbeddingCount: number
+  readonly failedEmbeddingCount: number
+  readonly embeddingStatus: 'not_embedded' | 'ready' | 'failed' | 'partial'
   readonly content?: string
 }
 
@@ -85,6 +89,20 @@ function statusClasses(status: ConnectionStatus, configured: boolean): string {
   if (status === 'success') return 'border-emerald-400/50 bg-emerald-400/10 text-emerald-200'
   if (status === 'failed') return 'border-red-400/50 bg-red-400/10 text-red-200'
   return 'border-amber-300/50 bg-amber-300/10 text-amber-100'
+}
+
+function embeddingStatusLabel(status: KnowledgeSourceItem['embeddingStatus']): string {
+  if (status === 'ready') return 'Ready'
+  if (status === 'failed') return 'Failed'
+  if (status === 'partial') return 'Partial'
+  return 'Not embedded'
+}
+
+function embeddingStatusClasses(status: KnowledgeSourceItem['embeddingStatus']): string {
+  if (status === 'ready') return 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100'
+  if (status === 'failed') return 'border-red-300/40 bg-red-300/10 text-red-100'
+  if (status === 'partial') return 'border-amber-300/40 bg-amber-300/10 text-amber-100'
+  return 'border-slate-500/40 bg-slate-700/30 text-slate-200'
 }
 
 function formatDate(value: string): string {
@@ -116,6 +134,7 @@ export default function RagChatbotPage() {
   const [knowledgeSaving, setKnowledgeSaving] = useState(false)
   const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeSourceItem | null>(null)
   const [editingKnowledgeId, setEditingKnowledgeId] = useState<string | null>(null)
+  const [preparingKnowledgeId, setPreparingKnowledgeId] = useState<string | null>(null)
 
   const cards = useMemo(() => {
     const providerConfigured = status?.provider.configured === true
@@ -148,9 +167,15 @@ export default function RagChatbotPage() {
       },
       {
         title: 'Embeddings',
-        value: 'Coming soon',
+        value: `${status?.knowledge.readyEmbeddings ?? 0} ready`,
         icon: Sparkles,
-        tone: 'soon',
+        tone: (status?.knowledge.readyEmbeddings ?? 0) > 0 ? 'good' : 'muted',
+      },
+      {
+        title: 'Embedding Issues',
+        value: `${status?.knowledge.failedEmbeddings ?? 0} failed`,
+        icon: XCircle,
+        tone: (status?.knowledge.failedEmbeddings ?? 0) > 0 ? 'warn' : 'muted',
       },
       {
         title: 'WhatsApp Auto Reply',
@@ -369,6 +394,26 @@ export default function RagChatbotPage() {
     }
   }
 
+  async function prepareKnowledge(id: string) {
+    setPreparingKnowledgeId(id)
+    setKnowledgeMessage(null)
+    try {
+      const response = await fetch(`/api/rag/knowledge/${id}/embed`, { method: 'POST' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to prepare knowledge.')
+
+      setKnowledgeMessage(payload.summary?.message ?? 'Knowledge prepared for chatbot.')
+      await loadKnowledge()
+      await refreshStatusCounts()
+    } catch (prepareError) {
+      setKnowledgeMessage(
+        prepareError instanceof Error ? prepareError.message : 'Failed to prepare knowledge.',
+      )
+    } finally {
+      setPreparingKnowledgeId(null)
+    }
+  }
+
   if (!workspace.loading && !canView) {
     return (
       <div className="rounded-2xl border border-red-400/30 bg-red-950/20 p-6 text-red-100">
@@ -393,8 +438,9 @@ export default function RagChatbotPage() {
                 AI Chatbot
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[#b8cfc7]">
-                Connect your AI and Firecrawl keys now. Knowledge, website import,
-                test chat, logs, and WhatsApp auto reply are coming in later phases.
+                Connect your AI and Firecrawl keys, add manual knowledge, and prepare it
+                for the chatbot. Website import, test chat, logs, and WhatsApp auto reply
+                are coming in later phases.
               </p>
             </div>
             <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/80 p-3 text-sm text-[#c7ddd5]">
@@ -419,8 +465,10 @@ export default function RagChatbotPage() {
               <span
                 className={cn(
                   'rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
-                  card.tone === 'good'
+        card.tone === 'good'
                     ? 'bg-emerald-400/15 text-emerald-200'
+                    : card.tone === 'warn'
+                      ? 'bg-red-400/15 text-red-100'
                     : card.tone === 'soon'
                       ? 'bg-amber-300/15 text-amber-100'
                       : 'bg-slate-700/40 text-slate-200',
@@ -516,7 +564,7 @@ export default function RagChatbotPage() {
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
               Add business information the chatbot will use later. Manual knowledge is chunked now,
-              but embeddings and chat answers come in the next phase.
+              and you can prepare it for chatbot retrieval by creating embeddings.
             </p>
           </div>
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
@@ -616,6 +664,15 @@ export default function RagChatbotPage() {
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
+                            onClick={() => prepareKnowledge(source.id)}
+                            disabled={!canManageKnowledge || preparingKnowledgeId === source.id}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-300/40 px-2.5 text-xs font-bold text-emerald-100 hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Sparkles className="size-3.5" />
+                            {preparingKnowledgeId === source.id ? 'Preparing...' : 'Prepare for Chatbot'}
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => viewKnowledge(source.id)}
                             className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#315846] px-2.5 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
                           >
@@ -646,12 +703,18 @@ export default function RagChatbotPage() {
                         <div>Created: {formatDate(source.createdAt)}</div>
                         <div>Updated: {formatDate(source.updatedAt)}</div>
                         <div>{source.characterCount.toLocaleString()} characters</div>
-                        <div>
-                          {source.chunkCount > 0
-                            ? `${source.chunkCount.toLocaleString()} chunks · Not embedded yet`
-                            : 'Not embedded yet'}
-                        </div>
+                        <div>{source.chunkCount.toLocaleString()} chunks</div>
+                        <div>{source.readyEmbeddingCount.toLocaleString()} ready embeddings</div>
+                        <div>{source.failedEmbeddingCount.toLocaleString()} failed embeddings</div>
                       </dl>
+                      <span
+                        className={cn(
+                          'inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+                          embeddingStatusClasses(source.embeddingStatus),
+                        )}
+                      >
+                        {embeddingStatusLabel(source.embeddingStatus)}
+                      </span>
                     </article>
                   ))
                 )}

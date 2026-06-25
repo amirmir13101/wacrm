@@ -15,6 +15,9 @@ export interface RagKnowledgeListItem {
   readonly updatedAt: string
   readonly characterCount: number
   readonly chunkCount: number
+  readonly readyEmbeddingCount: number
+  readonly failedEmbeddingCount: number
+  readonly embeddingStatus: 'not_embedded' | 'ready' | 'failed' | 'partial'
 }
 
 export interface RagKnowledgeDetail extends RagKnowledgeListItem {
@@ -36,6 +39,18 @@ interface RagKnowledgeChunkCountRow {
   readonly source_id: string
 }
 
+interface RagKnowledgeEmbeddingCountRow {
+  readonly embedding_status: string
+  readonly rag_knowledge_chunks:
+    | {
+        readonly source_id: string
+      }
+    | ReadonlyArray<{
+        readonly source_id: string
+      }>
+    | null
+}
+
 export function safeRagKnowledgeTitle(title: string): string {
   return title.replace(/[\u0000-\u001F\u007F]/g, '').trim()
 }
@@ -54,11 +69,23 @@ function normalizeStatus(status: string): RagKnowledgeListItem['status'] {
 function toListItem(
   row: RagKnowledgeSourceRow,
   chunkCounts: ReadonlyMap<string, number>,
+  embeddingCounts: ReadonlyMap<string, { readonly ready: number; readonly failed: number }>,
 ): RagKnowledgeListItem {
   const metadataCount =
     typeof row.metadata?.character_count === 'number'
       ? row.metadata.character_count
       : row.cleaned_content.length
+  const chunkCount = chunkCounts.get(row.id) ?? 0
+  const sourceEmbeddings = embeddingCounts.get(row.id) ?? { ready: 0, failed: 0 }
+  const embeddedCount = sourceEmbeddings.ready + sourceEmbeddings.failed
+  const embeddingStatus =
+    chunkCount === 0 || embeddedCount === 0
+      ? 'not_embedded'
+      : sourceEmbeddings.ready === chunkCount
+        ? 'ready'
+        : sourceEmbeddings.ready === 0 && sourceEmbeddings.failed > 0
+          ? 'failed'
+          : 'partial'
 
   return {
     id: row.id,
@@ -68,7 +95,10 @@ function toListItem(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     characterCount: metadataCount,
-    chunkCount: chunkCounts.get(row.id) ?? 0,
+    chunkCount,
+    readyEmbeddingCount: sourceEmbeddings.ready,
+    failedEmbeddingCount: sourceEmbeddings.failed,
+    embeddingStatus,
   }
 }
 
@@ -94,6 +124,37 @@ async function chunkCountsBySource(
   return counts
 }
 
+async function embeddingCountsBySource(
+  workspaceId: string,
+  sourceIds: ReadonlyArray<string>,
+): Promise<Map<string, { ready: number; failed: number }>> {
+  if (sourceIds.length === 0) return new Map()
+
+  const { data, error } = await supabaseAdmin()
+    .from('rag_embeddings')
+    .select('embedding_status, rag_knowledge_chunks!inner(source_id)')
+    .eq('workspace_id', workspaceId)
+    .in('rag_knowledge_chunks.source_id', [...sourceIds])
+    .is('rag_knowledge_chunks.deleted_at', null)
+
+  if (error) throw new Error(error.message)
+
+  const counts = new Map<string, { ready: number; failed: number }>()
+  for (const row of (data ?? []) as unknown as RagKnowledgeEmbeddingCountRow[]) {
+    const joinedChunk = Array.isArray(row.rag_knowledge_chunks)
+      ? row.rag_knowledge_chunks[0]
+      : row.rag_knowledge_chunks
+    const sourceId = joinedChunk?.source_id
+    if (!sourceId) continue
+    const current = counts.get(sourceId) ?? { ready: 0, failed: 0 }
+    counts.set(sourceId, {
+      ready: current.ready + (row.embedding_status === 'ready' ? 1 : 0),
+      failed: current.failed + (row.embedding_status === 'failed' ? 1 : 0),
+    })
+  }
+  return counts
+}
+
 export async function listRagKnowledgeSources(
   workspaceId: string,
 ): Promise<ReadonlyArray<RagKnowledgeListItem>> {
@@ -108,8 +169,12 @@ export async function listRagKnowledgeSources(
   if (error) throw new Error(error.message)
 
   const rows = (data ?? []) as RagKnowledgeSourceRow[]
-  const counts = await chunkCountsBySource(workspaceId, rows.map((row) => row.id))
-  return rows.map((row) => toListItem(row, counts))
+  const sourceIds = rows.map((row) => row.id)
+  const [chunkCounts, embeddingCounts] = await Promise.all([
+    chunkCountsBySource(workspaceId, sourceIds),
+    embeddingCountsBySource(workspaceId, sourceIds),
+  ])
+  return rows.map((row) => toListItem(row, chunkCounts, embeddingCounts))
 }
 
 export async function getRagKnowledgeSource(args: {
@@ -129,9 +194,12 @@ export async function getRagKnowledgeSource(args: {
   if (!data) return null
 
   const row = data as RagKnowledgeSourceRow
-  const counts = await chunkCountsBySource(args.workspaceId, [row.id])
+  const [chunkCounts, embeddingCounts] = await Promise.all([
+    chunkCountsBySource(args.workspaceId, [row.id]),
+    embeddingCountsBySource(args.workspaceId, [row.id]),
+  ])
   return {
-    ...toListItem(row, counts),
+    ...toListItem(row, chunkCounts, embeddingCounts),
     content: row.cleaned_content,
   }
 }

@@ -23,8 +23,9 @@ export async function GET() {
       firecrawl,
       knowledge: counts,
       embeddings: {
-        ready: false,
-        label: 'Coming soon',
+        ready: counts.readyEmbeddings > 0,
+        failed: counts.failedEmbeddings,
+        label: `${counts.readyEmbeddings} ready`,
       },
       whatsappAutoReply: {
         connected: false,
