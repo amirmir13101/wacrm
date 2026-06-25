@@ -61,10 +61,13 @@ describe('RAG dashboard test chat', () => {
     expect(chatService).toContain('You are a helpful business support assistant.')
     expect(chatService).toContain('Answer the customer using only the provided knowledge.')
     expect(chatService).toContain('If the answer is not in the knowledge')
+    expect(chatService).toContain('If the customer sends only a short topic')
+    expect(chatService).toContain('provide a concise overview from the relevant snippets')
     expect(chatService).toContain('Do not invent exact prices')
     expect(chatService).toContain('You may do simple arithmetic only when the needed numbers are explicitly present')
     expect(chatService).toContain('not an official listed value')
     expect(chatService).toContain('do not use competitor prices or competitor specs')
+    expect(chatService).toContain('For location, service-area, datacenter')
     expect(chatService).toContain('answer in the same language as the question if possible')
 
     expect(chatService).not.toContain('selectedOffer')

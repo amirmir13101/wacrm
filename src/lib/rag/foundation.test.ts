@@ -14,6 +14,7 @@ import {
   buildRagSystemPrompt,
   createEmptyRagAnswer,
   extractRagKeywordTerms,
+  scoreKeywordRagChunk,
 } from './chat'
 import { createRagChunks } from './chunking'
 import { prepareRagKnowledgeSource } from './knowledge'
@@ -201,7 +202,21 @@ describe('RAG Phase 1 foundation', () => {
 
     expect(buildRagRetrievalQueries('What is your support email?')).toEqual([
       'What is your support email?',
+      'What support and contact details are available for support email?',
     ])
+  })
+
+  it('expands terse topic queries like the starter tool-call flow without business-specific answers', () => {
+    expect(buildRagRetrievalQueries('Inventory')).toEqual([
+      'Inventory',
+      'What information is available about inventory?',
+      'What services, products, plans, pricing, support, locations, contact details, and policies are available for inventory?',
+      'What support, features, specs, availability, and important details are listed for inventory?',
+    ])
+
+    expect(buildRagRetrievalQueries('clinic available?')).toContain(
+      'What locations, service areas, addresses, IPs, or availability details are listed for clinic?',
+    )
   })
 
   it('extracts generic keyword terms for exact retrieval supplementation', () => {
@@ -215,6 +230,31 @@ describe('RAG Phase 1 foundation', () => {
       'monthly',
       'yearly',
     ])
+  })
+
+  it('scores keyword chunks by generic customer intent instead of raw term count only', () => {
+    const overviewScore = scoreKeywordRagChunk({
+      question: 'Inventory',
+      terms: ['inventory'],
+      matchedTerms: ['inventory'],
+      content: 'Inventory services include product tracking, support, reporting, and upgrade options.',
+    })
+    const policyNoiseScore = scoreKeywordRagChunk({
+      question: 'Inventory',
+      terms: ['inventory'],
+      matchedTerms: ['inventory'],
+      content: 'Users must not use inventory services for illegal content, phishing, spam, or harmful activities.',
+    })
+
+    expect(overviewScore).toBeGreaterThan(policyNoiseScore)
+
+    const contactScore = scoreKeywordRagChunk({
+      question: 'WhatsApp support available?',
+      terms: ['whatsapp', 'support'],
+      matchedTerms: ['whatsapp', 'support'],
+      content: 'Support is available by WhatsApp at https://wa.me/123456789 and by email.',
+    })
+    expect(contactScore).toBeGreaterThan(overviewScore)
   })
 
   it('masks secrets and sanitizes provider errors', () => {

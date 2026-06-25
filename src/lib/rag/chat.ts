@@ -30,6 +30,11 @@ Do not invent exact prices, discounts, yearly totals, dates, phone numbers, emai
 If the answer is not in the knowledge, say:
 "${RAG_CLEAN_FALLBACK}"
 
+Question handling:
+- If the customer sends only a short topic, product name, service name, category, or keyword, treat it as asking what information is available about that topic.
+- For broad topic questions, provide a concise overview from the relevant snippets instead of falling back only because the wording is short or general.
+- If the snippets contain related facts that answer the topic, use those facts. Fall back only when the provided snippets do not contain relevant information.
+
 Pricing and numeric facts:
 - Use exact listed values when they are present in the provided knowledge.
 - If the customer asks for an exact yearly, annual, discounted, total, policy, date, phone, email, URL, address, or company number and that exact value is not present, clearly say it is not mentioned in the current knowledge.
@@ -43,6 +48,9 @@ Pricing and numeric facts:
 Contact and support facts:
 - For support, contact, phone, email, ticket, live chat, social, or messaging questions, include the exact available contact details from the provided knowledge when present.
 - If the context contains a contact link, email, phone number, or messaging link that directly answers the question, include it in the answer.
+
+Location and availability facts:
+- For location, service-area, datacenter, delivery-area, address, availability, or test-IP questions, include the exact listed places and any listed addresses, test IPs, URLs, or availability details when present.
 
 Use clean, professional wording.
 If the question is in Urdu, Hindi, Roman Urdu, English, or another language, answer in the same language as the question if possible.
@@ -69,8 +77,17 @@ export function buildRagRetrievalQueries(question: string): string[] {
 
   const variants = new Set<string>([clean])
   const lower = clean.toLowerCase()
+  const keywordTerms = extractRagKeywordTerms(clean)
+  const wordCount = clean.split(/\s+/).filter(Boolean).length
+  const subject = keywordTerms.join(' ')
   const hasMonthly = /\b(monthly|month-to-month|one month|per month|\/mo|month)\b/.test(lower)
   const hasYearly = /\b(yearly|annual|annually|per year|\/year|year)\b/.test(lower)
+  const isShortTopicQuery =
+    Boolean(subject) && keywordTerms.length <= 3 && wordCount <= 4
+  const hasLocationOrAvailabilityIntent =
+    /\b(available|availability|where|location|locations|address|addresses|city|country|region|area|areas|ip|ips)\b/.test(lower)
+  const hasContactOrSupportIntent =
+    /\b(contact|support|help|ticket|email|phone|whatsapp|chat|call|message)\b/.test(lower)
   const combinedParts = clean
     .split(/\s+(?:and|&)\s+/i)
     .map((part) => part.trim())
@@ -99,7 +116,27 @@ export function buildRagRetrievalQueries(question: string): string[] {
     )
   }
 
-  return Array.from(variants).filter(Boolean).slice(0, 5)
+  if (isShortTopicQuery) {
+    variants.add(`What information is available about ${subject}?`)
+    variants.add(
+      `What services, products, plans, pricing, support, locations, contact details, and policies are available for ${subject}?`,
+    )
+    variants.add(
+      `What support, features, specs, availability, and important details are listed for ${subject}?`,
+    )
+  }
+
+  if (subject && hasLocationOrAvailabilityIntent) {
+    variants.add(
+      `What locations, service areas, addresses, IPs, or availability details are listed for ${subject}?`,
+    )
+  }
+
+  if (subject && hasContactOrSupportIntent) {
+    variants.add(`What support and contact details are available for ${subject}?`)
+  }
+
+  return Array.from(variants).filter(Boolean).slice(0, 8)
 }
 
 const RAG_KEYWORD_STOPWORDS = new Set([
@@ -141,6 +178,163 @@ export function extractRagKeywordTerms(question: string): string[] {
     ?? []
 
   return Array.from(new Set(terms)).slice(0, 6)
+}
+
+interface RagQuestionIntent {
+  readonly contact: boolean
+  readonly location: boolean
+  readonly pricing: boolean
+  readonly policy: boolean
+  readonly overview: boolean
+}
+
+function hasRagEvidenceTerm(value: string, terms: ReadonlyArray<string>): boolean {
+  return terms.some((term) => value.includes(term))
+}
+
+function detectRagQuestionIntent(question: string, terms: ReadonlyArray<string>): RagQuestionIntent {
+  const lower = cleanQuestion(question).toLowerCase()
+  const wordCount = lower.split(/\s+/).filter(Boolean).length
+  const shortTopic = terms.length > 0 && terms.length <= 3 && wordCount <= 4
+
+  return {
+    contact: /\b(contact|support|help|ticket|email|mail|phone|tel|whatsapp|wa\.me|chat|call|message)\b/.test(lower),
+    location: /\b(location|locations|address|addresses|city|country|region|area|areas|ip|ips|where|available|availability)\b/.test(lower),
+    pricing: /\b(price|prices|pricing|cost|costs|fee|fees|monthly|yearly|annual|annually|discount|total|bill|billing)\b/.test(lower),
+    policy: /\b(policy|policies|refund|return|returns|cancel|cancellation|terms|abuse|illegal|prohibited|allowed|not allowed)\b/.test(lower),
+    overview:
+      shortTopic ||
+      /\b(service|services|product|products|plan|plans|package|packages|offer|offers|provide|provides|available|include|includes|features|about)\b/.test(lower),
+  }
+}
+
+export function scoreKeywordRagChunk(args: {
+  readonly question: string
+  readonly terms: ReadonlyArray<string>
+  readonly matchedTerms: ReadonlyArray<string>
+  readonly content: string
+}): number {
+  const lowerText = args.content.toLowerCase()
+  const intent = detectRagQuestionIntent(args.question, args.terms)
+  const cleanQuery = cleanQuestion(args.question).toLowerCase()
+
+  let score = 0.44 + Math.min(0.18, args.matchedTerms.length * 0.06)
+
+  if (cleanQuery && lowerText.includes(cleanQuery)) score += 0.08
+
+  if (
+    intent.contact &&
+    hasRagEvidenceTerm(lowerText, [
+      'contact',
+      'support',
+      'ticket',
+      'email',
+      'mail',
+      'phone',
+      'tel:',
+      'whatsapp',
+      'wa.me',
+      'live chat',
+      'chat',
+    ])
+  ) {
+    score += 0.24
+  }
+
+  if (intent.location) {
+    const hasStrongLocationEvidence =
+      hasRagEvidenceTerm(lowerText, [
+        'datacenter',
+        'data center',
+        'data centre',
+        'located in',
+        'locations include',
+        'service area',
+        'service areas',
+        'test ip',
+        'ip:',
+      ]) ||
+      /\b\d{1,3}(?:\.\d{1,3}){3}\b/.test(lowerText)
+    const hasWeakLocationEvidence = hasRagEvidenceTerm(lowerText, [
+      'location',
+      'locations',
+      'address',
+      'addresses',
+      'city',
+      'country',
+      'region',
+    ])
+
+    if (hasStrongLocationEvidence) score += 0.30
+    else if (hasWeakLocationEvidence) score += 0.08
+  }
+
+  if (
+    intent.pricing &&
+    (hasRagEvidenceTerm(lowerText, [
+      'price',
+      'pricing',
+      'cost',
+      'fee',
+      'monthly',
+      'yearly',
+      'annual',
+      'discount',
+      'billing',
+      '/mo',
+      '/year',
+    ]) ||
+      /[$€£]\s*\d/.test(lowerText))
+  ) {
+    score += 0.22
+  }
+
+  if (
+    intent.overview &&
+    hasRagEvidenceTerm(lowerText, [
+      'service',
+      'services',
+      'product',
+      'products',
+      'plan',
+      'plans',
+      'package',
+      'packages',
+      'provides',
+      'offers',
+      'includes',
+      'features',
+      'support',
+      'available',
+    ])
+  ) {
+    score += 0.16
+  }
+
+  const isImportOrPromptNoise = hasRagEvidenceTerm(lowerText, [
+    'local rag knowledge base export',
+    'database: postgresql',
+    'purpose: this file',
+    'chatbot-ready version',
+    'when a user asks',
+    'answer with the true',
+    'answer with yearly',
+  ])
+  if (isImportOrPromptNoise) score -= 0.28
+
+  const isPolicyOrAbuseText = hasRagEvidenceTerm(lowerText, [
+    'users must not',
+    'illegal content',
+    'malware',
+    'phishing',
+    'unauthorized access',
+    'sending spam',
+    'harmful activities',
+    'terms and conditions',
+  ])
+  if (isPolicyOrAbuseText && !intent.policy) score -= 0.24
+
+  return Math.max(0.35, Math.min(0.95, score))
 }
 
 export function createEmptyRagAnswer(request: RagAnswerRequest): RagAnswerResult {
@@ -320,6 +514,7 @@ async function retrieveRagChunks(args: {
 
 async function retrieveKeywordRagChunks(args: {
   readonly workspaceId: string
+  readonly question: string
   readonly terms: ReadonlyArray<string>
   readonly useServiceRetrieval?: boolean
 }): Promise<ReadonlyArray<RagRetrievedChunk>> {
@@ -361,12 +556,18 @@ async function retrieveKeywordRagChunks(args: {
   }>).map((row) => {
     const lowerText = row.chunk_text.toLowerCase()
     const matchedTerms = args.terms.filter((term) => lowerText.includes(term.toLowerCase()))
-    return { row, matchedTerms }
+    const score = scoreKeywordRagChunk({
+      question: args.question,
+      terms: args.terms,
+      matchedTerms,
+      content: row.chunk_text,
+    })
+    return { row, matchedTerms, score }
   })
     .filter(({ matchedTerms }) => matchedTerms.length > 0)
-    .sort((a, b) => b.matchedTerms.length - a.matchedTerms.length)
+    .sort((a, b) => b.score - a.score || b.matchedTerms.length - a.matchedTerms.length)
     .slice(0, 8)
-    .map(({ row, matchedTerms }, index) => {
+    .map(({ row, score }, index) => {
       const source = Array.isArray(row.rag_knowledge_sources)
         ? row.rag_knowledge_sources[0]
         : row.rag_knowledge_sources
@@ -377,7 +578,7 @@ async function retrieveKeywordRagChunks(args: {
         sourceId: row.source_id,
         sourceTitle: source?.title ?? 'Knowledge source',
         sourceUrl: row.source_url ?? source?.source_url ?? null,
-        similarity: Math.min(0.95, 0.6 + matchedTerms.length * 0.05),
+        similarity: Math.round(score * 100) / 100,
       }
     })
 }
@@ -389,9 +590,11 @@ async function retrieveRagChunksForQueries(args: {
   readonly useServiceRetrieval?: boolean
 }): Promise<ReadonlyArray<RagRetrievedChunk>> {
   const chunksById = new Map<string, RagRetrievedChunk>()
-  const keywordTerms = extractRagKeywordTerms(args.queries.join(' '))
+  const originalQuestion = args.queries[0] ?? ''
+  const keywordTerms = extractRagKeywordTerms(originalQuestion)
   const keywordChunks = await retrieveKeywordRagChunks({
     workspaceId: args.workspaceId,
+    question: originalQuestion,
     terms: keywordTerms,
     useServiceRetrieval: args.useServiceRetrieval,
   })
