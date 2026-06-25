@@ -95,6 +95,8 @@ const MANAGER_PERMISSIONS: WorkspacePermissions = {
   create_automations: true,
   edit_automations: true,
   activate_deactivate_automations: true,
+  view_rag_chatbot: true,
+  manage_rag_chatbot: true,
   view_pipeline: true,
   view_all_deals: true,
   create_deals: true,
