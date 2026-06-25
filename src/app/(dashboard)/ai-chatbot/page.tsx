@@ -6,17 +6,22 @@ import {
   CheckCircle2,
   Clock,
   Database,
+  Eye,
+  FileText,
   Globe,
   KeyRound,
   Lock,
   MessageSquare,
+  Pencil,
   Send,
   ShieldCheck,
   Sparkles,
+  Trash2,
   XCircle,
 } from 'lucide-react'
 
 import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions'
+import { RAG_KNOWLEDGE_CHARACTER_LIMIT } from '@/lib/rag/knowledge'
 import { cn } from '@/lib/utils'
 import type { RagProviderType } from '@/lib/rag/types'
 
@@ -47,6 +52,18 @@ interface RagStatusPayload {
   }
 }
 
+interface KnowledgeSourceItem {
+  readonly id: string
+  readonly title: string
+  readonly sourceType: 'manual'
+  readonly status: 'draft' | 'active' | 'archived' | 'failed'
+  readonly createdAt: string
+  readonly updatedAt: string
+  readonly characterCount: number
+  readonly chunkCount: number
+  readonly content?: string
+}
+
 const providerLabels: Record<RagProviderType, string> = {
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
@@ -70,6 +87,14 @@ function statusClasses(status: ConnectionStatus, configured: boolean): string {
   return 'border-amber-300/50 bg-amber-300/10 text-amber-100'
 }
 
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(value))
+}
+
 export default function RagChatbotPage() {
   const workspace = useWorkspacePermissions()
   const canView = workspace.has('view_rag_chatbot')
@@ -84,6 +109,13 @@ export default function RagChatbotPage() {
   const [firecrawlSaving, setFirecrawlSaving] = useState(false)
   const [providerMessage, setProviderMessage] = useState<string | null>(null)
   const [firecrawlMessage, setFirecrawlMessage] = useState<string | null>(null)
+  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSourceItem[]>([])
+  const [knowledgeTitle, setKnowledgeTitle] = useState('')
+  const [knowledgeText, setKnowledgeText] = useState('')
+  const [knowledgeMessage, setKnowledgeMessage] = useState<string | null>(null)
+  const [knowledgeSaving, setKnowledgeSaving] = useState(false)
+  const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeSourceItem | null>(null)
+  const [editingKnowledgeId, setEditingKnowledgeId] = useState<string | null>(null)
 
   const cards = useMemo(() => {
     const providerConfigured = status?.provider.configured === true
@@ -109,6 +141,12 @@ export default function RagChatbotPage() {
         tone: 'muted',
       },
       {
+        title: 'Chunks',
+        value: String(status?.knowledge.chunks ?? 0),
+        icon: FileText,
+        tone: 'muted',
+      },
+      {
         title: 'Embeddings',
         value: 'Coming soon',
         icon: Sparkles,
@@ -122,6 +160,10 @@ export default function RagChatbotPage() {
       },
     ] as const
   }, [status])
+
+  const canManageKnowledge = workspace.has('manage_rag_chatbot')
+  const knowledgeCharacters = knowledgeText.length
+  const knowledgeOverLimit = knowledgeCharacters > RAG_KNOWLEDGE_CHARACTER_LIMIT
 
   useEffect(() => {
     if (workspace.loading || !canView) {
@@ -154,6 +196,28 @@ export default function RagChatbotPage() {
       cancelled = true
     }
   }, [workspace.loading, canView])
+
+  useEffect(() => {
+    if (workspace.loading || !canView) return
+    loadKnowledge()
+  }, [workspace.loading, canView])
+
+  async function refreshStatusCounts() {
+    const response = await fetch('/api/rag/status')
+    const payload = await response.json().catch(() => ({}))
+    if (response.ok) setStatus(payload as RagStatusPayload)
+  }
+
+  async function loadKnowledge() {
+    try {
+      const response = await fetch('/api/rag/knowledge')
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to load knowledge.')
+      setKnowledgeSources(payload.sources ?? [])
+    } catch (loadError) {
+      setKnowledgeMessage(loadError instanceof Error ? loadError.message : 'Failed to load knowledge.')
+    }
+  }
 
   async function saveProvider() {
     setProviderSaving(true)
@@ -229,6 +293,82 @@ export default function RagChatbotPage() {
     }
   }
 
+  async function saveKnowledge() {
+    setKnowledgeSaving(true)
+    setKnowledgeMessage(null)
+    try {
+      const method = editingKnowledgeId ? 'PATCH' : 'POST'
+      const url = editingKnowledgeId
+        ? `/api/rag/knowledge/${editingKnowledgeId}`
+        : '/api/rag/knowledge'
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: knowledgeTitle,
+          content: knowledgeText,
+          status: 'active',
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to save knowledge.')
+
+      setKnowledgeTitle('')
+      setKnowledgeText('')
+      setEditingKnowledgeId(null)
+      setSelectedKnowledge(payload.source ?? null)
+      setKnowledgeMessage(editingKnowledgeId ? 'Knowledge updated.' : 'Knowledge added.')
+      await loadKnowledge()
+      await refreshStatusCounts()
+    } catch (saveError) {
+      setKnowledgeMessage(saveError instanceof Error ? saveError.message : 'Failed to save knowledge.')
+    } finally {
+      setKnowledgeSaving(false)
+    }
+  }
+
+  async function viewKnowledge(id: string) {
+    setKnowledgeMessage(null)
+    try {
+      const response = await fetch(`/api/rag/knowledge/${id}`)
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to load knowledge source.')
+      setSelectedKnowledge(payload.source)
+    } catch (viewError) {
+      setKnowledgeMessage(viewError instanceof Error ? viewError.message : 'Failed to load knowledge source.')
+    }
+  }
+
+  async function editKnowledge(id: string) {
+    await viewKnowledge(id)
+    const response = await fetch(`/api/rag/knowledge/${id}`)
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      setKnowledgeMessage(payload.error ?? 'Failed to edit knowledge source.')
+      return
+    }
+    setEditingKnowledgeId(id)
+    setKnowledgeTitle(payload.source.title)
+    setKnowledgeText(payload.source.content)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  async function archiveKnowledge(id: string) {
+    if (!window.confirm('Archive this knowledge source?')) return
+    setKnowledgeMessage(null)
+    try {
+      const response = await fetch(`/api/rag/knowledge/${id}`, { method: 'DELETE' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to archive knowledge.')
+      if (selectedKnowledge?.id === id) setSelectedKnowledge(null)
+      setKnowledgeMessage('Knowledge archived.')
+      await loadKnowledge()
+      await refreshStatusCounts()
+    } catch (archiveError) {
+      setKnowledgeMessage(archiveError instanceof Error ? archiveError.message : 'Failed to archive knowledge.')
+    }
+  }
+
   if (!workspace.loading && !canView) {
     return (
       <div className="rounded-2xl border border-red-400/30 bg-red-950/20 p-6 text-red-100">
@@ -271,7 +411,7 @@ export default function RagChatbotPage() {
         </div>
       )}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         {cards.map((card) => (
           <div key={card.title} className="rounded-2xl border border-[#17402f] bg-[#07130e]/80 p-4">
             <div className="mb-3 flex items-center justify-between">
@@ -367,11 +507,185 @@ export default function RagChatbotPage() {
         </SettingsCard>
       </div>
 
+      <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <FileText className="size-5 text-emerald-300" />
+              <h2 className="text-lg font-bold text-white">Knowledge Base</h2>
+            </div>
+            <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+              Add business information the chatbot will use later. Manual knowledge is chunked now,
+              but embeddings and chat answers come in the next phase.
+            </p>
+          </div>
+          <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
+            200,000 character limit
+          </span>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <div className="space-y-4 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Knowledge Title</span>
+              <input
+                value={knowledgeTitle}
+                onChange={(event) => setKnowledgeTitle(event.target.value)}
+                placeholder="Example: Company contact details"
+                disabled={!canManageKnowledge}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Knowledge Text</span>
+              <textarea
+                value={knowledgeText}
+                onChange={(event) => setKnowledgeText(event.target.value)}
+                placeholder="Paste your business information, FAQs, pricing, policies, or service details here."
+                disabled={!canManageKnowledge}
+                rows={10}
+                className="min-h-52 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className={cn('text-xs', knowledgeOverLimit ? 'text-red-200' : 'text-[#8bb4a5]')}>
+                {knowledgeCharacters.toLocaleString()} / {RAG_KNOWLEDGE_CHARACTER_LIMIT.toLocaleString()} characters
+              </p>
+              <div className="flex gap-2">
+                {editingKnowledgeId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingKnowledgeId(null)
+                      setKnowledgeTitle('')
+                      setKnowledgeText('')
+                    }}
+                    className="h-10 rounded-xl border border-[#315846] px-4 text-sm font-bold text-[#d8fff1] hover:bg-[#123226]"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={saveKnowledge}
+                  disabled={
+                    !canManageKnowledge ||
+                    knowledgeSaving ||
+                    knowledgeOverLimit ||
+                    !knowledgeTitle.trim() ||
+                    !knowledgeText.trim()
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <CheckCircle2 className="size-4" />
+                  {editingKnowledgeId ? 'Update Knowledge' : 'Add Knowledge'}
+                </button>
+              </div>
+            </div>
+            {!canManageKnowledge && (
+              <p className="text-xs text-[#8bb4a5]">Manage AI Chatbot permission is required to add or edit knowledge.</p>
+            )}
+            {knowledgeMessage && (
+              <p className="rounded-xl border border-[#315846] bg-[#07130e] px-3 py-2 text-sm text-[#d8fff1]">
+                {knowledgeMessage}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
+              <div className="border-b border-[#214b39] px-4 py-3">
+                <h3 className="font-bold text-white">Knowledge List</h3>
+                <p className="text-xs text-[#8bb4a5]">Manual sources only. Website import is not active yet.</p>
+              </div>
+              <div className="divide-y divide-[#214b39]">
+                {knowledgeSources.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-sm text-[#8bb4a5]">
+                    No manual knowledge added yet.
+                  </div>
+                ) : (
+                  knowledgeSources.map((source) => (
+                    <article key={source.id} className="space-y-3 px-4 py-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <h4 className="font-bold text-white">{source.title}</h4>
+                          <p className="mt-1 text-xs uppercase tracking-[0.16em] text-emerald-200">
+                            Manual · {source.status}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => viewKnowledge(source.id)}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#315846] px-2.5 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
+                          >
+                            <Eye className="size-3.5" />
+                            View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => editKnowledge(source.id)}
+                            disabled={!canManageKnowledge}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#315846] px-2.5 text-xs font-bold text-[#d8fff1] hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Pencil className="size-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => archiveKnowledge(source.id)}
+                            disabled={!canManageKnowledge}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-400/40 px-2.5 text-xs font-bold text-red-100 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Trash2 className="size-3.5" />
+                            Archive
+                          </button>
+                        </div>
+                      </div>
+                      <dl className="grid gap-2 text-xs text-[#a9c6bb] sm:grid-cols-2 xl:grid-cols-3">
+                        <div>Created: {formatDate(source.createdAt)}</div>
+                        <div>Updated: {formatDate(source.updatedAt)}</div>
+                        <div>{source.characterCount.toLocaleString()} characters</div>
+                        <div>
+                          {source.chunkCount > 0
+                            ? `${source.chunkCount.toLocaleString()} chunks · Not embedded yet`
+                            : 'Not embedded yet'}
+                        </div>
+                      </dl>
+                    </article>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {selectedKnowledge && (
+              <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-white">{selectedKnowledge.title}</h3>
+                    <p className="text-xs text-[#8bb4a5]">Manual · {selectedKnowledge.status}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedKnowledge(null)}
+                    className="rounded-lg border border-[#315846] px-2 py-1 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
+                  >
+                    Close
+                  </button>
+                </div>
+                <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-[#315846] bg-[#07130e] p-3 text-sm leading-6 text-[#d8fff1]">
+                  {selectedKnowledge.content}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       <section>
         <h2 className="mb-3 text-lg font-bold text-white">Coming Soon</h2>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {[
-            ['Add Knowledge', Database],
             ['Website Import', Globe],
             ['Test Chat', MessageSquare],
             ['Logs', Clock],
