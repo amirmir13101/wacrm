@@ -82,6 +82,11 @@ interface RagChatResponse {
   readonly fallbackReason: string | null
 }
 
+interface RagChatMemoryMessage {
+  readonly role: 'user' | 'assistant'
+  readonly content: string
+}
+
 interface RagChatLogItem {
   readonly id: string
   readonly createdAt: string
@@ -188,6 +193,7 @@ export default function RagChatbotPage() {
   const [preparingKnowledgeId, setPreparingKnowledgeId] = useState<string | null>(null)
   const [chatQuestion, setChatQuestion] = useState('')
   const [chatAnswer, setChatAnswer] = useState<RagChatResponse | null>(null)
+  const [chatHistory, setChatHistory] = useState<RagChatMemoryMessage[]>([])
   const [chatMessage, setChatMessage] = useState<string | null>(null)
   const [chatLoading, setChatLoading] = useState(false)
   const [logs, setLogs] = useState<RagChatLogItem[]>([])
@@ -583,18 +589,29 @@ export default function RagChatbotPage() {
     setChatLoading(true)
     setChatMessage(null)
     setChatAnswer(null)
+    const question = chatQuestion.trim()
     try {
       if (chatUnavailableMessage) throw new Error(chatUnavailableMessage)
 
       const response = await fetch('/api/rag/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: chatQuestion }),
+        body: JSON.stringify({
+          question,
+          messages: chatHistory.slice(-20),
+        }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'Chat request failed.')
 
-      setChatAnswer(payload as RagChatResponse)
+      const result = payload as RagChatResponse
+      setChatAnswer(result)
+      setChatHistory((current) => [
+        ...current,
+        { role: 'user' as const, content: question },
+        { role: 'assistant' as const, content: result.answer },
+      ].slice(-20))
+      setChatQuestion('')
       await loadLogs()
     } catch (chatError) {
       setChatMessage(chatError instanceof Error ? chatError.message : 'Chat request failed.')
@@ -1001,7 +1018,8 @@ export default function RagChatbotPage() {
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
               Ask a question from prepared manual or website knowledge. This dashboard test uses
-              the same core RAG answer path as WhatsApp auto-reply when auto-reply is enabled.
+              the same core RAG answer path as WhatsApp auto-reply and keeps recent messages in
+              this browser tab so follow-up questions work like the Starter RAG chat.
             </p>
           </div>
           <span className="rounded-full border border-[#315846] bg-[#0d1b15] px-3 py-1 text-xs font-bold text-[#d8fff1]">
@@ -1032,16 +1050,29 @@ export default function RagChatbotPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-[#8bb4a5]">
                 {chatQuestion.length.toLocaleString()} / 2,000 characters
+                {chatHistory.length > 0 ? ` · ${chatHistory.length} memory messages` : ''}
               </p>
-              <button
-                type="button"
-                onClick={askTestChat}
-                disabled={chatLoading || Boolean(chatUnavailableMessage) || !chatQuestion.trim()}
-                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <MessageSquare className="size-4" />
-                {chatLoading ? 'Asking...' : 'Ask'}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {chatHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setChatHistory([])}
+                    disabled={chatLoading}
+                    className="inline-flex h-10 items-center rounded-xl border border-[#315846] px-3 text-sm font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Clear memory
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={askTestChat}
+                  disabled={chatLoading || Boolean(chatUnavailableMessage) || !chatQuestion.trim()}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <MessageSquare className="size-4" />
+                  {chatLoading ? 'Asking...' : 'Ask'}
+                </button>
+              </div>
             </div>
             {chatMessage && (
               <p className="rounded-xl border border-[#315846] bg-[#07130e] px-3 py-2 text-sm text-[#d8fff1]">

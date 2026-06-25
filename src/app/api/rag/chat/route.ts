@@ -19,10 +19,12 @@ export async function POST(request: Request) {
         { status: 400 },
       )
     }
+    const recentMessages = Array.isArray(body.messages) ? body.messages : []
 
     const result = await answerRagDashboardQuestion({
       workspaceId: auth.workspace.workspaceId,
       question,
+      recentMessages,
     })
 
     return NextResponse.json(result)

@@ -68,6 +68,11 @@ export interface RagRetrievedChunk extends RagChunk {
   readonly similarity: number
 }
 
+export interface RagConversationMessage {
+  readonly role: 'user' | 'assistant'
+  readonly content: string
+}
+
 export interface RagKnowledgeSourceDraft {
   readonly workspaceId: string
   readonly title: string
@@ -81,7 +86,9 @@ export interface RagKnowledgeSourceDraft {
 export interface RagAnswerRequest {
   readonly workspaceId: string
   readonly question: string
+  readonly standaloneQuestion?: string
   readonly retrievedChunks: ReadonlyArray<RagRetrievedChunk>
+  readonly recentMessages?: ReadonlyArray<RagConversationMessage>
 }
 
 export interface RagAnswerResult {

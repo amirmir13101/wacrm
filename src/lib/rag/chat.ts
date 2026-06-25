@@ -4,12 +4,18 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { generateRagEmbedding } from './embeddings'
+import {
+  formatRagConversationMemory,
+  loadRagConversationMemory,
+  sanitizeRagConversationMessages,
+} from './memory'
 import { createRagOpenAICompatibleProvider, resolveRagProviderConfig } from './provider'
 import { sanitizeProviderError } from './security'
 import { isRagProviderType } from './settings'
 import type {
   RagAnswerRequest,
   RagAnswerResult,
+  RagConversationMessage,
   RagProviderType,
   RagResolvedProviderConfig,
   RagRetrievedChunk,
@@ -34,6 +40,11 @@ Question handling:
 - If the customer sends only a short topic, product name, service name, category, or keyword, treat it as asking what information is available about that topic.
 - For broad topic questions, provide a concise overview from the relevant snippets instead of falling back only because the wording is short or general.
 - If the snippets contain related facts that answer the topic, use those facts. Fall back only when the provided snippets do not contain relevant information.
+
+Conversation memory:
+- Use recent conversation messages only to understand follow-up references such as "it", "that plan", "the old price", "refund", or "support".
+- Do not treat conversation memory as official business knowledge.
+- Answer business facts only from the retrieved knowledge snippets or allowed CRM context provided by the server.
 
 Pricing and numeric facts:
 - Use exact listed values when they are present in the provided knowledge.
@@ -61,9 +72,17 @@ export function buildRagUserPrompt(request: RagAnswerRequest): string {
   const snippets = request.retrievedChunks
     .map((chunk, index) => `Snippet ${index + 1}:\n${chunk.content}`)
     .join('\n\n')
+  const memory = request.recentMessages?.length
+    ? `\n\nRecent conversation memory (use only to understand follow-up references, not as business truth):\n${formatRagConversationMemory(request.recentMessages)}`
+    : ''
+  const standalone = request.standaloneQuestion && request.standaloneQuestion !== request.question
+    ? `\n\nStandalone search query used for retrieval:\n${request.standaloneQuestion}`
+    : ''
 
   return `Knowledge:
 ${snippets || '(none)'}
+${memory}
+${standalone}
 
 Question:
 ${request.question}
@@ -380,6 +399,7 @@ interface RagAnswerOptions {
   readonly useServiceRetrieval?: boolean
   readonly conversationId?: string | null
   readonly messageId?: string | null
+  readonly recentMessages?: ReadonlyArray<Partial<RagConversationMessage>>
 }
 
 function cleanQuestion(value: string): string {
@@ -450,6 +470,62 @@ function safeAnswer(value: string | undefined | null): string {
   const lower = answer.toLowerCase()
   if (blocked.some((term) => lower.includes(term.toLowerCase()))) return RAG_CLEAN_FALLBACK
   return answer
+}
+
+export function buildRagStandaloneQueryPrompt(args: {
+  readonly question: string
+  readonly recentMessages: ReadonlyArray<RagConversationMessage>
+}): string {
+  return `You rewrite customer follow-up questions into standalone knowledge-base search queries.
+
+Use the recent conversation only to resolve references like "it", "that", "this plan", "old price", "refund", "support", or "there".
+Do not answer the question.
+Do not add facts that are not present in the conversation.
+Keep business names, product names, plan names, prices, dates, locations, and contact terms exactly as written when they are present.
+Return only one standalone search query, with no labels and no explanation.
+
+Recent conversation:
+${formatRagConversationMemory(args.recentMessages) || '(none)'}
+
+Latest customer question:
+${args.question}`
+}
+
+function cleanStandaloneQuery(value: string | null | undefined, fallback: string): string {
+  const clean = cleanQuestion(value ?? '')
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/^(standalone search query|query)\s*:\s*/i, '')
+    .trim()
+
+  if (!clean) return fallback
+  if (clean.length > 240) return fallback
+  return clean
+}
+
+async function rewriteRagStandaloneQuestion(args: {
+  readonly question: string
+  readonly recentMessages: ReadonlyArray<RagConversationMessage>
+  readonly providerConfig: RagResolvedProviderConfig
+}): Promise<string> {
+  if (args.recentMessages.length === 0) return args.question
+
+  try {
+    const provider = createRagOpenAICompatibleProvider(args.providerConfig)
+    const result = await generateText({
+      model: provider(args.providerConfig.chatModel),
+      system: 'Rewrite the latest customer message into one standalone retrieval query. Do not answer.',
+      prompt: buildRagStandaloneQueryPrompt({
+        question: args.question,
+        recentMessages: args.recentMessages,
+      }),
+      temperature: 0,
+      maxOutputTokens: 80,
+    })
+
+    return cleanStandaloneQuery(result.text, args.question)
+  } catch {
+    return args.question
+  }
 }
 
 async function insertRagChatLog(args: {
@@ -635,10 +711,27 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
 
   let providerConfig: RagResolvedProviderConfig | null = null
   let retrievedChunks: ReadonlyArray<RagRetrievedChunk> = []
+  let recentMessages: ReadonlyArray<RagConversationMessage> = []
+  let standaloneQuestion = question
 
   try {
     providerConfig = await getDashboardProviderConfig(args.workspaceId)
-    const retrievalQueries = buildRagRetrievalQueries(question)
+    recentMessages = args.recentMessages
+      ? sanitizeRagConversationMessages(args.recentMessages)
+      : await loadRagConversationMemory({
+          workspaceId: args.workspaceId,
+          conversationId: args.conversationId,
+          excludeMessageId: args.messageId,
+        })
+    standaloneQuestion = await rewriteRagStandaloneQuestion({
+      question,
+      recentMessages,
+      providerConfig,
+    })
+    const retrievalQueries = Array.from(new Set([
+      ...buildRagRetrievalQueries(standaloneQuestion),
+      ...buildRagRetrievalQueries(question),
+    ])).slice(0, 8)
     retrievedChunks = await retrieveRagChunksForQueries({
       workspaceId: args.workspaceId,
       queries: retrievalQueries,
@@ -663,7 +756,12 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
         chatModel: providerConfig.chatModel,
         embeddingModel: providerConfig.embeddingModel,
         retrievedChunkIds: [],
-        retrievalScores: [],
+        retrievalScores: [
+          {
+            standaloneQuestion,
+            memoryMessageCount: recentMessages.length,
+          },
+        ],
         latencyMs: Date.now() - startedAt,
         channel: args.channel,
         conversationId: args.conversationId,
@@ -679,6 +777,8 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
       prompt: buildRagUserPrompt({
         workspaceId: args.workspaceId,
         question,
+        standaloneQuestion,
+        recentMessages,
         retrievedChunks,
       }),
       temperature: 0,
@@ -705,10 +805,16 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
       chatModel: providerConfig.chatModel,
       embeddingModel: providerConfig.embeddingModel,
       retrievedChunkIds: retrievedChunks.map((chunk) => chunk.chunkId),
-      retrievalScores: retrievedChunks.map((chunk) => ({
-        sourceTitle: chunk.sourceTitle,
-        similarity: chunk.similarity,
-      })),
+      retrievalScores: [
+        {
+          standaloneQuestion,
+          memoryMessageCount: recentMessages.length,
+        },
+        ...retrievedChunks.map((chunk) => ({
+          sourceTitle: chunk.sourceTitle,
+          similarity: chunk.similarity,
+        })),
+      ],
       tokenUsage: textResult.usage ? { ...textResult.usage } : {},
       latencyMs: Date.now() - startedAt,
       channel: args.channel,
@@ -731,7 +837,12 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
       chatModel: providerConfig?.chatModel ?? null,
       embeddingModel: providerConfig?.embeddingModel ?? null,
       retrievedChunkIds: [],
-      retrievalScores: [],
+      retrievalScores: [
+        {
+          standaloneQuestion,
+          memoryMessageCount: recentMessages.length,
+        },
+      ],
       latencyMs: Date.now() - startedAt,
       channel: args.channel,
       conversationId: args.conversationId,
@@ -750,11 +861,13 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
 export async function answerRagDashboardQuestion(args: {
   readonly workspaceId: string
   readonly question: string
+  readonly recentMessages?: ReadonlyArray<Partial<RagConversationMessage>>
 }): Promise<RagDashboardChatResult> {
   return answerRagQuestion({
     workspaceId: args.workspaceId,
     question: args.question,
     channel: 'dashboard',
+    recentMessages: args.recentMessages,
   })
 }
 
