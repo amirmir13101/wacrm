@@ -173,6 +173,18 @@ describe('RAG Phase 1 foundation', () => {
     expect(combined).not.toMatch(/selectedOffer|Derived fact guidance|fallback reason/i)
   })
 
+  it('grounds price answers and calculations without treating competitor prices as official values', () => {
+    const prompt = buildRagSystemPrompt()
+
+    expect(prompt).toContain('Do not invent exact prices')
+    expect(prompt).toContain('You may do simple arithmetic only when the needed numbers are explicitly present')
+    expect(prompt).toContain('not an official listed value')
+    expect(prompt).toContain('if only a monthly price is present and no exact yearly total')
+    expect(prompt).toContain('monthly price × 12')
+    expect(prompt).toContain('do not use competitor prices or competitor specs')
+    expect(prompt).toContain('Do not mix neighboring plans, products, services, locations, packages, or providers.')
+  })
+
   it('masks secrets and sanitizes provider errors', () => {
     expect(maskSecret('sk-live-123456')).toBe('****3456')
     expect(sanitizeProviderError(new Error('Request failed for sk-live-secret Bearer token-123'))).toBe(
