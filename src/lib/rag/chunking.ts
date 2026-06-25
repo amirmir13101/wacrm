@@ -50,7 +50,22 @@ export function createRagChunks(
 
   if (current) packedChunks.push(current)
 
-  return Array.from(new Set(packedChunks))
+  const featureChunks = packedChunks.flatMap((chunk) => {
+    if (!chunk.toLowerCase().includes('supports')) return []
+
+    return chunk
+      .replace(/\.$/, '')
+      .split(',')
+      .map((feature) => feature.trim())
+      .filter((feature) => feature.length > 0 && feature !== chunk)
+      .map((feature) =>
+        feature.toLowerCase().startsWith('the system supports')
+          ? `${feature}.`
+          : `The system supports ${feature}.`,
+      )
+  })
+
+  return Array.from(new Set([...packedChunks, ...featureChunks]))
     .slice(0, maxChunksPerSource)
     .map((chunk, index) => ({
       content: chunk,

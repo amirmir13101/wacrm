@@ -14,6 +14,7 @@ export interface RagRetrievalPort {
 }
 
 export const DEFAULT_RAG_MATCH_COUNT = 4
+export const DEFAULT_RAG_SIMILARITY_THRESHOLD = 0.5
 
 export async function retrieveWorkspaceRagChunks(
   port: RagRetrievalPort,

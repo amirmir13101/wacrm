@@ -2,6 +2,13 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+import {
+  RAG_DATABASE_ADAPTER_OPTIONS,
+  RAG_QUALITY_COMPARISON_QUESTIONS,
+  RAG_QUALITY_DIFFERENCE_REASONS,
+  RAG_STARTER_PARITY_BEHAVIOR,
+  RECOMMENDED_RAG_DATABASE_ADAPTER,
+} from './architecture'
 import { buildRagSystemPrompt, createEmptyRagAnswer } from './chat'
 import { createRagChunks } from './chunking'
 import { prepareRagKnowledgeSource } from './knowledge'
@@ -9,7 +16,11 @@ import {
   DEFAULT_RAG_PROVIDER_CONFIG,
   resolveRagProviderConfig,
 } from './provider'
-import { retrieveWorkspaceRagChunks } from './retrieval'
+import {
+  DEFAULT_RAG_MATCH_COUNT,
+  DEFAULT_RAG_SIMILARITY_THRESHOLD,
+  retrieveWorkspaceRagChunks,
+} from './retrieval'
 import { assertWorkspaceScoped, maskSecret, sanitizeProviderError } from './security'
 import {
   CUSTOMER_FACING_RAG_PROVIDER_FIELDS,
@@ -95,6 +106,15 @@ describe('RAG Phase 1 foundation', () => {
     ).toBeGreaterThan(1)
   })
 
+  it('preserves the local starter feature-level supports chunk behavior', () => {
+    const chunks = createRagChunks(
+      'The system supports team inbox, contact management, broadcasts, automation, AI chatbot, and human handoff.',
+    ).map((chunk) => chunk.content)
+
+    expect(chunks).toContain('The system supports broadcasts.')
+    expect(chunks).toContain('The system supports contact management.')
+  })
+
   it('keeps retrieval workspace-scoped through an injectable port', async () => {
     const results = await retrieveWorkspaceRagChunks(
       {
@@ -131,6 +151,11 @@ describe('RAG Phase 1 foundation', () => {
     ).rejects.toThrow('workspace_id is required for RAG retrieval.')
   })
 
+  it('keeps starter retrieval defaults explicit for the future pgvector adapter', () => {
+    expect(DEFAULT_RAG_MATCH_COUNT).toBe(4)
+    expect(DEFAULT_RAG_SIMILARITY_THRESHOLD).toBe(0.5)
+  })
+
   it('returns clean chat fallback scaffolding without old debug concepts', () => {
     const prompt = buildRagSystemPrompt()
     const answer = createEmptyRagAnswer({
@@ -157,6 +182,43 @@ describe('RAG Phase 1 foundation', () => {
 
   it('keeps future table names in the new rag namespace', () => {
     expect(FUTURE_RAG_TABLES.every((table) => table.startsWith('rag_'))).toBe(true)
+  })
+
+  it('documents starter-parity requirements and database adapter trade-offs', () => {
+    expect(RAG_STARTER_PARITY_BEHAVIOR).toEqual(
+      expect.arrayContaining([
+        'feature_level_supports_chunks',
+        'cosine_similarity_vector_search',
+        'similarity_threshold_0_5',
+        'top_4_retrieved_chunks',
+      ]),
+    )
+    expect(RECOMMENDED_RAG_DATABASE_ADAPTER).toBe('supabase_rpc')
+    expect(RAG_DATABASE_ADAPTER_OPTIONS.supabase_rpc.tradeOffs).toContain(
+      'can preserve pgvector cosine search through SQL/RPC',
+    )
+    expect(RAG_DATABASE_ADAPTER_OPTIONS.drizzle_direct_postgres.tradeOffs).toContain(
+      'closest to the local starter schema and query style',
+    )
+  })
+
+  it('requires future phases to compare CRM answers against the local starter baseline', () => {
+    expect(RAG_QUALITY_COMPARISON_QUESTIONS).toEqual([
+      'What is the support email?',
+      'Do you have Singapore VPS location?',
+      'What is the Singapore test IP?',
+      'What is the monthly price of VPS x4?',
+      'What is the yearly price of VPS x4?',
+      'Do you sell laptops?',
+    ])
+    expect(RAG_QUALITY_DIFFERENCE_REASONS).toEqual([
+      'chunking difference',
+      'embedding model difference',
+      'vector query difference',
+      'prompt difference',
+      'model difference',
+      'retrieved chunks difference',
+    ])
   })
 })
 
