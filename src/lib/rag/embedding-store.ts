@@ -8,8 +8,9 @@ import type { RagProviderType, RagResolvedProviderConfig } from './types'
 
 const RAG_EMBEDDING_DIMENSIONS = 1536
 const ZERO_EMBEDDING = Array.from({ length: RAG_EMBEDDING_DIMENSIONS }, () => 0)
+export const RAG_AUTO_EMBED_CHUNK_LIMIT = 200
 
-type EmbeddingRunStatus = 'ready' | 'partial' | 'failed' | 'not_configured'
+type EmbeddingRunStatus = 'ready' | 'partial' | 'failed' | 'not_configured' | 'skipped'
 
 interface RagProviderSettingsRow {
   readonly provider: string | null
@@ -236,9 +237,26 @@ function summarize(args: {
         ? 'Knowledge is prepared for chatbot.'
         : args.status === 'partial'
           ? 'Some knowledge was prepared, but a few chunks failed.'
-          : 'Knowledge could not be prepared yet.'
+          : args.status === 'skipped'
+            ? 'Knowledge was saved and chunked. Click Prepare for Chatbot to create embeddings.'
+            : 'Knowledge could not be prepared yet.'
     ),
   }
+}
+
+export function shouldAutoEmbedRagKnowledge(chunkCount: number): boolean {
+  return chunkCount > 0 && chunkCount <= RAG_AUTO_EMBED_CHUNK_LIMIT
+}
+
+export function createSkippedRagEmbeddingSummary(chunkCount: number): RagEmbeddingSummary {
+  return summarize({
+    chunksProcessed: chunkCount,
+    embeddingsCreated: 0,
+    embeddingsSkipped: chunkCount,
+    embeddingsFailed: 0,
+    status: 'skipped',
+    message: `Knowledge was saved and fully chunked into ${chunkCount.toLocaleString()} chunks. Click Prepare for Chatbot to create embeddings when you are ready for the provider API cost.`,
+  })
 }
 
 export async function embedRagManualKnowledgeSource(args: {

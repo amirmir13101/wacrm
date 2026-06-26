@@ -1,7 +1,11 @@
-import { createRagChunks } from './chunking'
+import {
+  createRagChunks,
+  RAG_CHUNK_OVERLAP_CHARS,
+  RAG_KNOWLEDGE_CHARACTER_LIMIT,
+} from './chunking'
 import type { RagChunk, RagKnowledgeSourceDraft } from './types'
 
-export const RAG_KNOWLEDGE_CHARACTER_LIMIT = 500_000
+export { RAG_CHUNK_OVERLAP_CHARS, RAG_KNOWLEDGE_CHARACTER_LIMIT }
 
 export interface PrepareRagKnowledgeInput {
   readonly workspaceId: string

@@ -3,6 +3,11 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
+  RAG_CHUNK_OVERLAP_CHARS,
+  createRagChunks,
+  maxRagChunksForContent,
+} from './chunking'
+import {
   cleanRagKnowledgeContent,
   prepareRagKnowledgeSource,
   RAG_KNOWLEDGE_CHARACTER_LIMIT,
@@ -36,6 +41,50 @@ describe('RAG manual knowledge management', () => {
     expect(page).toContain('RAG_KNOWLEDGE_CHARACTER_LIMIT')
   })
 
+  it('fully chunks long sources beyond the old 160 chunk cap without dropping late facts', () => {
+    const finalFact = 'FINAL UNIQUE SUPPORT FACT: The emergency support email is final-test@example.com.'
+    const longContent = `${Array.from({ length: 230 }, (_, index) =>
+      `Generic business policy paragraph ${index + 1}. ${'This sentence keeps the source long and generic. '.repeat(20)}`,
+    ).join('\n\n')}\n\n${finalFact}`
+
+    expect(longContent.length).toBeGreaterThan(160_000)
+    expect(longContent.length).toBeLessThan(RAG_KNOWLEDGE_CHARACTER_LIMIT)
+
+    const prepared = prepareRagKnowledgeSource({
+      workspaceId: 'workspace-1',
+      title: 'Large generic knowledge',
+      content: longContent,
+    })
+
+    expect(prepared.chunks.length).toBeGreaterThan(160)
+    expect(prepared.chunks.some((chunk) => chunk.content.includes(finalFact))).toBe(true)
+    expect(prepared.chunks.at(-1)?.content).toContain(finalFact)
+  })
+
+  it('adds readable overlap between neighboring chunks', () => {
+    const chunks = createRagChunks(
+      [
+        'Opening paragraph explains the business service and customer support process.',
+        'Second paragraph includes the contact path and escalation detail.',
+        'Third paragraph includes the final policy and response expectation.',
+      ].join(' '),
+      {
+        maxChunkLength: 95,
+        overlapChars: 30,
+      },
+    )
+
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks[1]?.content).toContain('support process')
+    expect(chunks[1]?.content).toContain('Second paragraph')
+  })
+
+  it('aligns safe max chunks with the full 500,000 character knowledge limit', () => {
+    expect(RAG_CHUNK_OVERLAP_CHARS).toBeGreaterThanOrEqual(100)
+    expect(maxRagChunksForContent(RAG_KNOWLEDGE_CHARACTER_LIMIT)).toBeGreaterThan(500)
+    expect(maxRagChunksForContent(RAG_KNOWLEDGE_CHARACTER_LIMIT)).toBeGreaterThan(160)
+  })
+
   it('cleans dangerous control characters and rejects empty or oversized content', () => {
     expect(cleanRagKnowledgeContent('Hello\u0000   world\n\n\nagain')).toBe('Hello world\n\nagain')
 
@@ -64,7 +113,14 @@ describe('RAG manual knowledge management', () => {
     expect(page).toContain('Paste your business information, FAQs, pricing, policies, or service details here.')
     expect(page).toContain('Add Knowledge')
     expect(page).toContain('Knowledge List')
-    expect(page).toContain('Not embedded')
+    expect(page).toContain('Chunks ready')
+    expect(page).toContain('Knowledge processing status')
+    expect(page).toContain('Saving knowledge...')
+    expect(page).toContain('Cleaning content...')
+    expect(page).toContain('Creating chunks...')
+    expect(page).toContain('Preparing embeddings...')
+    expect(page).toContain('Ready for chatbot')
+    expect(page).toContain('animate-spin')
 
     expect(page).not.toContain('embedding vector')
     expect(page).not.toContain('retrieval score')
@@ -81,11 +137,15 @@ describe('RAG manual knowledge management', () => {
 
     expect(listRoute).toContain('createRagManualKnowledge')
     expect(listRoute).toContain('embedRagManualKnowledgeSource')
+    expect(listRoute).toContain('shouldAutoEmbedRagKnowledge')
+    expect(listRoute).toContain('createSkippedRagEmbeddingSummary')
     expect(listRoute).toContain('embeddingSummary')
     expect(listRoute).toContain('sanitizeProviderError')
     expect(detailRoute).toContain('getRagKnowledgeSource')
     expect(detailRoute).toContain('updateRagManualKnowledge')
     expect(detailRoute).toContain('embedRagManualKnowledgeSource')
+    expect(detailRoute).toContain('shouldAutoEmbedRagKnowledge')
+    expect(detailRoute).toContain('createSkippedRagEmbeddingSummary')
     expect(detailRoute).toContain('embeddingSummary')
     expect(detailRoute).toContain('sanitizeProviderError')
     expect(detailRoute).toContain('archiveRagKnowledgeSource')
@@ -96,6 +156,8 @@ describe('RAG manual knowledge management', () => {
     expect(knowledgeStore).toContain("from('rag_knowledge_chunks')")
     expect(knowledgeStore).not.toContain("from('ai_")
     expect(knowledgeStore).toContain('prepareRagKnowledgeSource')
+    expect(knowledgeStore).toContain('chunk_coverage')
+    expect(knowledgeStore).toContain('chunk_overlap_chars')
     expect(knowledgeStore).toContain('embedding_status')
     expect(knowledgeStore).not.toContain('generateRagEmbedding')
     expect(knowledgeStore).not.toContain('generateRagChunkEmbeddings')

@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 
 import { importRagWebsiteKnowledge } from '@/lib/rag/website-import'
-import { embedRagManualKnowledgeSource } from '@/lib/rag/embedding-store'
+import {
+  createSkippedRagEmbeddingSummary,
+  embedRagManualKnowledgeSource,
+  shouldAutoEmbedRagKnowledge,
+} from '@/lib/rag/embedding-store'
 import { sanitizeProviderError } from '@/lib/rag/security'
 import { requireRagPermission, safeErrorMessage } from '../_helpers'
 
@@ -17,17 +21,19 @@ export async function POST(request: Request) {
       userId: auth.workspace.userId,
       url,
     })
-    const embeddingSummary = await embedRagManualKnowledgeSource({
-      workspaceId: auth.workspace.workspaceId,
-      sourceId: result.source.id,
-    }).catch((error) => ({
-      chunksProcessed: 0,
-      embeddingsCreated: 0,
-      embeddingsSkipped: 0,
-      embeddingsFailed: 0,
-      status: 'failed' as const,
-      message: sanitizeProviderError(error),
-    }))
+    const embeddingSummary = shouldAutoEmbedRagKnowledge(result.source.chunkCount)
+      ? await embedRagManualKnowledgeSource({
+        workspaceId: auth.workspace.workspaceId,
+        sourceId: result.source.id,
+      }).catch((error) => ({
+        chunksProcessed: 0,
+        embeddingsCreated: 0,
+        embeddingsSkipped: 0,
+        embeddingsFailed: 0,
+        status: 'failed' as const,
+        message: sanitizeProviderError(error),
+      }))
+      : createSkippedRagEmbeddingSummary(result.source.chunkCount)
 
     return NextResponse.json({ ...result, embeddingSummary })
   } catch (error) {

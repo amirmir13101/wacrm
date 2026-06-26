@@ -53,6 +53,14 @@ describe('RAG manual embedding generation', () => {
     expect(embeddingStore).toContain("embedding_status: args.status")
   })
 
+  it('keeps large-source embedding explicit while still embedding every chunk when prepared', () => {
+    expect(embeddingStore).toContain('RAG_AUTO_EMBED_CHUNK_LIMIT = 200')
+    expect(embeddingStore).toContain('shouldAutoEmbedRagKnowledge')
+    expect(embeddingStore).toContain('createSkippedRagEmbeddingSummary')
+    expect(embeddingStore).toContain('for (const chunk of chunks)')
+    expect(embeddingStore).not.toContain('.slice(0, 160)')
+  })
+
   it('adds only the single-source knowledge embedding API with workspace permission', () => {
     expect(embedRoute).toContain("requireRagPermission('manage_rag_chatbot')")
     expect(embedRoute).toContain('embedRagManualKnowledgeSource')
@@ -63,8 +71,9 @@ describe('RAG manual embedding generation', () => {
 
   it('adds customer-facing preparation controls and status counts without vectors or debug output', () => {
     expect(page).toContain('Prepare for Chatbot')
-    expect(page).toContain('prepared automatically')
-    expect(page).toContain('Retry Prepare')
+    expect(page).toContain('Small sources can prepare automatically')
+    expect(page).toContain('provider API cost')
+    expect(page).toContain('Prepare for Chatbot')
     expect(page).toContain('ready embeddings')
     expect(page).toContain('failed embeddings')
     expect(page).toContain('embeddingStatusLabel')

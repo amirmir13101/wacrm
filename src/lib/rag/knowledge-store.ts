@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import {
   prepareRagKnowledgeSource,
+  RAG_CHUNK_OVERLAP_CHARS,
   RAG_KNOWLEDGE_CHARACTER_LIMIT,
 } from './knowledge'
 
@@ -237,6 +238,9 @@ export async function createRagManualKnowledge(args: {
       created_by: args.userId,
       metadata: {
         character_count: prepared.source.cleanedContent.length,
+        chunk_count: prepared.chunks.length,
+        chunk_coverage: 'full',
+        chunk_overlap_chars: RAG_CHUNK_OVERLAP_CHARS,
         source: 'manual_dashboard',
         version: 1,
         embedding_status: 'not_embedded',
@@ -288,6 +292,9 @@ export async function updateRagManualKnowledge(args: {
       status: args.status ?? 'active',
       metadata: {
         character_count: prepared.source.cleanedContent.length,
+        chunk_count: prepared.chunks.length,
+        chunk_coverage: 'full',
+        chunk_overlap_chars: RAG_CHUNK_OVERLAP_CHARS,
         source: existing.sourceType === 'website' ? 'website_import' : 'manual_dashboard',
         version: 1,
         embedding_status: 'not_embedded',
@@ -339,6 +346,9 @@ export async function createRagWebsiteKnowledge(args: {
       created_by: args.userId,
       metadata: {
         character_count: prepared.source.cleanedContent.length,
+        chunk_count: prepared.chunks.length,
+        chunk_coverage: 'full',
+        chunk_overlap_chars: RAG_CHUNK_OVERLAP_CHARS,
         imported_by: 'firecrawl',
         imported_url: args.sourceUrl,
         final_url: args.finalUrl ?? args.sourceUrl,
@@ -413,6 +423,8 @@ async function replaceRagKnowledgeChunks(
         ...(chunk.metadata ?? {}),
         embedding_status: 'not_embedded',
         character_limit: RAG_KNOWLEDGE_CHARACTER_LIMIT,
+        chunk_overlap_chars: RAG_CHUNK_OVERLAP_CHARS,
+        chunk_coverage: 'full',
       },
     })),
   )

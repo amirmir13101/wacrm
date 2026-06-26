@@ -10,6 +10,7 @@ import {
   FileText,
   Globe,
   KeyRound,
+  Loader2,
   Lock,
   MessageSquare,
   Pencil,
@@ -132,10 +133,10 @@ function statusClasses(status: ConnectionStatus, configured: boolean): string {
 }
 
 function embeddingStatusLabel(status: KnowledgeSourceItem['embeddingStatus']): string {
-  if (status === 'ready') return 'Ready'
-  if (status === 'failed') return 'Failed'
-  if (status === 'partial') return 'Partial'
-  return 'Not embedded'
+  if (status === 'ready') return 'Ready for Chatbot'
+  if (status === 'failed') return 'Needs attention'
+  if (status === 'partial') return 'Partially ready'
+  return 'Chunks ready'
 }
 
 function embeddingStatusClasses(status: KnowledgeSourceItem['embeddingStatus']): string {
@@ -166,6 +167,66 @@ function sourceTypeLabel(sourceType: KnowledgeSourceItem['sourceType']): string 
   return sourceType === 'website' ? 'Website' : 'Manual'
 }
 
+type KnowledgeProgressKind = 'manual' | 'website' | 'prepare'
+type KnowledgeProgressStatus = 'running' | 'done' | 'failed'
+
+interface KnowledgeProgressState {
+  readonly kind: KnowledgeProgressKind
+  readonly status: KnowledgeProgressStatus
+  readonly currentStep: number
+  readonly message: string | null
+}
+
+const knowledgeProgressSteps: Record<KnowledgeProgressKind, ReadonlyArray<string>> = {
+  manual: [
+    'Saving knowledge...',
+    'Cleaning content...',
+    'Creating chunks...',
+    'Preparing embeddings...',
+    'Ready for chatbot',
+  ],
+  website: [
+    'Importing website...',
+    'Reading website content...',
+    'Cleaning content...',
+    'Creating chunks...',
+    'Preparing embeddings...',
+    'Ready for chatbot',
+  ],
+  prepare: [
+    'Checking chunks...',
+    'Preparing embeddings...',
+    'Ready for chatbot',
+  ],
+}
+
+function createKnowledgeProgress(
+  kind: KnowledgeProgressKind,
+  status: KnowledgeProgressStatus = 'running',
+  message: string | null = null,
+): KnowledgeProgressState {
+  const steps = knowledgeProgressSteps[kind]
+  return {
+    kind,
+    status,
+    currentStep: status === 'done' ? steps.length - 1 : 0,
+    message,
+  }
+}
+
+function knowledgeStatusLabel(source: KnowledgeSourceItem): string {
+  if (source.chunkCount === 0) return 'Saved'
+  if (source.embeddingStatus === 'ready') return 'Ready for Chatbot'
+  if (source.embeddingStatus === 'failed') return 'Needs attention'
+  if (source.embeddingStatus === 'partial') return 'Partially ready'
+  return 'Chunks ready'
+}
+
+function cleanOperationMessage(message: unknown, fallback: string): string {
+  if (typeof message !== 'string' || !message.trim()) return fallback
+  return message.replace(/\s+/g, ' ').slice(0, 240)
+}
+
 export default function RagChatbotPage() {
   const workspace = useWorkspacePermissions()
   const canView = workspace.has('view_rag_chatbot')
@@ -185,6 +246,7 @@ export default function RagChatbotPage() {
   const [knowledgeText, setKnowledgeText] = useState('')
   const [knowledgeMessage, setKnowledgeMessage] = useState<string | null>(null)
   const [knowledgeSaving, setKnowledgeSaving] = useState(false)
+  const [knowledgeProgress, setKnowledgeProgress] = useState<KnowledgeProgressState | null>(null)
   const [websiteUrl, setWebsiteUrl] = useState('')
   const [websiteImportMessage, setWebsiteImportMessage] = useState<string | null>(null)
   const [websiteImporting, setWebsiteImporting] = useState(false)
@@ -468,6 +530,7 @@ export default function RagChatbotPage() {
   async function importWebsite() {
     setWebsiteImporting(true)
     setWebsiteImportMessage(null)
+    setKnowledgeProgress(createKnowledgeProgress('website'))
     try {
       const response = await fetch('/api/rag/website-import', {
         method: 'POST',
@@ -479,11 +542,21 @@ export default function RagChatbotPage() {
 
       setWebsiteUrl('')
       setSelectedKnowledge(payload.source ?? null)
-      setWebsiteImportMessage(payload.message ?? 'Website imported successfully.')
+      const message = cleanOperationMessage(
+        payload.embeddingSummary?.message ?? payload.message,
+        'Website imported, cleaned, chunked, and prepared for chatbot.',
+      )
+      setKnowledgeProgress(createKnowledgeProgress('website', 'done', message))
+      setWebsiteImportMessage(message)
       await loadKnowledge()
       await refreshStatusCounts()
     } catch (importError) {
-      setWebsiteImportMessage(importError instanceof Error ? importError.message : 'Import failed.')
+      const message = cleanOperationMessage(
+        importError instanceof Error ? importError.message : null,
+        'Import failed.',
+      )
+      setKnowledgeProgress(createKnowledgeProgress('website', 'failed', message))
+      setWebsiteImportMessage(message)
     } finally {
       setWebsiteImporting(false)
     }
@@ -492,6 +565,7 @@ export default function RagChatbotPage() {
   async function saveKnowledge() {
     setKnowledgeSaving(true)
     setKnowledgeMessage(null)
+    setKnowledgeProgress(createKnowledgeProgress('manual'))
     try {
       const method = editingKnowledgeId ? 'PATCH' : 'POST'
       const url = editingKnowledgeId
@@ -513,11 +587,21 @@ export default function RagChatbotPage() {
       setKnowledgeText('')
       setEditingKnowledgeId(null)
       setSelectedKnowledge(payload.source ?? null)
-      setKnowledgeMessage(editingKnowledgeId ? 'Knowledge updated.' : 'Knowledge added.')
+      const message = cleanOperationMessage(
+        payload.embeddingSummary?.message,
+        editingKnowledgeId ? 'Knowledge updated, cleaned, chunked, and prepared.' : 'Knowledge added, cleaned, chunked, and prepared.',
+      )
+      setKnowledgeProgress(createKnowledgeProgress('manual', 'done', message))
+      setKnowledgeMessage(message)
       await loadKnowledge()
       await refreshStatusCounts()
     } catch (saveError) {
-      setKnowledgeMessage(saveError instanceof Error ? saveError.message : 'Failed to save knowledge.')
+      const message = cleanOperationMessage(
+        saveError instanceof Error ? saveError.message : null,
+        'Failed to save knowledge.',
+      )
+      setKnowledgeProgress(createKnowledgeProgress('manual', 'failed', message))
+      setKnowledgeMessage(message)
     } finally {
       setKnowledgeSaving(false)
     }
@@ -568,18 +652,27 @@ export default function RagChatbotPage() {
   async function prepareKnowledge(id: string) {
     setPreparingKnowledgeId(id)
     setKnowledgeMessage(null)
+    setKnowledgeProgress(createKnowledgeProgress('prepare'))
     try {
       const response = await fetch(`/api/rag/knowledge/${id}/embed`, { method: 'POST' })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'Failed to prepare knowledge.')
 
-      setKnowledgeMessage(payload.summary?.message ?? 'Knowledge prepared for chatbot.')
+      const message = cleanOperationMessage(
+        payload.summary?.message,
+        'Knowledge prepared for chatbot.',
+      )
+      setKnowledgeProgress(createKnowledgeProgress('prepare', 'done', message))
+      setKnowledgeMessage(message)
       await loadKnowledge()
       await refreshStatusCounts()
     } catch (prepareError) {
-      setKnowledgeMessage(
-        prepareError instanceof Error ? prepareError.message : 'Failed to prepare knowledge.',
+      const message = cleanOperationMessage(
+        prepareError instanceof Error ? prepareError.message : null,
+        'Failed to prepare knowledge.',
       )
+      setKnowledgeProgress(createKnowledgeProgress('prepare', 'failed', message))
+      setKnowledgeMessage(message)
     } finally {
       setPreparingKnowledgeId(null)
     }
@@ -645,8 +738,8 @@ export default function RagChatbotPage() {
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[#b8cfc7]">
                 Connect your AI and Firecrawl keys, add manual or website knowledge,
-                and test answers in the dashboard. New knowledge is prepared automatically
-                when your AI provider key is configured.
+                and test answers in the dashboard. New knowledge is fully chunked after
+                save; larger sources can be prepared when you are ready.
               </p>
             </div>
             <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/80 p-3 text-sm text-[#c7ddd5]">
@@ -767,8 +860,8 @@ export default function RagChatbotPage() {
               <h2 className="text-lg font-bold text-white">Website Import</h2>
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Import one website page into the knowledge base. The CRM prepares
-              embeddings automatically after import when your AI provider key is configured.
+              Import one website page into the knowledge base. Small imports can prepare
+              automatically; large imports are fully chunked first and can be prepared when ready.
             </p>
           </div>
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
@@ -799,7 +892,11 @@ export default function RagChatbotPage() {
             disabled={!canManageKnowledge || websiteImporting || !websiteUrl.trim()}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Globe className="size-4" />
+            {websiteImporting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Globe className="size-4" />
+            )}
             {websiteImporting ? 'Importing website...' : 'Import Website'}
           </button>
         </div>
@@ -818,9 +915,9 @@ export default function RagChatbotPage() {
               <h2 className="text-lg font-bold text-white">Knowledge Base</h2>
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Add business information manually or from a website page. Knowledge is chunked
-              and prepared for chatbot retrieval automatically; use Prepare for Chatbot again
-              only if you need to retry embeddings.
+              Add business information manually or from a website page. Knowledge is fully chunked
+              after save. Small sources can prepare automatically; larger sources keep Prepare for
+              Chatbot available so you control provider API cost.
             </p>
           </div>
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
@@ -881,8 +978,17 @@ export default function RagChatbotPage() {
                   }
                   className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <CheckCircle2 className="size-4" />
-                  {editingKnowledgeId ? 'Update Knowledge' : 'Add Knowledge'}
+                  {knowledgeSaving ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      {editingKnowledgeId ? 'Saving...' : 'Creating chunks...'}
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="size-4" />
+                      {editingKnowledgeId ? 'Update Knowledge' : 'Add Knowledge'}
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -893,6 +999,9 @@ export default function RagChatbotPage() {
               <p className="rounded-xl border border-[#315846] bg-[#07130e] px-3 py-2 text-sm text-[#d8fff1]">
                 {knowledgeMessage}
               </p>
+            )}
+            {knowledgeProgress && (
+              <KnowledgeProgressPanel progress={knowledgeProgress} />
             )}
           </div>
 
@@ -924,8 +1033,12 @@ export default function RagChatbotPage() {
                             disabled={!canManageKnowledge || preparingKnowledgeId === source.id}
                             className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-300/40 px-2.5 text-xs font-bold text-emerald-100 hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <Sparkles className="size-3.5" />
-                          {preparingKnowledgeId === source.id ? 'Preparing...' : 'Retry Prepare'}
+                            {preparingKnowledgeId === source.id ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="size-3.5" />
+                            )}
+                          {preparingKnowledgeId === source.id ? 'Preparing...' : 'Prepare for Chatbot'}
                           </button>
                           <button
                             type="button"
@@ -960,6 +1073,7 @@ export default function RagChatbotPage() {
                         <div>Updated: {formatDate(source.updatedAt)}</div>
                         <div>{source.characterCount.toLocaleString()} characters</div>
                         <div>{source.chunkCount.toLocaleString()} chunks</div>
+                        <div>Status: {knowledgeStatusLabel(source)}</div>
                         <div>{source.readyEmbeddingCount.toLocaleString()} ready embeddings</div>
                         <div>{source.failedEmbeddingCount.toLocaleString()} failed embeddings</div>
                         {source.sourceUrl && (
@@ -1345,6 +1459,69 @@ export default function RagChatbotPage() {
   )
 }
 
+function KnowledgeProgressPanel({
+  progress,
+}: {
+  readonly progress: KnowledgeProgressState
+}) {
+  const steps = knowledgeProgressSteps[progress.kind]
+  const isDone = progress.status === 'done'
+  const isFailed = progress.status === 'failed'
+
+  return (
+    <div className={cn(
+      'rounded-2xl border p-4',
+      isFailed
+        ? 'border-red-300/40 bg-red-400/10'
+        : isDone
+          ? 'border-emerald-300/40 bg-emerald-400/10'
+          : 'border-[#315846] bg-[#07130e]',
+    )}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-white">Knowledge processing status</p>
+          <p className="text-xs text-[#a9c6bb]">
+            The CRM saves the full content, creates chunks, then prepares embeddings when safe.
+          </p>
+        </div>
+        {progress.status === 'running' ? (
+          <Loader2 className="size-4 shrink-0 animate-spin text-emerald-200" />
+        ) : isDone ? (
+          <CheckCircle2 className="size-4 shrink-0 text-emerald-200" />
+        ) : (
+          <XCircle className="size-4 shrink-0 text-red-200" />
+        )}
+      </div>
+      <ol className="space-y-2">
+        {steps.map((step, index) => {
+          const complete = isDone || index < progress.currentStep
+          const active = progress.status === 'running' && index === progress.currentStep
+          return (
+            <li key={step} className="flex items-center gap-2 text-xs text-[#d8fff1]">
+              <span className={cn(
+                'flex size-5 items-center justify-center rounded-full border text-[10px] font-bold',
+                complete
+                  ? 'border-emerald-300/60 bg-emerald-300/20 text-emerald-100'
+                  : active
+                    ? 'border-emerald-300/60 bg-emerald-300/10 text-emerald-100'
+                    : 'border-[#315846] bg-[#0d1b15] text-[#8bb4a5]',
+              )}>
+                {complete ? '✓' : index + 1}
+              </span>
+              <span className={active ? 'font-bold text-emerald-100' : ''}>{step}</span>
+            </li>
+          )
+        })}
+      </ol>
+      {progress.message && (
+        <p className="mt-3 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-xs text-[#d8fff1]">
+          {progress.message}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function SettingsCard({
   title,
   description,
@@ -1415,8 +1592,8 @@ function ActionRow({
         disabled={!canManage || busy || saveDisabled}
         className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <CheckCircle2 className="size-4" />
-        Save
+        {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+        {busy ? 'Saving...' : 'Save'}
       </button>
       <button
         type="button"
@@ -1424,8 +1601,8 @@ function ActionRow({
         disabled={!canManage || busy}
         className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#315846] px-4 text-sm font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <XCircle className="size-4" />
-        Test
+        {busy ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
+        {busy ? 'Testing...' : 'Test'}
       </button>
       {!canManage && (
         <p className="basis-full text-xs text-[#8bb4a5]">
