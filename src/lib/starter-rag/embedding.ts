@@ -19,6 +19,14 @@ export interface StarterRagRelevantContent {
   readonly similarity: number
 }
 
+const SHORT_QUERY_EXPANSIONS: Readonly<Record<string, string>> = {
+  contact: 'How can customers contact support?',
+  email: 'What email contact or support email is available?',
+  phone: 'What phone number or contact number is available?',
+  support: 'What support is available?',
+  whatsapp: 'Is WhatsApp support available?',
+}
+
 const splitLongChunk = (chunk: string): string[] => {
   if (chunk.length <= STARTER_RAG_MAX_CHUNK_LENGTH) {
     return [chunk]
@@ -127,10 +135,24 @@ export const generateStarterRagEmbedding = async (value: string): Promise<number
   return embedding
 }
 
+export function normalizeStarterRagSearchQuestion(userQuery: string): string {
+  const clean = userQuery.trim()
+  const normalized = clean.toLowerCase().replace(/[?!.,:;]+$/g, '').trim()
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length
+
+  if (SHORT_QUERY_EXPANSIONS[normalized]) return SHORT_QUERY_EXPANSIONS[normalized]
+  if (wordCount > 0 && wordCount <= 3 && !/^(what|when|where|who|why|how|is|are|do|does|can)\b/.test(normalized)) {
+    return `What information is available about ${clean}?`
+  }
+
+  return clean
+}
+
 export const findStarterRagRelevantContent = async (
   userQuery: string,
 ): Promise<StarterRagRelevantContent[]> => {
-  const userQueryEmbedded = await generateStarterRagEmbedding(userQuery)
+  const searchQuestion = normalizeStarterRagSearchQuestion(userQuery)
+  const userQueryEmbedded = await generateStarterRagEmbedding(searchQuestion)
   const similarity = sql<number>`1 - (${cosineDistance(
     starterRagEmbeddings.embedding,
     userQueryEmbedded,

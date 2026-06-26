@@ -8,6 +8,7 @@ import {
   STARTER_RAG_MAX_CHUNKS_PER_RESOURCE,
   STARTER_RAG_RETRIEVAL_LIMIT,
   STARTER_RAG_SIMILARITY_THRESHOLD,
+  normalizeStarterRagSearchQuestion,
 } from './embedding'
 import {
   STARTER_RAG_DEFAULT_DATABASE_URL,
@@ -72,6 +73,17 @@ describe('separate Starter RAG implementation', () => {
   it('uses OpenRouter chat completions for chat while keeping provider embeddings', () => {
     expect(starterRagProvider).toContain('isOpenRouter ? provider.chat(settings.chatModel)')
     expect(starterRagEmbedding).toContain('provider.embedding(embeddingModel)')
+  })
+
+  it('expands short customer clues into fuller Starter-style retrieval questions', () => {
+    expect(normalizeStarterRagSearchQuestion('support')).toBe('What support is available?')
+    expect(normalizeStarterRagSearchQuestion('whatsapp')).toBe('Is WhatsApp support available?')
+    expect(normalizeStarterRagSearchQuestion('refund')).toBe(
+      'What information is available about refund?',
+    )
+    expect(normalizeStarterRagSearchQuestion('What is the refund policy?')).toBe(
+      'What is the refund policy?',
+    )
   })
 
   it('keeps Starter chunking, threshold, and top-k retrieval constants', () => {
