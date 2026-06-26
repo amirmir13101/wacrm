@@ -17,7 +17,14 @@ export async function POST(
       sourceId: id,
     })
 
-    return NextResponse.json({ summary })
+    return NextResponse.json({
+      summary,
+      saved: true,
+      chunksCreated: summary.chunksProcessed > 0,
+      embeddingsReady: summary.embeddingsReady,
+      embeddingErrorCategory: summary.embeddingErrorCategory,
+      userMessage: summary.userMessage,
+    })
   } catch (error) {
     return NextResponse.json({ error: safeErrorMessage(error) }, { status: 400 })
   }

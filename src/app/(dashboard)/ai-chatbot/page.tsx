@@ -185,6 +185,9 @@ type KnowledgeProgressStatus = 'running' | 'done' | 'warning' | 'failed'
 interface EmbeddingSummaryView {
   readonly status?: 'ready' | 'partial' | 'failed' | 'not_configured' | 'skipped'
   readonly message?: string
+  readonly embeddingsReady?: boolean
+  readonly embeddingErrorCategory?: string | null
+  readonly userMessage?: string
 }
 
 interface KnowledgeProgressState {
@@ -242,7 +245,7 @@ function createProgressFromEmbeddingSummary(
   const steps = knowledgeProgressSteps[kind]
   const chunkReadyStep = steps.indexOf('Chunks ready')
   const preparingStep = steps.indexOf('Preparing embeddings...')
-  const message = cleanOperationMessage(summary?.message, fallbackMessage)
+  const message = cleanOperationMessage(summary?.userMessage ?? summary?.message, fallbackMessage)
 
   if (summary?.status === 'ready') {
     return createKnowledgeProgress(kind, 'done', message)
@@ -259,7 +262,7 @@ function createPrepareProgressFromEmbeddingSummary(
   summary: EmbeddingSummaryView | null | undefined,
   fallbackMessage: string,
 ): KnowledgeProgressState {
-  const message = cleanOperationMessage(summary?.message, fallbackMessage)
+  const message = cleanOperationMessage(summary?.userMessage ?? summary?.message, fallbackMessage)
   if (summary?.status === 'ready') return createKnowledgeProgress('prepare', 'done', message)
   return createKnowledgeProgress('prepare', 'warning', message, 1)
 }
@@ -276,7 +279,7 @@ function cleanOperationMessage(message: unknown, fallback: string): string {
   if (typeof message !== 'string' || !message.trim()) return fallback
   const cleaned = message.replace(/\s+/g, ' ').trim()
   if (/typeerror:\s*fetch failed|fetch failed/i.test(cleaned)) {
-    return 'The request could not complete right now. If the knowledge appears in the list, chunks were saved; click Prepare for Chatbot again.'
+    return 'Could not connect to the embedding provider right now. Please try again.'
   }
   return cleaned.slice(0, 240)
 }
@@ -600,7 +603,7 @@ export default function RagChatbotPage() {
       setSelectedKnowledge(payload.source ?? null)
       setWebsiteImportStats(payload.stats ?? null)
       const message = cleanOperationMessage(
-        payload.embeddingSummary?.message ?? payload.message,
+        payload.userMessage ?? payload.embeddingSummary?.userMessage ?? payload.embeddingSummary?.message ?? payload.message,
         'Website imported, cleaned, and chunked.',
       )
       setKnowledgeProgress(
@@ -647,7 +650,7 @@ export default function RagChatbotPage() {
       setEditingKnowledgeId(null)
       setSelectedKnowledge(payload.source ?? null)
       const message = cleanOperationMessage(
-        payload.embeddingSummary?.message,
+        payload.userMessage ?? payload.embeddingSummary?.userMessage ?? payload.embeddingSummary?.message,
         editingKnowledgeId ? 'Knowledge updated, cleaned, and chunked.' : 'Knowledge added, cleaned, and chunked.',
       )
       setKnowledgeProgress(
@@ -720,7 +723,7 @@ export default function RagChatbotPage() {
       if (!response.ok) throw new Error(payload.error ?? 'Failed to prepare knowledge.')
 
       const message = cleanOperationMessage(
-        payload.summary?.message,
+        payload.userMessage ?? payload.summary?.userMessage ?? payload.summary?.message,
         'Knowledge prepared for chatbot.',
       )
       setKnowledgeProgress(createPrepareProgressFromEmbeddingSummary(payload.summary, message))
@@ -1558,7 +1561,9 @@ function KnowledgeProgressPanel({
 }: {
   readonly progress: KnowledgeProgressState
 }) {
-  const steps = knowledgeProgressSteps[progress.kind]
+  const steps = progress.status === 'done'
+    ? knowledgeProgressSteps[progress.kind]
+    : knowledgeProgressSteps[progress.kind].filter((step) => step !== 'Ready for chatbot')
   const isDone = progress.status === 'done'
   const isFailed = progress.status === 'failed'
   const isWarning = progress.status === 'warning'

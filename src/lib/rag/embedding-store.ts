@@ -11,6 +11,13 @@ const ZERO_EMBEDDING = Array.from({ length: RAG_EMBEDDING_DIMENSIONS }, () => 0)
 export const RAG_AUTO_EMBED_CHUNK_LIMIT = 0
 
 type EmbeddingRunStatus = 'ready' | 'partial' | 'failed' | 'not_configured' | 'skipped'
+export type RagEmbeddingErrorCategory =
+  | 'provider_missing_key'
+  | 'provider_invalid_key'
+  | 'provider_rate_limited'
+  | 'provider_network_error'
+  | 'embedding_model_error'
+  | 'unknown_embedding_error'
 
 interface RagProviderSettingsRow {
   readonly provider: string | null
@@ -41,6 +48,9 @@ export interface RagEmbeddingSummary {
   readonly embeddingsFailed: number
   readonly status: EmbeddingRunStatus
   readonly message: string
+  readonly embeddingsReady: boolean
+  readonly embeddingErrorCategory: RagEmbeddingErrorCategory | null
+  readonly userMessage: string
 }
 
 function fallbackProvider(provider: string | null | undefined): RagProviderType {
@@ -51,11 +61,52 @@ function fallbackEmbeddingModel(provider: RagProviderType): string {
   return DEFAULT_RAG_PROVIDER_CONFIG[provider].embeddingModel
 }
 
+export function categorizeRagEmbeddingError(error: unknown): RagEmbeddingErrorCategory {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  if (/missing|not configured|required|add your api key|api key is required/i.test(message)) {
+    return 'provider_missing_key'
+  }
+  if (/402|429|quota|billing|rate limit|rate_limit|insufficient|credits|limit reached/i.test(message)) {
+    return 'provider_rate_limited'
+  }
+  if (/401|403|unauthorized|forbidden|authentication|invalid api key|incorrect api key|provider rejected/i.test(message)) {
+    return 'provider_invalid_key'
+  }
+  if (/fetch failed|network|econnreset|etimedout|timeout|could not connect|connection/i.test(message)) {
+    return 'provider_network_error'
+  }
+  if (/embedding provider must return|wrong dimensions|dimension|embedding model|model_not_found|does not exist|unsupported/i.test(message)) {
+    return 'embedding_model_error'
+  }
+  return 'unknown_embedding_error'
+}
+
+export function ragEmbeddingUserMessage(category: RagEmbeddingErrorCategory | null): string {
+  if (category === 'provider_missing_key') {
+    return 'AI provider key is missing. Add your API key before preparing embeddings.'
+  }
+  if (category === 'provider_invalid_key') {
+    return 'AI provider key is invalid or provider rejected the request.'
+  }
+  if (category === 'provider_rate_limited') {
+    return 'Embedding provider limit reached. Please try again later or check your provider account.'
+  }
+  if (category === 'provider_network_error') {
+    return 'Could not connect to the embedding provider right now. Please try again.'
+  }
+  return 'Chunks ready. Embeddings could not be prepared. Please check your AI provider settings or click Prepare for Chatbot again.'
+}
+
+function logEmbeddingFailure(category: RagEmbeddingErrorCategory, context: string): void {
+  console.warn('rag_embedding_failure', { category, context })
+}
+
 function safeProviderConfig(row: RagProviderSettingsRow | null): {
   readonly config: RagResolvedProviderConfig | null
   readonly provider: RagProviderType
   readonly embeddingModel: string
   readonly error: string | null
+  readonly errorCategory: RagEmbeddingErrorCategory | null
 } {
   const provider = fallbackProvider(row?.provider)
   const embeddingModel = fallbackEmbeddingModel(provider)
@@ -66,6 +117,7 @@ function safeProviderConfig(row: RagProviderSettingsRow | null): {
       provider,
       embeddingModel,
       error: 'AI provider key is missing. Add your API key before preparing embeddings.',
+      errorCategory: 'provider_missing_key',
     }
   }
 
@@ -78,6 +130,7 @@ function safeProviderConfig(row: RagProviderSettingsRow | null): {
         provider,
         embeddingModel: config.embeddingModel,
         error: 'Embedding provider must return 1536 dimensions.',
+        errorCategory: 'embedding_model_error',
       }
     }
     return {
@@ -85,13 +138,16 @@ function safeProviderConfig(row: RagProviderSettingsRow | null): {
       provider,
       embeddingModel: config.embeddingModel,
       error: null,
+      errorCategory: null,
     }
   } catch (error) {
+    const sanitized = sanitizeProviderError(error)
     return {
       config: null,
       provider,
       embeddingModel,
-      error: sanitizeProviderError(error),
+      error: sanitized,
+      errorCategory: categorizeRagEmbeddingError(sanitized),
     }
   }
 }
@@ -207,6 +263,9 @@ async function updateSourceEmbeddingMetadata(args: {
           embeddingsCreated: args.summary.embeddingsCreated,
           embeddingsSkipped: args.summary.embeddingsSkipped,
           embeddingsFailed: args.summary.embeddingsFailed,
+          embeddingsReady: args.summary.embeddingsReady,
+          embeddingErrorCategory: args.summary.embeddingErrorCategory,
+          userMessage: args.summary.userMessage,
         },
         embedding_updated_at: new Date().toISOString(),
       },
@@ -225,22 +284,28 @@ function summarize(args: {
   readonly embeddingsFailed: number
   readonly status: EmbeddingRunStatus
   readonly message?: string
+  readonly embeddingErrorCategory?: RagEmbeddingErrorCategory | null
 }): RagEmbeddingSummary {
+  const errorCategory = args.embeddingErrorCategory ?? null
+  const message = args.message ?? (
+    args.status === 'ready'
+      ? 'Knowledge is prepared for chatbot.'
+      : args.status === 'partial'
+        ? 'Some knowledge was prepared, but a few chunks failed.'
+        : args.status === 'skipped'
+          ? 'Chunks ready. Click Prepare for Chatbot to create embeddings.'
+          : ragEmbeddingUserMessage(errorCategory)
+  )
   return {
     chunksProcessed: args.chunksProcessed,
     embeddingsCreated: args.embeddingsCreated,
     embeddingsSkipped: args.embeddingsSkipped,
     embeddingsFailed: args.embeddingsFailed,
     status: args.status,
-    message: args.message ?? (
-      args.status === 'ready'
-        ? 'Knowledge is prepared for chatbot.'
-        : args.status === 'partial'
-          ? 'Some knowledge was prepared, but a few chunks failed.'
-          : args.status === 'skipped'
-            ? 'Chunks ready. Click Prepare for Chatbot to create embeddings.'
-            : 'Chunks ready. Embeddings failed. Please check provider settings or click Prepare for Chatbot again.'
-    ),
+    message,
+    embeddingsReady: args.status === 'ready',
+    embeddingErrorCategory: errorCategory,
+    userMessage: message,
   }
 }
 
@@ -275,6 +340,7 @@ export async function embedRagManualKnowledgeSource(args: {
       embeddingsFailed: 0,
       status: 'failed',
       message: 'No readable knowledge chunks were found.',
+      embeddingErrorCategory: 'unknown_embedding_error',
     })
   }
 
@@ -291,6 +357,8 @@ export async function embedRagManualKnowledgeSource(args: {
   let failed = 0
 
   if (!providerConfig.config) {
+    const category = providerConfig.errorCategory ?? categorizeRagEmbeddingError(providerConfig.error)
+    logEmbeddingFailure(category, 'provider_config')
     for (const chunk of chunks) {
       const current = existing.get(chunk.id)
       if (current?.embedding_status === 'ready') {
@@ -315,7 +383,8 @@ export async function embedRagManualKnowledgeSource(args: {
       embeddingsSkipped: skipped,
       embeddingsFailed: failed,
       status: 'not_configured',
-      message: providerConfig.error ?? 'Embedding provider is not configured.',
+      message: ragEmbeddingUserMessage(category),
+      embeddingErrorCategory: category,
     })
     await updateSourceEmbeddingMetadata({
       workspaceId: args.workspaceId,
@@ -325,6 +394,8 @@ export async function embedRagManualKnowledgeSource(args: {
     })
     return summary
   }
+
+  let firstFailureCategory: RagEmbeddingErrorCategory | null = null
 
   for (const chunk of chunks) {
     const current = existing.get(chunk.id)
@@ -348,6 +419,9 @@ export async function embedRagManualKnowledgeSource(args: {
       })
       created += 1
     } catch (error) {
+      const category = categorizeRagEmbeddingError(error)
+      firstFailureCategory ??= category
+      logEmbeddingFailure(category, 'chunk_embedding')
       await upsertEmbedding({
         workspaceId: args.workspaceId,
         chunkId: chunk.id,
@@ -375,7 +449,8 @@ export async function embedRagManualKnowledgeSource(args: {
     status,
     message: status === 'ready'
       ? 'Knowledge is prepared for chatbot.'
-      : 'Chunks ready. Embeddings failed. Please check provider settings or click Prepare for Chatbot again.',
+      : ragEmbeddingUserMessage(firstFailureCategory),
+    embeddingErrorCategory: status === 'ready' ? null : firstFailureCategory,
   })
   await updateSourceEmbeddingMetadata({
     workspaceId: args.workspaceId,

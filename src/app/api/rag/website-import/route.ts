@@ -34,10 +34,21 @@ export async function POST(request: Request) {
         embeddingsFailed: 0,
         status: 'failed' as const,
         message: sanitizeProviderError(error),
+        embeddingsReady: false,
+        embeddingErrorCategory: 'unknown_embedding_error' as const,
+        userMessage: 'Chunks ready. Embeddings could not be prepared. Please check your AI provider settings or click Prepare for Chatbot again.',
       }))
       : createSkippedRagEmbeddingSummary(result.source.chunkCount)
 
-    return NextResponse.json({ ...result, embeddingSummary })
+    return NextResponse.json({
+      ...result,
+      embeddingSummary,
+      saved: true,
+      chunksCreated: result.source.chunkCount > 0,
+      embeddingsReady: embeddingSummary.embeddingsReady,
+      embeddingErrorCategory: embeddingSummary.embeddingErrorCategory,
+      userMessage: embeddingSummary.userMessage,
+    })
   } catch (error) {
     return NextResponse.json({ error: safeErrorMessage(error) }, { status: 400 })
   }

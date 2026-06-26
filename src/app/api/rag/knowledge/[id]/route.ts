@@ -66,11 +66,23 @@ export async function PATCH(request: Request, context: RouteContext) {
           embeddingsFailed: 0,
           status: 'failed' as const,
           message: sanitizeProviderError(error),
+          embeddingsReady: false,
+          embeddingErrorCategory: 'unknown_embedding_error' as const,
+          userMessage: 'Chunks ready. Embeddings could not be prepared. Please check your AI provider settings or click Prepare for Chatbot again.',
         }))
         : createSkippedRagEmbeddingSummary(source.chunkCount)
       : null
 
-    return NextResponse.json({ source, embeddingSummary, limit: RAG_KNOWLEDGE_CHARACTER_LIMIT })
+    return NextResponse.json({
+      source,
+      embeddingSummary,
+      saved: true,
+      chunksCreated: source.chunkCount > 0,
+      embeddingsReady: embeddingSummary?.embeddingsReady ?? false,
+      embeddingErrorCategory: embeddingSummary?.embeddingErrorCategory ?? null,
+      userMessage: embeddingSummary?.userMessage ?? 'Knowledge source updated.',
+      limit: RAG_KNOWLEDGE_CHARACTER_LIMIT,
+    })
   } catch (error) {
     return NextResponse.json({ error: safeErrorMessage(error) }, { status: 400 })
   }

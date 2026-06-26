@@ -73,13 +73,19 @@ describe('RAG manual embedding generation', () => {
   it('sanitizes provider/network failures instead of returning raw fetch errors', () => {
     expect(ragSecurity).toContain('Provider request failed. Please check your AI provider settings or try again.')
     expect(ragHelpers).toContain('The request could not complete right now. Please try again.')
-    expect(page).toContain('The request could not complete right now. If the knowledge appears in the list')
+    expect(page).toContain('Could not connect to the embedding provider right now. Please try again.')
     expect(page).not.toContain('TypeError: fetch failed')
   })
 
   it('returns user-facing embedding failure summaries that keep chunks ready', () => {
     expect(embeddingStore).toContain('AI provider key is missing. Add your API key before preparing embeddings.')
-    expect(embeddingStore).toContain('Chunks ready. Embeddings failed. Please check provider settings or click Prepare for Chatbot again.')
+    expect(embeddingStore).toContain('Chunks ready. Embeddings could not be prepared. Please check your AI provider settings or click Prepare for Chatbot again.')
+    expect(embeddingStore).toContain('AI provider key is invalid or provider rejected the request.')
+    expect(embeddingStore).toContain('Embedding provider limit reached. Please try again later or check your provider account.')
+    expect(embeddingStore).toContain('Could not connect to the embedding provider right now. Please try again.')
+    expect(embeddingStore).toContain('embeddingErrorCategory')
+    expect(embeddingStore).toContain('embeddingsReady')
+    expect(embeddingStore).toContain('userMessage')
     expect(embeddingStore).toContain('Chunks ready. Click Prepare for Chatbot to create embeddings.')
   })
 
@@ -99,6 +105,7 @@ describe('RAG manual embedding generation', () => {
     expect(page).toContain('createProgressFromEmbeddingSummary')
     expect(page).toContain("summary?.status === 'ready'")
     expect(page).toContain("progress.status === 'warning'")
+    expect(page).toContain("filter((step) => step !== 'Ready for chatbot')")
     expect(page).toContain('ready embeddings')
     expect(page).toContain('failed embeddings')
     expect(page).toContain('embeddingStatusLabel')
