@@ -6,8 +6,6 @@ import { createRagWebsiteKnowledge, type RagKnowledgeDetail } from './knowledge-
 import { cleanRagKnowledgeContent, RAG_KNOWLEDGE_CHARACTER_LIMIT } from './knowledge'
 import { sanitizeProviderError } from './security'
 
-const FIRECRAWL_SCRAPE_URL = 'https://api.firecrawl.dev/v1/scrape'
-const FIRECRAWL_MAP_URL = 'https://api.firecrawl.dev/v1/map'
 const FIRECRAWL_V2_BASE_URL = 'https://api.firecrawl.dev/v2'
 const DEFAULT_WEBSITE_IMPORT_PAGE_LIMIT = 50
 const MAX_WEBSITE_IMPORT_PAGE_LIMIT = 100
@@ -15,6 +13,8 @@ const MIN_USEFUL_PAGE_CHARACTERS = 80
 const FIRECRAWL_REQUEST_TIMEOUT_MS = 30_000
 const FIRECRAWL_CRAWL_POLL_INTERVAL_MS = 2_000
 const FIRECRAWL_CRAWL_MAX_WAIT_MS = 90_000
+const FIRECRAWL_BATCH_MAX_WAIT_MS = 90_000
+const FIRECRAWL_RETRY_COUNT = 2
 
 const PRIVATE_PATH_SEGMENTS = new Set([
   'login',
@@ -30,9 +30,13 @@ const PRIVATE_PATH_SEGMENTS = new Set([
   'payment',
   'payments',
   'billing',
+  'panel',
+  'portal',
   'clientarea',
+  'clientarea.php',
   'client-area',
   'client',
+  'submitticket.php',
   'submit-ticket',
   'support-ticket',
   'ticket',
@@ -83,7 +87,7 @@ const JUNK_LINE_PATTERNS = [
   /\b(lorem ipsum|hello world|welcome to wordpress|uncategorized)\b/i,
   /\b(add to cart|view cart|checkout|coupon code|billing details)\b/i,
   /\b(username|password|remember me|forgot password|log in|register)\b/i,
-  /\b(function\s*\(|var\s+|let\s+|const\s+|=>|document\.|window\.|canvas|getcontext|elementor|wp-json)\b/i,
+  /\b(function\s*\(|var\s+|let\s+|const\s+|=>|document\.|window\.|canvas|getcontext|requestanimationframe|ctx\.|elementor|wp-json)\b/i,
 ]
 
 interface RagFirecrawlSettingsRow {
@@ -91,12 +95,23 @@ interface RagFirecrawlSettingsRow {
   readonly enabled: boolean | null
 }
 
+interface FirecrawlLink {
+  readonly url?: string | null
+  readonly href?: string | null
+  readonly text?: string | null
+  readonly label?: string | null
+  readonly title?: string | null
+}
+
+type FirecrawlLinkEntry = string | FirecrawlLink
+
 interface FirecrawlScrapeResponse {
   readonly success?: boolean
   readonly data?: {
     readonly markdown?: string | null
     readonly text?: string | null
     readonly html?: string | null
+    readonly links?: ReadonlyArray<FirecrawlLinkEntry> | null
     readonly metadata?: {
       readonly title?: string | null
       readonly sourceURL?: string | null
@@ -112,6 +127,7 @@ interface FirecrawlCrawlPage {
   readonly html?: string | null
   readonly rawHtml?: string | null
   readonly text?: string | null
+  readonly links?: ReadonlyArray<FirecrawlLinkEntry> | null
   readonly metadata?: {
     readonly title?: string | null
     readonly sourceURL?: string | null
@@ -133,6 +149,10 @@ interface FirecrawlCrawlResponse {
   readonly error?: string | null
 }
 
+interface FirecrawlBatchScrapeResponse extends FirecrawlCrawlResponse {
+  readonly data?: ReadonlyArray<FirecrawlCrawlPage> | null
+}
+
 type FirecrawlMapEntry = string | {
   readonly url?: string | null
   readonly loc?: string | null
@@ -152,6 +172,7 @@ interface FirecrawlMapResponse {
 
 interface FirecrawlClient {
   readonly crawl?: (url: string, limit: number) => Promise<ReadonlyArray<FirecrawlCrawlPage>>
+  readonly batchScrape?: (urls: ReadonlyArray<string>) => Promise<ReadonlyArray<FirecrawlCrawlPage>>
   readonly map: (url: string, limit: number) => Promise<FirecrawlMapResponse>
   readonly scrape: (url: string) => Promise<FirecrawlScrapeResponse>
 }
@@ -167,12 +188,47 @@ interface ImportedWebsitePage {
   readonly content: string
   readonly hash: string
   readonly rawCharacters: number
+  readonly links: ReadonlyArray<StructuredLink>
+  readonly qualityScore: number
 }
 
 interface ExtractedWebsiteContent {
   readonly title: string | null
   readonly finalUrl: string | null
   readonly content: string
+  readonly links: ReadonlyArray<StructuredLink>
+}
+
+type StructuredLinkType =
+  | 'order'
+  | 'contact'
+  | 'policy'
+  | 'social'
+  | 'booking'
+  | 'docs'
+  | 'support'
+  | 'login'
+  | 'asset'
+  | 'other'
+
+interface StructuredLink {
+  readonly url: string
+  readonly label: string | null
+  readonly type: StructuredLinkType
+}
+
+interface StructuredRecordCounts {
+  businessFacts: number
+  contacts: number
+  locations: number
+  products: number
+  services: number
+  plans: number
+  menuItems: number
+  faqs: number
+  policies: number
+  importantLinks: number
+  testEndpoints: number
 }
 
 export interface RagWebsiteImportStats {
@@ -190,6 +246,9 @@ export interface RagWebsiteImportStats {
   readonly lowValuePagesSkipped: number
   readonly aiStructuringUsed: boolean
   readonly deterministicFallbackUsed: boolean
+  readonly firecrawlModesUsed: ReadonlyArray<string>
+  readonly structuredRecords: StructuredRecordCounts
+  readonly warnings: ReadonlyArray<string>
   readonly skippedReasons: Readonly<Record<string, number>>
 }
 
@@ -284,6 +343,111 @@ function addReason(
   reasons.set(reason, (reasons.get(reason) ?? 0) + 1)
 }
 
+function isIPv4(value: string): boolean {
+  const parts = value.trim().split('.')
+  return parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) >= 0 && Number(part) <= 255)
+}
+
+function isSpecOrPriceNumber(value: string, context: string): boolean {
+  const combined = `${value} ${context}`
+  return /(?:[$€£₨₹]|usd|pkr|aed|eur|gbp|\/mo|\/month|monthly|yearly|annually|price|discount|off|%|gb|mb|tb|ram|cpu|core|storage|nvme|ssd|iops|mbps|gbps|tbps|bandwidth|vcore|thread)/i.test(combined)
+}
+
+function normalizePhoneDigits(value: string): string {
+  return value.replace(/[^\d+]/g, '')
+}
+
+function isPhoneCandidate(value: string, context: string): boolean {
+  if (isIPv4(value)) return false
+  if (isSpecOrPriceNumber(value, context)) return false
+  if (/\b(?:svg|path|viewbox|canvas|ctx|chart|data:image)\b/i.test(context)) return false
+  const digits = value.replace(/\D/g, '')
+  if (digits.length < 8 || digits.length > 15) return false
+  if (/^\d{1,4}$/.test(value.trim())) return false
+  return /(?:phone|call|tel:|mobile|whatsapp|wa\.me|support|sales|contact)/i.test(context) || value.trim().startsWith('+')
+}
+
+function extractPhonesFromLine(line: string): ReadonlyArray<string> {
+  return collectMatches(line, /(?:\+?\d[\d\s().-]{7,}\d)/g)
+    .filter((phone) => isPhoneCandidate(phone, line))
+    .map((phone) => phone.trim())
+    .filter(uniqueByLowercase)
+}
+
+function extractIpAddresses(content: string): ReadonlyArray<string> {
+  return collectMatches(content, /\b(?:\d{1,3}\.){3}\d{1,3}\b/g)
+    .filter(isIPv4)
+    .filter(uniqueByLowercase)
+}
+
+function readLinkEntryUrl(entry: FirecrawlLinkEntry): string | null {
+  if (typeof entry === 'string') return entry
+  return entry.url ?? entry.href ?? null
+}
+
+function readLinkEntryLabel(entry: FirecrawlLinkEntry): string | null {
+  if (typeof entry === 'string') return null
+  return entry.text ?? entry.label ?? entry.title ?? null
+}
+
+function isAssetUrl(url: string): boolean {
+  try {
+    const lowerPath = new URL(url, 'https://example.com').pathname.toLowerCase()
+    return SKIP_FILE_EXTENSIONS.some((extension) => lowerPath.endsWith(extension)) ||
+      /\.(avif|bmp|tiff|woff2?|ttf|eot)$/i.test(lowerPath)
+  } catch {
+    return false
+  }
+}
+
+function classifyLink(url: string, label: string | null): StructuredLinkType {
+  const text = `${url} ${label ?? ''}`.toLowerCase()
+  if (isAssetUrl(url) || /logo|image|avatar|icon|cdn|uploads/.test(text)) return 'asset'
+  if (/wa\.me|whatsapp|mailto:|tel:|contact/.test(text)) return 'contact'
+  if (/facebook|twitter|x\.com|instagram|linkedin|youtube|tiktok|pinterest/.test(text)) return 'social'
+  if (/privacy|refund|return|terms|policy|shipping|delivery|warranty|cancellation/.test(text)) return 'policy'
+  if (/book|appointment|schedule|reservation/.test(text)) return 'booking'
+  if (/docs|documentation|help|knowledgebase|guide|tutorial|support/.test(text)) return 'docs'
+  if (/ticket|support|live-chat|chat/.test(text)) return 'support'
+  if (/login|register|account|clientarea|panel|dashboard/.test(text)) return 'login'
+  if (/order|buy|pricing|plans|package|quote|checkout|cart/.test(text)) return 'order'
+  return 'other'
+}
+
+function extractMarkdownLinks(markdown: string, startUrl = 'https://example.com'): ReadonlyArray<StructuredLink> {
+  return Array.from(markdown.matchAll(/\[([^\]]{0,160})\]\(([^)\s]+)[^)]*\)/g))
+    .map((match) => {
+      const rawUrl = match[2] ?? ''
+      const normalized = normalizeWebsiteCandidateUrl(rawUrl, startUrl) ?? rawUrl
+      return {
+        url: normalized,
+        label: match[1]?.trim() || null,
+        type: classifyLink(normalized, match[1] ?? null),
+      }
+    })
+    .filter((link) => link.type !== 'asset')
+}
+
+function normalizeStructuredLinks(
+  links: ReadonlyArray<FirecrawlLinkEntry> | null | undefined,
+  startUrl = 'https://example.com',
+): ReadonlyArray<StructuredLink> {
+  return (links ?? [])
+    .map((entry) => {
+      const rawUrl = readLinkEntryUrl(entry)
+      if (!rawUrl) return null
+      const normalized = normalizeWebsiteCandidateUrl(rawUrl, startUrl) ?? rawUrl
+      const label = readLinkEntryLabel(entry)
+      return {
+        url: normalized,
+        label,
+        type: classifyLink(normalized, label),
+      } satisfies StructuredLink
+    })
+    .filter((link): link is StructuredLink => link !== null && link.type !== 'asset')
+    .filter((link, index, values) => values.findIndex((item) => item.url === link.url && item.type === link.type) === index)
+}
+
 function readMapEntryUrl(entry: FirecrawlMapEntry): string | null {
   if (typeof entry === 'string') return entry
   return entry.url ?? entry.loc ?? entry.href ?? null
@@ -311,6 +475,7 @@ function extractFirecrawlContent(response: FirecrawlScrapeResponse): ExtractedWe
     markdown: data?.markdown,
     text: data?.text,
     html: data?.html,
+    links: data?.links,
     metadata: data?.metadata,
   })
 }
@@ -320,6 +485,7 @@ function extractFirecrawlCrawlPageContent(page: FirecrawlCrawlPage): ExtractedWe
     markdown: page.markdown,
     text: page.text,
     html: page.rawHtml ?? page.html,
+    links: page.links,
     metadata: page.metadata,
   })
 }
@@ -328,6 +494,7 @@ function extractPageContent(args: {
   readonly markdown?: string | null
   readonly text?: string | null
   readonly html?: string | null
+  readonly links?: ReadonlyArray<FirecrawlLinkEntry> | null
   readonly metadata?: {
     readonly title?: string | null
     readonly sourceURL?: string | null
@@ -336,6 +503,12 @@ function extractPageContent(args: {
   } | null
 }): ExtractedWebsiteContent {
   const structuredHtml = args.html ? extractWebsiteKnowledgeText(args.html) : ''
+  const startUrl = args.metadata?.sourceURL ?? args.metadata?.url ?? 'https://example.com'
+  const links = [
+    ...normalizeStructuredLinks(args.links, startUrl),
+    ...(args.html ? extractHtmlLinks(args.html, startUrl) : []),
+    ...(args.markdown ? extractMarkdownLinks(args.markdown, startUrl) : []),
+  ].filter((link, index, values) => values.findIndex((item) => item.url === link.url && item.type === link.type) === index)
   const content = cleanRagKnowledgeContent(
     [
       structuredHtml,
@@ -348,6 +521,7 @@ function extractPageContent(args: {
     title: args.metadata?.title ?? args.metadata?.ogTitle ?? readHtmlTitle(args.html ?? '') ?? null,
     finalUrl: args.metadata?.sourceURL ?? args.metadata?.url ?? null,
     content,
+    links,
   }
 }
 
@@ -464,6 +638,23 @@ function extractContactLinksText(html: string): string {
     if (/wa\.me|whatsapp/i.test(href)) lines.add(`- WhatsApp: ${label ? `${label}: ` : ''}${href}`)
   }
   return lines.size ? ['## Contact Links', ...Array.from(lines)].join('\n') : ''
+}
+
+function extractHtmlLinks(html: string, startUrl: string): ReadonlyArray<StructuredLink> {
+  return Array.from(html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi))
+    .map((match) => {
+      const rawUrl = match[1] ?? ''
+      const normalized = normalizeWebsiteCandidateUrl(rawUrl, startUrl) ?? rawUrl
+      const label = cleanHtmlToText(match[2] ?? '').slice(0, 160) || null
+      return {
+        url: normalized,
+        label,
+        type: classifyLink(normalized, label),
+      } satisfies StructuredLink
+    })
+    .filter((link) => link.type !== 'asset')
+    .filter((link, index, values) => values.findIndex((item) => item.url === link.url && item.type === link.type) === index)
+    .slice(0, 300)
 }
 
 function extractFooterText(html: string): string {
@@ -632,6 +823,32 @@ function pageContentLooksLowValue(page: ImportedWebsitePage): boolean {
   return false
 }
 
+function scorePageQuality(page: Pick<ImportedWebsitePage, 'url' | 'title' | 'content' | 'links'>): number {
+  const path = new URL(page.url).pathname.toLowerCase()
+  const title = (page.title ?? '').toLowerCase()
+  const main = removeJunkFromContent(page.content).slice(0, 6_000)
+  const normalized = normalizeKnowledgeLine(`${title} ${path} ${main}`)
+  let score = 0
+
+  if (main.length >= 300) score += 10
+  if (main.length >= 1_000) score += 8
+  if (/price|pricing|plan|package|[$€£₨₹]\s?\d|monthly|yearly|discount/.test(normalized)) score += 20
+  if (/product|service|menu|course|appointment|feature|spec|catalog|shop|treatment|program/.test(normalized)) score += 18
+  if (/faq|question|answer|frequently asked/.test(normalized)) score += 16
+  if (/refund|return|privacy|terms|shipping|delivery|warranty|cancellation/.test(normalized)) score += 14
+  if (/contact|support|sales|email|phone|whatsapp|address|opening hours|location/.test(normalized)) score += 16
+  if (extractIpAddresses(main).length > 0) score += 8
+  if (page.links.some((link) => link.type === 'order' || link.type === 'booking' || link.type === 'contact')) score += 6
+
+  if (/hello-world|author|category|tag|feed|wp-json|sitemap|xmlrpc/.test(path)) score -= 35
+  if (/clientarea|panel|submitticket|cart|checkout|payment|login|register|password/.test(path)) score -= 45
+  if (/welcome to wordpress|uncategorized|comment form/.test(normalized)) score -= 30
+  if (/language selector|password generator|captcha|form fields|username|remember me/.test(normalized)) score -= 20
+  if ((main.match(/requestanimationframe|ctx\.|canvas|function\s*\(|document\.|window\./gi) ?? []).length > 2) score -= 20
+
+  return Math.max(0, Math.min(100, score))
+}
+
 function lineFrequencies(pages: ReadonlyArray<ImportedWebsitePage>): ReadonlyMap<string, number> {
   const counts = new Map<string, number>()
   for (const page of pages) {
@@ -682,14 +899,24 @@ function collectMatches(content: string, pattern: RegExp): ReadonlyArray<string>
 function extractGlobalBusinessFacts(
   pages: ReadonlyArray<ImportedWebsitePage>,
   startUrl: string,
-): string {
+): { readonly section: string; readonly counts: Pick<StructuredRecordCounts, 'businessFacts' | 'contacts' | 'locations' | 'importantLinks' | 'testEndpoints'> } {
   const combined = pages.map((page) => page.content).join('\n')
   const emails = collectMatches(combined, /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)
-  const whatsapp = collectMatches(combined, /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com)\/[^\s)'"<>]+/gi)
-  const phones = collectMatches(combined, /(?:\+?\d[\d\s().-]{7,}\d)/g)
-    .filter((phone) => !/\b(?:20\d{2}|19\d{2})\b/.test(phone) || /[+\s().-]/.test(phone))
+  const whatsappLinks = collectMatches(combined, /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com)\/[^\s)'"<>]+/gi)
+  const phones = pages
+    .flatMap((page) => page.content.split('\n').flatMap(extractPhonesFromLine))
+    .map(normalizePhoneDigits)
+    .filter(uniqueByLowercase)
     .slice(0, 12)
-  const urls = collectMatches(combined, /https?:\/\/[^\s)'"<>]+/gi).slice(0, 12)
+  const testIps = pages.flatMap((page) => extractIpAddresses(page.content)).filter(uniqueByLowercase).slice(0, 40)
+  const allLinks = pages.flatMap((page) => page.links)
+    .filter((link) => link.type !== 'asset' && link.type !== 'login')
+    .filter((link, index, values) => values.findIndex((item) => item.url === link.url && item.type === link.type) === index)
+  const contactLinks = allLinks.filter((link) => link.type === 'contact')
+  const socialLinks = allLinks.filter((link) => link.type === 'social')
+  const policyLinks = allLinks.filter((link) => link.type === 'policy')
+  const orderLinks = allLinks.filter((link) => link.type === 'order' || link.type === 'booking')
+  const docsLinks = allLinks.filter((link) => link.type === 'docs' || link.type === 'support')
   const companyDetails = combined
     .split('\n')
     .filter((line) => /\b(company|legal|registration|registered|company number|tax|vat|llc|ltd|limited|inc)\b/i.test(line))
@@ -702,17 +929,37 @@ function extractGlobalBusinessFacts(
     .slice(0, 20)
 
   const lines = [
-    '# Global Business Facts',
+    '# Business Profile',
     `Website: ${startUrl}`,
-    emails.length ? `Support/contact emails: ${emails.join(', ')}` : '',
-    whatsapp.length ? `WhatsApp links: ${whatsapp.join(', ')}` : '',
-    phones.length ? `Phone numbers: ${phones.join(', ')}` : '',
-    urls.length ? `Important links: ${urls.join(', ')}` : '',
     companyDetails.length ? ['Company/legal details:', ...companyDetails.map((line) => `- ${line}`)].join('\n') : '',
     locations.length ? ['Locations/hours/address facts:', ...locations.map((line) => `- ${line}`)].join('\n') : '',
+    socialLinks.length ? ['Social links:', ...socialLinks.map((link) => `- ${link.label ? `${link.label}: ` : ''}${link.url}`)].join('\n') : '',
+    '',
+    '# Contact & Support',
+    emails.length ? `Support/contact emails: ${emails.join(', ')}` : '',
+    whatsappLinks.length ? `WhatsApp links: ${whatsappLinks.join(', ')}` : '',
+    phones.length ? `Phone numbers: ${phones.join(', ')}` : '',
+    contactLinks.length ? ['Contact links:', ...contactLinks.map((link) => `- ${link.label ? `${link.label}: ` : ''}${link.url}`)].join('\n') : '',
+    '',
+    '# Locations',
+    testIps.length ? ['Test endpoints / IP addresses:', ...testIps.map((ip) => `- IP: ${ip}`)].join('\n') : '',
+    '',
+    '# Important Links',
+    orderLinks.length ? ['Order / CTA / booking links:', ...orderLinks.map((link) => `- ${link.label ? `${link.label}: ` : ''}${link.url}`)].join('\n') : '',
+    policyLinks.length ? ['Policy links:', ...policyLinks.map((link) => `- ${link.label ? `${link.label}: ` : ''}${link.url}`)].join('\n') : '',
+    docsLinks.length ? ['Docs / help / support links:', ...docsLinks.map((link) => `- ${link.label ? `${link.label}: ` : ''}${link.url}`)].join('\n') : '',
   ].filter(Boolean)
 
-  return lines.join('\n')
+  return {
+    section: lines.join('\n'),
+    counts: {
+      businessFacts: companyDetails.length + socialLinks.length + 1,
+      contacts: emails.length + whatsappLinks.length + phones.length + contactLinks.length,
+      locations: locations.length,
+      importantLinks: allLinks.length,
+      testEndpoints: testIps.length,
+    },
+  }
 }
 
 type StructuredSectionKey =
@@ -724,14 +971,20 @@ type StructuredSectionKey =
   | 'pageSummaries'
 
 function pageSectionKey(page: ImportedWebsitePage): StructuredSectionKey {
-  const value = normalizeKnowledgeLine(`${page.title ?? ''} ${page.url} ${page.content.slice(0, 2000)}`)
-  if (/faq|frequently asked|question|answer/.test(value)) return 'faqs'
-  if (/refund-policy|return-policy|privacy|terms|policy|cancellation/.test(value)) return 'policies'
-  if (/location|address|test ip|opening hours|karachi|singapore|branch|office/.test(value)) return 'locations'
-  if (/pricing|plan|package|billing|discount|monthly|yearly|per month|per year/.test(value)) return 'pricing'
-  if (/service|product|menu|course|appointment|feature|spec|treatment|program|catalog/.test(value)) return 'products'
-  if (/[$€£₨₹]\s?\d|price|pricing|plan|package|billing|discount|monthly|yearly|per month|per year/.test(value)) return 'pricing'
-  if (/refund|return|privacy|terms|policy|shipping|delivery|cancellation/.test(value)) return 'policies'
+  const parsed = new URL(page.url)
+  const path = parsed.pathname.toLowerCase()
+  const title = (page.title ?? '').toLowerCase()
+  const main = normalizeKnowledgeLine(removeJunkFromContent(page.content).split('\n').slice(0, 80).join('\n'))
+  const pathTitle = `${path} ${title}`
+
+  if (/faq|frequently-asked|questions/.test(pathTitle) || /\b(faq|frequently asked|question|answer)\b/.test(main)) return 'faqs'
+  if (/refund|return|privacy|terms|policy|shipping|delivery|warranty|cancellation/.test(pathTitle)) return 'policies'
+  if (/contact|location|locations|address|hours|office|branch/.test(pathTitle) || /\b(location|address|test ip|opening hours|office|branch)\b/.test(main)) return 'locations'
+  if (/pricing|price|plan|plans|package|packages|billing/.test(pathTitle) || /\b(plan|package|pricing|billing|discount|monthly|yearly|per month|per year|current price|original price)\b/.test(main)) return 'pricing'
+  if (/product|products|shop|store|catalog|menu|service|services|course|appointment|booking|feature|features|hosting|server/.test(pathTitle)) return 'products'
+  if (/\b(service|product|menu|course|appointment|feature|spec|treatment|program|catalog|shop|variant|stock)\b/.test(main)) return 'products'
+  if (/[$€£₨₹]\s?\d|price|discount|monthly|yearly|per month|per year/.test(main)) return 'pricing'
+  if (/\b(refund|return|privacy|terms|policy|shipping|delivery|cancellation)\b/.test(main)) return 'policies'
   return 'pageSummaries'
 }
 
@@ -754,13 +1007,18 @@ function pagePurposeForKey(key: StructuredSectionKey): string {
 }
 
 function buildStructuredPageBlock(page: ImportedWebsitePage, key: StructuredSectionKey): string {
+  const usefulLinks = page.links
+    .filter((link) => link.type !== 'asset' && link.type !== 'login')
+    .slice(0, 20)
   return [
     `## Page: ${page.title ?? page.url}`,
     `URL: ${page.url}`,
     `Purpose: ${pagePurposeForKey(key)}`,
+    `Quality score: ${page.qualityScore}`,
+    usefulLinks.length ? ['Important links:', ...usefulLinks.map((link) => `- ${link.type}: ${link.label ? `${link.label}: ` : ''}${link.url}`)].join('\n') : '',
     'Important facts:',
     page.content,
-  ].join('\n\n')
+  ].filter(Boolean).join('\n\n')
 }
 
 function buildWebsiteKnowledgeContent(args: {
@@ -775,9 +1033,13 @@ function buildWebsiteKnowledgeContent(args: {
   readonly lowValuePagesSkipped: number
   readonly aiStructuringUsed: boolean
   readonly deterministicFallbackUsed: boolean
+  readonly structuredRecords: StructuredRecordCounts
 } {
   const rawCharacters = args.pages.reduce((sum, page) => sum + page.rawCharacters, 0)
-  const usefulPages = args.pages.filter((page) => !pageContentLooksLowValue(page))
+  const usefulPages = args.pages.filter((page) =>
+    !pageContentLooksLowValue(page) &&
+    (page.qualityScore >= 10 || lineLooksImportant(page.content)),
+  )
   const lowValuePagesSkipped = args.pages.length - usefulPages.length
   const frequencies = lineFrequencies(usefulPages)
   const cleanedPages = usefulPages
@@ -793,19 +1055,48 @@ function buildWebsiteKnowledgeContent(args: {
     pageSummaries: [],
   }
   const cleanedPageCharacters = cleanedPages.reduce((sum, page) => sum + page.content.length, 0)
+  const structuredCounts: StructuredRecordCounts = {
+    businessFacts: 0,
+    contacts: 0,
+    locations: 0,
+    products: 0,
+    services: 0,
+    plans: 0,
+    menuItems: 0,
+    faqs: 0,
+    policies: 0,
+    importantLinks: 0,
+    testEndpoints: 0,
+  }
 
   for (const page of cleanedPages) {
     const key = pageSectionKey(page)
     grouped[key].push(buildStructuredPageBlock(page, key))
+    if (key === 'pricing') structuredCounts.plans += 1
+    if (key === 'products') {
+      structuredCounts.products += /product|catalog|shop/i.test(`${page.title ?? ''} ${page.url} ${page.content}`) ? 1 : 0
+      structuredCounts.services += /service|appointment|course|menu|treatment|program|feature/i.test(`${page.title ?? ''} ${page.url} ${page.content}`) ? 1 : 0
+      structuredCounts.menuItems += /menu|item|dish|pizza|meal|restaurant/i.test(`${page.title ?? ''} ${page.url} ${page.content}`) ? 1 : 0
+    }
+    if (key === 'locations') structuredCounts.locations += 1
+    if (key === 'faqs') structuredCounts.faqs += 1
+    if (key === 'policies') structuredCounts.policies += 1
   }
+  const globalFacts = extractGlobalBusinessFacts(usefulPages, args.startUrl)
+  structuredCounts.businessFacts += globalFacts.counts.businessFacts
+  structuredCounts.contacts += globalFacts.counts.contacts
+  structuredCounts.locations += globalFacts.counts.locations
+  structuredCounts.importantLinks += globalFacts.counts.importantLinks
+  structuredCounts.testEndpoints += globalFacts.counts.testEndpoints
 
   const sections: string[] = [
     `# Website Knowledge Import`,
     `Source website: ${args.startUrl}`,
+    `Firecrawl features used: crawl, sitemap discovery, map fallback, batch scrape fallback, scrape fallback, markdown/html/links extraction`,
     `Imported pages: ${cleanedPages.length}`,
     `Skipped low-value pages: ${lowValuePagesSkipped}`,
     `Raw characters collected: ${rawCharacters}`,
-    extractGlobalBusinessFacts(usefulPages, args.startUrl),
+    globalFacts.section,
   ]
   let length = sections.join('\n\n').length
   let capped = false
@@ -836,6 +1127,7 @@ function buildWebsiteKnowledgeContent(args: {
     lowValuePagesSkipped,
     aiStructuringUsed: false,
     deterministicFallbackUsed: false,
+    structuredRecords: structuredCounts,
   }
 }
 
@@ -858,13 +1150,10 @@ async function getFirecrawlApiKey(workspaceId: string): Promise<string> {
 function createFirecrawlClient(apiKey: string): FirecrawlClient {
   return {
     crawl: async (url, limit) => crawlWithFirecrawl(apiKey, url, limit),
+    batchScrape: async (urls) => batchScrapeWithFirecrawl(apiKey, urls),
     map: async (url, limit) => {
-      const response = await fetch(FIRECRAWL_MAP_URL, {
+      return firecrawlRequest<FirecrawlMapResponse>('/map', apiKey, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           url,
           limit,
@@ -872,32 +1161,18 @@ function createFirecrawlClient(apiKey: string): FirecrawlClient {
           ignoreSitemap: false,
         }),
       })
-
-      const payload = await response.json().catch(() => ({})) as FirecrawlMapResponse
-      if (!response.ok || payload.success === false) {
-        throw new Error(payload.error || 'Firecrawl could not discover website pages.')
-      }
-      return payload
     },
     scrape: async (url) => {
-      const response = await fetch(FIRECRAWL_SCRAPE_URL, {
+      return firecrawlRequest<FirecrawlScrapeResponse>('/scrape', apiKey, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           url,
-          formats: ['markdown', 'html'],
+          formats: ['markdown', 'html', 'links'],
           onlyMainContent: false,
+          timeout: FIRECRAWL_REQUEST_TIMEOUT_MS,
+          maxAge: 3_600_000,
         }),
       })
-
-      const payload = await response.json().catch(() => ({})) as FirecrawlScrapeResponse
-      if (!response.ok || payload.success === false) {
-        throw new Error(payload.error || 'Firecrawl could not scrape this page.')
-      }
-      return payload
     },
   }
 }
@@ -927,6 +1202,8 @@ async function crawlWithFirecrawl(
         blockAds: true,
         proxy: 'auto',
         storeInCache: true,
+        timeout: FIRECRAWL_REQUEST_TIMEOUT_MS,
+        maxAge: 3_600_000,
       },
     }),
   })
@@ -963,36 +1240,142 @@ async function crawlWithFirecrawl(
   return pages
 }
 
+async function batchScrapeWithFirecrawl(
+  apiKey: string,
+  urls: ReadonlyArray<string>,
+): Promise<ReadonlyArray<FirecrawlCrawlPage>> {
+  const started = await firecrawlRequest<FirecrawlBatchScrapeResponse>('/batch/scrape', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({
+      urls: [...urls],
+      formats: ['markdown', 'html', 'links'],
+      onlyMainContent: false,
+      timeout: FIRECRAWL_REQUEST_TIMEOUT_MS,
+      maxAge: 3_600_000,
+    }),
+  })
+
+  if (Array.isArray(started.data) && started.data.length > 0) return started.data
+
+  const batchId = typeof started.id === 'string' ? started.id : null
+  if (!batchId) throw new Error('Firecrawl did not return a batch scrape job ID.')
+
+  const deadline = Date.now() + FIRECRAWL_BATCH_MAX_WAIT_MS
+  let latest: FirecrawlBatchScrapeResponse | null = null
+  while (Date.now() < deadline) {
+    latest = await firecrawlRequest<FirecrawlBatchScrapeResponse>(`/batch/scrape/${encodeURIComponent(batchId)}`, apiKey)
+    if (latest.status === 'completed') break
+    if (latest.status === 'failed' || latest.status === 'cancelled') {
+      throw new Error(`Firecrawl batch scrape ${latest.status}.`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, FIRECRAWL_CRAWL_POLL_INTERVAL_MS))
+  }
+
+  if (!latest || latest.status !== 'completed') {
+    throw new Error('Firecrawl batch scrape did not complete before the local import timeout.')
+  }
+
+  const pages: FirecrawlCrawlPage[] = []
+  if (Array.isArray(latest.data)) pages.push(...latest.data)
+  let nextUrl = latest.next
+  const visited = new Set<string>()
+  while (nextUrl && !visited.has(nextUrl) && visited.size < 100) {
+    visited.add(nextUrl)
+    const next = await firecrawlRequest<FirecrawlBatchScrapeResponse>(nextUrl, apiKey)
+    if (Array.isArray(next.data)) pages.push(...next.data)
+    nextUrl = next.next
+  }
+  return pages
+}
+
+class FirecrawlRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null,
+  ) {
+    super(message)
+    this.name = 'FirecrawlRequestError'
+  }
+}
+
+function firecrawlErrorMessage(status: number | null, fallback: string): string {
+  if (status === 400) return 'Firecrawl could not process this request. Check the website URL or import settings.'
+  if (status === 401 || status === 403) return 'Firecrawl API key is missing, invalid, or rejected.'
+  if (status === 402) return 'Firecrawl credits or billing issue. Please check your Firecrawl account.'
+  if (status === 408) return 'Firecrawl request timed out. Please try again.'
+  if (status === 429) return 'Firecrawl rate limit reached. Please try again later.'
+  if (status && status >= 500) return 'Firecrawl service is temporarily unavailable. Please try again later.'
+  return fallback || 'Firecrawl request failed.'
+}
+
+function shouldRetryFirecrawl(status: number | null, attempt: number): boolean {
+  if (attempt >= FIRECRAWL_RETRY_COUNT) return false
+  return status === 408 || status === 429 || status === null || Boolean(status && status >= 500)
+}
+
+async function waitForRetry(attempt: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt))
+}
+
 async function firecrawlRequest(
   pathOrUrl: string,
   apiKey: string,
+  init?: RequestInit,
+): Promise<FirecrawlCrawlResponse>
+async function firecrawlRequest<T extends { readonly success?: boolean; readonly error?: string | null }>(
+  pathOrUrl: string,
+  apiKey: string,
+  init?: RequestInit,
+): Promise<T>
+async function firecrawlRequest<T extends { readonly success?: boolean; readonly error?: string | null }>(
+  pathOrUrl: string,
+  apiKey: string,
   init: RequestInit = {},
-): Promise<FirecrawlCrawlResponse> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), FIRECRAWL_REQUEST_TIMEOUT_MS)
-  try {
-    const response = await fetch(pathOrUrl.startsWith('http') ? pathOrUrl : `${FIRECRAWL_V2_BASE_URL}${pathOrUrl}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        ...init.headers,
-      },
-      signal: controller.signal,
-    })
-    const payload = await response.json().catch(() => ({})) as FirecrawlCrawlResponse
-    if (!response.ok || payload.success === false) {
-      throw new Error(payload.error || `Firecrawl returned HTTP ${response.status}.`)
+): Promise<T> {
+  const url = pathOrUrl.startsWith('http') ? pathOrUrl : `${FIRECRAWL_V2_BASE_URL}${pathOrUrl}`
+  for (let attempt = 0; attempt <= FIRECRAWL_RETRY_COUNT; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FIRECRAWL_REQUEST_TIMEOUT_MS)
+    try {
+      const response = await fetch(url, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          ...init.headers,
+        },
+        signal: controller.signal,
+      })
+      const payload = await response.json().catch(() => ({})) as T
+      if (!response.ok || payload.success === false) {
+        const message = firecrawlErrorMessage(response.status, payload.error || `Firecrawl returned HTTP ${response.status}.`)
+        if (shouldRetryFirecrawl(response.status, attempt)) {
+          await waitForRetry(attempt)
+          continue
+        }
+        throw new FirecrawlRequestError(message, response.status)
+      }
+      return payload
+    } catch (error) {
+      const status = error instanceof FirecrawlRequestError ? error.status : null
+      if (error instanceof Error && error.name === 'AbortError') {
+        if (shouldRetryFirecrawl(408, attempt)) {
+          await waitForRetry(attempt)
+          continue
+        }
+        throw new FirecrawlRequestError(firecrawlErrorMessage(408, 'Firecrawl request timed out.'), 408)
+      }
+      if (shouldRetryFirecrawl(status, attempt)) {
+        await waitForRetry(attempt)
+        continue
+      }
+      if (error instanceof FirecrawlRequestError) throw error
+      throw new FirecrawlRequestError(firecrawlErrorMessage(null, 'Could not connect to Firecrawl right now.'), null)
+    } finally {
+      clearTimeout(timer)
     }
-    return payload
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Firecrawl request timed out.')
-    }
-    throw error
-  } finally {
-    clearTimeout(timer)
   }
+  throw new FirecrawlRequestError('Firecrawl request failed.', null)
 }
 
 function clampPageLimit(value: number | null | undefined): number {
@@ -1021,6 +1404,8 @@ async function importWebsiteWithClient(args: {
   let pagesFailed = 0
   let duplicatePages = 0
   let crawlPagesFound = 0
+  const firecrawlModesUsed = new Set<string>()
+  const warnings = new Set<string>()
 
   function addImportedPage(pageUrl: string, extracted: ExtractedWebsiteContent): void {
     const finalUrl = normalizeWebsiteCandidateUrl(extracted.finalUrl ?? pageUrl, args.startUrl) ?? pageUrl
@@ -1049,11 +1434,19 @@ async function importWebsiteWithClient(args: {
       content: extracted.content,
       hash,
       rawCharacters: extracted.content.length,
+      links: extracted.links,
+      qualityScore: scorePageQuality({
+        url: finalUrl,
+        title: extracted.title,
+        content: extracted.content,
+        links: extracted.links,
+      }),
     })
   }
 
   if (args.client.crawl) {
     try {
+      firecrawlModesUsed.add('crawl')
       const crawlPages = await args.client.crawl(args.startUrl, pageLimit)
       crawlPagesFound = crawlPages.length
       for (const page of crawlPages.slice(0, pageLimit)) {
@@ -1063,14 +1456,19 @@ async function importWebsiteWithClient(args: {
       if (crawlPages.length > pageLimit) addReason(skippedReasons, 'page_limit_reached')
     } catch {
       addReason(skippedReasons, 'firecrawl_crawl_unavailable_map_fallback')
+      warnings.add('Firecrawl crawl failed or timed out; map/batch/scrape fallback was used.')
+      firecrawlModesUsed.add('fallback')
     }
   }
 
   if (importedPages.length === 0) {
     try {
+      firecrawlModesUsed.add('map')
       mappedUrls = readFirecrawlMapUrls(await args.client.map(args.startUrl, pageLimit))
     } catch {
       addReason(skippedReasons, 'map_unavailable_single_url_fallback')
+      warnings.add('Firecrawl map discovery failed; single-page scrape fallback was used.')
+      firecrawlModesUsed.add('fallback')
     }
   }
 
@@ -1083,14 +1481,31 @@ async function importWebsiteWithClient(args: {
     skippedReasons.set(reason, (skippedReasons.get(reason) ?? 0) + count)
   }
 
+  if (importedPages.length === 0 && args.client.batchScrape && discovered.urls.length > 1) {
+    try {
+      firecrawlModesUsed.add('batch_scrape')
+      const pages = await args.client.batchScrape(discovered.urls)
+      for (const page of pages) {
+        const pageUrl = page.metadata?.sourceURL ?? page.metadata?.url ?? args.startUrl
+        addImportedPage(pageUrl, extractFirecrawlCrawlPageContent(page))
+      }
+    } catch {
+      addReason(skippedReasons, 'batch_scrape_failed')
+      warnings.add('Firecrawl batch scrape failed; page-by-page scrape fallback was used.')
+      firecrawlModesUsed.add('fallback')
+    }
+  }
+
   if (importedPages.length === 0) {
     for (const pageUrl of discovered.urls) {
       try {
+        firecrawlModesUsed.add('scrape')
         const scraped = await args.client.scrape(pageUrl)
         addImportedPage(pageUrl, extractFirecrawlContent(scraped))
       } catch {
         pagesFailed += 1
         addReason(skippedReasons, 'scrape_failed')
+        warnings.add('Some pages failed during Firecrawl scrape and were skipped.')
       }
     }
   }
@@ -1112,7 +1527,9 @@ async function importWebsiteWithClient(args: {
       'low_value_page_content',
       (skippedReasons.get('low_value_page_content') ?? 0) + built.lowValuePagesSkipped,
     )
+    warnings.add('Low-value/private/form/archive pages were skipped from chatbot knowledge.')
   }
+  if (built.capped) warnings.add('Final knowledge reached the CRM character limit and was capped.')
 
   return {
     title: safeWebsiteTitle(args.startUrl, importedPages[0]?.title),
@@ -1133,6 +1550,9 @@ async function importWebsiteWithClient(args: {
       lowValuePagesSkipped: built.lowValuePagesSkipped,
       aiStructuringUsed: built.aiStructuringUsed,
       deterministicFallbackUsed: built.deterministicFallbackUsed,
+      firecrawlModesUsed: Array.from(firecrawlModesUsed),
+      structuredRecords: built.structuredRecords,
+      warnings: Array.from(warnings),
       skippedReasons: Object.fromEntries(skippedReasons),
     },
   }

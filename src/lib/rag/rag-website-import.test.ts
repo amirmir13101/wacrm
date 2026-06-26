@@ -164,7 +164,8 @@ describe('RAG Firecrawl website import', () => {
       },
     })
 
-    expect(imported.content).toContain('# Global Business Facts')
+    expect(imported.content).toContain('# Business Profile')
+    expect(imported.content).toContain('# Contact & Support')
     expect(imported.content).toContain('support@example.com')
     expect(imported.content).toContain('https://wa.me/1234567890')
     expect(imported.content).toContain('# Plans / Packages / Pricing')
@@ -189,6 +190,97 @@ describe('RAG Firecrawl website import', () => {
     expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/submit-ticket/', 'https://example.com')).toBe('private_path')
     expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/cart/', 'https://example.com')).toBe('private_path')
     expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/checkout/', 'https://example.com')).toBe('private_path')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/panel/submitticket.php', 'https://example.com')).toBe('private_path')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/clientarea.php', 'https://example.com')).toBe('private_path')
+  })
+
+  it('classifies phones, WhatsApp links, IPs, prices, and technical specs separately', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://example.com/',
+      pageLimit: 5,
+      client: {
+        crawl: async () => [
+          {
+            markdown: [
+              '# Contact and VPS Locations',
+              'Support phone: +44 7478 060494',
+              'WhatsApp support: https://wa.me/447478060494',
+              'Singapore Test IP: 45.38.210.3',
+              'SVG viewBox 0 0 30 20 should not be a phone.',
+              'Wagon VPS x8 price is $7.04/mo, original price $8.80/mo.',
+              'Specs: 8GB RAM, 4 Core CPU, 2048 IOPS, 160GB NVMe Storage.',
+            ].join('\n'),
+            metadata: { title: 'Contact and Locations', sourceURL: 'https://example.com/locations/' },
+          },
+        ],
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    expect(imported.content).toContain('Phone numbers: +447478060494')
+    expect(imported.content).toContain('WhatsApp links: https://wa.me/447478060494')
+    expect(imported.content).toContain('IP: 45.38.210.3')
+    expect(imported.content).not.toContain('Phone numbers: 45.38.210.3')
+    expect(imported.content).not.toContain('Phone numbers: 2048')
+    expect(imported.content).not.toContain('Phone numbers: 0 0 30 20')
+    expect(imported.stats.structuredRecords.contacts).toBeGreaterThan(0)
+    expect(imported.stats.structuredRecords.testEndpoints).toBeGreaterThan(0)
+  })
+
+  it('does not classify useful product pages as policies because of footer policy links', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://example.com/',
+      pageLimit: 5,
+      client: {
+        crawl: async () => [
+          {
+            markdown: [
+              '# VPS Hosting',
+              'Wagon VPS x12 is for production workloads.',
+              'Current price: $9.20/mo.',
+              'Specs: 12GB RAM, 6 Core CPU, 240GB NVMe Storage.',
+              '[Privacy Policy](https://example.com/privacy-policy/) [Refund Policy](https://example.com/refund-policy/)',
+            ].join('\n'),
+            metadata: { title: 'VPS Hosting', sourceURL: 'https://example.com/vps/' },
+          },
+        ],
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    expect(imported.content).toContain('# Plans / Packages / Pricing')
+    expect(imported.content).toContain('Wagon VPS x12')
+    expect(imported.content).not.toContain('# Policies\n\n## Page: VPS Hosting')
+  })
+
+  it('uses map plus batch scrape fallback when crawl is unavailable', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://example.com/',
+      pageLimit: 5,
+      client: {
+        crawl: async () => {
+          throw new Error('crawl failed')
+        },
+        map: async () => ({
+          success: true,
+          links: ['https://example.com/pricing', 'https://example.com/contact'],
+        }),
+        batchScrape: async (urls) => urls.map((url) => ({
+          markdown: `# ${url}\n\nUseful page content for ${url}. Support email support@example.com. Price: $20/month.`,
+          metadata: { title: url.includes('pricing') ? 'Pricing' : 'Contact', sourceURL: url },
+        })),
+        scrape: async () => {
+          throw new Error('single scrape should not be needed')
+        },
+      },
+    })
+
+    expect(imported.stats.firecrawlModesUsed).toEqual(expect.arrayContaining(['crawl', 'fallback', 'map', 'batch_scrape']))
+    expect(imported.stats.warnings.join(' ')).toContain('map/batch/scrape fallback')
+    expect(imported.content).toContain('support@example.com')
+    expect(imported.content).toContain('$20/month')
   })
 
   it('removes JavaScript, canvas code, and base64 image junk while keeping business facts', async () => {
@@ -286,6 +378,8 @@ describe('RAG Firecrawl website import', () => {
         hash: `hash-${index}`,
         content,
         rawCharacters: content.length,
+        links: [],
+        qualityScore: 80,
       }
     })
 
@@ -343,6 +437,36 @@ describe('RAG Firecrawl website import', () => {
     expect(prepared.chunks.some((chunk) => chunk.content.includes(lateFact))).toBe(true)
   })
 
+  it('chunks structured sections so plan price/specs and FAQ answers stay together', () => {
+    const content = [
+      '# Website Knowledge Import',
+      '# Plans / Packages / Pricing',
+      '## Page: VPS Plans',
+      'URL: https://example.com/vps/',
+      'Important facts:',
+      'Plan: Wagon VPS x4',
+      'Current price: $5.40/mo',
+      'Specs: 4GB RAM, 2 Core CPU, 80GB NVMe Storage',
+      '# FAQs',
+      '## Page: FAQ',
+      'Question: Are backups included?',
+      'Answer: Daily backups are included.',
+    ].join('\n\n')
+    const prepared = prepareRagKnowledgeSource({
+      workspaceId: 'workspace-1',
+      title: 'Structured website',
+      sourceType: 'website',
+      sourceUrl: 'https://example.com',
+      content,
+    })
+
+    const planChunk = prepared.chunks.find((chunk) => chunk.content.includes('Wagon VPS x4'))
+    expect(planChunk?.content).toContain('$5.40/mo')
+    expect(planChunk?.content).toContain('4GB RAM')
+    const faqChunk = prepared.chunks.find((chunk) => chunk.content.includes('Are backups included?'))
+    expect(faqChunk?.content).toContain('Daily backups are included.')
+  })
+
   it('adds the website import API route with workspace permission and no key exposure', () => {
     expect(websiteImportRoute).toContain("requireRagPermission('manage_rag_chatbot')")
     expect(websiteImportRoute).toContain('importRagWebsiteKnowledge')
@@ -356,19 +480,25 @@ describe('RAG Firecrawl website import', () => {
     expect(websiteImport).toContain("from('rag_firecrawl_settings')")
     expect(websiteImport).toContain('decrypt(row.encrypted_api_key)')
     expect(websiteImport).toContain('Add your Firecrawl API key first.')
-    expect(websiteImport).toContain('https://api.firecrawl.dev/v1/scrape')
-    expect(websiteImport).toContain('https://api.firecrawl.dev/v1/map')
     expect(websiteImport).toContain('https://api.firecrawl.dev/v2')
+    expect(websiteImport).toContain("firecrawlRequest<FirecrawlMapResponse>('/map'")
+    expect(websiteImport).toContain("firecrawlRequest<FirecrawlScrapeResponse>('/scrape'")
+    expect(websiteImport).toContain("firecrawlRequest<FirecrawlBatchScrapeResponse>('/batch/scrape'")
     expect(websiteImport).toContain("sitemap: 'include'")
     expect(websiteImport).toContain('crawlEntireDomain: true')
     expect(websiteImport).toContain("formats: ['markdown', 'rawHtml', 'links']")
-    expect(websiteImport).toContain("formats: ['markdown', 'html']")
+    expect(websiteImport).toContain("formats: ['markdown', 'html', 'links']")
   })
 
   it('enforces readable content and the shared 500,000 character limit', () => {
     expect(websiteImport).toContain('no readable website content was found')
     expect(websiteImport).toContain('RAG_KNOWLEDGE_CHARACTER_LIMIT')
     expect(websiteImport).toContain('capped')
+    expect(websiteImport).toContain('Firecrawl API key is missing, invalid, or rejected.')
+    expect(websiteImport).toContain('Firecrawl credits or billing issue.')
+    expect(websiteImport).toContain('Firecrawl rate limit reached.')
+    expect(websiteImport).toContain('Firecrawl service is temporarily unavailable.')
+    expect(websiteImport).toContain('shouldRetryFirecrawl')
   })
 
   it('saves website sources and chunks in rag tables only', () => {

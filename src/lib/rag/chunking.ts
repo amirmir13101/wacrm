@@ -77,6 +77,38 @@ function addNeighborOverlap(
   })
 }
 
+function splitMarkdownSections(content: string): ReadonlyArray<string> {
+  const sections = content
+    .split(/(?=^#{1,3}\s+)/m)
+    .map((section) => section.trim())
+    .filter(Boolean)
+  return sections.length > 1 ? sections : []
+}
+
+function splitLongSection(section: string, maxLength: number): ReadonlyArray<string> {
+  if (section.length <= maxLength) return [section]
+  const heading = section.match(/^#{1,6}\s+.+$/m)?.[0] ?? ''
+  const body = heading ? section.replace(heading, '').trim() : section
+  const paragraphs = body
+    .split(/\n{2,}|(?=^#{2,6}\s+)/m)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+
+  const chunks: string[] = []
+  let current = heading
+  for (const paragraph of paragraphs.flatMap((paragraph) => splitLongText(paragraph, maxLength))) {
+    const next = current ? `${current}\n\n${paragraph}` : paragraph
+    if (next.length <= maxLength) {
+      current = next
+      continue
+    }
+    if (current) chunks.push(current.trim())
+    current = heading && paragraph !== heading ? `${heading}\n\n${paragraph}` : paragraph
+  }
+  if (current) chunks.push(current.trim())
+  return chunks
+}
+
 export function createRagChunks(
   content: string,
   options: RagChunkOptions = {},
@@ -91,26 +123,31 @@ export function createRagChunks(
     { maxChunkLength, overlapChars },
   )
 
-  const sentenceChunks = content
-    .split(/\n+|(?<=[.!?])\s+/)
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
-    .flatMap((chunk) => splitLongText(chunk, maxChunkLength))
+  const semanticSections = splitMarkdownSections(content)
+  const sentenceChunks = semanticSections.length > 0
+    ? semanticSections.flatMap((section) => splitLongSection(section, maxChunkLength))
+    : content
+      .split(/\n+|(?<=[.!?])\s+/)
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+      .flatMap((chunk) => splitLongText(chunk, maxChunkLength))
 
   const packedChunks: string[] = []
-  let current = ''
-
-  for (const sentence of sentenceChunks) {
-    const next = current ? `${current} ${sentence}` : sentence
-    if (next.length <= maxChunkLength) {
-      current = next
-      continue
+  if (semanticSections.length > 0) {
+    packedChunks.push(...sentenceChunks)
+  } else {
+    let current = ''
+    for (const sentence of sentenceChunks) {
+      const next = current ? `${current} ${sentence}` : sentence
+      if (next.length <= maxChunkLength) {
+        current = next
+        continue
+      }
+      if (current) packedChunks.push(current)
+      current = sentence
     }
     if (current) packedChunks.push(current)
-    current = sentence
   }
-
-  if (current) packedChunks.push(current)
 
   if (packedChunks.length > maxChunksPerSource) {
     throw new Error(

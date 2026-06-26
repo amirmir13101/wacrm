@@ -123,6 +123,9 @@ interface WebsiteImportStats {
   readonly lowValuePagesSkipped?: number
   readonly aiStructuringUsed?: boolean
   readonly deterministicFallbackUsed?: boolean
+  readonly firecrawlModesUsed?: ReadonlyArray<string>
+  readonly structuredRecords?: Readonly<Record<string, number>>
+  readonly warnings?: ReadonlyArray<string>
   readonly skippedReasons?: Readonly<Record<string, number>>
 }
 
@@ -1001,7 +1004,22 @@ export default function RagChatbotPage() {
               <div>{websiteImportStats.capped ? 'Saved content was capped.' : 'Content was not capped.'}</div>
               <div>AI structuring: {websiteImportStats.aiStructuringUsed ? 'yes' : 'no'}</div>
               <div>Deterministic fallback: {websiteImportStats.deterministicFallbackUsed ? 'yes' : 'no'}</div>
+              <div className="sm:col-span-2">Firecrawl modes: {(websiteImportStats.firecrawlModesUsed ?? ['crawl']).join(', ')}</div>
             </dl>
+            {websiteImportStats.structuredRecords && (
+              <p className="mt-3 text-xs leading-5 text-[#8bb4a5]">
+                Structured records:{' '}
+                {Object.entries(websiteImportStats.structuredRecords)
+                  .filter(([, count]) => count > 0)
+                  .map(([name, count]) => `${name.replace(/([A-Z])/g, ' $1').toLowerCase()} (${count})`)
+                  .join(', ') || 'none detected'}
+              </p>
+            )}
+            {websiteImportStats.warnings && websiteImportStats.warnings.length > 0 && (
+              <p className="mt-3 text-xs leading-5 text-amber-100">
+                Warnings: {websiteImportStats.warnings.join(' ')}
+              </p>
+            )}
             {websiteImportStats.skippedReasons && Object.keys(websiteImportStats.skippedReasons).length > 0 && (
               <p className="mt-3 text-xs leading-5 text-[#8bb4a5]">
                 Skipped reasons:{' '}
