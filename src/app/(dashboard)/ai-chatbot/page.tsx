@@ -109,6 +109,18 @@ interface RagAutoReplySettings {
   readonly knowledgeReady: boolean
 }
 
+interface WebsiteImportStats {
+  readonly pagesFound: number
+  readonly pagesImported: number
+  readonly pagesSkipped: number
+  readonly pagesFailed: number
+  readonly duplicatePages: number
+  readonly savedCharacters: number
+  readonly capped: boolean
+  readonly pageLimit: number
+  readonly skippedReasons?: Readonly<Record<string, number>>
+}
+
 const providerLabels: Record<RagProviderType, string> = {
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
@@ -291,6 +303,7 @@ export default function RagChatbotPage() {
   const [knowledgeProgress, setKnowledgeProgress] = useState<KnowledgeProgressState | null>(null)
   const [websiteUrl, setWebsiteUrl] = useState('')
   const [websiteImportMessage, setWebsiteImportMessage] = useState<string | null>(null)
+  const [websiteImportStats, setWebsiteImportStats] = useState<WebsiteImportStats | null>(null)
   const [websiteImporting, setWebsiteImporting] = useState(false)
   const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeSourceItem | null>(null)
   const [editingKnowledgeId, setEditingKnowledgeId] = useState<string | null>(null)
@@ -572,6 +585,7 @@ export default function RagChatbotPage() {
   async function importWebsite() {
     setWebsiteImporting(true)
     setWebsiteImportMessage(null)
+    setWebsiteImportStats(null)
     setKnowledgeProgress(createKnowledgeProgress('website'))
     try {
       const response = await fetch('/api/rag/website-import', {
@@ -584,6 +598,7 @@ export default function RagChatbotPage() {
 
       setWebsiteUrl('')
       setSelectedKnowledge(payload.source ?? null)
+      setWebsiteImportStats(payload.stats ?? null)
       const message = cleanOperationMessage(
         payload.embeddingSummary?.message ?? payload.message,
         'Website imported, cleaned, and chunked.',
@@ -906,12 +921,12 @@ export default function RagChatbotPage() {
               <h2 className="text-lg font-bold text-white">Website Import</h2>
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Import one website page into the knowledge base. Small imports can prepare
-              automatically; large imports are fully chunked first and can be prepared when ready.
+              Import public website pages into the knowledge base. Firecrawl discovers pages,
+              the CRM skips private paths, and saved content is chunked up to the knowledge limit.
             </p>
           </div>
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
-            Single URL
+            Multi-page import
           </span>
         </div>
 
@@ -950,6 +965,39 @@ export default function RagChatbotPage() {
           <p className="mt-4 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
             {websiteImportMessage}
           </p>
+        )}
+        {websiteImportStats && (
+          <div className="mt-4 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-bold text-white">Website import summary</h3>
+              <span className={cn(
+                'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+                websiteImportStats.capped
+                  ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
+                  : 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100',
+              )}>
+                {websiteImportStats.capped ? 'Content limit reached' : 'Imported'}
+              </span>
+            </div>
+            <dl className="grid gap-2 text-xs text-[#a9c6bb] sm:grid-cols-2 lg:grid-cols-4">
+              <div>{websiteImportStats.pagesFound.toLocaleString()} pages found</div>
+              <div>{websiteImportStats.pagesImported.toLocaleString()} pages imported</div>
+              <div>{websiteImportStats.pagesSkipped.toLocaleString()} pages skipped</div>
+              <div>{websiteImportStats.pagesFailed.toLocaleString()} pages failed</div>
+              <div>{websiteImportStats.duplicatePages.toLocaleString()} duplicates</div>
+              <div>{websiteImportStats.savedCharacters.toLocaleString()} characters saved</div>
+              <div>Limit: {websiteImportStats.pageLimit.toLocaleString()} pages</div>
+              <div>{websiteImportStats.capped ? 'Saved content was capped.' : 'Content was not capped.'}</div>
+            </dl>
+            {websiteImportStats.skippedReasons && Object.keys(websiteImportStats.skippedReasons).length > 0 && (
+              <p className="mt-3 text-xs leading-5 text-[#8bb4a5]">
+                Skipped reasons:{' '}
+                {Object.entries(websiteImportStats.skippedReasons)
+                  .map(([reason, count]) => `${reason.replaceAll('_', ' ')} (${count})`)
+                  .join(', ')}
+              </p>
+            )}
+          </div>
         )}
       </section>
 

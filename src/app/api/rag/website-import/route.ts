@@ -16,10 +16,12 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
     const url = typeof body.url === 'string' ? body.url : ''
+    const pageLimit = typeof body.pageLimit === 'number' ? body.pageLimit : undefined
     const result = await importRagWebsiteKnowledge({
       workspaceId: auth.workspace.workspaceId,
       userId: auth.workspace.userId,
       url,
+      pageLimit,
     })
     const embeddingSummary = shouldAutoEmbedRagKnowledge(result.source.chunkCount)
       ? await embedRagManualKnowledgeSource({
