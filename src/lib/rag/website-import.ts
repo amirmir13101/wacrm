@@ -8,9 +8,13 @@ import { sanitizeProviderError } from './security'
 
 const FIRECRAWL_SCRAPE_URL = 'https://api.firecrawl.dev/v1/scrape'
 const FIRECRAWL_MAP_URL = 'https://api.firecrawl.dev/v1/map'
+const FIRECRAWL_V2_BASE_URL = 'https://api.firecrawl.dev/v2'
 const DEFAULT_WEBSITE_IMPORT_PAGE_LIMIT = 50
 const MAX_WEBSITE_IMPORT_PAGE_LIMIT = 100
 const MIN_USEFUL_PAGE_CHARACTERS = 80
+const FIRECRAWL_REQUEST_TIMEOUT_MS = 30_000
+const FIRECRAWL_CRAWL_POLL_INTERVAL_MS = 2_000
+const FIRECRAWL_CRAWL_MAX_WAIT_MS = 90_000
 
 const PRIVATE_PATH_SEGMENTS = new Set([
   'login',
@@ -72,6 +76,32 @@ interface FirecrawlScrapeResponse {
   readonly error?: string | null
 }
 
+interface FirecrawlCrawlPage {
+  readonly markdown?: string | null
+  readonly html?: string | null
+  readonly rawHtml?: string | null
+  readonly text?: string | null
+  readonly metadata?: {
+    readonly title?: string | null
+    readonly sourceURL?: string | null
+    readonly url?: string | null
+    readonly ogTitle?: string | null
+    readonly statusCode?: number | null
+  } | null
+}
+
+interface FirecrawlCrawlResponse {
+  readonly id?: string | null
+  readonly success?: boolean
+  readonly status?: 'scraping' | 'completed' | 'failed' | 'cancelled' | string | null
+  readonly total?: number | null
+  readonly completed?: number | null
+  readonly creditsUsed?: number | null
+  readonly data?: ReadonlyArray<FirecrawlCrawlPage> | null
+  readonly next?: string | null
+  readonly error?: string | null
+}
+
 type FirecrawlMapEntry = string | {
   readonly url?: string | null
   readonly loc?: string | null
@@ -90,6 +120,7 @@ interface FirecrawlMapResponse {
 }
 
 interface FirecrawlClient {
+  readonly crawl?: (url: string, limit: number) => Promise<ReadonlyArray<FirecrawlCrawlPage>>
   readonly map: (url: string, limit: number) => Promise<FirecrawlMapResponse>
   readonly scrape: (url: string) => Promise<FirecrawlScrapeResponse>
 }
@@ -104,6 +135,12 @@ interface ImportedWebsitePage {
   readonly title: string | null
   readonly content: string
   readonly hash: string
+}
+
+interface ExtractedWebsiteContent {
+  readonly title: string | null
+  readonly finalUrl: string | null
+  readonly content: string
 }
 
 export interface RagWebsiteImportStats {
@@ -220,25 +257,238 @@ function readFirecrawlMapUrls(response: FirecrawlMapResponse): ReadonlyArray<str
   return entries.map(readMapEntryUrl).filter((url: string | null): url is string => Boolean(url))
 }
 
-function extractFirecrawlContent(response: FirecrawlScrapeResponse): {
-  readonly title: string | null
-  readonly finalUrl: string | null
-  readonly content: string
-} {
+function extractFirecrawlContent(response: FirecrawlScrapeResponse): ExtractedWebsiteContent {
   const data = response.data
+  return extractPageContent({
+    markdown: data?.markdown,
+    text: data?.text,
+    html: data?.html,
+    metadata: data?.metadata,
+  })
+}
+
+function extractFirecrawlCrawlPageContent(page: FirecrawlCrawlPage): ExtractedWebsiteContent {
+  return extractPageContent({
+    markdown: page.markdown,
+    text: page.text,
+    html: page.rawHtml ?? page.html,
+    metadata: page.metadata,
+  })
+}
+
+function extractPageContent(args: {
+  readonly markdown?: string | null
+  readonly text?: string | null
+  readonly html?: string | null
+  readonly metadata?: {
+    readonly title?: string | null
+    readonly sourceURL?: string | null
+    readonly url?: string | null
+    readonly ogTitle?: string | null
+  } | null
+}): ExtractedWebsiteContent {
+  const structuredHtml = args.html ? extractWebsiteKnowledgeText(args.html) : ''
   const content = cleanRagKnowledgeContent(
-    [data?.markdown, data?.text, data?.html].filter(Boolean).join('\n\n'),
+    [
+      structuredHtml,
+      args.markdown,
+      args.text,
+    ].filter(Boolean).join('\n\n'),
   )
 
   return {
-    title: data?.metadata?.title ?? data?.metadata?.ogTitle ?? null,
-    finalUrl: data?.metadata?.sourceURL ?? data?.metadata?.url ?? null,
+    title: args.metadata?.title ?? args.metadata?.ogTitle ?? readHtmlTitle(args.html ?? '') ?? null,
+    finalUrl: args.metadata?.sourceURL ?? args.metadata?.url ?? null,
     content,
   }
 }
 
+function extractWebsiteKnowledgeText(html: string): string {
+  return cleanRagKnowledgeContent([
+    extractHtmlMetadataText(html),
+    extractJsonLdText(html),
+    extractTablesText(html),
+    extractContactLinksText(html),
+    extractFooterText(html),
+    extractHeadingHierarchyText(html),
+    cleanHtmlToText(html),
+  ].filter(Boolean).join('\n\n'))
+}
+
+function readHtmlTitle(html: string): string | null {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+  return match?.[1] ? decodeHtmlEntities(stripTags(match[1])).trim().slice(0, 160) : null
+}
+
+function extractHtmlMetadataText(html: string): string {
+  const title = readHtmlTitle(html)
+  const description = readMetaContent(html, 'description')
+  const canonical = html.match(/<link[^>]+rel=["'][^"']*canonical[^"']*["'][^>]*>/i)?.[0]
+  const canonicalHref = canonical?.match(/href=["']([^"']+)["']/i)?.[1]
+  const lines = [
+    title ? `Title: ${title}` : '',
+    description ? `Description: ${description}` : '',
+    canonicalHref ? `Canonical URL: ${decodeHtmlEntities(canonicalHref)}` : '',
+  ].filter(Boolean)
+  return lines.length ? ['## Page Metadata', ...lines].join('\n') : ''
+}
+
+function readMetaContent(html: string, name: string): string | null {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`<meta[^>]+(?:name|property)=["']${escaped}["'][^>]*>`, 'i')
+  const tag = html.match(regex)?.[0]
+  const content = tag?.match(/content=["']([^"']+)["']/i)?.[1]
+  return content ? decodeHtmlEntities(content).trim().slice(0, 500) : null
+}
+
+function extractJsonLdText(html: string): string {
+  const blocks = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi))
+    .map((match) => match[1]?.trim())
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 8)
+
+  const lines: string[] = []
+  for (const block of blocks) {
+    try {
+      const parsed: unknown = JSON.parse(block)
+      lines.push(...flattenStructuredJsonLd(parsed).slice(0, 40))
+    } catch {
+      // Invalid site JSON-LD should not fail the import.
+    }
+  }
+  return lines.length ? ['## Structured Website Data', ...lines].join('\n') : ''
+}
+
+function flattenStructuredJsonLd(value: unknown, prefix = ''): string[] {
+  if (Array.isArray(value)) return value.flatMap((item) => flattenStructuredJsonLd(item, prefix))
+  if (!value || typeof value !== 'object') return []
+  const record = value as Record<string, unknown>
+  const graph = record['@graph']
+  if (Array.isArray(graph)) return graph.flatMap((item) => flattenStructuredJsonLd(item, prefix))
+  const label = scalarJsonLd(record.name) ?? scalarJsonLd(record.headline) ?? scalarJsonLd(record['@type']) ?? 'Structured item'
+  const lines = [`### ${label}`]
+  for (const [key, item] of Object.entries(record)) {
+    if (key.startsWith('@') || key === 'name' || key === 'headline') continue
+    const scalar = scalarJsonLd(item)
+    if (scalar) lines.push(`- ${humanizeLabel(key)}: ${scalar}`)
+  }
+  return prefix ? lines.map((line) => `${prefix}${line}`) : lines
+}
+
+function scalarJsonLd(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 500)
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    const scalars = value.map(scalarJsonLd).filter((item): item is string => Boolean(item)).slice(0, 8)
+    return scalars.length ? scalars.join(', ') : null
+  }
+  return null
+}
+
+function extractTablesText(html: string): string {
+  const tables = Array.from(html.matchAll(/<table[\s\S]*?<\/table>/gi))
+    .map((match, index) => {
+      const table = match[0]
+      const rows = Array.from(table.matchAll(/<tr[\s\S]*?<\/tr>/gi))
+        .map((rowMatch) => Array.from(rowMatch[0].matchAll(/<(?:th|td)[^>]*>([\s\S]*?)<\/(?:th|td)>/gi))
+          .map((cell) => cleanHtmlToText(cell[1] ?? '').replace(/\n+/g, ' / '))
+          .filter(Boolean))
+        .filter((row) => row.length > 0)
+      if (rows.length === 0) return ''
+      const width = Math.max(...rows.map((row) => row.length))
+      const normalized = rows.map((row) => Array.from({ length: width }, (_item, rowIndex) => row[rowIndex] ?? ''))
+      const header = normalized[0]
+      const separator = header.map(() => '---')
+      return [`### Table ${index + 1}`, ...[header, separator, ...normalized.slice(1)].map((row) => `| ${row.join(' | ')} |`)].join('\n')
+    })
+    .filter(Boolean)
+    .slice(0, 12)
+  return tables.length ? ['## Structured Tables', ...tables].join('\n\n') : ''
+}
+
+function extractContactLinksText(html: string): string {
+  const links = Array.from(html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi))
+  const lines = new Set<string>()
+  for (const [, href = '', labelHtml = ''] of links) {
+    const label = cleanHtmlToText(labelHtml)
+    if (/^mailto:/i.test(href)) lines.add(`- Email: ${label ? `${label}: ` : ''}${href.replace(/^mailto:/i, '').split('?')[0]}`)
+    if (/^tel:/i.test(href)) lines.add(`- Phone: ${label ? `${label}: ` : ''}${href.replace(/^tel:/i, '')}`)
+    if (/wa\.me|whatsapp/i.test(href)) lines.add(`- WhatsApp: ${label ? `${label}: ` : ''}${href}`)
+  }
+  return lines.size ? ['## Contact Links', ...Array.from(lines)].join('\n') : ''
+}
+
+function extractFooterText(html: string): string {
+  const footers = Array.from(html.matchAll(/<footer[\s\S]*?<\/footer>/gi))
+    .map((match) => cleanHtmlToText(match[0]).slice(0, 6000))
+    .filter((value) => value.length >= 20)
+    .slice(0, 4)
+  return footers.length ? ['## Footer Information', ...footers].join('\n\n') : ''
+}
+
+function extractHeadingHierarchyText(html: string): string {
+  const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? html
+  const nodes = Array.from(body.matchAll(/<(h[1-6]|p|li|address|time|summary)[^>]*>([\s\S]*?)<\/\1>/gi))
+    .map((match) => {
+      const tag = match[1]?.toLowerCase() ?? ''
+      const text = cleanHtmlToText(match[2] ?? '')
+      if (!text || text.length < 2) return ''
+      if (/^h[1-6]$/.test(tag)) {
+        const level = Math.min(6, Math.max(2, Number(tag.slice(1)) + 1))
+        return `${'#'.repeat(level)} ${text}`
+      }
+      return text
+    })
+    .filter(Boolean)
+    .filter(uniqueByLowercase)
+    .slice(0, 500)
+  return nodes.length ? ['## Page Content by Section', ...nodes].join('\n\n') : ''
+}
+
+function cleanHtmlToText(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+      .replace(/<(br|\/p|\/div|\/section|\/article|\/li|\/tr|h[1-6])\b[^>]*>/gi, '\n')
+      .replace(/<[^>]+>/g, ' '),
+  )
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length > 1)
+    .filter(uniqueByLowercase)
+    .join('\n')
+}
+
+function stripTags(value: string): string {
+  return value.replace(/<[^>]+>/g, ' ')
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCharCode(Number(code)))
+}
+
+function humanizeLabel(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
 function hashContent(content: string): string {
   return createHash('sha256').update(content).digest('hex')
+}
+
+function uniqueByLowercase(value: string, index: number, values: string[]): boolean {
+  return values.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index
 }
 
 function discoverWebsiteUrls(args: {
@@ -351,6 +601,7 @@ async function getFirecrawlApiKey(workspaceId: string): Promise<string> {
 
 function createFirecrawlClient(apiKey: string): FirecrawlClient {
   return {
+    crawl: async (url, limit) => crawlWithFirecrawl(apiKey, url, limit),
     map: async (url, limit) => {
       const response = await fetch(FIRECRAWL_MAP_URL, {
         method: 'POST',
@@ -395,6 +646,99 @@ function createFirecrawlClient(apiKey: string): FirecrawlClient {
   }
 }
 
+async function crawlWithFirecrawl(
+  apiKey: string,
+  url: string,
+  limit: number,
+): Promise<ReadonlyArray<FirecrawlCrawlPage>> {
+  const started = await firecrawlRequest('/crawl', apiKey, {
+    method: 'POST',
+    body: JSON.stringify({
+      url,
+      limit,
+      sitemap: 'include',
+      crawlEntireDomain: true,
+      allowExternalLinks: false,
+      allowSubdomains: false,
+      ignoreQueryParameters: true,
+      deduplicateSimilarURLs: true,
+      excludePaths: Array.from(PRIVATE_PATH_SEGMENTS).map((segment) => `(^|/)${segment}(/|$)`),
+      maxConcurrency: Math.min(5, limit),
+      scrapeOptions: {
+        formats: ['markdown', 'rawHtml', 'links'],
+        onlyMainContent: false,
+        removeBase64Images: true,
+        blockAds: true,
+        proxy: 'auto',
+        storeInCache: true,
+      },
+    }),
+  })
+  const crawlId = typeof started.id === 'string' ? started.id : null
+  if (!crawlId) throw new Error('Firecrawl did not return a crawl job ID.')
+
+  const deadline = Date.now() + FIRECRAWL_CRAWL_MAX_WAIT_MS
+  let latest: FirecrawlCrawlResponse | null = null
+  while (Date.now() < deadline) {
+    latest = await firecrawlRequest(`/crawl/${encodeURIComponent(crawlId)}`, apiKey)
+    if (latest.status === 'completed') break
+    if (latest.status === 'failed' || latest.status === 'cancelled') {
+      throw new Error(`Firecrawl crawl ${latest.status}.`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, FIRECRAWL_CRAWL_POLL_INTERVAL_MS))
+  }
+
+  if (!latest || latest.status !== 'completed') {
+    throw new Error('Firecrawl crawl did not complete before the local import timeout.')
+  }
+
+  const pages: FirecrawlCrawlPage[] = []
+  if (Array.isArray(latest.data)) pages.push(...latest.data)
+
+  let nextUrl = latest.next
+  const visited = new Set<string>()
+  while (nextUrl && !visited.has(nextUrl) && visited.size < 100) {
+    visited.add(nextUrl)
+    const next = await firecrawlRequest(nextUrl, apiKey)
+    if (Array.isArray(next.data)) pages.push(...next.data)
+    nextUrl = next.next
+  }
+
+  return pages
+}
+
+async function firecrawlRequest(
+  pathOrUrl: string,
+  apiKey: string,
+  init: RequestInit = {},
+): Promise<FirecrawlCrawlResponse> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), FIRECRAWL_REQUEST_TIMEOUT_MS)
+  try {
+    const response = await fetch(pathOrUrl.startsWith('http') ? pathOrUrl : `${FIRECRAWL_V2_BASE_URL}${pathOrUrl}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        ...init.headers,
+      },
+      signal: controller.signal,
+    })
+    const payload = await response.json().catch(() => ({})) as FirecrawlCrawlResponse
+    if (!response.ok || payload.success === false) {
+      throw new Error(payload.error || `Firecrawl returned HTTP ${response.status}.`)
+    }
+    return payload
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Firecrawl request timed out.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function clampPageLimit(value: number | null | undefined): number {
   if (!Number.isFinite(value ?? NaN)) return DEFAULT_WEBSITE_IMPORT_PAGE_LIMIT
   return Math.min(
@@ -416,11 +760,61 @@ async function importWebsiteWithClient(args: {
   const pageLimit = clampPageLimit(args.pageLimit)
   let mappedUrls: ReadonlyArray<string> = []
   const skippedReasons = new Map<string, number>()
+  const importedPages: ImportedWebsitePage[] = []
+  const seenHashes = new Set<string>()
+  let pagesFailed = 0
+  let duplicatePages = 0
+  let crawlPagesFound = 0
 
-  try {
-    mappedUrls = readFirecrawlMapUrls(await args.client.map(args.startUrl, pageLimit))
-  } catch {
-    addReason(skippedReasons, 'map_unavailable_single_url_fallback')
+  function addImportedPage(pageUrl: string, extracted: ExtractedWebsiteContent): void {
+    const finalUrl = normalizeWebsiteCandidateUrl(extracted.finalUrl ?? pageUrl, args.startUrl) ?? pageUrl
+    const skipReason = unsafeWebsiteSkipReason(finalUrl, args.startUrl)
+    if (skipReason) {
+      addReason(skippedReasons, skipReason)
+      return
+    }
+
+    if (extracted.content.length < MIN_USEFUL_PAGE_CHARACTERS) {
+      addReason(skippedReasons, 'not_enough_text')
+      return
+    }
+
+    const hash = hashContent(extracted.content)
+    if (seenHashes.has(hash)) {
+      duplicatePages += 1
+      addReason(skippedReasons, 'duplicate_content')
+      return
+    }
+
+    seenHashes.add(hash)
+    importedPages.push({
+      url: finalUrl,
+      title: extracted.title,
+      content: extracted.content,
+      hash,
+    })
+  }
+
+  if (args.client.crawl) {
+    try {
+      const crawlPages = await args.client.crawl(args.startUrl, pageLimit)
+      crawlPagesFound = crawlPages.length
+      for (const page of crawlPages.slice(0, pageLimit)) {
+        const pageUrl = page.metadata?.sourceURL ?? page.metadata?.url ?? args.startUrl
+        addImportedPage(pageUrl, extractFirecrawlCrawlPageContent(page))
+      }
+      if (crawlPages.length > pageLimit) addReason(skippedReasons, 'page_limit_reached')
+    } catch {
+      addReason(skippedReasons, 'firecrawl_crawl_unavailable_map_fallback')
+    }
+  }
+
+  if (importedPages.length === 0) {
+    try {
+      mappedUrls = readFirecrawlMapUrls(await args.client.map(args.startUrl, pageLimit))
+    } catch {
+      addReason(skippedReasons, 'map_unavailable_single_url_fallback')
+    }
   }
 
   const discovered = discoverWebsiteUrls({
@@ -432,44 +826,15 @@ async function importWebsiteWithClient(args: {
     skippedReasons.set(reason, (skippedReasons.get(reason) ?? 0) + count)
   }
 
-  const importedPages: ImportedWebsitePage[] = []
-  const seenHashes = new Set<string>()
-  let pagesFailed = 0
-  let duplicatePages = 0
-
-  for (const pageUrl of discovered.urls) {
-    try {
-      const scraped = await args.client.scrape(pageUrl)
-      const extracted = extractFirecrawlContent(scraped)
-      const finalUrl = normalizeWebsiteCandidateUrl(extracted.finalUrl ?? pageUrl, args.startUrl) ?? pageUrl
-      const skipReason = unsafeWebsiteSkipReason(finalUrl, args.startUrl)
-      if (skipReason) {
-        addReason(skippedReasons, skipReason)
-        continue
+  if (importedPages.length === 0) {
+    for (const pageUrl of discovered.urls) {
+      try {
+        const scraped = await args.client.scrape(pageUrl)
+        addImportedPage(pageUrl, extractFirecrawlContent(scraped))
+      } catch {
+        pagesFailed += 1
+        addReason(skippedReasons, 'scrape_failed')
       }
-
-      if (extracted.content.length < MIN_USEFUL_PAGE_CHARACTERS) {
-        addReason(skippedReasons, 'not_enough_text')
-        continue
-      }
-
-      const hash = hashContent(extracted.content)
-      if (seenHashes.has(hash)) {
-        duplicatePages += 1
-        addReason(skippedReasons, 'duplicate_content')
-        continue
-      }
-
-      seenHashes.add(hash)
-      importedPages.push({
-        url: finalUrl,
-        title: extracted.title,
-        content: extracted.content,
-        hash,
-      })
-    } catch {
-      pagesFailed += 1
-      addReason(skippedReasons, 'scrape_failed')
     }
   }
 
@@ -490,9 +855,9 @@ async function importWebsiteWithClient(args: {
     title: safeWebsiteTitle(args.startUrl, importedPages[0]?.title),
     content: built.content,
     finalUrl: importedPages[0]?.url ?? args.startUrl,
-    stats: {
-      startUrl: args.startUrl,
-      pagesFound: discovered.discovered.length,
+      stats: {
+        startUrl: args.startUrl,
+      pagesFound: Math.max(crawlPagesFound, discovered.discovered.length),
       pagesImported: importedPages.length,
       pagesSkipped: Array.from(skippedReasons.values()).reduce((sum, count) => sum + count, 0),
       pagesFailed,

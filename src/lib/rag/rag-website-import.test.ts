@@ -89,6 +89,52 @@ describe('RAG Firecrawl website import', () => {
     expect(imported.content).toContain('FINAL PAGE https://example.com/contact')
   })
 
+  it('prefers old-style Firecrawl crawl pages with raw HTML extraction when available', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://example.com/',
+      pageLimit: 10,
+      client: {
+        crawl: async () => [
+          {
+            markdown: '# Pricing\n\nStarter plan from $10/month.',
+            rawHtml: `
+              <html>
+                <head>
+                  <title>Pricing Page</title>
+                  <meta name="description" content="Public pricing and support information">
+                  <script type="application/ld+json">{"@type":"Organization","name":"Example Ltd","email":"support@example.com"}</script>
+                </head>
+                <body>
+                  <main><h1>Pricing</h1><section><h2>Starter</h2><p>$10/month includes support.</p></section></main>
+                  <footer><a href="mailto:support@example.com">Support Email</a><a href="tel:+123456789">Call us</a></footer>
+                </body>
+              </html>
+            `,
+            metadata: { title: 'Pricing Page', sourceURL: 'https://example.com/pricing' },
+          },
+          {
+            markdown: `# FAQ\n\nRefund policy is 7 days. ${'Customers can contact support for billing, setup, and service questions. '.repeat(3)}`,
+            metadata: { title: 'FAQ', sourceURL: 'https://example.com/faq' },
+          },
+        ],
+        map: async () => {
+          throw new Error('map should not be needed when crawl returns pages')
+        },
+        scrape: async () => {
+          throw new Error('scrape should not be needed when crawl returns pages')
+        },
+      },
+    })
+
+    expect(imported.stats.pagesFound).toBe(2)
+    expect(imported.stats.pagesImported).toBe(2)
+    expect(imported.content).toContain('## Structured Website Data')
+    expect(imported.content).toContain('Example Ltd')
+    expect(imported.content).toContain('## Contact Links')
+    expect(imported.content).toContain('support@example.com')
+    expect(imported.content).toContain('+123456789')
+  })
+
   it('keeps public business pages and blocks private or unrelated URLs', () => {
     expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/pricing', 'https://example.com')).toBeNull()
     expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/features', 'https://example.com')).toBeNull()
@@ -130,6 +176,29 @@ describe('RAG Firecrawl website import', () => {
     expect(built.content.length).toBeLessThanOrEqual(RAG_KNOWLEDGE_CHARACTER_LIMIT)
   })
 
+  it('does not force content to exactly 500,000 characters when the website has about 150,000 useful characters', async () => {
+    const pageText = 'Useful public website service and policy content. '.repeat(1000)
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://example.com/',
+      pageLimit: 5,
+      client: {
+        crawl: async () => Array.from({ length: 4 }, (_item, index) => ({
+          markdown: `# Page ${index}\n\n${pageText}\nUnique ending ${index}`,
+          metadata: {
+            title: `Page ${index}`,
+            sourceURL: `https://example.com/page-${index}`,
+          },
+        })),
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    expect(imported.stats.savedCharacters).toBeGreaterThan(150_000)
+    expect(imported.stats.savedCharacters).toBeLessThan(RAG_KNOWLEDGE_CHARACTER_LIMIT)
+    expect(imported.stats.capped).toBe(false)
+  })
+
   it('chunks imported large content fully so late imported facts remain searchable', () => {
     const lateFact = 'FINAL IMPORTED FACT: Support escalation goes to final-import@example.com.'
     const content = [
@@ -166,6 +235,10 @@ describe('RAG Firecrawl website import', () => {
     expect(websiteImport).toContain('Add your Firecrawl API key first.')
     expect(websiteImport).toContain('https://api.firecrawl.dev/v1/scrape')
     expect(websiteImport).toContain('https://api.firecrawl.dev/v1/map')
+    expect(websiteImport).toContain('https://api.firecrawl.dev/v2')
+    expect(websiteImport).toContain("sitemap: 'include'")
+    expect(websiteImport).toContain('crawlEntireDomain: true')
+    expect(websiteImport).toContain("formats: ['markdown', 'rawHtml', 'links']")
     expect(websiteImport).toContain("formats: ['markdown', 'html']")
   })
 
