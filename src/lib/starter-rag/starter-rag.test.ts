@@ -28,6 +28,14 @@ const starterRagChat = readFileSync(
   join(process.cwd(), 'src/lib/starter-rag/chat.ts'),
   'utf8',
 )
+const starterRagProvider = readFileSync(
+  join(process.cwd(), 'src/lib/starter-rag/provider.ts'),
+  'utf8',
+)
+const starterRagChatRoute = readFileSync(
+  join(process.cwd(), 'src/app/api/starter-rag/chat/route.ts'),
+  'utf8',
+)
 const starterRagEmbedding = readFileSync(
   join(process.cwd(), 'src/lib/starter-rag/embedding.ts'),
   'utf8',
@@ -53,9 +61,17 @@ describe('separate Starter RAG implementation', () => {
   it('keeps the Starter RAG prompt and tool-call behavior', () => {
     expect(starterChat).toContain(STARTER_RAG_SYSTEM_PROMPT)
     expect(starterRagChat).toContain('getInformation')
+    expect(starterRagChat).toContain('streamText')
+    expect(starterRagChat).toContain('convertToModelMessages')
     expect(starterRagChat).toContain('stepCountIs(5)')
     expect(starterRagChat).toContain('maxOutputTokens: STARTER_RAG_MAX_OUTPUT_TOKENS')
+    expect(starterRagChatRoute).toContain('toUIMessageStreamResponse')
     expect(STARTER_RAG_MAX_OUTPUT_TOKENS).toBe(160)
+  })
+
+  it('uses OpenRouter chat completions for chat while keeping provider embeddings', () => {
+    expect(starterRagProvider).toContain('isOpenRouter ? provider.chat(settings.chatModel)')
+    expect(starterRagEmbedding).toContain('provider.embedding(embeddingModel)')
   })
 
   it('keeps Starter chunking, threshold, and top-k retrieval constants', () => {
@@ -98,6 +114,10 @@ describe('separate Starter RAG implementation', () => {
     expect(starterRagPage).toContain('/api/starter-rag/resources')
     expect(starterRagPage).toContain('/api/starter-rag/chat')
     expect(starterRagPage).not.toContain('/api/rag/chat')
+    expect(starterRagPage).toContain('Database')
+    expect(starterRagPage).toContain('API key')
+    expect(starterRagPage).toContain('Resources')
+    expect(starterRagPage).toContain('Embeddings')
   })
 
   it('supports 500,000-character manual Starter knowledge and keeps secrets out of git', () => {

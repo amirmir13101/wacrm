@@ -25,6 +25,7 @@ export async function createStarterRagAIProvider() {
     provider,
     providerName: settings.provider,
     chatModel: settings.chatModel,
+    chatLanguageModel: isOpenRouter ? provider.chat(settings.chatModel) : provider(settings.chatModel),
     embeddingModel: settings.embeddingModel,
   }
 }

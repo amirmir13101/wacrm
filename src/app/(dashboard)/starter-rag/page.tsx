@@ -1,6 +1,8 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
 
 import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions'
 
@@ -23,11 +25,6 @@ interface StarterRagResource {
   readonly embeddingCount: number
   readonly createdAt: string
   readonly updatedAt: string
-}
-
-interface ChatMessage {
-  readonly role: 'user' | 'assistant'
-  readonly content: string
 }
 
 const starterRagSetupHelp = [
@@ -62,18 +59,33 @@ export default function StarterRagPage() {
   const [embeddingModel, setEmbeddingModel] = useState('openai/text-embedding-3-small')
   const [resources, setResources] = useState<StarterRagResource[]>([])
   const [characterLimit, setCharacterLimit] = useState(500_000)
+  const [databaseConnected, setDatabaseConnected] = useState(false)
   const [content, setContent] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [question, setQuestion] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const chatTransport = useMemo(
+    () => new DefaultChatTransport({ api: '/api/starter-rag/chat' }),
+    [],
+  )
+  const {
+    clearError: clearChatError,
+    error: chatError,
+    messages,
+    sendMessage,
+    status: chatStatus,
+  } = useChat({ transport: chatTransport })
 
   const remainingCharacters = useMemo(() => characterLimit - content.length, [
     characterLimit,
     content,
   ])
+  const embeddingCount = useMemo(
+    () => resources.reduce((total, resource) => total + resource.embeddingCount, 0),
+    [resources],
+  )
 
   async function readJson<T>(response: Response): Promise<T> {
     const payload = (await response.json().catch(() => ({}))) as {
@@ -107,6 +119,7 @@ export default function StarterRagPage() {
     }>(await fetch('/api/starter-rag/resources'))
     setResources(payload.resources)
     setCharacterLimit(payload.characterLimit)
+    setDatabaseConnected(true)
   }
 
   async function refreshAll() {
@@ -115,6 +128,7 @@ export default function StarterRagPage() {
     try {
       await Promise.all([loadSettings(), loadResources()])
     } catch (refreshError) {
+      setDatabaseConnected(false)
       setError(refreshError instanceof Error ? refreshError.message : 'Starter RAG failed to load.')
     }
   }
@@ -238,27 +252,11 @@ export default function StarterRagPage() {
   async function sendQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const cleanQuestion = question.trim()
-    if (!cleanQuestion) return
-    const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: cleanQuestion }]
-    setMessages(nextMessages)
+    if (!cleanQuestion || chatStatus !== 'ready') return
     setQuestion('')
-    setLoading(true)
     setError(null)
     setNotice(null)
-    try {
-      const payload = await readJson<{ answer: string }>(
-        await fetch('/api/starter-rag/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: nextMessages }),
-        }),
-      )
-      setMessages([...nextMessages, { role: 'assistant', content: payload.answer }])
-    } catch (chatError) {
-      setError(chatError instanceof Error ? chatError.message : 'Starter RAG chat failed.')
-    } finally {
-      setLoading(false)
-    }
+    sendMessage({ text: cleanQuestion })
   }
 
   if (!canView) {
@@ -297,6 +295,37 @@ export default function StarterRagPage() {
             {error}
           </div>
         ) : null}
+
+        <section className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-2xl border border-[#17402f] bg-[#092017] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8bb4a5]">
+              Database
+            </p>
+            <p className={databaseConnected ? 'mt-2 font-bold text-[#3ddf84]' : 'mt-2 font-bold text-red-200'}>
+              {databaseConnected ? 'Connected' : 'Not connected'}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-[#17402f] bg-[#092017] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8bb4a5]">
+              API key
+            </p>
+            <p className={settings?.apiKeyConfigured ? 'mt-2 font-bold text-[#3ddf84]' : 'mt-2 font-bold text-red-200'}>
+              {settings?.apiKeyConfigured ? 'Configured' : 'Missing'}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-[#17402f] bg-[#092017] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8bb4a5]">
+              Resources
+            </p>
+            <p className="mt-2 font-bold text-white">{resources.length.toLocaleString()}</p>
+          </div>
+          <div className="rounded-2xl border border-[#17402f] bg-[#092017] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8bb4a5]">
+              Embeddings
+            </p>
+            <p className="mt-2 font-bold text-white">{embeddingCount.toLocaleString()}</p>
+          </div>
+        </section>
 
         <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
           <form
@@ -515,6 +544,19 @@ export default function StarterRagPage() {
               This calls the separate Starter-style getInformation tool flow.
             </p>
             <div className="mt-4 flex h-[430px] flex-col gap-3 overflow-y-auto rounded-2xl border border-[#17402f] bg-[#07130e] p-4">
+              {chatError ? (
+                <div className="rounded-2xl border border-red-500/40 bg-red-950/40 p-3 text-sm text-red-100">
+                  <div className="font-bold">Question failed</div>
+                  <p className="mt-1">{chatError.message}</p>
+                  <button
+                    type="button"
+                    onClick={() => clearChatError()}
+                    className="mt-2 rounded-lg border border-red-300/40 px-3 py-1 text-xs font-bold"
+                  >
+                    Clear
+                  </button>
+                </div>
+              ) : null}
               {messages.length === 0 ? (
                 <p className="text-sm text-[#8bb4a5]">
                   Ask a question from the Starter RAG knowledge base.
@@ -522,14 +564,34 @@ export default function StarterRagPage() {
               ) : (
                 messages.map((message, index) => (
                   <div
-                    key={`${message.role}-${index}`}
+                    key={message.id ?? `${message.role}-${index}`}
                     className={
                       message.role === 'user'
                         ? 'ml-auto max-w-[85%] rounded-2xl bg-[#3ddf84] p-3 text-sm text-[#07130e]'
                         : 'mr-auto max-w-[85%] whitespace-pre-wrap rounded-2xl bg-[#123226] p-3 text-sm text-[#eafff3]'
                     }
                   >
-                    {message.content}
+                    {message.parts.map((part, partIndex) => {
+                      if (part.type === 'text') {
+                        return <p key={partIndex}>{part.text}</p>
+                      }
+                      if (part.type === 'tool-getInformation' || part.type === 'tool-addResource') {
+                        return (
+                          <div
+                            key={partIndex}
+                            className="mt-2 rounded-xl bg-[#07130e] p-2 text-xs text-[#b8cfc7]"
+                          >
+                            <div className="font-bold">
+                              {part.state === 'output-available' ? 'Called' : 'Calling'} {part.type}
+                            </div>
+                            <pre className="mt-1 overflow-x-auto">
+                              {JSON.stringify(part.input, null, 2)}
+                            </pre>
+                          </div>
+                        )
+                      }
+                      return null
+                    })}
                   </div>
                 ))
               )}
@@ -538,16 +600,16 @@ export default function StarterRagPage() {
               <input
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                disabled={loading}
+                disabled={chatStatus !== 'ready'}
                 placeholder="Ask Starter RAG..."
                 className="min-w-0 flex-1 rounded-xl border border-[#315846] bg-[#07130e] px-3 py-2 text-white outline-none focus:border-[#3ddf84]"
               />
               <button
                 type="submit"
-                disabled={loading || question.trim().length === 0}
+                disabled={chatStatus !== 'ready' || question.trim().length === 0}
                 className="rounded-xl bg-[#3ddf84] px-4 py-2 text-sm font-bold text-[#07130e] disabled:opacity-50"
               >
-                Send
+                {chatStatus === 'streaming' || chatStatus === 'submitted' ? 'Thinking...' : 'Send'}
               </button>
             </form>
           </div>
