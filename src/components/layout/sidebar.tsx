@@ -49,7 +49,6 @@ const navItems: Array<{
   { href: "/broadcasts", label: "Broadcasts", icon: Radio, permission: "view_broadcasts" },
   { href: "/automations", label: "Automations", icon: Zap, permission: "view_automations" },
   { href: "/ai-chatbot", label: "AI Chatbot", icon: Bot, permission: "view_rag_chatbot" },
-  { href: "/starter-rag", label: "Starter RAG", icon: Bot, permission: "view_rag_chatbot" },
   { href: "/team", label: "Team", icon: UserCheck, permission: "view_team" },
 ];
 

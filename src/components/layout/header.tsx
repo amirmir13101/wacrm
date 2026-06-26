@@ -25,7 +25,6 @@ const pageTitles: Record<string, string> = {
   "/broadcasts": "Broadcasts",
   "/automations": "Automations",
   "/ai-chatbot": "AI Chatbot",
-  "/starter-rag": "Starter RAG",
   "/settings": "Settings",
   "/admin": "Admin",
 };

@@ -22,7 +22,7 @@ describe('RAG conversation memory', () => {
     expect(page).toContain('chatHistory')
     expect(page).toContain('messages: chatHistory.slice(-20)')
     expect(page).toContain('Clear memory')
-    expect(page).toContain('follow-up questions work like the Starter RAG chat')
+    expect(page).toContain('follow-up questions keep their recent context')
 
     expect(chatRoute).toContain('const recentMessages = Array.isArray(body.messages) ? body.messages : []')
     expect(chatRoute).toContain('recentMessages')

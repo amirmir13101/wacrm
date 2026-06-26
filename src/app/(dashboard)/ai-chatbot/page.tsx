@@ -1019,7 +1019,7 @@ export default function RagChatbotPage() {
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
               Ask a question from prepared manual or website knowledge. This dashboard test uses
               the same core RAG answer path as WhatsApp auto-reply and keeps recent messages in
-              this browser tab so follow-up questions work like the Starter RAG chat.
+              this browser tab so follow-up questions keep their recent context.
             </p>
           </div>
           <span className="rounded-full border border-[#315846] bg-[#0d1b15] px-3 py-1 text-xs font-bold text-[#d8fff1]">
