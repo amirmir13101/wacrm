@@ -115,9 +115,14 @@ interface WebsiteImportStats {
   readonly pagesSkipped: number
   readonly pagesFailed: number
   readonly duplicatePages: number
+  readonly rawCharacters?: number
+  readonly duplicateJunkCharactersRemoved?: number
   readonly savedCharacters: number
   readonly capped: boolean
   readonly pageLimit: number
+  readonly lowValuePagesSkipped?: number
+  readonly aiStructuringUsed?: boolean
+  readonly deterministicFallbackUsed?: boolean
   readonly skippedReasons?: Readonly<Record<string, number>>
 }
 
@@ -988,9 +993,14 @@ export default function RagChatbotPage() {
               <div>{websiteImportStats.pagesSkipped.toLocaleString()} pages skipped</div>
               <div>{websiteImportStats.pagesFailed.toLocaleString()} pages failed</div>
               <div>{websiteImportStats.duplicatePages.toLocaleString()} duplicates</div>
+              <div>{(websiteImportStats.lowValuePagesSkipped ?? 0).toLocaleString()} low-value pages skipped</div>
+              <div>{(websiteImportStats.rawCharacters ?? 0).toLocaleString()} raw characters collected</div>
+              <div>{(websiteImportStats.duplicateJunkCharactersRemoved ?? 0).toLocaleString()} duplicate/junk characters removed</div>
               <div>{websiteImportStats.savedCharacters.toLocaleString()} characters saved</div>
               <div>Limit: {websiteImportStats.pageLimit.toLocaleString()} pages</div>
               <div>{websiteImportStats.capped ? 'Saved content was capped.' : 'Content was not capped.'}</div>
+              <div>AI structuring: {websiteImportStats.aiStructuringUsed ? 'yes' : 'no'}</div>
+              <div>Deterministic fallback: {websiteImportStats.deterministicFallbackUsed ? 'yes' : 'no'}</div>
             </dl>
             {websiteImportStats.skippedReasons && Object.keys(websiteImportStats.skippedReasons).length > 0 && (
               <p className="mt-3 text-xs leading-5 text-[#8bb4a5]">

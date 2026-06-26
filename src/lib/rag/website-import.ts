@@ -30,9 +30,27 @@ const PRIVATE_PATH_SEGMENTS = new Set([
   'payment',
   'payments',
   'billing',
+  'clientarea',
+  'client-area',
+  'client',
+  'submit-ticket',
+  'support-ticket',
+  'ticket',
+  'tickets',
   'wp-admin',
   'user',
   'auth',
+])
+
+const LOW_VALUE_PATH_SEGMENTS = new Set([
+  'author',
+  'category',
+  'tag',
+  'feed',
+  'wp-json',
+  'xmlrpc.php',
+  'search',
+  'page',
 ])
 
 const SKIP_FILE_EXTENSIONS = [
@@ -53,6 +71,19 @@ const SKIP_FILE_EXTENSIONS = [
   '.avi',
   '.mov',
   '.pdf',
+  '.xml',
+]
+
+const JUNK_LINE_PATTERNS = [
+  /\b(skip to content|toggle navigation|open menu|close menu|menu|hamburger)\b/i,
+  /\b(accessibility|accessibility widget|increase text|decrease text|grayscale|high contrast|negative contrast|light background|readable font|reset all)\b/i,
+  /\b(close|loading|hide|reset|spinner|please wait)\b/i,
+  /\b(cookie|cookies|accept all|reject all|privacy preferences)\b/i,
+  /\b(newsletter|subscribe to our newsletter|enter your email)\b/i,
+  /\b(lorem ipsum|hello world|welcome to wordpress|uncategorized)\b/i,
+  /\b(add to cart|view cart|checkout|coupon code|billing details)\b/i,
+  /\b(username|password|remember me|forgot password|log in|register)\b/i,
+  /\b(function\s*\(|var\s+|let\s+|const\s+|=>|document\.|window\.|canvas|getcontext|elementor|wp-json)\b/i,
 ]
 
 interface RagFirecrawlSettingsRow {
@@ -135,6 +166,7 @@ interface ImportedWebsitePage {
   readonly title: string | null
   readonly content: string
   readonly hash: string
+  readonly rawCharacters: number
 }
 
 interface ExtractedWebsiteContent {
@@ -150,9 +182,14 @@ export interface RagWebsiteImportStats {
   readonly pagesSkipped: number
   readonly pagesFailed: number
   readonly duplicatePages: number
+  readonly rawCharacters: number
+  readonly duplicateJunkCharactersRemoved: number
   readonly savedCharacters: number
   readonly capped: boolean
   readonly pageLimit: number
+  readonly lowValuePagesSkipped: number
+  readonly aiStructuringUsed: boolean
+  readonly deterministicFallbackUsed: boolean
   readonly skippedReasons: Readonly<Record<string, number>>
 }
 
@@ -212,18 +249,29 @@ function unsafeWebsiteSkipReason(url: string, startUrl: string): string | null {
   if (!isSameRootOrWww(url, startUrl)) return 'external_domain'
 
   const parsed = new URL(url)
+  const lowerPath = parsed.pathname.toLowerCase()
   const segments = parsed.pathname
     .split('/')
     .map((segment) => segment.trim().toLowerCase())
     .filter(Boolean)
 
+  if (segments.includes('hello-world')) return 'low_value_wordpress_default'
+  if (segments.some((segment) => LOW_VALUE_PATH_SEGMENTS.has(segment))) {
+    return 'low_value_archive_or_feed'
+  }
+
   if (segments.some((segment) => PRIVATE_PATH_SEGMENTS.has(segment))) {
     return 'private_path'
   }
+  if (/sitemap.*\.xml$/i.test(lowerPath) || lowerPath.endsWith('/sitemap.xml')) {
+    return 'sitemap_xml_not_knowledge'
+  }
+  if (parsed.searchParams.has('s') || parsed.searchParams.has('replytocom')) {
+    return 'low_value_search_or_comment'
+  }
 
-  const lowerPath = parsed.pathname.toLowerCase()
   if (SKIP_FILE_EXTENSIONS.some((extension) => lowerPath.endsWith(extension))) {
-    return 'unsupported_file_type'
+    return lowerPath.endsWith('.xml') ? 'sitemap_xml_not_knowledge' : 'unsupported_file_type'
   }
 
   return null
@@ -539,6 +587,182 @@ function discoverWebsiteUrls(args: {
   return { urls, discovered, skippedReasons }
 }
 
+function normalizeKnowledgeLine(value: string): string {
+  return value
+    .replace(/^[#*\-\d.)\s|]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function lineLooksImportant(value: string): boolean {
+  return /(?:[$€£₨₹]\s?\d|\d+(?:\.\d+)?\s?(?:%|off|gb|mb|tb|core|cpu|ram|nvme|ssd|month|year|day)|@|mailto:|tel:|wa\.me|whatsapp|phone|email|address|location|hours|open|company|registration|refund|return|shipping|delivery|policy|price|plan|package|service|product|menu|course|appointment|support|sales|faq|question|answer|test ip|\b\d{1,3}(?:\.\d{1,3}){3}\b)/i.test(value)
+}
+
+function lineLooksGlobalFact(value: string): boolean {
+  return /(?:@|mailto:|tel:|wa\.me|whatsapp|phone|email|address|hours|company|registration|sales|support)/i.test(value)
+}
+
+function removeJunkFromContent(content: string): string {
+  return cleanRagKnowledgeContent(content
+    .replace(/data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => {
+      if (!line) return false
+      if (line.length > 2_000 && !lineLooksImportant(line)) return false
+      if (/^[{}[\],:;"'`=<>/\\()._-]{8,}$/.test(line)) return false
+      if (JUNK_LINE_PATTERNS.some((pattern) => pattern.test(line)) && !lineLooksImportant(line)) return false
+      const codeSignals = (line.match(/[{}();=<>]/g) ?? []).length
+      return !(codeSignals > 12 && !lineLooksImportant(line))
+    })
+    .join('\n'))
+}
+
+function pageContentLooksLowValue(page: ImportedWebsitePage): boolean {
+  const normalized = normalizeKnowledgeLine(`${page.title ?? ''} ${page.url} ${page.content.slice(0, 1200)}`)
+  if (/hello world|welcome to wordpress|uncategorized/.test(normalized)) return true
+  if (/submit ticket|open ticket|client area|login|register|password/.test(normalized) && !/support email|phone|whatsapp|hours|address/.test(normalized)) {
+    return true
+  }
+  if (/^<\?xml|<urlset|<sitemapindex/.test(page.content.trim())) return true
+  return false
+}
+
+function lineFrequencies(pages: ReadonlyArray<ImportedWebsitePage>): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>()
+  for (const page of pages) {
+    const seenOnPage = new Set<string>()
+    for (const line of removeJunkFromContent(page.content).split('\n')) {
+      const key = normalizeKnowledgeLine(line)
+      if (key.length < 8 || seenOnPage.has(key)) continue
+      seenOnPage.add(key)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+  }
+  return counts
+}
+
+function cleanPageForKnowledge(
+  page: ImportedWebsitePage,
+  frequencies: ReadonlyMap<string, number>,
+): ImportedWebsitePage {
+  const pageSeen = new Set<string>()
+  const lines = removeJunkFromContent(page.content)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => {
+      const key = normalizeKnowledgeLine(line)
+      if (!key) return false
+      if (pageSeen.has(key)) return false
+      pageSeen.add(key)
+      const repeatedAcrossPages = (frequencies.get(key) ?? 0) > 2
+      if (repeatedAcrossPages && lineLooksGlobalFact(line)) return false
+      return !repeatedAcrossPages || lineLooksImportant(line)
+    })
+
+  return {
+    ...page,
+    content: cleanRagKnowledgeContent(lines.join('\n')),
+  }
+}
+
+function collectMatches(content: string, pattern: RegExp): ReadonlyArray<string> {
+  return Array.from(content.matchAll(pattern))
+    .map((match) => match[0]?.trim())
+    .filter((value): value is string => Boolean(value))
+    .filter(uniqueByLowercase)
+    .slice(0, 40)
+}
+
+function extractGlobalBusinessFacts(
+  pages: ReadonlyArray<ImportedWebsitePage>,
+  startUrl: string,
+): string {
+  const combined = pages.map((page) => page.content).join('\n')
+  const emails = collectMatches(combined, /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)
+  const whatsapp = collectMatches(combined, /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com)\/[^\s)'"<>]+/gi)
+  const phones = collectMatches(combined, /(?:\+?\d[\d\s().-]{7,}\d)/g)
+    .filter((phone) => !/\b(?:20\d{2}|19\d{2})\b/.test(phone) || /[+\s().-]/.test(phone))
+    .slice(0, 12)
+  const urls = collectMatches(combined, /https?:\/\/[^\s)'"<>]+/gi).slice(0, 12)
+  const companyDetails = combined
+    .split('\n')
+    .filter((line) => /\b(company|legal|registration|registered|company number|tax|vat|llc|ltd|limited|inc)\b/i.test(line))
+    .filter(uniqueByLowercase)
+    .slice(0, 12)
+  const locations = combined
+    .split('\n')
+    .filter((line) => /\b(address|location|located|office|branch|country|city|test ip|ip address|opening hours|hours)\b/i.test(line))
+    .filter(uniqueByLowercase)
+    .slice(0, 20)
+
+  const lines = [
+    '# Global Business Facts',
+    `Website: ${startUrl}`,
+    emails.length ? `Support/contact emails: ${emails.join(', ')}` : '',
+    whatsapp.length ? `WhatsApp links: ${whatsapp.join(', ')}` : '',
+    phones.length ? `Phone numbers: ${phones.join(', ')}` : '',
+    urls.length ? `Important links: ${urls.join(', ')}` : '',
+    companyDetails.length ? ['Company/legal details:', ...companyDetails.map((line) => `- ${line}`)].join('\n') : '',
+    locations.length ? ['Locations/hours/address facts:', ...locations.map((line) => `- ${line}`)].join('\n') : '',
+  ].filter(Boolean)
+
+  return lines.join('\n')
+}
+
+type StructuredSectionKey =
+  | 'products'
+  | 'pricing'
+  | 'locations'
+  | 'faqs'
+  | 'policies'
+  | 'pageSummaries'
+
+function pageSectionKey(page: ImportedWebsitePage): StructuredSectionKey {
+  const value = normalizeKnowledgeLine(`${page.title ?? ''} ${page.url} ${page.content.slice(0, 2000)}`)
+  if (/faq|frequently asked|question|answer/.test(value)) return 'faqs'
+  if (/refund-policy|return-policy|privacy|terms|policy|cancellation/.test(value)) return 'policies'
+  if (/location|address|test ip|opening hours|karachi|singapore|branch|office/.test(value)) return 'locations'
+  if (/pricing|plan|package|billing|discount|monthly|yearly|per month|per year/.test(value)) return 'pricing'
+  if (/service|product|menu|course|appointment|feature|spec|treatment|program|catalog/.test(value)) return 'products'
+  if (/[$€£₨₹]\s?\d|price|pricing|plan|package|billing|discount|monthly|yearly|per month|per year/.test(value)) return 'pricing'
+  if (/refund|return|privacy|terms|policy|shipping|delivery|cancellation/.test(value)) return 'policies'
+  return 'pageSummaries'
+}
+
+function sectionTitleForKey(key: StructuredSectionKey): string {
+  if (key === 'products') return '# Products and Services'
+  if (key === 'pricing') return '# Plans / Packages / Pricing'
+  if (key === 'locations') return '# Locations'
+  if (key === 'faqs') return '# FAQs'
+  if (key === 'policies') return '# Policies'
+  return '# Page Summaries'
+}
+
+function pagePurposeForKey(key: StructuredSectionKey): string {
+  if (key === 'products') return 'Products, services, features, specs, menus, courses, appointments, or business offerings.'
+  if (key === 'pricing') return 'Pricing, plans, packages, billing, discounts, or comparison details.'
+  if (key === 'locations') return 'Locations, addresses, opening hours, regional availability, or test IP/location facts.'
+  if (key === 'faqs') return 'Customer questions and answers.'
+  if (key === 'policies') return 'Policies, terms, refunds, returns, shipping, delivery, privacy, or cancellation details.'
+  return 'General page summary and useful business facts.'
+}
+
+function buildStructuredPageBlock(page: ImportedWebsitePage, key: StructuredSectionKey): string {
+  return [
+    `## Page: ${page.title ?? page.url}`,
+    `URL: ${page.url}`,
+    `Purpose: ${pagePurposeForKey(key)}`,
+    'Important facts:',
+    page.content,
+  ].join('\n\n')
+}
+
 function buildWebsiteKnowledgeContent(args: {
   readonly pages: ReadonlyArray<ImportedWebsitePage>
   readonly startUrl: string
@@ -546,27 +770,54 @@ function buildWebsiteKnowledgeContent(args: {
   readonly content: string
   readonly savedCharacters: number
   readonly capped: boolean
+  readonly rawCharacters: number
+  readonly duplicateJunkCharactersRemoved: number
+  readonly lowValuePagesSkipped: number
+  readonly aiStructuringUsed: boolean
+  readonly deterministicFallbackUsed: boolean
 } {
+  const rawCharacters = args.pages.reduce((sum, page) => sum + page.rawCharacters, 0)
+  const usefulPages = args.pages.filter((page) => !pageContentLooksLowValue(page))
+  const lowValuePagesSkipped = args.pages.length - usefulPages.length
+  const frequencies = lineFrequencies(usefulPages)
+  const cleanedPages = usefulPages
+    .map((page) => cleanPageForKnowledge(page, frequencies))
+    .filter((page) => page.content.length >= MIN_USEFUL_PAGE_CHARACTERS)
+
+  const grouped: Record<StructuredSectionKey, string[]> = {
+    products: [],
+    pricing: [],
+    locations: [],
+    faqs: [],
+    policies: [],
+    pageSummaries: [],
+  }
+  const cleanedPageCharacters = cleanedPages.reduce((sum, page) => sum + page.content.length, 0)
+
+  for (const page of cleanedPages) {
+    const key = pageSectionKey(page)
+    grouped[key].push(buildStructuredPageBlock(page, key))
+  }
+
   const sections: string[] = [
     `# Website Knowledge Import`,
     `Source website: ${args.startUrl}`,
+    `Imported pages: ${cleanedPages.length}`,
+    `Skipped low-value pages: ${lowValuePagesSkipped}`,
+    `Raw characters collected: ${rawCharacters}`,
+    extractGlobalBusinessFacts(usefulPages, args.startUrl),
   ]
   let length = sections.join('\n\n').length
   let capped = false
 
-  for (const page of args.pages) {
-    const section = [
-      `## Page: ${page.title ?? page.url}`,
-      `URL: ${page.url}`,
-      page.content,
-    ].join('\n\n')
+  for (const key of ['pricing', 'products', 'locations', 'faqs', 'policies', 'pageSummaries'] as const) {
+    if (grouped[key].length === 0) continue
+    const section = [sectionTitleForKey(key), ...grouped[key]].join('\n\n')
     const nextLength = length + section.length + 2
 
     if (nextLength > RAG_KNOWLEDGE_CHARACTER_LIMIT) {
       const remaining = RAG_KNOWLEDGE_CHARACTER_LIMIT - length - 2
-      if (remaining > 200) {
-        sections.push(section.slice(0, remaining).trim())
-      }
+      if (remaining > 200) sections.push(section.slice(0, remaining).trim())
       capped = true
       break
     }
@@ -580,6 +831,11 @@ function buildWebsiteKnowledgeContent(args: {
     content,
     savedCharacters: content.length,
     capped,
+    rawCharacters,
+    duplicateJunkCharactersRemoved: Math.max(0, rawCharacters - cleanedPageCharacters),
+    lowValuePagesSkipped,
+    aiStructuringUsed: false,
+    deterministicFallbackUsed: false,
   }
 }
 
@@ -792,6 +1048,7 @@ async function importWebsiteWithClient(args: {
       title: extracted.title,
       content: extracted.content,
       hash,
+      rawCharacters: extracted.content.length,
     })
   }
 
@@ -850,21 +1107,32 @@ async function importWebsiteWithClient(args: {
     pages: importedPages,
     startUrl: args.startUrl,
   })
+  if (built.lowValuePagesSkipped > 0) {
+    skippedReasons.set(
+      'low_value_page_content',
+      (skippedReasons.get('low_value_page_content') ?? 0) + built.lowValuePagesSkipped,
+    )
+  }
 
   return {
     title: safeWebsiteTitle(args.startUrl, importedPages[0]?.title),
     content: built.content,
     finalUrl: importedPages[0]?.url ?? args.startUrl,
-      stats: {
-        startUrl: args.startUrl,
+    stats: {
+      startUrl: args.startUrl,
       pagesFound: Math.max(crawlPagesFound, discovered.discovered.length),
-      pagesImported: importedPages.length,
+      pagesImported: importedPages.length - built.lowValuePagesSkipped,
       pagesSkipped: Array.from(skippedReasons.values()).reduce((sum, count) => sum + count, 0),
       pagesFailed,
       duplicatePages,
+      rawCharacters: built.rawCharacters,
+      duplicateJunkCharactersRemoved: built.duplicateJunkCharactersRemoved,
       savedCharacters: built.savedCharacters,
       capped: built.capped,
       pageLimit,
+      lowValuePagesSkipped: built.lowValuePagesSkipped,
+      aiStructuringUsed: built.aiStructuringUsed,
+      deterministicFallbackUsed: built.deterministicFallbackUsed,
       skippedReasons: Object.fromEntries(skippedReasons),
     },
   }

@@ -73,7 +73,11 @@ describe('RAG Firecrawl website import', () => {
         scrape: async (url) => ({
           success: true,
           data: {
-            markdown: `# ${url}\n\n${'Useful public business content. '.repeat(150)}\nFINAL PAGE ${url}`,
+            markdown: [
+              `# ${url}`,
+              ...Array.from({ length: 150 }, (_item, index) => `Useful public business content ${index} for ${url}.`),
+              `FINAL PAGE ${url}`,
+            ].join('\n'),
             metadata: {
               title: url.includes('pricing') ? 'Pricing' : 'Example',
               sourceURL: url,
@@ -135,6 +139,118 @@ describe('RAG Firecrawl website import', () => {
     expect(imported.content).toContain('+123456789')
   })
 
+  it('structures website knowledge, reduces repeated boilerplate, and preserves global contact facts once', async () => {
+    const repeatedFooter = 'Footer: Support email support@example.com WhatsApp https://wa.me/1234567890 Facebook Twitter Instagram'
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://example.com/',
+      pageLimit: 10,
+      client: {
+        crawl: async () => [
+          {
+            markdown: `# Home\n\nMain Navigation\nAccessibility widget Increase Text Decrease Text\nExample Hosting provides VPS hosting, web hosting, and managed automation hosting.\n${repeatedFooter}`,
+            metadata: { title: 'Home', sourceURL: 'https://example.com/' },
+          },
+          {
+            markdown: `# VPS Pricing\n\n## Plan: Wagon VPS x4\nCurrent price: $5.40/mo\nOriginal price: $6.50/mo\nSpecs: 4GB RAM, 2 Core CPU, 80GB NVMe Storage.\n${repeatedFooter}`,
+            metadata: { title: 'VPS Pricing', sourceURL: 'https://example.com/vps/' },
+          },
+          {
+            markdown: `# FAQ\n\n## Question: Are backups included?\nAnswer: Daily backups are included with managed plans.\n${repeatedFooter}`,
+            metadata: { title: 'FAQ', sourceURL: 'https://example.com/faq/' },
+          },
+        ],
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    expect(imported.content).toContain('# Global Business Facts')
+    expect(imported.content).toContain('support@example.com')
+    expect(imported.content).toContain('https://wa.me/1234567890')
+    expect(imported.content).toContain('# Plans / Packages / Pricing')
+    expect(imported.content).toContain('Wagon VPS x4')
+    expect(imported.content).toContain('$5.40/mo')
+    expect(imported.content).toContain('4GB RAM')
+    expect(imported.content).toContain('# FAQs')
+    expect(imported.content).toContain('Are backups included?')
+    expect(imported.content).toContain('Daily backups are included')
+    expect(imported.content).not.toContain('Accessibility widget Increase Text')
+    expect(imported.content.match(/Footer: Support email/g)?.length ?? 0).toBeLessThanOrEqual(1)
+    expect(imported.stats.duplicateJunkCharactersRemoved).toBeGreaterThan(0)
+  })
+
+  it('skips low-value WordPress, sitemap, client, ticket, cart, and checkout pages after discovery', async () => {
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/hello-world/', 'https://example.com')).toBe('low_value_wordpress_default')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/author/admin/', 'https://example.com')).toBe('low_value_archive_or_feed')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/category/uncategorized/', 'https://example.com')).toBe('low_value_archive_or_feed')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/tag/sale/', 'https://example.com')).toBe('low_value_archive_or_feed')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/sitemap.xml', 'https://example.com')).toBe('sitemap_xml_not_knowledge')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/client-area/', 'https://example.com')).toBe('private_path')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/submit-ticket/', 'https://example.com')).toBe('private_path')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/cart/', 'https://example.com')).toBe('private_path')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/checkout/', 'https://example.com')).toBe('private_path')
+  })
+
+  it('removes JavaScript, canvas code, and base64 image junk while keeping business facts', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://clinic.example/',
+      pageLimit: 5,
+      client: {
+        crawl: async () => [
+          {
+            markdown: `# Clinic Services\n\n<script>function draw(){ const canvas = document.getElementById('x'); window.alert('x') }</script>\ndata:image/png;base64,${'A'.repeat(400)}\nDental Cleaning appointment fee: $80.\nOpening hours: Monday to Friday 9am-5pm.\nPhone: +1 555 100 2000.`,
+            metadata: { title: 'Clinic Services', sourceURL: 'https://clinic.example/services/' },
+          },
+        ],
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    expect(imported.content).toContain('Dental Cleaning appointment fee: $80')
+    expect(imported.content).toContain('Monday to Friday 9am-5pm')
+    expect(imported.content).toContain('+1 555 100 2000')
+    expect(imported.content).not.toContain('function draw')
+    expect(imported.content).not.toContain('data:image/png;base64')
+  })
+
+  it('keeps tables and business categories generic for restaurant, clinic, and ecommerce examples', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://business.example/',
+      pageLimit: 10,
+      client: {
+        crawl: async () => [
+          {
+            rawHtml: `
+              <html><body>
+                <h1>Restaurant Menu</h1>
+                <table><tr><th>Item</th><th>Price</th></tr><tr><td>Margherita Pizza</td><td>$12</td></tr></table>
+              </body></html>
+            `,
+            metadata: { title: 'Restaurant Menu', sourceURL: 'https://business.example/menu/' },
+          },
+          {
+            markdown: '# Clinic Fees\n\nPhysiotherapy session fee is $45. Appointment booking is available online.',
+            metadata: { title: 'Clinic Fees', sourceURL: 'https://business.example/clinic-fees/' },
+          },
+          {
+            markdown: '# Product Catalog\n\nProduct: Travel Backpack\nVariant: 30L\nPrice: $59\nShipping: Free delivery over $100.',
+            metadata: { title: 'Product Catalog', sourceURL: 'https://business.example/products/' },
+          },
+        ],
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    expect(imported.content).toContain('Margherita Pizza')
+    expect(imported.content).toContain('$12')
+    expect(imported.content).toContain('Physiotherapy session fee is $45')
+    expect(imported.content).toContain('Travel Backpack')
+    expect(imported.content).toContain('Free delivery over $100')
+    expect(imported.content).toContain('# Products and Services')
+  })
+
   it('keeps public business pages and blocks private or unrelated URLs', () => {
     expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/pricing', 'https://example.com')).toBeNull()
     expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/features', 'https://example.com')).toBeNull()
@@ -159,12 +275,19 @@ describe('RAG Firecrawl website import', () => {
   })
 
   it('caps imported website content at the knowledge limit and reports the cap', () => {
-    const pages = Array.from({ length: 12 }, (_, index) => ({
-      url: `https://example.com/page-${index}`,
-      title: `Page ${index}`,
-      hash: `hash-${index}`,
-      content: `Page ${index}. ${'Large useful business content. '.repeat(2000)}`,
-    }))
+    const pages = Array.from({ length: 12 }, (_, index) => {
+      const content = [
+        `Page ${index}.`,
+        ...Array.from({ length: 2400 }, (_item, lineIndex) => `Large useful business content page ${index} line ${lineIndex}.`),
+      ].join('\n')
+      return {
+        url: `https://example.com/page-${index}`,
+        title: `Page ${index}`,
+        hash: `hash-${index}`,
+        content,
+        rawCharacters: content.length,
+      }
+    })
 
     const built = __ragWebsiteImportTestUtils.buildWebsiteKnowledgeContent({
       startUrl: 'https://example.com',
