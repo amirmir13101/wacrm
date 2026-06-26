@@ -14,6 +14,14 @@ const embedRoute = readFileSync(
   join(process.cwd(), 'src/app/api/rag/knowledge/[id]/embed/route.ts'),
   'utf8',
 )
+const ragHelpers = readFileSync(
+  join(process.cwd(), 'src/app/api/rag/_helpers.ts'),
+  'utf8',
+)
+const ragSecurity = readFileSync(
+  join(process.cwd(), 'src/lib/rag/security.ts'),
+  'utf8',
+)
 const page = readFileSync(
   join(process.cwd(), 'src/app/(dashboard)/ai-chatbot/page.tsx'),
   'utf8',
@@ -53,12 +61,26 @@ describe('RAG manual embedding generation', () => {
     expect(embeddingStore).toContain("embedding_status: args.status")
   })
 
-  it('keeps large-source embedding explicit while still embedding every chunk when prepared', () => {
-    expect(embeddingStore).toContain('RAG_AUTO_EMBED_CHUNK_LIMIT = 200')
+  it('keeps save/import chunk-only by default while still embedding every chunk when manually prepared', () => {
+    expect(embeddingStore).toContain('RAG_AUTO_EMBED_CHUNK_LIMIT = 0')
     expect(embeddingStore).toContain('shouldAutoEmbedRagKnowledge')
     expect(embeddingStore).toContain('createSkippedRagEmbeddingSummary')
+    expect(embeddingStore).toContain('RAG_AUTO_EMBED_CHUNK_LIMIT > 0')
     expect(embeddingStore).toContain('for (const chunk of chunks)')
     expect(embeddingStore).not.toContain('.slice(0, 160)')
+  })
+
+  it('sanitizes provider/network failures instead of returning raw fetch errors', () => {
+    expect(ragSecurity).toContain('Provider request failed. Please check your AI provider settings or try again.')
+    expect(ragHelpers).toContain('The request could not complete right now. Please try again.')
+    expect(page).toContain('The request could not complete right now. If the knowledge appears in the list')
+    expect(page).not.toContain('TypeError: fetch failed')
+  })
+
+  it('returns user-facing embedding failure summaries that keep chunks ready', () => {
+    expect(embeddingStore).toContain('AI provider key is missing. Add your API key before preparing embeddings.')
+    expect(embeddingStore).toContain('Chunks ready. Embeddings failed. Please check provider settings or click Prepare for Chatbot again.')
+    expect(embeddingStore).toContain('Chunks ready. Click Prepare for Chatbot to create embeddings.')
   })
 
   it('adds only the single-source knowledge embedding API with workspace permission', () => {
@@ -71,9 +93,12 @@ describe('RAG manual embedding generation', () => {
 
   it('adds customer-facing preparation controls and status counts without vectors or debug output', () => {
     expect(page).toContain('Prepare for Chatbot')
-    expect(page).toContain('Small sources can prepare automatically')
+    expect(page).toContain('Use Prepare for Chatbot when you are ready to create embeddings')
     expect(page).toContain('provider API cost')
     expect(page).toContain('Prepare for Chatbot')
+    expect(page).toContain('createProgressFromEmbeddingSummary')
+    expect(page).toContain("summary?.status === 'ready'")
+    expect(page).toContain("progress.status === 'warning'")
     expect(page).toContain('ready embeddings')
     expect(page).toContain('failed embeddings')
     expect(page).toContain('embeddingStatusLabel')

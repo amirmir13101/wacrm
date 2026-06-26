@@ -168,7 +168,12 @@ function sourceTypeLabel(sourceType: KnowledgeSourceItem['sourceType']): string 
 }
 
 type KnowledgeProgressKind = 'manual' | 'website' | 'prepare'
-type KnowledgeProgressStatus = 'running' | 'done' | 'failed'
+type KnowledgeProgressStatus = 'running' | 'done' | 'warning' | 'failed'
+
+interface EmbeddingSummaryView {
+  readonly status?: 'ready' | 'partial' | 'failed' | 'not_configured' | 'skipped'
+  readonly message?: string
+}
 
 interface KnowledgeProgressState {
   readonly kind: KnowledgeProgressKind
@@ -182,6 +187,7 @@ const knowledgeProgressSteps: Record<KnowledgeProgressKind, ReadonlyArray<string
     'Saving knowledge...',
     'Cleaning content...',
     'Creating chunks...',
+    'Chunks ready',
     'Preparing embeddings...',
     'Ready for chatbot',
   ],
@@ -190,6 +196,7 @@ const knowledgeProgressSteps: Record<KnowledgeProgressKind, ReadonlyArray<string
     'Reading website content...',
     'Cleaning content...',
     'Creating chunks...',
+    'Chunks ready',
     'Preparing embeddings...',
     'Ready for chatbot',
   ],
@@ -204,14 +211,45 @@ function createKnowledgeProgress(
   kind: KnowledgeProgressKind,
   status: KnowledgeProgressStatus = 'running',
   message: string | null = null,
+  currentStep?: number,
 ): KnowledgeProgressState {
   const steps = knowledgeProgressSteps[kind]
   return {
     kind,
     status,
-    currentStep: status === 'done' ? steps.length - 1 : 0,
+    currentStep: currentStep ?? (status === 'done' ? steps.length - 1 : 0),
     message,
   }
+}
+
+function createProgressFromEmbeddingSummary(
+  kind: Extract<KnowledgeProgressKind, 'manual' | 'website'>,
+  summary: EmbeddingSummaryView | null | undefined,
+  fallbackMessage: string,
+): KnowledgeProgressState {
+  const steps = knowledgeProgressSteps[kind]
+  const chunkReadyStep = steps.indexOf('Chunks ready')
+  const preparingStep = steps.indexOf('Preparing embeddings...')
+  const message = cleanOperationMessage(summary?.message, fallbackMessage)
+
+  if (summary?.status === 'ready') {
+    return createKnowledgeProgress(kind, 'done', message)
+  }
+
+  if (summary?.status === 'failed' || summary?.status === 'partial' || summary?.status === 'not_configured') {
+    return createKnowledgeProgress(kind, 'warning', message, preparingStep)
+  }
+
+  return createKnowledgeProgress(kind, 'warning', message, chunkReadyStep)
+}
+
+function createPrepareProgressFromEmbeddingSummary(
+  summary: EmbeddingSummaryView | null | undefined,
+  fallbackMessage: string,
+): KnowledgeProgressState {
+  const message = cleanOperationMessage(summary?.message, fallbackMessage)
+  if (summary?.status === 'ready') return createKnowledgeProgress('prepare', 'done', message)
+  return createKnowledgeProgress('prepare', 'warning', message, 1)
 }
 
 function knowledgeStatusLabel(source: KnowledgeSourceItem): string {
@@ -224,7 +262,11 @@ function knowledgeStatusLabel(source: KnowledgeSourceItem): string {
 
 function cleanOperationMessage(message: unknown, fallback: string): string {
   if (typeof message !== 'string' || !message.trim()) return fallback
-  return message.replace(/\s+/g, ' ').slice(0, 240)
+  const cleaned = message.replace(/\s+/g, ' ').trim()
+  if (/typeerror:\s*fetch failed|fetch failed/i.test(cleaned)) {
+    return 'The request could not complete right now. If the knowledge appears in the list, chunks were saved; click Prepare for Chatbot again.'
+  }
+  return cleaned.slice(0, 240)
 }
 
 export default function RagChatbotPage() {
@@ -544,9 +586,11 @@ export default function RagChatbotPage() {
       setSelectedKnowledge(payload.source ?? null)
       const message = cleanOperationMessage(
         payload.embeddingSummary?.message ?? payload.message,
-        'Website imported, cleaned, chunked, and prepared for chatbot.',
+        'Website imported, cleaned, and chunked.',
       )
-      setKnowledgeProgress(createKnowledgeProgress('website', 'done', message))
+      setKnowledgeProgress(
+        createProgressFromEmbeddingSummary('website', payload.embeddingSummary, message),
+      )
       setWebsiteImportMessage(message)
       await loadKnowledge()
       await refreshStatusCounts()
@@ -589,9 +633,11 @@ export default function RagChatbotPage() {
       setSelectedKnowledge(payload.source ?? null)
       const message = cleanOperationMessage(
         payload.embeddingSummary?.message,
-        editingKnowledgeId ? 'Knowledge updated, cleaned, chunked, and prepared.' : 'Knowledge added, cleaned, chunked, and prepared.',
+        editingKnowledgeId ? 'Knowledge updated, cleaned, and chunked.' : 'Knowledge added, cleaned, and chunked.',
       )
-      setKnowledgeProgress(createKnowledgeProgress('manual', 'done', message))
+      setKnowledgeProgress(
+        createProgressFromEmbeddingSummary('manual', payload.embeddingSummary, message),
+      )
       setKnowledgeMessage(message)
       await loadKnowledge()
       await refreshStatusCounts()
@@ -662,7 +708,7 @@ export default function RagChatbotPage() {
         payload.summary?.message,
         'Knowledge prepared for chatbot.',
       )
-      setKnowledgeProgress(createKnowledgeProgress('prepare', 'done', message))
+      setKnowledgeProgress(createPrepareProgressFromEmbeddingSummary(payload.summary, message))
       setKnowledgeMessage(message)
       await loadKnowledge()
       await refreshStatusCounts()
@@ -916,8 +962,8 @@ export default function RagChatbotPage() {
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
               Add business information manually or from a website page. Knowledge is fully chunked
-              after save. Small sources can prepare automatically; larger sources keep Prepare for
-              Chatbot available so you control provider API cost.
+              after save. Use Prepare for Chatbot when you are ready to create embeddings and
+              control provider API cost.
             </p>
           </div>
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
@@ -1467,13 +1513,16 @@ function KnowledgeProgressPanel({
   const steps = knowledgeProgressSteps[progress.kind]
   const isDone = progress.status === 'done'
   const isFailed = progress.status === 'failed'
+  const isWarning = progress.status === 'warning'
 
   return (
     <div className={cn(
       'rounded-2xl border p-4',
       isFailed
         ? 'border-red-300/40 bg-red-400/10'
-        : isDone
+        : isWarning
+          ? 'border-amber-300/40 bg-amber-300/10'
+          : isDone
           ? 'border-emerald-300/40 bg-emerald-400/10'
           : 'border-[#315846] bg-[#07130e]',
     )}>
@@ -1488,6 +1537,8 @@ function KnowledgeProgressPanel({
           <Loader2 className="size-4 shrink-0 animate-spin text-emerald-200" />
         ) : isDone ? (
           <CheckCircle2 className="size-4 shrink-0 text-emerald-200" />
+        ) : isWarning ? (
+          <XCircle className="size-4 shrink-0 text-amber-200" />
         ) : (
           <XCircle className="size-4 shrink-0 text-red-200" />
         )}
@@ -1495,7 +1546,7 @@ function KnowledgeProgressPanel({
       <ol className="space-y-2">
         {steps.map((step, index) => {
           const complete = isDone || index < progress.currentStep
-          const active = progress.status === 'running' && index === progress.currentStep
+          const active = (progress.status === 'running' || isWarning) && index === progress.currentStep
           return (
             <li key={step} className="flex items-center gap-2 text-xs text-[#d8fff1]">
               <span className={cn(
@@ -1503,12 +1554,14 @@ function KnowledgeProgressPanel({
                 complete
                   ? 'border-emerald-300/60 bg-emerald-300/20 text-emerald-100'
                   : active
-                    ? 'border-emerald-300/60 bg-emerald-300/10 text-emerald-100'
+                    ? isWarning
+                      ? 'border-amber-300/60 bg-amber-300/10 text-amber-100'
+                      : 'border-emerald-300/60 bg-emerald-300/10 text-emerald-100'
                     : 'border-[#315846] bg-[#0d1b15] text-[#8bb4a5]',
               )}>
                 {complete ? '✓' : index + 1}
               </span>
-              <span className={active ? 'font-bold text-emerald-100' : ''}>{step}</span>
+              <span className={cn(active && 'font-bold', active && (isWarning ? 'text-amber-100' : 'text-emerald-100'))}>{step}</span>
             </li>
           )
         })}

@@ -8,7 +8,7 @@ import type { RagProviderType, RagResolvedProviderConfig } from './types'
 
 const RAG_EMBEDDING_DIMENSIONS = 1536
 const ZERO_EMBEDDING = Array.from({ length: RAG_EMBEDDING_DIMENSIONS }, () => 0)
-export const RAG_AUTO_EMBED_CHUNK_LIMIT = 200
+export const RAG_AUTO_EMBED_CHUNK_LIMIT = 0
 
 type EmbeddingRunStatus = 'ready' | 'partial' | 'failed' | 'not_configured' | 'skipped'
 
@@ -65,7 +65,7 @@ function safeProviderConfig(row: RagProviderSettingsRow | null): {
       config: null,
       provider,
       embeddingModel,
-      error: 'Embedding API key is not configured.',
+      error: 'AI provider key is missing. Add your API key before preparing embeddings.',
     }
   }
 
@@ -238,14 +238,14 @@ function summarize(args: {
         : args.status === 'partial'
           ? 'Some knowledge was prepared, but a few chunks failed.'
           : args.status === 'skipped'
-            ? 'Knowledge was saved and chunked. Click Prepare for Chatbot to create embeddings.'
-            : 'Knowledge could not be prepared yet.'
+            ? 'Chunks ready. Click Prepare for Chatbot to create embeddings.'
+            : 'Chunks ready. Embeddings failed. Please check provider settings or click Prepare for Chatbot again.'
     ),
   }
 }
 
 export function shouldAutoEmbedRagKnowledge(chunkCount: number): boolean {
-  return chunkCount > 0 && chunkCount <= RAG_AUTO_EMBED_CHUNK_LIMIT
+  return RAG_AUTO_EMBED_CHUNK_LIMIT > 0 && chunkCount > 0 && chunkCount <= RAG_AUTO_EMBED_CHUNK_LIMIT
 }
 
 export function createSkippedRagEmbeddingSummary(chunkCount: number): RagEmbeddingSummary {
@@ -255,7 +255,7 @@ export function createSkippedRagEmbeddingSummary(chunkCount: number): RagEmbeddi
     embeddingsSkipped: chunkCount,
     embeddingsFailed: 0,
     status: 'skipped',
-    message: `Knowledge was saved and fully chunked into ${chunkCount.toLocaleString()} chunks. Click Prepare for Chatbot to create embeddings when you are ready for the provider API cost.`,
+    message: `Chunks ready. ${chunkCount.toLocaleString()} chunks were created. Click Prepare for Chatbot when you are ready to create embeddings.`,
   })
 }
 
@@ -373,6 +373,9 @@ export async function embedRagManualKnowledgeSource(args: {
     embeddingsSkipped: skipped,
     embeddingsFailed: failed,
     status,
+    message: status === 'ready'
+      ? 'Knowledge is prepared for chatbot.'
+      : 'Chunks ready. Embeddings failed. Please check provider settings or click Prepare for Chatbot again.',
   })
   await updateSourceEmbeddingMetadata({
     workspaceId: args.workspaceId,
