@@ -433,6 +433,7 @@ export default function RagChatbotPage() {
   const [logsLoading, setLogsLoading] = useState(false)
   const [logsMessage, setLogsMessage] = useState<string | null>(null)
   const [logFilter, setLogFilter] = useState('all')
+  const [activityVisibleCount, setActivityVisibleCount] = useState(10)
   const [autoReply, setAutoReply] = useState<RagAutoReplySettings | null>(null)
   const [autoReplySaving, setAutoReplySaving] = useState(false)
   const [autoReplyMessage, setAutoReplyMessage] = useState<string | null>(null)
@@ -504,6 +505,37 @@ export default function RagChatbotPage() {
     : !embeddingsReady
       ? 'Prepare your knowledge for chatbot first.'
       : null
+  const activityItems = useMemo(() => {
+    const logItems = logs.map((log) => ({
+      id: `log:${log.id}`,
+      kind: 'log' as const,
+      channel: log.channel,
+      status: log.status,
+      question: log.userQuestion,
+      answer: log.answer,
+      reason: log.fallbackReason,
+      count: null as number | null,
+      date: log.createdAt,
+      meta: `${log.retrievedSourceCount} retrieved sources${typeof log.latencyMs === 'number' ? ` · ${log.latencyMs} ms` : ''}`,
+    }))
+    const gapItems = knowledgeGaps.map((gap) => ({
+      id: `gap:${gap.id}`,
+      kind: 'gap' as const,
+      channel: gap.channel,
+      status: 'unanswered' as const,
+      question: gap.question,
+      answer: gap.suggestedAction,
+      reason: gap.reason,
+      count: gap.count,
+      date: gap.lastAskedAt,
+      meta: 'Missing knowledge',
+    }))
+
+    return [...logItems, ...gapItems].sort((first, second) =>
+      new Date(second.date).getTime() - new Date(first.date).getTime(),
+    )
+  }, [logs, knowledgeGaps])
+  const visibleActivityItems = activityItems.slice(0, activityVisibleCount)
 
   useEffect(() => {
     if (workspace.loading || !canView) {
@@ -990,6 +1022,7 @@ export default function RagChatbotPage() {
 
   async function viewKnowledge(id: string) {
     setKnowledgeMessage(null)
+    setEditingKnowledgeId(null)
     try {
       const response = await fetch(`/api/rag/knowledge/${id}`)
       const payload = await response.json().catch(() => ({}))
@@ -1001,7 +1034,6 @@ export default function RagChatbotPage() {
   }
 
   async function editKnowledge(id: string) {
-    await viewKnowledge(id)
     const response = await fetch(`/api/rag/knowledge/${id}`)
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) {
@@ -1012,7 +1044,7 @@ export default function RagChatbotPage() {
     setKnowledgeTitle(payload.source.title)
     setKnowledgeText(payload.source.content)
     setKnowledgeSourceType(payload.source.sourceType ?? 'manual')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setSelectedKnowledge(null)
   }
 
   async function deleteKnowledge(id: string) {
@@ -1292,7 +1324,7 @@ export default function RagChatbotPage() {
               type="button"
               onClick={importWebsite}
               disabled={!canManageKnowledge || websiteImporting || !websiteUrl.trim()}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
             >
               {websiteImporting ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -1301,6 +1333,19 @@ export default function RagChatbotPage() {
               )}
                 {websiteImporting ? 'Importing website...' : 'Import Website Knowledge'}
             </button>
+            <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-1">
+              <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 px-3 py-2 text-[#d8fff1]">
+                Page limit: {websitePageLimit.toLocaleString()} pages
+              </div>
+              <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 px-3 py-2 text-[#d8fff1]">
+                Firecrawl: {firecrawlReady ? 'Configured' : 'Needs API key'}
+              </div>
+              {websiteImportStats && (
+                <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 px-3 py-2 text-[#d8fff1] sm:col-span-2 xl:col-span-1">
+                  Last import: {websiteImportStats.pagesImported} imported · {websiteImportStats.pagesSkipped} skipped · {websiteImportStats.pagesFailed} failed
+                </div>
+              )}
+            </div>
           </div>
 
           <WebsiteImportLiveScreen
@@ -1461,7 +1506,7 @@ export default function RagChatbotPage() {
                     type="button"
                     onClick={() => saveWebsiteDraft('publish')}
                     disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready' || !websiteDraftContent.trim()}
-                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                   >
                     Publish to Knowledge Base
                   </button>
@@ -1594,7 +1639,7 @@ export default function RagChatbotPage() {
                     !knowledgeTitle.trim() ||
                     !knowledgeText.trim()
                   }
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                 >
                   {knowledgeSaving ? (
                     <>
@@ -1729,31 +1774,6 @@ export default function RagChatbotPage() {
               </div>
             </div>
 
-            {selectedKnowledge && (
-              <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-bold text-white">{selectedKnowledge.title}</h3>
-                    <p className="text-xs text-[#8bb4a5]">
-                      {sourceTypeLabel(selectedKnowledge.sourceType)} · {selectedKnowledge.status}
-                    </p>
-                    {selectedKnowledge.sourceUrl && (
-                      <p className="mt-1 break-all text-xs text-[#8bb4a5]">{selectedKnowledge.sourceUrl}</p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedKnowledge(null)}
-                    className="rounded-lg border border-[#315846] px-2 py-1 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
-                  >
-                    Close
-                  </button>
-                </div>
-                <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-[#315846] bg-[#07130e] p-3 text-sm leading-6 text-[#d8fff1]">
-                  {selectedKnowledge.content}
-                </pre>
-              </div>
-            )}
         </div>
       </section>
 
@@ -1887,7 +1907,7 @@ export default function RagChatbotPage() {
                 type="button"
                 onClick={() => saveChatbotSettings()}
                 disabled={chatbotSettingsSaving || !chatbotSettings}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
               >
                 {chatbotSettingsSaving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                 Save Settings
@@ -1960,7 +1980,7 @@ export default function RagChatbotPage() {
                   type="button"
                   onClick={askTestChat}
                   disabled={chatLoading || Boolean(chatUnavailableMessage) || !chatQuestion.trim()}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                 >
                   <MessageSquare className="size-4" />
                   {chatLoading ? 'Asking...' : 'Ask Test Question'}
@@ -2101,7 +2121,7 @@ export default function RagChatbotPage() {
               type="button"
               onClick={saveSchedule}
               disabled={!canManageKnowledge || scheduleSaving || !scheduleUrl.trim()}
-              className="inline-flex h-11 items-center justify-center rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
             >
               Add Schedule
             </button>
@@ -2296,85 +2316,201 @@ export default function RagChatbotPage() {
             </p>
           )}
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-            <div className="divide-y divide-[#214b39] overflow-hidden rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
-              {logs.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-[#8bb4a5]">
-                  No chatbot activity yet.
-                </div>
-              ) : (
-                logs.map((log) => (
-                  <article key={log.id} className="space-y-3 px-4 py-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-[#315846] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#d8fff1]">
-                          {log.channel}
-                        </span>
-                        <span className={cn(
-                          'rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
-                          log.status === 'answered'
-                            ? 'bg-emerald-400/15 text-emerald-100'
-                            : log.status === 'fallback'
-                              ? 'bg-amber-300/15 text-amber-100'
-                              : 'bg-red-400/15 text-red-100',
-                        )}>
-                          {log.status.replace('_', ' ')}
-                        </span>
-                      </div>
-                      <span className="text-xs text-[#8bb4a5]">{formatDateTime(log.createdAt)}</span>
-                    </div>
-                    <div className="grid gap-3 text-sm lg:grid-cols-2">
-                      <div>
-                        <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Question</p>
-                        <p className="line-clamp-4 whitespace-pre-wrap text-[#d8fff1]">{log.userQuestion}</p>
-                      </div>
-                      <div>
-                        <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Answer</p>
-                        <p className="line-clamp-4 whitespace-pre-wrap text-[#a9c6bb]">
-                          {log.answer || 'No answer recorded.'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-3 text-xs text-[#8bb4a5]">
-                      <span>{log.retrievedSourceCount} retrieved sources</span>
-                      {typeof log.latencyMs === 'number' && <span>{log.latencyMs} ms latency</span>}
-                      {log.fallbackReason && <span>Fallback: {log.fallbackReason}</span>}
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
-
-            <div className="divide-y divide-[#214b39] overflow-hidden rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
-              {knowledgeGaps.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-[#8bb4a5]">No unanswered questions recorded yet.</p>
-              ) : knowledgeGaps.map((gap) => (
-                <article key={gap.id} className="space-y-2 px-4 py-4">
+          <div className="divide-y divide-[#214b39] overflow-hidden rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
+            {visibleActivityItems.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-[#8bb4a5]">
+                No chatbot activity or unanswered questions yet.
+              </div>
+            ) : (
+              visibleActivityItems.map((item) => (
+                <article key={item.id} className="space-y-3 px-4 py-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="rounded-full border border-[#315846] px-2 py-1 text-[11px] font-bold uppercase text-[#d8fff1]">
-                      {gap.channel}
-                    </span>
-                    <span className="text-xs text-[#8bb4a5]">{gap.count}? ? {formatDateTime(gap.lastAskedAt)}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-[#315846] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#d8fff1]">
+                        {item.channel}
+                      </span>
+                      <span className={cn(
+                        'rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+                        item.status === 'answered'
+                          ? 'bg-emerald-400/15 text-emerald-100'
+                          : item.status === 'unanswered' || item.status === 'fallback'
+                            ? 'bg-[#ffbd29]/15 text-[#ffbd29]'
+                            : 'bg-red-400/15 text-red-100',
+                      )}>
+                        {item.status.replace('_', ' ')}
+                      </span>
+                      {item.kind === 'gap' && (
+                        <span className="rounded-full border border-[#ffbd29]/40 px-2.5 py-1 text-[11px] font-bold uppercase text-[#ffbd29]">
+                          Missing knowledge
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-[#8bb4a5]">{formatDateTime(item.date)}</span>
                   </div>
-                  <p className="text-sm font-semibold text-white">{gap.question}</p>
-                  <p className="text-xs text-[#8bb4a5]">Reason: {gap.reason.replaceAll('_', ' ')}</p>
-                  {gap.suggestedAction && (
-                    <p className="text-sm text-[#a9c6bb]">{gap.suggestedAction}</p>
-                  )}
-                  <button
-                    type="button"
-                    disabled
-                    className="rounded-lg border border-emerald-300/40 px-2 py-1 text-xs font-bold text-emerald-100 opacity-80"
-                  >
-                    Add to Knowledge Base
-                  </button>
+                  <div className="grid gap-3 text-sm lg:grid-cols-2">
+                    <div>
+                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Question</p>
+                      <p className="line-clamp-4 whitespace-pre-wrap text-[#d8fff1]">{item.question}</p>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Answer / Note</p>
+                      <p className="line-clamp-4 whitespace-pre-wrap text-[#a9c6bb]">
+                        {item.answer || 'No answer recorded.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-[#8bb4a5]">
+                    <span>{item.meta}</span>
+                    {typeof item.count === 'number' && <span>{item.count} asks</span>}
+                    {item.reason && <span>Reason: {item.reason.replaceAll('_', ' ')}</span>}
+                    {item.kind === 'gap' && (
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-lg border border-emerald-300/40 px-2 py-1 text-xs font-bold text-emerald-100 opacity-80"
+                      >
+                        Add to Knowledge Base
+                      </button>
+                    )}
+                  </div>
                 </article>
-              ))}
-            </div>
+              ))
+            )}
           </div>
+
+          {activityItems.length > visibleActivityItems.length && (
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setActivityVisibleCount((count) => count + 10)}
+                className="h-10 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29]"
+              >
+                Load More
+              </button>
+            </div>
+          )}
         </div>
 
       </section>
+
+      {selectedKnowledge && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-3xl border border-[#245940] bg-[#07130e] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+            <div className="flex items-start justify-between gap-4 border-b border-[#214b39] p-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Knowledge source</p>
+                <h3 className="mt-1 text-xl font-black text-white">{selectedKnowledge.title}</h3>
+                <p className="mt-1 text-sm text-[#8bb4a5]">
+                  {sourceTypeLabel(selectedKnowledge.sourceType)} · {selectedKnowledge.status}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedKnowledge(null)}
+                className="rounded-xl border border-[#315846] px-3 py-2 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
+              >
+                Close
+              </button>
+            </div>
+            <div className="grid max-h-[calc(90vh-7rem)] gap-4 overflow-y-auto p-5 lg:grid-cols-[0.8fr_1.2fr]">
+              <dl className="space-y-3 text-sm text-[#a9c6bb]">
+                <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                  <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Created</dt>
+                  <dd className="mt-1 text-white">{formatDate(selectedKnowledge.createdAt)}</dd>
+                </div>
+                <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                  <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Updated</dt>
+                  <dd className="mt-1 text-white">{formatDate(selectedKnowledge.updatedAt)}</dd>
+                </div>
+                <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                  <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Chunks / Embeddings</dt>
+                  <dd className="mt-1 text-white">
+                    {selectedKnowledge.chunkCount} chunks · {selectedKnowledge.readyEmbeddingCount} ready · {selectedKnowledge.failedEmbeddingCount} failed
+                  </dd>
+                </div>
+                {selectedKnowledge.sourceUrl && (
+                  <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                    <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Source URL</dt>
+                    <dd className="mt-1 break-all text-white">{selectedKnowledge.sourceUrl}</dd>
+                  </div>
+                )}
+              </dl>
+              <pre className="max-h-[34rem] overflow-auto whitespace-pre-wrap rounded-2xl border border-[#315846] bg-[#04100b] p-4 text-sm leading-6 text-[#d8fff1]">
+                {selectedKnowledge.content}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingKnowledgeId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-3xl border border-[#245940] bg-[#07130e] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+            <div className="border-b border-[#214b39] p-5">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Edit knowledge</p>
+              <h3 className="mt-1 text-xl font-black text-white">Update Knowledge</h3>
+              <p className="mt-1 text-sm text-[#8bb4a5]">
+                Updating regenerates chunks and keeps embeddings pending until Prepare for Chatbot.
+              </p>
+            </div>
+            <div className="max-h-[calc(90vh-8rem)] space-y-4 overflow-y-auto p-5">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-[#d8fff1]">Knowledge type</span>
+                <select
+                  value={knowledgeSourceType}
+                  onChange={(event) => setKnowledgeSourceType(event.target.value as typeof knowledgeSourceType)}
+                  className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                >
+                  <option value="manual">Business knowledge</option>
+                  <option value="faq">FAQ</option>
+                  <option value="note">Instructions</option>
+                  <option value="website">Website import</option>
+                </select>
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-[#d8fff1]">Title</span>
+                <input
+                  value={knowledgeTitle}
+                  onChange={(event) => setKnowledgeTitle(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none focus:border-emerald-300"
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-[#d8fff1]">Content</span>
+                <textarea
+                  value={knowledgeText}
+                  onChange={(event) => setKnowledgeText(event.target.value)}
+                  rows={12}
+                  className="min-h-72 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none focus:border-emerald-300"
+                />
+              </label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingKnowledgeId(null)
+                    setKnowledgeTitle('')
+                    setKnowledgeText('')
+                    setKnowledgeSourceType('manual')
+                  }}
+                  className="h-10 rounded-xl border border-[#315846] px-4 text-sm font-bold text-[#d8fff1] hover:bg-[#123226]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveKnowledge}
+                  disabled={knowledgeSaving || knowledgeOverLimit || !knowledgeTitle.trim() || !knowledgeText.trim()}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+                >
+                  {knowledgeSaving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                  Update Knowledge
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading && (
         <div className="fixed bottom-4 right-4 rounded-full border border-[#315846] bg-[#07130e] px-4 py-2 text-sm text-[#d8fff1] shadow-xl">
@@ -2466,44 +2602,27 @@ function FirecrawlCreditsPanel({
 }) {
   const remaining = credits?.remainingCredits
   const total = credits?.totalCredits ?? credits?.limit
-  const used = credits?.usedCredits
-  const plan = credits?.plan
   const updatedAt = credits?.lastUpdatedAt ?? lastTestedAt
+  const creditLine = typeof remaining === 'number'
+    ? total
+      ? `Credits left: ${remaining.toLocaleString()} / ${total.toLocaleString()}`
+      : `Credits left: ${remaining.toLocaleString()}`
+    : 'Credits left: run Test Connection'
 
   return (
     <div className="rounded-2xl border border-[#245940] bg-[#0d1b15]/80 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.16)]">
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-black text-white">Firecrawl credits</p>
-          <p className="text-xs text-[#8bb4a5]">Updated after Test Connection or website import when Firecrawl returns usage.</p>
+          <p className="mt-1 text-base font-bold text-emerald-100">{creditLine}</p>
+          <p className="mt-1 text-xs text-[#8bb4a5]">
+            Last updated: {updatedAt ? formatDateTime(updatedAt) : 'Not tested yet'}
+          </p>
         </div>
-        <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-bold text-emerald-100">
-          Usage
+        <span className="shrink-0 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-bold text-emerald-100">
+          Credits
         </span>
       </div>
-      <dl className="grid gap-3 text-sm sm:grid-cols-3">
-        <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 p-3">
-          <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Credits left</dt>
-          <dd className="mt-1 font-bold text-white">
-            {typeof remaining === 'number'
-              ? total
-                ? `${remaining.toLocaleString()} / ${total.toLocaleString()}`
-                : remaining.toLocaleString()
-              : 'Run test'}
-          </dd>
-        </div>
-        <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 p-3">
-          <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Used</dt>
-          <dd className="mt-1 font-bold text-white">{typeof used === 'number' ? used.toLocaleString() : '—'}</dd>
-        </div>
-        <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 p-3">
-          <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Plan</dt>
-          <dd className="mt-1 font-bold text-white">{plan ?? 'Not returned'}</dd>
-        </div>
-      </dl>
-      <p className="mt-3 text-xs text-[#8bb4a5]">
-        Last updated: {updatedAt ? formatDateTime(updatedAt) : 'Not tested yet'}
-      </p>
     </div>
   )
 }
@@ -2522,73 +2641,118 @@ function WebsiteImportLiveScreen({
   readonly message: string | null
 }) {
   const latestPage = pages.find((page) => page.status === 'imported') ?? pages[0] ?? stats?.pages?.[0]
-  const steps = [
-    'Waiting for website URL',
+  const progressSteps = [
     'Starting import',
-    'Fetching website content',
-    'Discovering sitemap/pages',
-    latestPage?.title || latestPage?.url ? `Crawling page: ${latestPage.title ?? latestPage.url}` : 'Crawling page: pending',
+    'Discovering pages',
+    latestPage?.title || latestPage?.url ? `Crawling current page: ${latestPage.title ?? latestPage.url}` : 'Crawling current page',
     'Cleaning content',
     'Removing duplicate/footer/widget junk',
-    'Creating source draft/content',
+    'Building knowledge',
     'Creating chunks',
-    'Chunks ready',
-    'Embeddings pending',
-    stats ? 'Import completed' : importing ? 'Import running' : 'Waiting',
+    'Completed',
   ]
-  const activeIndex = stats ? steps.length - 1 : importing ? Math.min(steps.length - 2, 8) : 0
+
+  if (!importing && !stats) {
+    return (
+      <div className="min-h-[18rem] rounded-2xl border border-[#245940] bg-[#04100b] p-5 shadow-inner">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-black text-white">Ready to import</p>
+            <p className="mt-1 text-xs text-[#8bb4a5]">Enter a website URL and start import.</p>
+          </div>
+          <span className="rounded-full border border-[#ffbd29]/60 bg-[#ffbd29] px-2.5 py-1 text-[11px] font-bold uppercase text-[#07130e]">
+            Idle
+          </span>
+        </div>
+        <div className="mt-5 grid gap-2 text-xs">
+          {[
+            'Firecrawl key required/configured',
+            'Pages will be discovered',
+            'Chunks will be created',
+            'Embeddings stay pending until Prepare for Chatbot',
+          ].map((item) => (
+            <div key={item} className="flex items-center gap-2 rounded-xl border border-[#214b39] bg-[#07130e]/80 px-3 py-2 text-[#d8fff1]">
+              <span className="size-2 rounded-full bg-[#3ddf84]" />
+              {item}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (importing) {
+    return (
+      <div className="min-h-[22rem] rounded-2xl border border-[#245940] bg-[#04100b] p-5 shadow-inner">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-black text-white">Live import screen</p>
+            <p className="mt-1 break-all text-xs text-[#8bb4a5]">{url || 'Starting website import'}</p>
+          </div>
+          <span className="w-fit rounded-full border border-emerald-300/50 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-100">
+            Running
+          </span>
+        </div>
+        <div className="grid gap-2 text-xs">
+          {progressSteps.slice(0, -1).map((step, index) => {
+            const active = index === Math.min(3, progressSteps.length - 2)
+            return (
+              <div
+                key={step}
+                className={cn(
+                  'flex items-start gap-2 rounded-xl border px-3 py-2',
+                  active
+                    ? 'border-[#ffbd29]/60 bg-[#ffbd29] text-[#07130e]'
+                    : 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100',
+                )}
+              >
+                <span className="mt-0.5 size-2 shrink-0 rounded-full bg-current" />
+                <span className="min-w-0 break-words">{step}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-[24rem] rounded-2xl border border-[#245940] bg-[#04100b] p-4 shadow-inner">
+    <div className="min-h-[22rem] rounded-2xl border border-[#245940] bg-[#04100b] p-5 shadow-inner">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-black text-white">Live import screen</p>
-          <p className="mt-1 break-all text-xs text-[#8bb4a5]">{url || 'Waiting for website URL'}</p>
+          <p className="text-sm font-black text-white">Import result</p>
+          <p className="mt-1 break-all text-xs text-[#8bb4a5]">{url || 'Website import completed'}</p>
         </div>
-        <span className={cn(
-          'w-fit rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
-          stats
-            ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
-            : importing
-              ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
-              : 'border-amber-300/35 bg-[#3a3215] text-amber-100',
-        )}>
-          {stats ? 'Completed' : importing ? 'Running' : 'Idle'}
+        <span className="w-fit rounded-full border border-emerald-300/50 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-100">
+          Completed
         </span>
       </div>
-
-      <div className="grid gap-2 text-xs">
-        {steps.map((step, index) => {
-          const complete = index < activeIndex
-          const active = index === activeIndex
-          return (
-            <div
-              key={`${step}:${index}`}
-              className={cn(
-                'flex items-start gap-2 rounded-xl border px-3 py-2',
-                complete
-                  ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100'
-                  : active
-                    ? 'border-amber-300/35 bg-[#3a3215] text-amber-100'
-                    : 'border-[#193a2b] bg-[#07130e] text-[#8bb4a5]',
-              )}
-            >
-              <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-current text-[9px]">
-                {complete ? '✓' : index + 1}
-              </span>
-              <span className="min-w-0 break-words">{step}</span>
-            </div>
-          )
-        })}
-      </div>
-
       {stats && (
-        <dl className="mt-4 grid gap-2 text-xs text-[#d8fff1] sm:grid-cols-4">
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">{stats.pagesImported} imported</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">{stats.pagesSkipped} skipped</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">{stats.pagesFailed} failed</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">{stats.duplicatePages} duplicate</div>
+        <dl className="grid gap-2 text-xs text-[#d8fff1] sm:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Imported pages: {stats.pagesImported}</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Skipped pages: {stats.pagesSkipped}</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Failed pages: {stats.pagesFailed}</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Duplicates: {stats.duplicatePages}</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Chunks created: pending review</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Embeddings pending</div>
         </dl>
+      )}
+      {stats?.warnings && stats.warnings.length > 0 && (
+        <p className="mt-3 rounded-xl border border-[#ffbd29]/40 bg-[#ffbd29]/10 px-3 py-2 text-xs text-amber-100">
+          Quality warnings: {stats.warnings.join(' ')}
+        </p>
+      )}
+      {pages.length > 0 && (
+        <div className="mt-4 max-h-48 space-y-2 overflow-y-auto">
+          {pages.slice(0, 8).map((page, index) => (
+            <div key={`${page.url}:${index}`} className="rounded-xl border border-[#214b39] bg-[#07130e]/80 px-3 py-2 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 break-words text-[#d8fff1]">{page.title ?? page.url}</span>
+                <span className="rounded-full border border-[#315846] px-2 py-0.5 uppercase text-[#8bb4a5]">{page.status}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
       {message && (
         <p className="mt-4 rounded-xl border border-[#315846] bg-[#07130e] px-3 py-2 text-xs leading-5 text-[#d8fff1]">
@@ -2606,12 +2770,24 @@ function ManualKnowledgeStatusScreen({
   readonly progress: KnowledgeProgressState | null
   readonly saving: boolean
 }) {
-  const currentProgress = progress ?? createKnowledgeProgress(
-    'manual',
-    'warning',
-    'Ready to save. Manual knowledge will create chunks automatically, while embeddings remain pending until you click Prepare for Chatbot.',
-    0,
-  )
+  if (!progress) {
+    return (
+      <div className="rounded-2xl border border-[#245940] bg-[#0d1b15]/80 p-5 shadow-[0_14px_40px_rgba(0,0,0,0.18)]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-black text-white">Ready to save knowledge</p>
+            <p className="mt-2 text-sm leading-6 text-[#a9c6bb]">
+              Add your content and click Save Knowledge. Chunks will be created automatically.
+              Embeddings will stay pending until Prepare for Chatbot.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full border border-[#ffbd29]/70 bg-[#ffbd29] px-2.5 py-1 text-[11px] font-bold uppercase text-[#07130e]">
+            Idle
+          </span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-2xl border border-[#245940] bg-[#0d1b15]/80 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.18)]">
@@ -2624,16 +2800,16 @@ function ManualKnowledgeStatusScreen({
           'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
           saving
             ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
-            : 'border-amber-300/35 bg-[#3a3215] text-amber-100',
+            : 'border-[#ffbd29]/70 bg-[#ffbd29] text-[#07130e]',
         )}>
-          {saving ? 'Processing' : 'Standby'}
+          {saving ? 'Processing' : 'Chunks ready'}
         </span>
       </div>
-      <KnowledgeProgressPanel progress={currentProgress} />
+      <KnowledgeProgressPanel progress={progress} />
       <div className="mt-4 rounded-2xl border border-[#214b39] bg-[#07130e]/70 p-4">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Next step</p>
         <p className="mt-2 text-sm leading-6 text-[#d8fff1]">
-          After saving, check the Saved Knowledge section below. Ready to click Prepare for Chatbot when you want embeddings created.
+          Knowledge saved. Chunks ready. Click Prepare for Chatbot to create embeddings.
         </p>
       </div>
     </div>
@@ -2708,7 +2884,7 @@ function ActionRow({
         type="button"
         onClick={onSave}
         disabled={!canManage || busy || saveDisabled}
-        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
         {busy ? 'Saving...' : 'Save Settings'}
@@ -2717,7 +2893,7 @@ function ActionRow({
         type="button"
         onClick={onTest}
         disabled={!canManage || busy}
-        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#315846] px-4 text-sm font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
         {busy ? 'Testing...' : 'Test Connection'}
@@ -2735,12 +2911,12 @@ function SwitchPill({ checked }: { readonly checked: boolean }) {
   return (
     <span
       aria-hidden="true"
-      className={cn(
-        'relative inline-flex h-6 w-11 shrink-0 rounded-full border transition',
-        checked
-          ? 'border-emerald-300/60 bg-emerald-400'
-          : 'border-amber-300/35 bg-[#3a3215]',
-      )}
+        className={cn(
+          'relative inline-flex h-6 w-11 shrink-0 rounded-full border transition',
+          checked
+            ? 'border-emerald-300/60 bg-emerald-400'
+            : 'border-[#ffbd29]/70 bg-[#ffbd29]',
+        )}
     >
       <span
         className={cn(
