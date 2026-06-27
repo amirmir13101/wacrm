@@ -162,6 +162,7 @@ async function getEmbeddableSource(
     .eq('workspace_id', workspaceId)
     .eq('id', sourceId)
     .in('source_type', ['manual', 'website'])
+    .eq('status', 'active')
     .is('deleted_at', null)
     .maybeSingle()
 

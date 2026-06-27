@@ -26,6 +26,13 @@ export interface RagKnowledgeDetail extends RagKnowledgeListItem {
   readonly content: string
 }
 
+export interface RagKnowledgeDeleteResult {
+  readonly deleted: true
+  readonly sourceId: string
+  readonly chunksDeleted: number
+  readonly embeddingsDeleted: number
+}
+
 interface RagKnowledgeSourceRow {
   readonly id: string
   readonly title: string
@@ -171,6 +178,7 @@ export async function listRagKnowledgeSources(
     .select('id, title, source_type, source_url, status, cleaned_content, created_at, updated_at, metadata')
     .eq('workspace_id', workspaceId)
     .in('source_type', ['manual', 'website'])
+    .eq('status', 'active')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
@@ -195,6 +203,7 @@ export async function getRagKnowledgeSource(args: {
     .eq('workspace_id', args.workspaceId)
     .eq('id', args.sourceId)
     .in('source_type', ['manual', 'website'])
+    .eq('status', 'active')
     .is('deleted_at', null)
     .maybeSingle()
 
@@ -265,7 +274,7 @@ export async function updateRagManualKnowledge(args: {
   readonly sourceId: string
   readonly title: string
   readonly content: string
-  readonly status?: 'active' | 'archived'
+  readonly status?: 'active'
 }): Promise<RagKnowledgeDetail> {
   const existing = await getRagKnowledgeSource({
     workspaceId: args.workspaceId,
@@ -370,29 +379,64 @@ export async function createRagWebsiteKnowledge(args: {
   return detail
 }
 
-export async function archiveRagKnowledgeSource(args: {
+export async function deleteRagKnowledgeSource(args: {
   readonly workspaceId: string
   readonly sourceId: string
-}): Promise<void> {
-  const now = new Date().toISOString()
+}): Promise<RagKnowledgeDeleteResult> {
   const admin = supabaseAdmin()
-  const { error: sourceError } = await admin
+  const { data: source, error: sourceError } = await admin
     .from('rag_knowledge_sources')
-    .update({ status: 'archived', deleted_at: now })
+    .select('id')
     .eq('workspace_id', args.workspaceId)
     .eq('id', args.sourceId)
-    .is('deleted_at', null)
+    .maybeSingle()
 
   if (sourceError) throw new Error(sourceError.message)
+  if (!source) throw new Error('Knowledge source not found.')
 
-  const { error: chunkError } = await admin
+  const { data: chunks, error: chunksError } = await admin
     .from('rag_knowledge_chunks')
-    .update({ deleted_at: now })
+    .select('id')
     .eq('workspace_id', args.workspaceId)
     .eq('source_id', args.sourceId)
-    .is('deleted_at', null)
 
-  if (chunkError) throw new Error(chunkError.message)
+  if (chunksError) throw new Error(chunksError.message)
+  const chunkIds = ((chunks ?? []) as Array<{ readonly id: string }>).map((chunk) => chunk.id)
+
+  let embeddingsDeleted = 0
+  if (chunkIds.length > 0) {
+    const { count, error } = await admin
+      .from('rag_embeddings')
+      .delete({ count: 'exact' })
+      .eq('workspace_id', args.workspaceId)
+      .in('chunk_id', chunkIds)
+
+    if (error) throw new Error(error.message)
+    embeddingsDeleted = count ?? 0
+  }
+
+  const { count: chunksDeletedCount, error: deleteChunksError } = await admin
+    .from('rag_knowledge_chunks')
+    .delete({ count: 'exact' })
+    .eq('workspace_id', args.workspaceId)
+    .eq('source_id', args.sourceId)
+
+  if (deleteChunksError) throw new Error(deleteChunksError.message)
+
+  const { error: deleteSourceError } = await admin
+    .from('rag_knowledge_sources')
+    .delete()
+    .eq('workspace_id', args.workspaceId)
+    .eq('id', args.sourceId)
+
+  if (deleteSourceError) throw new Error(deleteSourceError.message)
+
+  return {
+    deleted: true,
+    sourceId: args.sourceId,
+    chunksDeleted: chunksDeletedCount ?? 0,
+    embeddingsDeleted,
+  }
 }
 
 async function replaceRagKnowledgeChunks(

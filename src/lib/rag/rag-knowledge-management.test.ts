@@ -29,6 +29,14 @@ const knowledgeStore = readFileSync(
   join(process.cwd(), 'src/lib/rag/knowledge-store.ts'),
   'utf8',
 )
+const settingsStore = readFileSync(
+  join(process.cwd(), 'src/lib/rag/settings.ts'),
+  'utf8',
+)
+const cleanupMigration = readFileSync(
+  join(process.cwd(), 'supabase/migrations/050_delete_archived_rag_knowledge.sql'),
+  'utf8',
+)
 const webhookRoute = readFileSync(
   join(process.cwd(), 'src/app/api/whatsapp/webhook/route.ts'),
   'utf8',
@@ -148,7 +156,7 @@ describe('RAG manual knowledge management', () => {
     expect(detailRoute).toContain('createSkippedRagEmbeddingSummary')
     expect(detailRoute).toContain('embeddingSummary')
     expect(detailRoute).toContain('sanitizeProviderError')
-    expect(detailRoute).toContain('archiveRagKnowledgeSource')
+    expect(detailRoute).toContain('deleteRagKnowledgeSource')
   })
 
   it('uses only new rag tables and creates starter-style chunks before embedding', () => {
@@ -163,11 +171,41 @@ describe('RAG manual knowledge management', () => {
     expect(knowledgeStore).not.toContain('generateRagChunkEmbeddings')
   })
 
-  it('soft archives sources and keeps WhatsApp RAG behind the disabled-by-default guard', () => {
-    expect(knowledgeStore).toContain("status: 'archived'")
-    expect(knowledgeStore).toContain('deleted_at')
+  it('permanently deletes sources, chunks, and embeddings while keeping WhatsApp RAG guarded', () => {
+    expect(knowledgeStore).toContain('deleteRagKnowledgeSource')
+    expect(knowledgeStore).toContain("from('rag_embeddings')")
+    expect(knowledgeStore).toContain(".in('chunk_id', chunkIds)")
+    expect(knowledgeStore).toContain("from('rag_knowledge_chunks')")
+    expect(knowledgeStore).toContain("from('rag_knowledge_sources')")
+    expect(knowledgeStore).toContain('chunksDeleted')
+    expect(knowledgeStore).toContain('embeddingsDeleted')
+    expect(knowledgeStore).not.toContain('archiveRagKnowledgeSource')
+    expect(page).toContain('Delete this knowledge source permanently? This will remove its content, chunks, and embeddings. This cannot be undone.')
+    expect(page).toContain('Knowledge deleted permanently.')
+    expect(page).toContain('Delete')
+    expect(page).not.toContain('Archive')
     expect(page).toContain('Website Import')
     expect(webhookRoute).toContain('getRagAutoReplyRuntimeSettings')
     expect(webhookRoute).toContain('if (!settings?.enabled) return')
+  })
+
+  it('excludes archived and deleted knowledge from status counts', () => {
+    expect(settingsStore).toContain(".eq('status', 'active')")
+    expect(settingsStore).toContain(".eq('rag_knowledge_sources.status', 'active')")
+    expect(settingsStore).toContain(".eq('rag_knowledge_chunks.rag_knowledge_sources.status', 'active')")
+    expect(settingsStore).toContain(".is('rag_knowledge_chunks.deleted_at', null)")
+    expect(settingsStore).toContain(".is('rag_knowledge_chunks.rag_knowledge_sources.deleted_at', null)")
+  })
+
+  it('includes a safe cleanup migration for legacy archived RAG knowledge', () => {
+    expect(cleanupMigration).toContain('DELETE FROM public.rag_embeddings')
+    expect(cleanupMigration).toContain('DELETE FROM public.rag_knowledge_chunks')
+    expect(cleanupMigration).toContain('DELETE FROM public.rag_knowledge_sources')
+    expect(cleanupMigration).toContain("s.status = 'archived'")
+    expect(cleanupMigration).toContain('s.deleted_at IS NOT NULL')
+    expect(cleanupMigration).toContain('c.deleted_at IS NOT NULL')
+    expect(cleanupMigration).not.toContain('public.ai_')
+    expect(cleanupMigration).not.toContain('public.whatsapp')
+    expect(cleanupMigration).not.toContain('public.contacts')
   })
 })

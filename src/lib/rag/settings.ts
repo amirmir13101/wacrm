@@ -276,22 +276,36 @@ export async function getRagKnowledgeCounts(workspaceId: string): Promise<{
       .from('rag_knowledge_sources')
       .select('id', { head: true, count: 'exact' })
       .eq('workspace_id', workspaceId)
+      .eq('status', 'active')
       .is('deleted_at', null),
     admin
       .from('rag_knowledge_chunks')
-      .select('id', { head: true, count: 'exact' })
+      .select('id, rag_knowledge_sources!inner(id)', { head: true, count: 'exact' })
       .eq('workspace_id', workspaceId)
+      .eq('rag_knowledge_sources.workspace_id', workspaceId)
+      .eq('rag_knowledge_sources.status', 'active')
+      .is('rag_knowledge_sources.deleted_at', null)
       .is('deleted_at', null),
     admin
       .from('rag_embeddings')
-      .select('id', { head: true, count: 'exact' })
+      .select('id, rag_knowledge_chunks!inner(id, rag_knowledge_sources!inner(id))', { head: true, count: 'exact' })
       .eq('workspace_id', workspaceId)
-      .eq('embedding_status', 'ready'),
+      .eq('embedding_status', 'ready')
+      .eq('rag_knowledge_chunks.workspace_id', workspaceId)
+      .is('rag_knowledge_chunks.deleted_at', null)
+      .eq('rag_knowledge_chunks.rag_knowledge_sources.workspace_id', workspaceId)
+      .eq('rag_knowledge_chunks.rag_knowledge_sources.status', 'active')
+      .is('rag_knowledge_chunks.rag_knowledge_sources.deleted_at', null),
     admin
       .from('rag_embeddings')
-      .select('id', { head: true, count: 'exact' })
+      .select('id, rag_knowledge_chunks!inner(id, rag_knowledge_sources!inner(id))', { head: true, count: 'exact' })
       .eq('workspace_id', workspaceId)
-      .eq('embedding_status', 'failed'),
+      .eq('embedding_status', 'failed')
+      .eq('rag_knowledge_chunks.workspace_id', workspaceId)
+      .is('rag_knowledge_chunks.deleted_at', null)
+      .eq('rag_knowledge_chunks.rag_knowledge_sources.workspace_id', workspaceId)
+      .eq('rag_knowledge_chunks.rag_knowledge_sources.status', 'active')
+      .is('rag_knowledge_chunks.rag_knowledge_sources.deleted_at', null),
   ])
 
   if (sources.error) throw new Error(sources.error.message)

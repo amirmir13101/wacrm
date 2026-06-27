@@ -705,19 +705,20 @@ export default function RagChatbotPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  async function archiveKnowledge(id: string) {
-    if (!window.confirm('Archive this knowledge source?')) return
+  async function deleteKnowledge(id: string) {
+    if (!window.confirm('Delete this knowledge source permanently? This will remove its content, chunks, and embeddings. This cannot be undone.')) return
     setKnowledgeMessage(null)
     try {
       const response = await fetch(`/api/rag/knowledge/${id}`, { method: 'DELETE' })
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(payload.error ?? 'Failed to archive knowledge.')
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to delete knowledge.')
       if (selectedKnowledge?.id === id) setSelectedKnowledge(null)
-      setKnowledgeMessage('Knowledge archived.')
+      setKnowledgeSources((current) => current.filter((source) => source.id !== id))
+      setKnowledgeMessage('Knowledge deleted permanently.')
       await loadKnowledge()
       await refreshStatusCounts()
-    } catch (archiveError) {
-      setKnowledgeMessage(archiveError instanceof Error ? archiveError.message : 'Failed to archive knowledge.')
+    } catch (deleteError) {
+      setKnowledgeMessage(deleteError instanceof Error ? deleteError.message : 'Failed to delete knowledge.')
     }
   }
 
@@ -1184,12 +1185,12 @@ export default function RagChatbotPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => archiveKnowledge(source.id)}
+                            onClick={() => deleteKnowledge(source.id)}
                             disabled={!canManageKnowledge}
                             className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-400/40 px-2.5 text-xs font-bold text-red-100 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <Trash2 className="size-3.5" />
-                            Archive
+                            Delete
                           </button>
                         </div>
                       </div>
