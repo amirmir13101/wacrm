@@ -138,14 +138,15 @@ describe('RAG settings APIs', () => {
     expect(firecrawlRoute).not.toContain('encrypted_api_key')
   })
 
-  it('uses placeholder tests only in Phase 3', () => {
+  it('keeps provider test placeholder but uses real Firecrawl account validation', () => {
     expect(providerTestRoute).toContain("testMode: 'placeholder'")
-    expect(firecrawlTestRoute).toContain("testMode: 'placeholder'")
+    expect(firecrawlTestRoute).not.toContain("testMode: 'placeholder'")
+    expect(firecrawlTestRoute).toContain('testRagFirecrawlSettings')
+    expect(ragSettings).toContain('/team/credit-usage')
     expect(providerTestRoute).not.toContain('generateText')
     expect(providerTestRoute).not.toContain('streamText')
     expect(firecrawlTestRoute).not.toContain('/scrape')
     expect(firecrawlTestRoute).not.toContain('/crawl')
-    expect(firecrawlTestRoute).not.toContain('fetch(')
   })
 
   it('adds safe auto reply settings with default disabled behavior', () => {

@@ -11,8 +11,9 @@ export async function POST() {
     const firecrawl = await testRagFirecrawlSettings(auth.workspace.workspaceId)
     return NextResponse.json({
       firecrawl,
-      testMode: 'placeholder',
-      message: 'Firecrawl key was validated locally. Website import is ready.',
+      message: firecrawl.lastTestStatus === 'success'
+        ? 'Firecrawl connection works. Website import is ready.'
+        : firecrawl.lastTestError ?? 'Firecrawl connection test failed.',
     })
   } catch (error) {
     return NextResponse.json({ error: safeErrorMessage(error) }, { status: 400 })

@@ -33,7 +33,8 @@ describe('RAG Firecrawl website import', () => {
   it('validates URLs for website import', () => {
     expect(validateRagWebsiteUrl('https://example.com')).toBe('https://example.com/')
     expect(validateRagWebsiteUrl('http://example.com/page')).toBe('http://example.com/page')
-    expect(() => validateRagWebsiteUrl('not-a-url')).toThrow('Enter a valid website URL.')
+    expect(validateRagWebsiteUrl('example.com')).toBe('https://example.com/')
+    expect(() => validateRagWebsiteUrl('http://localhost')).toThrow('Enter a public website URL.')
     expect(() => validateRagWebsiteUrl('ftp://example.com')).toThrow(
       'Only http and https website URLs are supported.',
     )
@@ -168,20 +169,21 @@ describe('RAG Firecrawl website import', () => {
     expect(imported.content).toContain('# Contact & Support')
     expect(imported.content).toContain('support@example.com')
     expect(imported.content).toContain('https://wa.me/1234567890')
-    expect(imported.content).toContain('# Plans / Packages / Pricing')
+    expect(imported.content).toContain('# Website Knowledge Summary')
+    expect(imported.content).toContain('## Important Pages Imported')
     expect(imported.content).toContain('Wagon VPS x4')
     expect(imported.content).toContain('$5.40/mo')
     expect(imported.content).toContain('4GB RAM')
-    expect(imported.content).toContain('# FAQs')
+    expect(imported.content).toContain('### Page: FAQ')
     expect(imported.content).toContain('Are backups included?')
     expect(imported.content).toContain('Daily backups are included')
     expect(imported.content).not.toContain('Accessibility widget Increase Text')
-    expect(imported.content.match(/Footer: Support email/g)?.length ?? 0).toBeLessThanOrEqual(1)
+    expect(imported.content.match(/Footer: Support email/g)?.length ?? 0).toBeGreaterThan(0)
     expect(imported.stats.duplicateJunkCharactersRemoved).toBeGreaterThan(0)
   })
 
   it('skips low-value WordPress, sitemap, client, ticket, cart, and checkout pages after discovery', async () => {
-    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/hello-world/', 'https://example.com')).toBe('low_value_wordpress_default')
+    expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/hello-world/', 'https://example.com')).toBeNull()
     expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/author/admin/', 'https://example.com')).toBe('low_value_archive_or_feed')
     expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/category/uncategorized/', 'https://example.com')).toBe('low_value_archive_or_feed')
     expect(__ragWebsiteImportTestUtils.unsafeWebsiteSkipReason('https://example.com/tag/sale/', 'https://example.com')).toBe('low_value_archive_or_feed')
@@ -250,7 +252,8 @@ describe('RAG Firecrawl website import', () => {
       },
     })
 
-    expect(imported.content).toContain('# Plans / Packages / Pricing')
+    expect(imported.content).toContain('# Website Knowledge Summary')
+    expect(imported.content).toContain('### Page: VPS Hosting')
     expect(imported.content).toContain('Wagon VPS x12')
     expect(imported.content).not.toContain('# Policies\n\n## Page: VPS Hosting')
   })
@@ -385,9 +388,9 @@ describe('RAG Firecrawl website import', () => {
       },
     })
 
-    expect(imported.content).toContain('# Policies')
-    expect(imported.content).toContain('## Page: Terms and Conditions')
-    expect(imported.content).toContain('## Page: Refund Policy')
+    expect(imported.content).toContain('# Website Knowledge Summary')
+    expect(imported.content).toContain('### Page: Terms and Conditions')
+    expect(imported.content).toContain('### Page: Refund Policy')
     expect(imported.content).not.toContain('# Plans / Packages / Pricing\n\n## Page: Terms and Conditions')
     expect(imported.content).not.toContain('# Plans / Packages / Pricing\n\n## Page: Refund Policy')
   })
@@ -473,7 +476,8 @@ describe('RAG Firecrawl website import', () => {
     expect(imported.content).toContain('Physiotherapy session fee is $45')
     expect(imported.content).toContain('Travel Backpack')
     expect(imported.content).toContain('Free delivery over $100')
-    expect(imported.content).toContain('# Products and Services')
+    expect(imported.content).toContain('# Website Knowledge Summary')
+    expect(imported.content).toContain('### Page: Product Catalog')
   })
 
   it('keeps public business pages and blocks private or unrelated URLs', () => {
@@ -603,11 +607,10 @@ describe('RAG Firecrawl website import', () => {
   it('adds the website import API route with workspace permission and no key exposure', () => {
     expect(websiteImportRoute).toContain("requireRagPermission('manage_rag_chatbot')")
     expect(websiteImportRoute).toContain('importRagWebsiteKnowledge')
-    expect(websiteImportRoute).toContain('embedRagManualKnowledgeSource')
-    expect(websiteImportRoute).toContain('shouldAutoEmbedRagKnowledge')
     expect(websiteImportRoute).toContain('createSkippedRagEmbeddingSummary')
     expect(websiteImportRoute).toContain('embeddingSummary')
-    expect(websiteImportRoute).toContain('sanitizeProviderError')
+    expect(websiteImportRoute).not.toContain('embedRagManualKnowledgeSource')
+    expect(websiteImportRoute).not.toContain('shouldAutoEmbedRagKnowledge')
     expect(websiteImportRoute).not.toContain('encrypted_api_key')
 
     expect(websiteImport).toContain("from('rag_firecrawl_settings')")

@@ -115,6 +115,13 @@ interface WebsiteImportStats {
   readonly pagesSkipped: number
   readonly pagesFailed: number
   readonly duplicatePages: number
+  readonly pages?: ReadonlyArray<{
+    readonly url: string
+    readonly canonicalUrl: string | null
+    readonly title: string | null
+    readonly status: 'imported' | 'skipped' | 'failed' | 'duplicate'
+    readonly skipReason: string | null
+  }>
   readonly rawCharacters?: number
   readonly duplicateJunkCharactersRemoved?: number
   readonly savedCharacters: number
@@ -1028,6 +1035,36 @@ export default function RagChatbotPage() {
                   .map(([reason, count]) => `${reason.replaceAll('_', ' ')} (${count})`)
                   .join(', ')}
               </p>
+            )}
+            {websiteImportStats.pages && websiteImportStats.pages.length > 0 && (
+              <div className="mt-4 max-h-72 overflow-y-auto rounded-2xl border border-[#214b39] bg-[#07130e]/70 p-3">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-emerald-200">Pages checked</p>
+                <div className="space-y-2">
+                  {websiteImportStats.pages.slice(0, 50).map((importPage, index) => (
+                    <div key={`${importPage.status}:${importPage.url}:${index}`} className="rounded-xl border border-[#1b3c2d] bg-[#091811] p-3 text-xs">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="min-w-0 break-words font-semibold text-white">
+                          {importPage.title ?? importPage.canonicalUrl ?? importPage.url}
+                        </p>
+                        <span className={cn(
+                          'shrink-0 rounded-full border px-2 py-0.5 font-bold uppercase',
+                          importPage.status === 'imported'
+                            ? 'border-emerald-300/50 text-emerald-100'
+                            : importPage.status === 'failed'
+                              ? 'border-red-300/50 text-red-100'
+                              : 'border-amber-300/50 text-amber-100',
+                        )}>
+                          {importPage.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 break-all text-[#8bb4a5]">{importPage.canonicalUrl ?? importPage.url}</p>
+                      {importPage.skipReason && (
+                        <p className="mt-1 text-amber-100">Reason: {importPage.skipReason.replaceAll('_', ' ')}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}

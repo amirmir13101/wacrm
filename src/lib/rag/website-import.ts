@@ -196,6 +196,19 @@ interface ImportedWebsitePage {
   readonly qualityScore: number
 }
 
+export type RagWebsiteImportPageStatus = 'imported' | 'skipped' | 'failed' | 'duplicate'
+
+export interface RagWebsiteImportPage {
+  readonly url: string
+  readonly canonicalUrl: string | null
+  readonly title: string | null
+  readonly metaDescription: string | null
+  readonly status: RagWebsiteImportPageStatus
+  readonly skipReason: string | null
+  readonly contentHash: string | null
+  readonly characterCount: number
+}
+
 interface ExtractedWebsiteContent {
   readonly title: string | null
   readonly finalUrl: string | null
@@ -237,11 +250,14 @@ interface StructuredRecordCounts {
 
 export interface RagWebsiteImportStats {
   readonly startUrl: string
+  readonly normalizedOrigin: string
   readonly pagesFound: number
   readonly pagesImported: number
   readonly pagesSkipped: number
   readonly pagesFailed: number
   readonly duplicatePages: number
+  readonly pages: ReadonlyArray<RagWebsiteImportPage>
+  readonly draftTitle: string
   readonly rawCharacters: number
   readonly duplicateJunkCharactersRemoved: number
   readonly savedCharacters: number
@@ -266,9 +282,10 @@ export function validateRagWebsiteUrl(value: string): string {
   const trimmed = value.trim()
   if (!trimmed) throw new Error('Website URL is required.')
 
+  const withProtocol = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`
   let parsed: URL
   try {
-    parsed = new URL(trimmed)
+    parsed = new URL(withProtocol)
   } catch {
     throw new Error('Enter a valid website URL.')
   }
@@ -276,14 +293,43 @@ export function validateRagWebsiteUrl(value: string): string {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Only http and https website URLs are supported.')
   }
+  if (!parsed.hostname || isPrivateWebsiteHostname(parsed.hostname)) {
+    throw new Error('Enter a public website URL.')
+  }
 
+  parsed.hash = ''
+  parsed.search = ''
   return parsed.toString()
+}
+
+function isPrivateWebsiteHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (normalized === 'localhost' || normalized === '::1' || normalized.endsWith('.local')) return true
+  const ipv4 = normalized.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (!ipv4) return /^(?:fc|fd|fe80):/i.test(normalized)
+  const first = Number(ipv4[1])
+  const second = Number(ipv4[2])
+  return first === 10 ||
+    first === 127 ||
+    first === 0 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
 }
 
 function safeWebsiteTitle(url: string, title?: string | null): string {
   const cleanTitle = title?.replace(/[\u0000-\u001F\u007F]/g, '').trim()
   if (cleanTitle) return cleanTitle.slice(0, 160)
   return `Website: ${new URL(url).hostname}`
+}
+
+function hostTitle(hostname: string): string {
+  return hostname
+    .replace(/^www\./i, '')
+    .split('.')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function rootComparableHost(hostname: string): string {
@@ -318,7 +364,6 @@ function unsafeWebsiteSkipReason(url: string, startUrl: string): string | null {
     .map((segment) => segment.trim().toLowerCase())
     .filter(Boolean)
 
-  if (segments.includes('hello-world')) return 'low_value_wordpress_default'
   if (segments.some((segment) => LOW_VALUE_PATH_SEGMENTS.has(segment))) {
     return 'low_value_archive_or_feed'
   }
@@ -1138,10 +1183,6 @@ function lineLooksImportant(value: string): boolean {
   return /(?:[$€£₨₹]\s?\d|\d+(?:\.\d+)?\s?(?:%|off|gb|mb|tb|core|cpu|ram|nvme|ssd|month|year|day)|@|mailto:|tel:|wa\.me|whatsapp|phone|email|address|location|hours|open|company|registration|refund|return|shipping|delivery|policy|price|plan|package|service|product|menu|course|appointment|support|sales|faq|question|answer|test ip|\b\d{1,3}(?:\.\d{1,3}){3}\b)/i.test(value)
 }
 
-function lineLooksGlobalFact(value: string): boolean {
-  return /(?:@|mailto:|tel:|wa\.me|whatsapp|phone|email|address|hours|company|registration|sales|support)/i.test(value)
-}
-
 function lineLooksHardJunk(value: string): boolean {
   return (
     /^sitemap$/i.test(value) ||
@@ -1207,45 +1248,6 @@ function scorePageQuality(page: Pick<ImportedWebsitePage, 'url' | 'title' | 'con
   if ((main.match(/requestanimationframe|ctx\.|canvas|function\s*\(|document\.|window\./gi) ?? []).length > 2) score -= 20
 
   return Math.max(0, Math.min(100, score))
-}
-
-function lineFrequencies(pages: ReadonlyArray<ImportedWebsitePage>): ReadonlyMap<string, number> {
-  const counts = new Map<string, number>()
-  for (const page of pages) {
-    const seenOnPage = new Set<string>()
-    for (const line of removeJunkFromContent(page.content).split('\n')) {
-      const key = normalizeKnowledgeLine(line)
-      if (key.length < 8 || seenOnPage.has(key)) continue
-      seenOnPage.add(key)
-      counts.set(key, (counts.get(key) ?? 0) + 1)
-    }
-  }
-  return counts
-}
-
-function cleanPageForKnowledge(
-  page: ImportedWebsitePage,
-  frequencies: ReadonlyMap<string, number>,
-): ImportedWebsitePage {
-  const pageSeen = new Set<string>()
-  const lines = removeJunkFromContent(page.content)
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => {
-      const key = normalizeKnowledgeLine(line)
-      if (!key) return false
-      if (pageSeen.has(key)) return false
-      pageSeen.add(key)
-      const repeatedAcrossPages = (frequencies.get(key) ?? 0) > 2
-      if (repeatedAcrossPages && lineLooksGlobalFact(line)) return false
-      return !repeatedAcrossPages || lineLooksImportant(line)
-    })
-
-  return {
-    ...page,
-    content: cleanRagKnowledgeContent(lines.join('\n')),
-  }
 }
 
 function collectMatches(content: string, pattern: RegExp): ReadonlyArray<string> {
@@ -1348,44 +1350,13 @@ function pageSectionKey(page: ImportedWebsitePage): StructuredSectionKey {
   return 'pageSummaries'
 }
 
-function sectionTitleForKey(key: StructuredSectionKey): string {
-  if (key === 'products') return '# Products and Services'
-  if (key === 'pricing') return '# Plans / Packages / Pricing'
-  if (key === 'locations') return '# Locations'
-  if (key === 'faqs') return '# FAQs'
-  if (key === 'policies') return '# Policies'
-  return '# Page Summaries'
-}
-
-function pagePurposeForKey(key: StructuredSectionKey): string {
-  if (key === 'products') return 'Products, services, features, specs, menus, courses, appointments, or business offerings.'
-  if (key === 'pricing') return 'Pricing, plans, packages, billing, discounts, or comparison details.'
-  if (key === 'locations') return 'Locations, addresses, opening hours, regional availability, or test IP/location facts.'
-  if (key === 'faqs') return 'Customer questions and answers.'
-  if (key === 'policies') return 'Policies, terms, refunds, returns, shipping, delivery, privacy, or cancellation details.'
-  return 'General page summary and useful business facts.'
-}
-
-function buildStructuredPageBlock(page: ImportedWebsitePage, key: StructuredSectionKey): string {
-  const usefulLinks = page.links
-    .filter((link) => link.type !== 'asset' && link.type !== 'login')
-    .slice(0, 20)
-  return [
-    `## Page: ${page.title ?? page.url}`,
-    `URL: ${page.url}`,
-    `Purpose: ${pagePurposeForKey(key)}`,
-    `Quality score: ${page.qualityScore}`,
-    usefulLinks.length ? ['Important links:', ...usefulLinks.map((link) => `- ${link.type}: ${link.label ? `${link.label}: ` : ''}${link.url}`)].join('\n') : '',
-    'Important facts:',
-    page.content,
-  ].filter(Boolean).join('\n\n')
-}
-
 function buildWebsiteKnowledgeContent(args: {
   readonly pages: ReadonlyArray<ImportedWebsitePage>
   readonly startUrl: string
 }): {
+  readonly title: string
   readonly content: string
+  readonly includedPageUrls: ReadonlySet<string>
   readonly savedCharacters: number
   readonly capped: boolean
   readonly rawCharacters: number
@@ -1394,6 +1365,7 @@ function buildWebsiteKnowledgeContent(args: {
   readonly aiStructuringUsed: boolean
   readonly deterministicFallbackUsed: boolean
   readonly structuredRecords: StructuredRecordCounts
+  readonly qualityWarnings: ReadonlyArray<string>
 } {
   const rawCharacters = args.pages.reduce((sum, page) => sum + page.rawCharacters, 0)
   const usefulPages = args.pages.filter((page) =>
@@ -1401,19 +1373,13 @@ function buildWebsiteKnowledgeContent(args: {
     (page.qualityScore >= 10 || lineLooksImportant(page.content)),
   )
   const lowValuePagesSkipped = args.pages.length - usefulPages.length
-  const frequencies = lineFrequencies(usefulPages)
+  const repeatedBoilerplateLines = findRepeatedBoilerplateLines(usefulPages)
   const cleanedPages = usefulPages
-    .map((page) => cleanPageForKnowledge(page, frequencies))
+    .map((page) => ({
+      ...page,
+      content: compactWebsitePageText(page.content, repeatedBoilerplateLines),
+    }))
     .filter((page) => page.content.length >= MIN_USEFUL_PAGE_CHARACTERS)
-
-  const grouped: Record<StructuredSectionKey, string[]> = {
-    products: [],
-    pricing: [],
-    locations: [],
-    faqs: [],
-    policies: [],
-    pageSummaries: [],
-  }
   const cleanedPageCharacters = cleanedPages.reduce((sum, page) => sum + page.content.length, 0)
   const structuredCounts: StructuredRecordCounts = {
     businessFacts: 0,
@@ -1428,10 +1394,14 @@ function buildWebsiteKnowledgeContent(args: {
     importantLinks: 0,
     testEndpoints: 0,
   }
-
+  const globalFacts = extractGlobalBusinessFacts(usefulPages, args.startUrl)
+  structuredCounts.businessFacts += globalFacts.counts.businessFacts
+  structuredCounts.contacts += globalFacts.counts.contacts
+  structuredCounts.locations += globalFacts.counts.locations
+  structuredCounts.importantLinks += globalFacts.counts.importantLinks
+  structuredCounts.testEndpoints += globalFacts.counts.testEndpoints
   for (const page of cleanedPages) {
     const key = pageSectionKey(page)
-    grouped[key].push(buildStructuredPageBlock(page, key))
     if (key === 'pricing') structuredCounts.plans += 1
     if (key === 'products') {
       structuredCounts.products += /product|catalog|shop/i.test(`${page.title ?? ''} ${page.url} ${page.content}`) ? 1 : 0
@@ -1442,44 +1412,60 @@ function buildWebsiteKnowledgeContent(args: {
     if (key === 'faqs') structuredCounts.faqs += 1
     if (key === 'policies') structuredCounts.policies += 1
   }
-  const globalFacts = extractGlobalBusinessFacts(usefulPages, args.startUrl)
-  structuredCounts.businessFacts += globalFacts.counts.businessFacts
-  structuredCounts.contacts += globalFacts.counts.contacts
-  structuredCounts.locations += globalFacts.counts.locations
-  structuredCounts.importantLinks += globalFacts.counts.importantLinks
-  structuredCounts.testEndpoints += globalFacts.counts.testEndpoints
 
-  const sections: string[] = [
-    `# Website Knowledge Import`,
-    `Source website: ${args.startUrl}`,
-    `Firecrawl features used: crawl, sitemap discovery, map fallback, batch scrape fallback, scrape fallback, markdown/html/links extraction`,
-    `Imported pages: ${cleanedPages.length}`,
-    `Skipped low-value pages: ${lowValuePagesSkipped}`,
-    `Raw characters collected: ${rawCharacters}`,
+  const rankedPages = [...cleanedPages].sort((left, right) => scoreLegacyKnowledgePage(right) - scoreLegacyKnowledgePage(left))
+  const includedPageUrls = new Set<string>()
+  const pageList = rankedPages
+    .map((page) => `- ${page.title ?? page.url}: ${page.url}`)
+    .join('\n')
+  const header = [
+    '# Website Knowledge Summary',
+    'Review and edit this imported website knowledge before publishing it to the chatbot.',
+    '',
+    '## Important Pages Imported',
+    pageList,
+    '',
+    '## Business Overview, Services, Pricing, FAQs and Policies',
     globalFacts.section,
-  ]
-  let length = sections.join('\n\n').length
-  let capped = false
+  ].filter(Boolean).join('\n')
+  const sections: string[] = []
+  let usedLength = header.length + 2
 
-  for (const key of ['pricing', 'products', 'locations', 'faqs', 'policies', 'pageSummaries'] as const) {
-    if (grouped[key].length === 0) continue
-    const section = [sectionTitleForKey(key), ...grouped[key]].join('\n\n')
-    const nextLength = length + section.length + 2
-
-    if (nextLength > RAG_KNOWLEDGE_CHARACTER_LIMIT) {
-      const remaining = RAG_KNOWLEDGE_CHARACTER_LIMIT - length - 2
-      if (remaining > 200) sections.push(section.slice(0, remaining).trim())
-      capped = true
-      break
+  for (const page of rankedPages) {
+    const pageTitle = page.title ?? page.url
+    const section = [
+      `### Page: ${pageTitle}`,
+      `URL: ${page.url}`,
+      buildPageReviewText(page),
+    ]
+      .filter(Boolean)
+      .join('\n')
+    const separatorLength = sections.length === 0 ? 2 : 7
+    if (usedLength + separatorLength + section.length <= RAG_KNOWLEDGE_CHARACTER_LIMIT) {
+      sections.push(section)
+      usedLength += separatorLength + section.length
+      includedPageUrls.add(page.url)
+      continue
     }
 
-    sections.push(section)
-    length = nextLength
+    const remaining = RAG_KNOWLEDGE_CHARACTER_LIMIT - usedLength - separatorLength
+    const partialSection = fitImportantPageText(section, remaining)
+    if (partialSection) {
+      sections.push(partialSection)
+      includedPageUrls.add(page.url)
+    }
+    break
   }
 
-  const content = cleanRagKnowledgeContent(sections.join('\n\n'))
+  const content = cleanRagKnowledgeContent([header, sections.join('\n\n---\n\n')]
+    .filter(Boolean)
+    .join('\n\n')
+    .slice(0, RAG_KNOWLEDGE_CHARACTER_LIMIT))
+  const capped = content.length >= RAG_KNOWLEDGE_CHARACTER_LIMIT || includedPageUrls.size < rankedPages.length
   return {
+    title: `${hostTitle(new URL(args.startUrl).hostname)} website knowledge`,
     content,
+    includedPageUrls,
     savedCharacters: content.length,
     capped,
     rawCharacters,
@@ -1488,7 +1474,137 @@ function buildWebsiteKnowledgeContent(args: {
     aiStructuringUsed: false,
     deterministicFallbackUsed: false,
     structuredRecords: structuredCounts,
+    qualityWarnings: buildLegacyWebsiteImportQualityWarnings({
+      pages: cleanedPages,
+      importedCount: cleanedPages.length,
+      includedCount: includedPageUrls.size,
+      contentLength: content.length,
+    }),
   }
+}
+
+function buildPageReviewText(page: ImportedWebsitePage): string {
+  const usefulLinks = page.links
+    .filter((link) => link.type !== 'asset' && link.type !== 'login')
+    .slice(0, 20)
+  return [
+    usefulLinks.length
+      ? ['Important links:', ...usefulLinks.map((link) => `- ${link.type}: ${link.label ? `${link.label}: ` : ''}${link.url}`)].join('\n')
+      : '',
+    page.content,
+  ].filter(Boolean).join('\n\n')
+}
+
+function buildLegacyWebsiteImportQualityWarnings(args: {
+  readonly pages: ReadonlyArray<ImportedWebsitePage>
+  readonly importedCount: number
+  readonly includedCount: number
+  readonly contentLength: number
+}): ReadonlyArray<string> {
+  const warnings: string[] = []
+  const excluded = Math.max(0, args.importedCount - args.includedCount)
+  if (excluded > 0 || args.contentLength >= RAG_KNOWLEDGE_CHARACTER_LIMIT) {
+    warnings.push(
+      excluded > 0
+        ? `${excluded} useful page${excluded === 1 ? ' was' : 's were'} excluded because the website knowledge limit was reached.`
+        : 'Imported content reached the website knowledge character limit.',
+    )
+  }
+  if (args.pages.some((page) => page.content.length < 300)) {
+    warnings.push('Some pages had limited readable text; JavaScript-heavy content may be incomplete.')
+  }
+  const combined = args.pages.map((page) => `${page.url} ${page.title ?? ''} ${page.content}`).join('\n').toLowerCase()
+  const missing: string[] = []
+  if (!/(price|pricing|plans?|packages?|fees?|menu|rates?)/.test(combined)) missing.push('pricing/menu/fees')
+  if (!/(services?|products?|solutions?|courses?|treatments?)/.test(combined)) missing.push('services/products')
+  if (!/(contact|address|location|phone|email|hours?)/.test(combined)) missing.push('contact/location')
+  if (!/(faq|frequently asked|questions?)/.test(combined)) missing.push('FAQ')
+  if (!/(policy|refund|return|shipping|delivery|terms|privacy)/.test(combined)) missing.push('policies')
+  if (missing.length > 0) warnings.push(`Could not clearly identify these common high-value page types: ${missing.join(', ')}.`)
+  return warnings
+}
+
+function scoreLegacyKnowledgePage(page: ImportedWebsitePage): number {
+  const haystack = `${page.url} ${page.title ?? ''} ${page.content}`.toLowerCase()
+  let score = isHomePageUrl(page.url) ? 120 : 0
+  score += countKeywordMatches(haystack, ['pricing', 'price', 'plans', 'packages', 'menu', 'fees', 'rates']) * 35
+  score += countKeywordMatches(haystack, ['service', 'services', 'product', 'products', 'solutions', 'course', 'treatment']) * 30
+  score += countKeywordMatches(haystack, ['contact', 'location', 'address', 'phone', 'email', 'hours', 'opening']) * 28
+  score += countKeywordMatches(haystack, ['faq', 'questions', 'help', 'support']) * 22
+  score += countKeywordMatches(haystack, ['policy', 'refund', 'return', 'shipping', 'delivery', 'terms', 'privacy']) * 18
+  score += countKeywordMatches(haystack, ['about', 'team', 'company', 'doctor', 'instructor']) * 14
+  score += Math.min(40, page.content.split('\n').filter(lineLooksImportant).length * 2)
+  score += Math.min(24, Math.floor(page.content.length / 1_500))
+  return score
+}
+
+function isHomePageUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.pathname === '/' || url.pathname === ''
+  } catch {
+    return false
+  }
+}
+
+function countKeywordMatches(value: string, keywords: readonly string[]): number {
+  return keywords.reduce((count, keyword) => count + (value.includes(keyword) ? 1 : 0), 0)
+}
+
+function findRepeatedBoilerplateLines(pages: ReadonlyArray<ImportedWebsitePage>): ReadonlySet<string> {
+  const counts = new Map<string, number>()
+  for (const page of pages) {
+    const seenOnPage = new Set<string>()
+    for (const line of removeJunkFromContent(page.content).split('\n')) {
+      const key = normalizeKnowledgeLine(line)
+      if (!key || seenOnPage.has(key) || lineLooksImportant(line)) continue
+      seenOnPage.add(key)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+  }
+  return new Set([...counts.entries()].filter(([, count]) => count >= 3).map(([line]) => line))
+}
+
+function compactWebsitePageText(text: string, repeatedBoilerplateLines: ReadonlySet<string>): string {
+  const output: string[] = []
+  const seen = new Set<string>()
+  for (const line of removeJunkFromContent(text).split('\n')) {
+    const key = normalizeKnowledgeLine(line)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    if (repeatedBoilerplateLines.has(key) && !lineLooksImportant(line)) continue
+    output.push(line)
+  }
+  return cleanRagKnowledgeContent(output.join('\n'))
+}
+
+function fitImportantPageText(section: string, maxLength: number): string {
+  if (maxLength < 900) return ''
+  if (section.length <= maxLength) return section
+  const lines = section
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const headerLines = lines.slice(0, 3)
+  const importantLines = lines.filter((line) => lineLooksImportant(line) || isHeadingLikeLine(line))
+  const selected: string[] = []
+  const seen = new Set<string>()
+  for (const line of [...headerLines, ...importantLines]) {
+    const key = normalizeKnowledgeLine(line)
+    if (!key || seen.has(key)) continue
+    const next = [...selected, line].join('\n')
+    if (next.length > maxLength - 80) break
+    selected.push(line)
+    seen.add(key)
+  }
+  if (selected.length <= headerLines.length) {
+    return section.slice(0, maxLength - 80).trimEnd()
+  }
+  return `${selected.join('\n')}\n\n[Page content compacted to preserve exact facts within the import limit.]`
+}
+
+function isHeadingLikeLine(line: string): boolean {
+  return /^#{1,6}\s+/.test(line) || (line.length <= 90 && /^[A-Z0-9][\p{L}\p{N}\s&:|/().,-]+$/u.test(line))
 }
 
 async function getFirecrawlApiKey(workspaceId: string): Promise<string> {
@@ -1766,17 +1882,42 @@ async function importWebsiteWithClient(args: {
   let crawlPagesFound = 0
   const firecrawlModesUsed = new Set<string>()
   const warnings = new Set<string>()
+  const pageRecords: RagWebsiteImportPage[] = []
+
+  function addPageRecord(page: RagWebsiteImportPage): void {
+    pageRecords.push(page)
+  }
 
   function addImportedPage(pageUrl: string, extracted: ExtractedWebsiteContent): void {
     const finalUrl = normalizeWebsiteCandidateUrl(extracted.finalUrl ?? pageUrl, args.startUrl) ?? pageUrl
     const skipReason = unsafeWebsiteSkipReason(finalUrl, args.startUrl)
     if (skipReason) {
       addReason(skippedReasons, skipReason)
+      addPageRecord({
+        url: pageUrl,
+        canonicalUrl: finalUrl,
+        title: extracted.title,
+        metaDescription: null,
+        status: 'skipped',
+        skipReason,
+        contentHash: null,
+        characterCount: 0,
+      })
       return
     }
 
     if (extracted.content.length < MIN_USEFUL_PAGE_CHARACTERS) {
       addReason(skippedReasons, 'not_enough_text')
+      addPageRecord({
+        url: finalUrl,
+        canonicalUrl: finalUrl,
+        title: extracted.title,
+        metaDescription: null,
+        status: 'skipped',
+        skipReason: 'not_enough_text',
+        contentHash: null,
+        characterCount: extracted.content.length,
+      })
       return
     }
 
@@ -1784,10 +1925,30 @@ async function importWebsiteWithClient(args: {
     if (seenHashes.has(hash)) {
       duplicatePages += 1
       addReason(skippedReasons, 'duplicate_content')
+      addPageRecord({
+        url: finalUrl,
+        canonicalUrl: finalUrl,
+        title: extracted.title,
+        metaDescription: null,
+        status: 'duplicate',
+        skipReason: 'duplicate_content',
+        contentHash: hash,
+        characterCount: extracted.content.length,
+      })
       return
     }
 
     seenHashes.add(hash)
+    addPageRecord({
+      url: finalUrl,
+      canonicalUrl: finalUrl,
+      title: extracted.title,
+      metaDescription: null,
+      status: 'imported',
+      skipReason: null,
+      contentHash: hash,
+      characterCount: extracted.content.length,
+    })
     importedPages.push({
       url: finalUrl,
       title: extracted.title,
@@ -1840,6 +2001,19 @@ async function importWebsiteWithClient(args: {
   for (const [reason, count] of discovered.skippedReasons) {
     skippedReasons.set(reason, (skippedReasons.get(reason) ?? 0) + count)
   }
+  for (const discoveredUrl of discovered.discovered) {
+    if (!discoveredUrl.skipReason) continue
+    addPageRecord({
+      url: discoveredUrl.url,
+      canonicalUrl: null,
+      title: null,
+      metaDescription: null,
+      status: discoveredUrl.skipReason === 'duplicate_url' ? 'duplicate' : 'skipped',
+      skipReason: discoveredUrl.skipReason,
+      contentHash: null,
+      characterCount: 0,
+    })
+  }
 
   if (importedPages.length === 0 && args.client.batchScrape && discovered.urls.length > 1) {
     try {
@@ -1865,6 +2039,16 @@ async function importWebsiteWithClient(args: {
       } catch {
         pagesFailed += 1
         addReason(skippedReasons, 'scrape_failed')
+        addPageRecord({
+          url: pageUrl,
+          canonicalUrl: null,
+          title: null,
+          metaDescription: null,
+          status: 'failed',
+          skipReason: 'scrape_failed',
+          contentHash: null,
+          characterCount: 0,
+        })
         warnings.add('Some pages failed during Firecrawl scrape and were skipped.')
       }
     }
@@ -1889,19 +2073,31 @@ async function importWebsiteWithClient(args: {
     )
     warnings.add('Low-value/private/form/archive pages were skipped from chatbot knowledge.')
   }
+  const characterLimitExcluded = importedPages.filter((page) => !built.includedPageUrls.has(page.url)).length
+  if (characterLimitExcluded > 0) {
+    skippedReasons.set('character_limit_excluded', (skippedReasons.get('character_limit_excluded') ?? 0) + characterLimitExcluded)
+  }
   if (built.capped) warnings.add('Final knowledge reached the CRM character limit and was capped.')
+  for (const warning of built.qualityWarnings) warnings.add(warning)
 
   return {
-    title: safeWebsiteTitle(args.startUrl, importedPages[0]?.title),
+    title: built.title || safeWebsiteTitle(args.startUrl, importedPages[0]?.title),
     content: built.content,
     finalUrl: importedPages[0]?.url ?? args.startUrl,
     stats: {
       startUrl: args.startUrl,
+      normalizedOrigin: new URL(args.startUrl).origin,
       pagesFound: Math.max(crawlPagesFound, discovered.discovered.length),
-      pagesImported: importedPages.length - built.lowValuePagesSkipped,
+      pagesImported: pageRecords.filter((page) => page.status === 'imported' && built.includedPageUrls.has(page.canonicalUrl ?? page.url)).length,
       pagesSkipped: Array.from(skippedReasons.values()).reduce((sum, count) => sum + count, 0),
       pagesFailed,
       duplicatePages,
+      pages: pageRecords.map((page) =>
+        page.status === 'imported' && !built.includedPageUrls.has(page.canonicalUrl ?? page.url)
+          ? { ...page, status: 'skipped', skipReason: 'character_limit_excluded' }
+          : page,
+      ),
+      draftTitle: built.title,
       rawCharacters: built.rawCharacters,
       duplicateJunkCharactersRemoved: built.duplicateJunkCharactersRemoved,
       savedCharacters: built.savedCharacters,

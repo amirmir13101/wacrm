@@ -6,6 +6,9 @@ import { RAG_PROVIDER_TYPES, type RagProviderType } from './types'
 
 export type RagConnectionStatus = 'not_tested' | 'success' | 'failed'
 
+const FIRECRAWL_BASE_URL = 'https://api.firecrawl.dev/v2'
+const FIRECRAWL_REQUEST_TIMEOUT_MS = 30_000
+
 export interface RagProviderSettingsView {
   readonly configured: boolean
   readonly provider: RagProviderType
@@ -239,6 +242,7 @@ export async function testRagFirecrawlSettings(
   try {
     const apiKey = decrypt(data.encrypted_api_key)
     if (apiKey.trim().length < 8) throw new Error('Firecrawl API key looks too short.')
+    await testFirecrawlAccount(apiKey)
     await updateFirecrawlTestStatus(workspaceId, 'success', null)
   } catch (error) {
     await updateFirecrawlTestStatus(workspaceId, 'failed', sanitizeProviderError(error))
@@ -262,6 +266,34 @@ async function updateFirecrawlTestStatus(
     .eq('workspace_id', workspaceId)
 
   if (updateError) throw new Error(updateError.message)
+}
+
+async function testFirecrawlAccount(apiKey: string): Promise<void> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), FIRECRAWL_REQUEST_TIMEOUT_MS)
+  try {
+    const response = await fetch(`${FIRECRAWL_BASE_URL}/team/credit-usage`, {
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+      },
+      signal: controller.signal,
+    })
+    const payload = await response.json().catch(() => ({})) as { readonly error?: string; readonly message?: string }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) throw new Error('Firecrawl API key is missing, invalid, or rejected.')
+      if (response.status === 402) throw new Error('Firecrawl credits or billing issue. Please check your Firecrawl account.')
+      if (response.status === 429) throw new Error('Firecrawl rate limit reached. Please try again later.')
+      throw new Error(payload.error ?? payload.message ?? `Firecrawl returned HTTP ${response.status}.`)
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Firecrawl request timed out.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function getRagKnowledgeCounts(workspaceId: string): Promise<{
