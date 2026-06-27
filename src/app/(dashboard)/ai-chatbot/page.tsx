@@ -285,14 +285,6 @@ function sourceTypeLabel(sourceType: KnowledgeSourceItem['sourceType']): string 
 type KnowledgeProgressKind = 'manual' | 'website' | 'prepare'
 type KnowledgeProgressStatus = 'running' | 'done' | 'warning' | 'failed'
 
-interface EmbeddingSummaryView {
-  readonly status?: 'ready' | 'partial' | 'failed' | 'not_configured' | 'skipped'
-  readonly message?: string
-  readonly embeddingsReady?: boolean
-  readonly embeddingErrorCategory?: string | null
-  readonly userMessage?: string
-}
-
 interface KnowledgeProgressState {
   readonly kind: KnowledgeProgressKind
   readonly status: KnowledgeProgressStatus
@@ -303,20 +295,20 @@ interface KnowledgeProgressState {
 const knowledgeProgressSteps: Record<KnowledgeProgressKind, ReadonlyArray<string>> = {
   manual: [
     'Saving knowledge...',
-    'Cleaning content...',
-    'Creating chunks...',
-    'Chunks ready',
-    'Preparing embeddings in batches...',
-    'Ready for chatbot',
+    'Preparing your content...',
+    'Creating knowledge chunks...',
+    'Knowledge saved.',
+    'Embeddings are pending. Click Prepare for Chatbot when ready.',
   ],
   website: [
-    'Importing website...',
-    'Reading website content...',
-    'Cleaning content...',
-    'Creating chunks...',
-    'Chunks ready',
-    'Preparing embeddings in batches...',
-    'Ready for chatbot',
+    'Starting website import...',
+    'Checking website pages...',
+    'Reading useful website content...',
+    'Cleaning unnecessary website text...',
+    'Preparing chatbot knowledge...',
+    'Creating searchable knowledge chunks...',
+    'Website knowledge saved.',
+    'Embeddings are pending. Click Prepare for Chatbot when ready.',
   ],
   prepare: [
     'Checking chunks...',
@@ -338,36 +330,6 @@ function createKnowledgeProgress(
     currentStep: currentStep ?? (status === 'done' ? steps.length - 1 : 0),
     message,
   }
-}
-
-function createProgressFromEmbeddingSummary(
-  kind: Extract<KnowledgeProgressKind, 'manual' | 'website'>,
-  summary: EmbeddingSummaryView | null | undefined,
-  fallbackMessage: string,
-): KnowledgeProgressState {
-  const steps = knowledgeProgressSteps[kind]
-  const chunkReadyStep = steps.indexOf('Chunks ready')
-  const preparingStep = steps.indexOf('Preparing embeddings in batches...')
-  const message = cleanOperationMessage(summary?.userMessage ?? summary?.message, fallbackMessage)
-
-  if (summary?.status === 'ready') {
-    return createKnowledgeProgress(kind, 'done', message)
-  }
-
-  if (summary?.status === 'failed' || summary?.status === 'partial' || summary?.status === 'not_configured') {
-    return createKnowledgeProgress(kind, 'warning', message, preparingStep)
-  }
-
-  return createKnowledgeProgress(kind, 'warning', message, chunkReadyStep)
-}
-
-function createPrepareProgressFromEmbeddingSummary(
-  summary: EmbeddingSummaryView | null | undefined,
-  fallbackMessage: string,
-): KnowledgeProgressState {
-  const message = cleanOperationMessage(summary?.userMessage ?? summary?.message, fallbackMessage)
-  if (summary?.status === 'ready') return createKnowledgeProgress('prepare', 'done', message)
-  return createKnowledgeProgress('prepare', 'warning', message, 1)
 }
 
 function knowledgeStatusLabel(source: KnowledgeSourceItem): string {
@@ -410,11 +372,12 @@ export default function RagChatbotPage() {
   const [knowledgeText, setKnowledgeText] = useState('')
   const [knowledgeMessage, setKnowledgeMessage] = useState<string | null>(null)
   const [knowledgeSaving, setKnowledgeSaving] = useState(false)
-  const [knowledgeProgress, setKnowledgeProgress] = useState<KnowledgeProgressState | null>(null)
+  const [manualKnowledgeProgress, setManualKnowledgeProgress] = useState<KnowledgeProgressState | null>(null)
   const [websiteUrl, setWebsiteUrl] = useState('')
   const [websitePageLimit, setWebsitePageLimit] = useState(25)
   const [websiteImportMessage, setWebsiteImportMessage] = useState<string | null>(null)
   const [websiteImportStats, setWebsiteImportStats] = useState<WebsiteImportStats | null>(null)
+  const [websiteImportProgress, setWebsiteImportProgress] = useState<KnowledgeProgressState | null>(null)
   const [websiteImportJob, setWebsiteImportJob] = useState<WebsiteImportJob | null>(null)
   const [websiteImportPages, setWebsiteImportPages] = useState<WebsiteImportPage[]>([])
   const [websiteDraftTitle, setWebsiteDraftTitle] = useState('')
@@ -589,6 +552,38 @@ export default function RagChatbotPage() {
     loadLogs()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logFilter, workspace.loading, canView])
+
+  useEffect(() => {
+    if (!websiteImporting) return
+    const timer = window.setInterval(() => {
+      setWebsiteImportProgress((current) => {
+        if (!current || current.kind !== 'website' || current.status !== 'running') return current
+        const maxProgressStep = Math.max(0, knowledgeProgressSteps.website.length - 3)
+        return {
+          ...current,
+          currentStep: Math.min(current.currentStep + 1, maxProgressStep),
+        }
+      })
+    }, 900)
+
+    return () => window.clearInterval(timer)
+  }, [websiteImporting])
+
+  useEffect(() => {
+    if (!knowledgeSaving) return
+    const timer = window.setInterval(() => {
+      setManualKnowledgeProgress((current) => {
+        if (!current || current.kind !== 'manual' || current.status !== 'running') return current
+        const maxProgressStep = Math.max(0, knowledgeProgressSteps.manual.length - 2)
+        return {
+          ...current,
+          currentStep: Math.min(current.currentStep + 1, maxProgressStep),
+        }
+      })
+    }, 900)
+
+    return () => window.clearInterval(timer)
+  }, [knowledgeSaving])
 
   async function refreshStatusCounts() {
     const response = await fetch('/api/rag/status')
@@ -881,7 +876,7 @@ export default function RagChatbotPage() {
     setWebsiteImporting(true)
     setWebsiteImportMessage(null)
     setWebsiteImportStats(null)
-    setKnowledgeProgress(createKnowledgeProgress('website'))
+    setWebsiteImportProgress(createKnowledgeProgress('website'))
     try {
       const response = await fetch('/api/rag/website-import', {
         method: 'POST',
@@ -915,7 +910,7 @@ export default function RagChatbotPage() {
         payload.userMessage ?? payload.embeddingSummary?.userMessage ?? payload.embeddingSummary?.message ?? payload.message,
         'Website draft created. Review before publishing.',
       )
-      setKnowledgeProgress(createKnowledgeProgress('website', 'warning', message, 3))
+      setWebsiteImportProgress(createKnowledgeProgress('website', 'done', message))
       setWebsiteImportMessage(message)
       await loadImportHistory()
       await refreshStatusCounts()
@@ -924,7 +919,7 @@ export default function RagChatbotPage() {
         importError instanceof Error ? importError.message : null,
         'Import failed.',
       )
-      setKnowledgeProgress(createKnowledgeProgress('website', 'failed', message))
+      setWebsiteImportProgress(createKnowledgeProgress('website', 'failed', message))
       setWebsiteImportMessage(message)
     } finally {
       setWebsiteImporting(false)
@@ -974,7 +969,7 @@ export default function RagChatbotPage() {
   async function saveKnowledge() {
     setKnowledgeSaving(true)
     setKnowledgeMessage(null)
-    setKnowledgeProgress(createKnowledgeProgress('manual'))
+    setManualKnowledgeProgress(createKnowledgeProgress('manual'))
     try {
       const method = editingKnowledgeId ? 'PATCH' : 'POST'
       const url = editingKnowledgeId
@@ -1002,9 +997,7 @@ export default function RagChatbotPage() {
         payload.userMessage ?? payload.embeddingSummary?.userMessage ?? payload.embeddingSummary?.message,
         editingKnowledgeId ? 'Knowledge updated, cleaned, and chunked.' : 'Knowledge added, cleaned, and chunked.',
       )
-      setKnowledgeProgress(
-        createProgressFromEmbeddingSummary('manual', payload.embeddingSummary, message),
-      )
+      setManualKnowledgeProgress(createKnowledgeProgress('manual', 'done', message))
       setKnowledgeMessage(message)
       await loadKnowledge()
       await refreshStatusCounts()
@@ -1013,7 +1006,7 @@ export default function RagChatbotPage() {
         saveError instanceof Error ? saveError.message : null,
         'Failed to save knowledge.',
       )
-      setKnowledgeProgress(createKnowledgeProgress('manual', 'failed', message))
+      setManualKnowledgeProgress(createKnowledgeProgress('manual', 'failed', message))
       setKnowledgeMessage(message)
     } finally {
       setKnowledgeSaving(false)
@@ -1067,7 +1060,6 @@ export default function RagChatbotPage() {
   async function prepareKnowledge(id: string) {
     setPreparingKnowledgeId(id)
     setKnowledgeMessage(null)
-    setKnowledgeProgress(createKnowledgeProgress('prepare'))
     try {
       const response = await fetch(`/api/rag/knowledge/${id}/embed`, { method: 'POST' })
       const payload = await response.json().catch(() => ({}))
@@ -1077,7 +1069,6 @@ export default function RagChatbotPage() {
         payload.userMessage ?? payload.summary?.userMessage ?? payload.summary?.message,
         'Knowledge prepared for chatbot.',
       )
-      setKnowledgeProgress(createPrepareProgressFromEmbeddingSummary(payload.summary, message))
       setKnowledgeMessage(message)
       await loadKnowledge()
       await refreshStatusCounts()
@@ -1086,7 +1077,6 @@ export default function RagChatbotPage() {
         prepareError instanceof Error ? prepareError.message : null,
         'Failed to prepare knowledge.',
       )
-      setKnowledgeProgress(createKnowledgeProgress('prepare', 'failed', message))
       setKnowledgeMessage(message)
     } finally {
       setPreparingKnowledgeId(null)
@@ -1331,7 +1321,7 @@ export default function RagChatbotPage() {
               ) : (
                 <Globe className="size-4" />
               )}
-                {websiteImporting ? 'Importing website...' : 'Import Website Knowledge'}
+                {websiteImporting ? 'Importing...' : 'Import Website Knowledge'}
             </button>
             <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-1">
               <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 px-3 py-2 text-[#d8fff1]">
@@ -1350,6 +1340,7 @@ export default function RagChatbotPage() {
 
           <WebsiteImportLiveScreen
             importing={websiteImporting}
+            progress={websiteImportProgress}
             url={websiteUrl || websiteImportJob?.websiteUrl || websiteImportStats?.pages?.[0]?.url || ''}
             stats={websiteImportStats}
             pages={websiteImportPages}
@@ -1490,7 +1481,7 @@ export default function RagChatbotPage() {
                     type="button"
                     onClick={() => saveWebsiteDraft('discard')}
                     disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready'}
-                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-300/40 px-3 text-sm font-bold text-red-100 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                   >
                     Discard draft
                   </button>
@@ -1498,7 +1489,7 @@ export default function RagChatbotPage() {
                     type="button"
                     onClick={() => saveWebsiteDraft('update')}
                     disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready'}
-                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#315846] px-3 text-sm font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                   >
                     Save draft
                   </button>
@@ -1644,7 +1635,7 @@ export default function RagChatbotPage() {
                   {knowledgeSaving ? (
                     <>
                       <Loader2 className="size-4 animate-spin" />
-                      {editingKnowledgeId ? 'Saving...' : 'Creating chunks...'}
+                      {editingKnowledgeId ? 'Saving...' : 'Saving...'}
                     </>
                   ) : (
                     <>
@@ -1665,7 +1656,7 @@ export default function RagChatbotPage() {
             )}
           </div>
 
-          <ManualKnowledgeStatusScreen progress={knowledgeProgress} saving={knowledgeSaving} />
+          <ManualKnowledgeStatusScreen progress={manualKnowledgeProgress} saving={knowledgeSaving} />
         </div>
       </section>
 
@@ -1711,7 +1702,7 @@ export default function RagChatbotPage() {
                             type="button"
                             onClick={() => prepareKnowledge(source.id)}
                             disabled={!canManageKnowledge || preparingKnowledgeId === source.id}
-                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-300/40 px-2.5 text-xs font-bold text-emerald-100 hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#3ddf84] bg-[#3ddf84] px-2.5 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                           >
                             {preparingKnowledgeId === source.id ? (
                               <Loader2 className="size-3.5 animate-spin" />
@@ -1723,7 +1714,7 @@ export default function RagChatbotPage() {
                           <button
                             type="button"
                             onClick={() => viewKnowledge(source.id)}
-                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#315846] px-2.5 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#3ddf84] bg-[#3ddf84] px-2.5 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29]"
                           >
                             <Eye className="size-3.5" />
                             View
@@ -1732,7 +1723,7 @@ export default function RagChatbotPage() {
                             type="button"
                             onClick={() => editKnowledge(source.id)}
                             disabled={!canManageKnowledge}
-                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#315846] px-2.5 text-xs font-bold text-[#d8fff1] hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#3ddf84] bg-[#3ddf84] px-2.5 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                           >
                             <Pencil className="size-3.5" />
                             Edit
@@ -2213,7 +2204,7 @@ export default function RagChatbotPage() {
                         <button
                           type="button"
                           disabled
-                          className="rounded-lg border border-emerald-300/40 px-2 py-1 text-xs font-bold text-emerald-100 opacity-80"
+                          className="rounded-lg border border-[#3ddf84]/30 bg-[#3ddf84]/20 px-2 py-1 text-xs font-bold text-[#d8fff1] opacity-80"
                         >
                           Review & Publish
                         </button>
@@ -2221,7 +2212,7 @@ export default function RagChatbotPage() {
                       <button
                         type="button"
                         disabled
-                        className="rounded-lg border border-[#315846] px-2 py-1 text-xs font-bold text-[#8bb4a5] opacity-70"
+                        className="rounded-lg border border-[#3ddf84]/30 bg-[#3ddf84]/20 px-2 py-1 text-xs font-bold text-[#d8fff1] opacity-70"
                       >
                         Load More
                       </button>
@@ -2367,7 +2358,7 @@ export default function RagChatbotPage() {
                       <button
                         type="button"
                         disabled
-                        className="rounded-lg border border-emerald-300/40 px-2 py-1 text-xs font-bold text-emerald-100 opacity-80"
+                        className="rounded-lg border border-[#3ddf84]/30 bg-[#3ddf84]/20 px-2 py-1 text-xs font-bold text-[#d8fff1] opacity-80"
                       >
                         Add to Knowledge Base
                       </button>
@@ -2526,16 +2517,21 @@ function KnowledgeProgressPanel({
 }: {
   readonly progress: KnowledgeProgressState
 }) {
-  const steps = progress.status === 'done'
-    ? knowledgeProgressSteps[progress.kind]
-    : knowledgeProgressSteps[progress.kind].filter((step) => step !== 'Ready for chatbot')
+  const steps = knowledgeProgressSteps[progress.kind]
   const isDone = progress.status === 'done'
   const isFailed = progress.status === 'failed'
   const isWarning = progress.status === 'warning'
+  const safeStep = Math.min(progress.currentStep, Math.max(steps.length - 1, 0))
+  const currentMessage = progress.message || steps[safeStep] || 'Working...'
+  const label = progress.kind === 'website'
+    ? 'Website import progress'
+    : progress.kind === 'manual'
+      ? 'Manual knowledge progress'
+      : 'Knowledge preparation progress'
 
   return (
     <div className={cn(
-      'rounded-2xl border p-4',
+      'rounded-2xl border p-4 shadow-[0_14px_40px_rgba(0,0,0,0.18)]',
       isFailed
         ? 'border-red-300/40 bg-red-400/10'
         : isWarning
@@ -2546,9 +2542,13 @@ function KnowledgeProgressPanel({
     )}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-bold text-white">Knowledge processing status</p>
+          <p className="text-sm font-bold text-white">{label}</p>
           <p className="text-xs text-[#a9c6bb]">
-            The CRM saves the full content, creates chunks, then prepares embeddings when safe.
+            {isDone
+              ? 'Finished. Review the result and prepare embeddings when you are ready.'
+              : isFailed
+                ? 'Something stopped the process. Review the message below and try again.'
+                : 'The CRM is working through this safely without preparing embeddings yet.'}
           </p>
         </div>
         {progress.status === 'running' ? (
@@ -2561,34 +2561,23 @@ function KnowledgeProgressPanel({
           <XCircle className="size-4 shrink-0 text-red-200" />
         )}
       </div>
-      <ol className="space-y-2">
-        {steps.map((step, index) => {
-          const complete = isDone || index < progress.currentStep
-          const active = (progress.status === 'running' || isWarning) && index === progress.currentStep
-          return (
-            <li key={step} className="flex items-center gap-2 text-xs text-[#d8fff1]">
-              <span className={cn(
-                'flex size-5 items-center justify-center rounded-full border text-[10px] font-bold',
-                complete
-                  ? 'border-emerald-300/60 bg-emerald-300/20 text-emerald-100'
-                  : active
-                    ? isWarning
-                      ? 'border-amber-300/60 bg-amber-300/10 text-amber-100'
-                      : 'border-emerald-300/60 bg-emerald-300/10 text-emerald-100'
-                    : 'border-[#315846] bg-[#0d1b15] text-[#8bb4a5]',
-              )}>
-                {complete ? '✓' : index + 1}
-              </span>
-              <span className={cn(active && 'font-bold', active && (isWarning ? 'text-amber-100' : 'text-emerald-100'))}>{step}</span>
-            </li>
-          )
-        })}
-      </ol>
-      {progress.message && (
-        <p className="mt-3 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-xs text-[#d8fff1]">
-          {progress.message}
+      <div className="rounded-2xl border border-[#214b39] bg-[#04100b]/80 p-4">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">
+          {isDone ? 'Complete' : isFailed ? 'Needs attention' : `Step ${safeStep + 1} of ${steps.length}`}
         </p>
-      )}
+        <p className="mt-2 text-sm font-bold leading-6 text-white">{currentMessage}</p>
+        <div className="mt-4 flex flex-wrap gap-1.5" aria-hidden="true">
+          {steps.map((step, index) => (
+            <span
+              key={step}
+              className={cn(
+                'h-1.5 min-w-6 flex-1 rounded-full',
+                isDone || index <= safeStep ? 'bg-[#3ddf84]' : 'bg-[#315846]',
+              )}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -2629,36 +2618,28 @@ function FirecrawlCreditsPanel({
 
 function WebsiteImportLiveScreen({
   importing,
+  progress,
   url,
   stats,
   pages,
   message,
 }: {
   readonly importing: boolean
+  readonly progress: KnowledgeProgressState | null
   readonly url: string
   readonly stats: WebsiteImportStats | null
   readonly pages: ReadonlyArray<WebsiteImportPage>
   readonly message: string | null
 }) {
-  const latestPage = pages.find((page) => page.status === 'imported') ?? pages[0] ?? stats?.pages?.[0]
-  const progressSteps = [
-    'Starting import',
-    'Discovering pages',
-    latestPage?.title || latestPage?.url ? `Crawling current page: ${latestPage.title ?? latestPage.url}` : 'Crawling current page',
-    'Cleaning content',
-    'Removing duplicate/footer/widget junk',
-    'Building knowledge',
-    'Creating chunks',
-    'Completed',
-  ]
-
   if (!importing && !stats) {
     return (
       <div className="min-h-[18rem] rounded-2xl border border-[#245940] bg-[#04100b] p-5 shadow-inner">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-black text-white">Ready to import</p>
-            <p className="mt-1 text-xs text-[#8bb4a5]">Enter a website URL and start import.</p>
+            <p className="text-sm font-black text-white">Ready to import website</p>
+            <p className="mt-1 text-xs leading-5 text-[#8bb4a5]">
+              Enter a website URL and click Import Website Knowledge. The CRM will collect useful public website information and prepare it for your chatbot.
+            </p>
           </div>
           <span className="rounded-full border border-[#ffbd29]/60 bg-[#ffbd29] px-2.5 py-1 text-[11px] font-bold uppercase text-[#07130e]">
             Idle
@@ -2666,9 +2647,9 @@ function WebsiteImportLiveScreen({
         </div>
         <div className="mt-5 grid gap-2 text-xs">
           {[
-            'Firecrawl key required/configured',
-            'Pages will be discovered',
-            'Chunks will be created',
+            'Website pages will be checked',
+            'Useful content will be cleaned',
+            'Knowledge chunks will be created',
             'Embeddings stay pending until Prepare for Chatbot',
           ].map((item) => (
             <div key={item} className="flex items-center gap-2 rounded-xl border border-[#214b39] bg-[#07130e]/80 px-3 py-2 text-[#d8fff1]">
@@ -2693,25 +2674,7 @@ function WebsiteImportLiveScreen({
             Running
           </span>
         </div>
-        <div className="grid gap-2 text-xs">
-          {progressSteps.slice(0, -1).map((step, index) => {
-            const active = index === Math.min(3, progressSteps.length - 2)
-            return (
-              <div
-                key={step}
-                className={cn(
-                  'flex items-start gap-2 rounded-xl border px-3 py-2',
-                  active
-                    ? 'border-[#ffbd29]/60 bg-[#ffbd29] text-[#07130e]'
-                    : 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100',
-                )}
-              >
-                <span className="mt-0.5 size-2 shrink-0 rounded-full bg-current" />
-                <span className="min-w-0 break-words">{step}</span>
-              </div>
-            )
-          })}
-        </div>
+        <KnowledgeProgressPanel progress={progress ?? createKnowledgeProgress('website')} />
       </div>
     )
   }
@@ -2720,7 +2683,7 @@ function WebsiteImportLiveScreen({
     <div className="min-h-[22rem] rounded-2xl border border-[#245940] bg-[#04100b] p-5 shadow-inner">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-black text-white">Import result</p>
+          <p className="text-sm font-black text-white">Website import result</p>
           <p className="mt-1 break-all text-xs text-[#8bb4a5]">{url || 'Website import completed'}</p>
         </div>
         <span className="w-fit rounded-full border border-emerald-300/50 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-100">
@@ -2729,12 +2692,12 @@ function WebsiteImportLiveScreen({
       </div>
       {stats && (
         <dl className="grid gap-2 text-xs text-[#d8fff1] sm:grid-cols-2 xl:grid-cols-3">
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Imported pages: {stats.pagesImported}</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Skipped pages: {stats.pagesSkipped}</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Failed pages: {stats.pagesFailed}</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Duplicates: {stats.duplicatePages}</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Chunks created: pending review</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Embeddings pending</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Pages imported: {stats.pagesImported}</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Pages skipped: {stats.pagesSkipped}</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Pages failed: {stats.pagesFailed}</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Duplicate pages: {stats.duplicatePages}</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Chunks ready</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Next step: Prepare for Chatbot</div>
         </dl>
       )}
       {stats?.warnings && stats.warnings.length > 0 && (
@@ -2777,13 +2740,24 @@ function ManualKnowledgeStatusScreen({
           <div>
             <p className="text-sm font-black text-white">Ready to save knowledge</p>
             <p className="mt-2 text-sm leading-6 text-[#a9c6bb]">
-              Add your content and click Save Knowledge. Chunks will be created automatically.
-              Embeddings will stay pending until Prepare for Chatbot.
+              Add your knowledge content and click Save Knowledge. The CRM will save it and create chunks automatically.
             </p>
           </div>
           <span className="shrink-0 rounded-full border border-[#ffbd29]/70 bg-[#ffbd29] px-2.5 py-1 text-[11px] font-bold uppercase text-[#07130e]">
             Idle
           </span>
+        </div>
+        <div className="mt-5 grid gap-2 text-xs">
+          {[
+            'Content will be saved',
+            'Chunks will be created automatically',
+            'Embeddings will stay pending until Prepare for Chatbot',
+          ].map((item) => (
+            <div key={item} className="flex items-center gap-2 rounded-xl border border-[#214b39] bg-[#07130e]/80 px-3 py-2 text-[#d8fff1]">
+              <span className="size-2 rounded-full bg-[#3ddf84]" />
+              {item}
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -2793,8 +2767,12 @@ function ManualKnowledgeStatusScreen({
     <div className="rounded-2xl border border-[#245940] bg-[#0d1b15]/80 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.18)]">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-black text-white">Manual save progress</p>
-          <p className="text-xs leading-5 text-[#8bb4a5]">Chunks are created on save. Embeddings are pending until preparation.</p>
+          <p className="text-sm font-black text-white">
+            {progress.status === 'done' ? 'Manual knowledge result' : 'Manual save progress'}
+          </p>
+          <p className="text-xs leading-5 text-[#8bb4a5]">
+            Your knowledge is saved and chunked first. Embeddings stay pending until you click Prepare for Chatbot.
+          </p>
         </div>
         <span className={cn(
           'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
@@ -2807,9 +2785,14 @@ function ManualKnowledgeStatusScreen({
       </div>
       <KnowledgeProgressPanel progress={progress} />
       <div className="mt-4 rounded-2xl border border-[#214b39] bg-[#07130e]/70 p-4">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Next step</p>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Result</p>
+        <dl className="mt-2 grid gap-2 text-sm leading-6 text-[#d8fff1] sm:grid-cols-3">
+          <div className="rounded-xl border border-[#214b39] bg-[#04100b]/70 px-3 py-2">Knowledge saved</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#04100b]/70 px-3 py-2">Chunks ready</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#04100b]/70 px-3 py-2">Embeddings pending</div>
+        </dl>
         <p className="mt-2 text-sm leading-6 text-[#d8fff1]">
-          Knowledge saved. Chunks ready. Click Prepare for Chatbot to create embeddings.
+          Next step: Prepare for Chatbot when you are ready.
         </p>
       </div>
     </div>
@@ -2893,7 +2876,7 @@ function ActionRow({
         type="button"
         onClick={onTest}
         disabled={!canManage || busy}
-        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#315846] px-4 text-sm font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
         {busy ? 'Testing...' : 'Test Connection'}
