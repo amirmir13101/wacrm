@@ -649,9 +649,9 @@ describe('RAG Firecrawl website import', () => {
   })
 
   it('adds simple website import UI and keeps WhatsApp auto-reply guarded', () => {
-    expect(page).toContain('Website Import')
+    expect(page).toContain('Website Knowledge Import')
     expect(page).toContain('https://example.com')
-    expect(page).toContain('Import Website')
+    expect(page).toContain('Import Website Knowledge')
     expect(page).toContain('Website import summary')
     expect(page).toContain('pages imported')
     expect(page).toContain('characters saved')

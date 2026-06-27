@@ -99,20 +99,44 @@ describe('RAG settings UI shell', () => {
     expect(page).not.toContain('Vector Settings')
   })
 
-  it('activates logs and WhatsApp auto reply sections while website import and test chat remain active', () => {
-    expect(page).toContain('Add Knowledge')
-    expect(page).toContain('Test Chat')
+  it('shows the redesigned AI Chatbot dashboard sections in the approved order', () => {
+    const sectionOrder = [
+      'title="AI Provider Settings"',
+      'title="Firecrawl Settings"',
+      '<h2 className="text-lg font-bold text-white">Website Knowledge Import</h2>',
+      '<h2 className="text-lg font-bold text-white">Manual Knowledge Base</h2>',
+      '<h3 className="font-bold text-white">Saved Knowledge</h3>',
+      '<h2 className="text-lg font-bold text-white">Chatbot Instructions</h2>',
+      '<h2 className="text-lg font-bold text-white">Test Chatbot</h2>',
+      '<h2 className="text-lg font-bold text-white">Schedule & Import History</h2>',
+      '<h2 className="text-lg font-bold text-white">Unanswered Questions</h2>',
+      '<h2 className="text-lg font-bold text-white">Logs</h2>',
+    ].map((label) => page.indexOf(label))
+
+    expect(page).toContain('AI Provider')
+    expect(page).toContain('WhatsApp Auto Reply')
+    expect(page).toContain('Knowledge Base')
+    expect(page).toContain('Save Knowledge')
+    expect(page).toContain('Test Chatbot')
     expect(page).toContain('Ask a question from your saved knowledge...')
-    expect(page).toContain('Website Import')
-    expect(page).toContain('Import Website')
+    expect(page).toContain('Website Knowledge Import')
+    expect(page).toContain('Import Website Knowledge')
     expect(page).toContain('Chatbot Instructions')
+    expect(page).toContain('Live WhatsApp auto-reply')
+    expect(page).toContain('Tone & Style')
+    expect(page).toContain('General Instructions')
+    expect(page).toContain('Fallback Message')
+    expect(page).toContain('Handoff Message')
     expect(page).toContain('Schedule & Import History')
     expect(page).toContain('Unanswered Questions')
     expect(page).toContain('Logs')
-    expect(page).toContain('WhatsApp Auto Reply')
-    expect(page).toContain('Enable AI replies on WhatsApp')
     expect(page).toContain('Do not send message if answer is not found')
-    expect(page).toContain('Send fallback message')
+    expect(page).toContain('Review & Publish')
+    expect(page).toContain('Add to Knowledge Base')
+    expect(sectionOrder.every((index) => index >= 0)).toBe(true)
+    expect(sectionOrder).toEqual([...sectionOrder].sort((a, b) => a - b))
+    expect(page).not.toContain('New RAG AI Chatbot')
+    expect(page).not.toContain('retrieval debug')
     expect(page).not.toContain('Coming Soon')
     expect(page).not.toContain('Not active yet')
   })

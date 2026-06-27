@@ -433,6 +433,9 @@ export default function RagChatbotPage() {
   const [scheduleUrl, setScheduleUrl] = useState('')
   const [scheduleFrequency, setScheduleFrequency] = useState<'daily' | 'weekly' | 'monthly'>('weekly')
   const [schedulePageLimit, setSchedulePageLimit] = useState(25)
+  const [scheduleDayOfWeek, setScheduleDayOfWeek] = useState(1)
+  const [scheduleHourUtc, setScheduleHourUtc] = useState(9)
+  const [scheduleAutoPublish, setScheduleAutoPublish] = useState(false)
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleMessage, setScheduleMessage] = useState<string | null>(null)
   const [knowledgeGaps, setKnowledgeGaps] = useState<RagKnowledgeGap[]>([])
@@ -440,53 +443,43 @@ export default function RagChatbotPage() {
 
   const cards = useMemo(() => {
     const providerConfigured = status?.provider.configured === true
-    const firecrawlConfigured = status?.firecrawl.configured === true
+    const providerStatus = statusLabel(status?.provider.lastTestStatus ?? null, providerConfigured)
+    const providerName = providerLabels[status?.provider.provider ?? provider]
+    const providerModelName = status?.provider.chatModel || providerModel || 'Model not set'
+    const autoReplyOn = autoReply?.enabled === true
+    const autoReplyReady = autoReply?.whatsappConnected && autoReply.providerConfigured && autoReply.knowledgeReady
+    const readyEmbeddings = status?.knowledge.readyEmbeddings ?? 0
+    const failedEmbeddings = status?.knowledge.failedEmbeddings ?? 0
+    const chunks = status?.knowledge.chunks ?? 0
+    const knowledgeReady = chunks > 0 && failedEmbeddings === 0 && readyEmbeddings > 0
 
     return [
       {
         title: 'AI Provider',
-        value: providerConfigured ? 'Configured' : 'Not configured',
+        value: providerStatus,
+        eyebrow: providerConfigured ? 'API key configured' : 'API key required',
+        detail: `${providerName} / ${providerModelName}`,
         icon: KeyRound,
-        tone: providerConfigured ? 'good' : 'muted',
-      },
-      {
-        title: 'Firecrawl',
-        value: firecrawlConfigured ? 'Configured' : 'Not configured',
-        icon: Globe,
-        tone: firecrawlConfigured ? 'good' : 'muted',
-      },
-      {
-        title: 'Knowledge Sources',
-        value: String(status?.knowledge.sources ?? 0),
-        icon: Database,
-        tone: 'muted',
-      },
-      {
-        title: 'Chunks',
-        value: String(status?.knowledge.chunks ?? 0),
-        icon: FileText,
-        tone: 'muted',
-      },
-      {
-        title: 'Embeddings',
-        value: `${status?.knowledge.readyEmbeddings ?? 0} ready`,
-        icon: Sparkles,
-        tone: (status?.knowledge.readyEmbeddings ?? 0) > 0 ? 'good' : 'muted',
-      },
-      {
-        title: 'Embedding Issues',
-        value: `${status?.knowledge.failedEmbeddings ?? 0} failed`,
-        icon: XCircle,
-        tone: (status?.knowledge.failedEmbeddings ?? 0) > 0 ? 'warn' : 'muted',
+        tone: providerConfigured && status?.provider.lastTestStatus !== 'failed' ? 'good' : status?.provider.lastTestStatus === 'failed' ? 'warn' : 'muted',
       },
       {
         title: 'WhatsApp Auto Reply',
-        value: autoReply?.enabled ? 'Enabled' : 'Disabled',
+        value: autoReplyOn ? 'On' : 'Off',
+        eyebrow: autoReplyReady ? 'Ready' : 'Not ready',
+        detail: autoReply?.whatsappConnected ? 'Workspace connection available' : 'Connection status pending',
         icon: Send,
-        tone: autoReply?.enabled ? 'good' : 'muted',
+        tone: autoReplyReady ? 'good' : autoReplyOn ? 'warn' : 'muted',
+      },
+      {
+        title: 'Knowledge Base',
+        value: knowledgeReady ? 'Ready' : failedEmbeddings > 0 ? 'Issues' : 'Needs Prepare',
+        eyebrow: `${status?.knowledge.sources ?? 0} sources · ${chunks} chunks`,
+        detail: `${readyEmbeddings} ready embeddings · ${failedEmbeddings} failed`,
+        icon: Database,
+        tone: knowledgeReady ? 'good' : failedEmbeddings > 0 ? 'warn' : 'muted',
       },
     ] as const
-  }, [status, autoReply])
+  }, [status, autoReply, provider, providerModel])
 
   const canManageKnowledge = workspace.has('manage_rag_chatbot')
   const canEnableAutoReply = workspace.has('enable_rag_auto_reply')
@@ -650,7 +643,9 @@ export default function RagChatbotPage() {
           url: scheduleUrl,
           frequency: scheduleFrequency,
           pageLimit: schedulePageLimit,
-          autoPublish: false,
+          dayOfWeek: scheduleDayOfWeek,
+          hourUtc: scheduleHourUtc,
+          autoPublish: scheduleAutoPublish,
           isActive: false,
         }),
       })
@@ -1085,31 +1080,18 @@ export default function RagChatbotPage() {
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-3xl border border-emerald-400/20 bg-[#07130e]/80 shadow-[0_24px_70px_rgba(0,0,0,0.28)]">
-        <div className="relative p-6 sm:p-8">
-          <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl" />
-          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
-                <Bot className="size-3.5" />
-                New RAG AI Chatbot
-              </div>
-              <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
-                AI Chatbot
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#b8cfc7]">
-                Connect your AI and Firecrawl keys, add manual or website knowledge,
-                and test answers in the dashboard. New knowledge is fully chunked after
-                save; larger sources can be prepared when you are ready.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/80 p-3 text-sm text-[#c7ddd5]">
-              <ShieldCheck className="mb-2 size-5 text-emerald-300" />
-              Keys are encrypted and never shown back in full.
-            </div>
-          </div>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">AI Chatbot</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+            Manage AI replies, knowledge, website imports, and chatbot testing.
+          </p>
         </div>
-      </section>
+        <div className="inline-flex items-center gap-2 rounded-2xl border border-[#214b39] bg-[#07130e]/80 px-3 py-2 text-xs font-semibold text-[#d8fff1]">
+          <ShieldCheck className="size-4 text-emerald-300" />
+          Keys stay encrypted and hidden
+        </div>
+      </header>
 
       {error && (
         <div className="rounded-xl border border-red-400/40 bg-red-950/30 px-4 py-3 text-sm text-red-100">
@@ -1117,25 +1099,29 @@ export default function RagChatbotPage() {
         </div>
       )}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <section className="grid gap-4 lg:grid-cols-3">
         {cards.map((card) => (
-          <div key={card.title} className="rounded-2xl border border-[#17402f] bg-[#07130e]/80 p-4">
+          <div key={card.title} className="rounded-3xl border border-[#17402f] bg-gradient-to-br from-[#07130e] to-[#0b1d15] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
             <div className="mb-3 flex items-center justify-between">
-              <card.icon className="size-5 text-emerald-300" />
+              <span className="flex size-11 items-center justify-center rounded-2xl border border-emerald-300/20 bg-emerald-300/10">
+                <card.icon className="size-5 text-emerald-300" />
+              </span>
               <span
                 className={cn(
-                  'rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
-        card.tone === 'good'
+                  'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+                  card.tone === 'good'
                     ? 'bg-emerald-400/15 text-emerald-200'
                     : card.tone === 'warn'
-                      ? 'bg-red-400/15 text-red-100'
-                      : 'bg-slate-700/40 text-slate-200',
+                      ? 'border-amber-300/40 bg-amber-300/15 text-amber-100'
+                      : 'border-[#315846] bg-[#0d1b15] text-slate-200',
                 )}
               >
                 {card.value}
               </span>
             </div>
-            <p className="text-sm font-semibold text-white">{card.title}</p>
+            <p className="text-base font-bold text-white">{card.title}</p>
+            <p className="mt-2 text-sm font-semibold text-emerald-100">{card.eyebrow}</p>
+            <p className="mt-1 text-xs leading-5 text-[#8bb4a5]">{card.detail}</p>
           </div>
         ))}
       </section>
@@ -1237,117 +1223,8 @@ export default function RagChatbotPage() {
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2">
-              <Bot className="size-5 text-emerald-300" />
-              <h2 className="text-lg font-bold text-white">Chatbot Instructions</h2>
-            </div>
-            <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Configure customer-facing tone, fallback text, and handover copy. These settings are
-              RAG-native and do not expose prompts, retrieval debug, or provider secrets.
-            </p>
-          </div>
-          <span className={cn(
-            'rounded-full border px-3 py-1 text-xs font-bold',
-            chatbotSettings?.enabled
-              ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
-              : 'border-[#315846] bg-[#0d1b15] text-[#d8fff1]',
-          )}>
-            {chatbotSettings?.enabled ? 'Enabled' : 'Disabled'}
-          </span>
-        </div>
-
-        {chatbotSettings ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <label className="flex items-start gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
-              <input
-                type="checkbox"
-                checked={chatbotSettings.enabled}
-                disabled={!canManageKnowledge || chatbotSettingsSaving}
-                onChange={(event) => saveChatbotSettings({ enabled: event.target.checked })}
-                className="mt-1 size-4 accent-emerald-400"
-              />
-              <span>
-                <span className="block font-bold text-white">Enable dashboard chatbot</span>
-                <span className="mt-1 block text-sm text-[#a9c6bb]">Keeps the AI Chatbot tab usable for safe dashboard tests.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
-              <input
-                type="checkbox"
-                checked={chatbotSettings.handoverEnabled}
-                disabled={!canManageKnowledge || chatbotSettingsSaving}
-                onChange={(event) => saveChatbotSettings({ handoverEnabled: event.target.checked })}
-                className="mt-1 size-4 accent-emerald-400"
-              />
-              <span>
-                <span className="block font-bold text-white">Allow handover offer</span>
-                <span className="mt-1 block text-sm text-[#a9c6bb]">Missing knowledge can offer a team connection without forcing Human Needed.</span>
-              </span>
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-[#d8fff1]">Tone</span>
-              <select
-                value={chatbotSettings.tone}
-                disabled={!canManageKnowledge || chatbotSettingsSaving}
-                onChange={(event) =>
-                  saveChatbotSettings({ tone: event.target.value as RagChatbotSettings['tone'] })
-                }
-                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="professional">Professional</option>
-                <option value="friendly">Friendly</option>
-                <option value="concise">Concise</option>
-                <option value="helpful">Helpful</option>
-              </select>
-            </label>
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 text-sm text-[#a9c6bb]">
-              <p className="font-bold text-white">Live WhatsApp switch</p>
-              <p className="mt-1">Use the WhatsApp Auto Reply panel below. The webhook and credentials are not modified here.</p>
-            </div>
-            <label className="space-y-2 lg:col-span-2">
-              <span className="text-sm font-medium text-[#d8fff1]">Fallback message</span>
-              <textarea
-                value={chatbotSettings.fallbackMessage}
-                disabled={!canManageKnowledge || chatbotSettingsSaving}
-                rows={3}
-                onChange={(event) =>
-                  setChatbotSettings((current) => current ? { ...current, fallbackMessage: event.target.value } : current)
-                }
-                onBlur={() => saveChatbotSettings()}
-                className="w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-              />
-            </label>
-            <label className="space-y-2 lg:col-span-2">
-              <span className="text-sm font-medium text-[#d8fff1]">Handover message</span>
-              <textarea
-                value={chatbotSettings.handoverMessage}
-                disabled={!canManageKnowledge || chatbotSettingsSaving}
-                rows={3}
-                onChange={(event) =>
-                  setChatbotSettings((current) => current ? { ...current, handoverMessage: event.target.value } : current)
-                }
-                onBlur={() => saveChatbotSettings()}
-                className="w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-              />
-            </label>
-          </div>
-        ) : (
-          <p className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
-            Chatbot instructions will be available after the RAG dashboard migration is applied.
-          </p>
-        )}
-        {chatbotSettingsMessage && (
-          <p className="mt-4 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
-            {chatbotSettingsMessage}
-          </p>
-        )}
-      </section>
-
-      <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2">
               <Globe className="size-5 text-emerald-300" />
-              <h2 className="text-lg font-bold text-white">Website Import</h2>
+              <h2 className="text-lg font-bold text-white">Website Knowledge Import</h2>
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
               Import public website pages into the knowledge base. Firecrawl discovers pages,
@@ -1400,7 +1277,7 @@ export default function RagChatbotPage() {
             ) : (
               <Globe className="size-4" />
             )}
-            {websiteImporting ? 'Importing website...' : 'Import Website'}
+              {websiteImporting ? 'Importing website...' : 'Import Website Knowledge'}
           </button>
         </div>
         {websiteImportMessage && (
@@ -1500,6 +1377,9 @@ export default function RagChatbotPage() {
                   <h3 className="text-sm font-bold text-white">Review draft before publishing</h3>
                   <p className="text-xs text-[#8bb4a5]">
                     Draft status: {websiteImportJob.status.replace('_', ' ')} · {websiteImportJob.savedCharacters.toLocaleString()} characters
+                  </p>
+                  <p className="mt-1 text-xs text-amber-100">
+                    Existing published knowledge remains unchanged until you publish this draft.
                   </p>
                 </div>
                 <span className="rounded-full border border-emerald-300/40 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-bold uppercase text-emerald-100">
@@ -1604,12 +1484,12 @@ export default function RagChatbotPage() {
           <div>
             <div className="mb-2 flex items-center gap-2">
               <FileText className="size-5 text-emerald-300" />
-              <h2 className="text-lg font-bold text-white">Knowledge Base</h2>
+              <h2 className="text-lg font-bold text-white">Manual Knowledge Base</h2>
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Add business information manually or from a website page. Knowledge is fully chunked
-              after save. Use Prepare for Chatbot when you are ready to create embeddings and
-              control provider API cost.
+              Add business knowledge, FAQs, instructions, or reviewed website text. Chunks will be
+              created automatically. Use Prepare for Chatbot when you are ready to create embeddings;
+              this can use provider API cost.
             </p>
           </div>
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
@@ -1693,7 +1573,7 @@ export default function RagChatbotPage() {
                   ) : (
                     <>
                       <CheckCircle2 className="size-4" />
-                      {editingKnowledgeId ? 'Update Knowledge' : 'Add Knowledge'}
+                      {editingKnowledgeId ? 'Update Knowledge' : 'Save Knowledge'}
                     </>
                   )}
                 </button>
@@ -1715,8 +1595,8 @@ export default function RagChatbotPage() {
           <div className="space-y-4">
             <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
               <div className="border-b border-[#214b39] px-4 py-3">
-                <h3 className="font-bold text-white">Knowledge List</h3>
-                <p className="text-xs text-[#8bb4a5]">Manual and website sources for the chatbot.</p>
+                <h3 className="font-bold text-white">Saved Knowledge</h3>
+                <p className="text-xs text-[#8bb4a5]">Knowledge preview, preparation status, and source actions.</p>
               </div>
               <div className="divide-y divide-[#214b39]">
                 {knowledgeSources.length === 0 ? (
@@ -1830,31 +1710,176 @@ export default function RagChatbotPage() {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2">
-              <MessageSquare className="size-5 text-emerald-300" />
-              <h2 className="text-lg font-bold text-white">Test Chat</h2>
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Bot className="size-5 text-emerald-300" />
+                <h2 className="text-lg font-bold text-white">Chatbot Instructions</h2>
+              </div>
+              <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+                Control the customer-facing tone, fallback wording, handover prompt, and live
+                WhatsApp auto-reply switch without changing webhook credentials.
+              </p>
             </div>
-            <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Ask a question from prepared manual or website knowledge. This dashboard test uses
-              the same core RAG answer path as WhatsApp auto-reply and keeps recent messages in
-              this browser tab so follow-up questions keep their recent context.
-            </p>
+            <span className={cn(
+              'rounded-full border px-3 py-1 text-xs font-bold',
+              chatbotSettings?.enabled === false
+                ? 'border-amber-300/40 bg-amber-300/10 text-amber-100'
+                : 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100',
+            )}>
+              {chatbotSettings?.enabled === false ? 'Paused' : 'Enabled'}
+            </span>
           </div>
-          <span className="rounded-full border border-[#315846] bg-[#0d1b15] px-3 py-1 text-xs font-bold text-[#d8fff1]">
-            Dashboard only
-          </span>
+
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => saveChatbotSettings({ enabled: !(chatbotSettings?.enabled ?? true) })}
+                disabled={chatbotSettingsSaving}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 text-left transition hover:border-emerald-300/50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span>
+                  <span className="block text-sm font-bold text-white">Chatbot enabled</span>
+                  <span className="mt-1 block text-xs text-[#8bb4a5]">Allow dashboard and channel replies.</span>
+                </span>
+                <SwitchPill checked={chatbotSettings?.enabled ?? true} />
+              </button>
+              <button
+                type="button"
+                onClick={() => saveChatbotSettings({ handoverEnabled: !(chatbotSettings?.handoverEnabled ?? true) })}
+                disabled={chatbotSettingsSaving}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 text-left transition hover:border-emerald-300/50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span>
+                  <span className="block text-sm font-bold text-white">Handover enabled</span>
+                  <span className="mt-1 block text-xs text-[#8bb4a5]">Offer team help when answers are missing.</span>
+                </span>
+                <SwitchPill checked={chatbotSettings?.handoverEnabled ?? true} />
+              </button>
+              <button
+                type="button"
+                onClick={() => saveAutoReply({ enabled: !(autoReply?.enabled ?? false) })}
+                disabled={!autoReply || autoReplySaving || !canEnableAutoReply}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 text-left transition hover:border-emerald-300/50 disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
+              >
+                <span>
+                  <span className="block text-sm font-bold text-white">Live WhatsApp auto-reply</span>
+                  <span className="mt-1 block text-xs text-[#8bb4a5]">
+                    Uses the existing WhatsApp connection only when provider and knowledge are ready.
+                  </span>
+                </span>
+                <SwitchPill checked={autoReply?.enabled === true} />
+              </button>
+            </div>
+
+            {autoReply && (!autoReply.whatsappConnected || !autoReply.providerConfigured || !autoReply.knowledgeReady) && (
+              <div className="rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-100">
+                Auto-reply readiness: WhatsApp {autoReply.whatsappConnected ? 'connected' : 'not connected'},
+                provider {autoReply.providerConfigured ? 'configured' : 'not configured'}, knowledge{' '}
+                {autoReply.knowledgeReady ? 'ready' : 'needs preparation'}.
+              </div>
+            )}
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Tone & Style</span>
+              <select
+                value={chatbotSettings?.tone ?? 'professional'}
+                onChange={(event) => saveChatbotSettings({ tone: event.target.value as RagChatbotSettings['tone'] })}
+                disabled={chatbotSettingsSaving}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="friendly">Friendly</option>
+                <option value="professional">Professional</option>
+                <option value="concise">Concise</option>
+                <option value="helpful">Supportive</option>
+              </select>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">General Instructions</span>
+              <textarea
+                value="Answer only from approved business knowledge. Do not guess, expose internal debug text, or reveal private configuration."
+                readOnly
+                rows={3}
+                className="w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-[#a9c6bb] outline-none"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Fallback Message</span>
+              <textarea
+                value={chatbotSettings?.fallbackMessage ?? ''}
+                onChange={(event) => setChatbotSettings((current) => current ? { ...current, fallbackMessage: event.target.value } : current)}
+                placeholder="I do not see that information in the current knowledge base."
+                rows={3}
+                disabled={chatbotSettingsSaving}
+                className="w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Handoff Message</span>
+              <textarea
+                value={chatbotSettings?.handoverMessage ?? ''}
+                onChange={(event) => setChatbotSettings((current) => current ? { ...current, handoverMessage: event.target.value } : current)}
+                placeholder="I can connect you with a team member if you want."
+                rows={3}
+                disabled={chatbotSettingsSaving}
+                className="w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-[#8bb4a5]">
+                WhatsApp fallback mode: {autoReply?.fallbackMode === 'send_fallback' ? 'Send fallback message' : 'Do not send message if answer is not found'}
+              </p>
+              <button
+                type="button"
+                onClick={() => saveChatbotSettings()}
+                disabled={chatbotSettingsSaving || !chatbotSettings}
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {chatbotSettingsSaving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                Save Settings
+              </button>
+            </div>
+
+            {(chatbotSettingsMessage || autoReplyMessage) && (
+              <p className="rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
+                {chatbotSettingsMessage ?? autoReplyMessage}
+              </p>
+            )}
+          </div>
         </div>
 
-        {chatUnavailableMessage && (
-          <div className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
-            {chatUnavailableMessage}
+        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <MessageSquare className="size-5 text-emerald-300" />
+                <h2 className="text-lg font-bold text-white">Test Chatbot</h2>
+              </div>
+              <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+                Ask a customer-style question from prepared manual or website knowledge. Debug and
+                retrieval internals stay hidden so the preview matches a clean customer answer.
+                Recent browser memory helps follow-up questions keep their recent context.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#315846] bg-[#0d1b15] px-3 py-1 text-xs font-bold text-[#d8fff1]">
+              Dashboard only
+            </span>
           </div>
-        )}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+          {chatUnavailableMessage && (
+            <div className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+              {chatUnavailableMessage}
+            </div>
+          )}
+
+          <div className="grid gap-5">
           <div className="space-y-4 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
             <label className="space-y-2">
               <span className="text-sm font-medium text-[#d8fff1]">Question</span>
@@ -1891,7 +1916,7 @@ export default function RagChatbotPage() {
                   className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <MessageSquare className="size-4" />
-                  {chatLoading ? 'Asking...' : 'Ask'}
+                  {chatLoading ? 'Asking...' : 'Ask Test Question'}
                 </button>
               </div>
             </div>
@@ -1924,9 +1949,10 @@ export default function RagChatbotPage() {
             )}
           </div>
         </div>
+        </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <section className="grid gap-6">
         <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -1951,7 +1977,7 @@ export default function RagChatbotPage() {
             </button>
           </div>
 
-          <div className="grid gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 lg:grid-cols-[minmax(0,1fr)_150px_120px_auto] lg:items-end">
+          <div className="grid gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 lg:grid-cols-[minmax(0,1fr)_140px_120px_120px_120px_auto] lg:items-end">
             <label className="space-y-2">
               <span className="text-sm font-medium text-[#d8fff1]">Website URL</span>
               <input
@@ -1973,6 +1999,7 @@ export default function RagChatbotPage() {
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
+                <option disabled>Manual only</option>
               </select>
             </label>
             <label className="space-y-2">
@@ -1988,13 +2015,49 @@ export default function RagChatbotPage() {
                 ))}
               </select>
             </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Day</span>
+              <select
+                value={scheduleDayOfWeek}
+                onChange={(event) => setScheduleDayOfWeek(Number(event.target.value))}
+                disabled={!canManageKnowledge || scheduleSaving}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+                  <option key={day} value={index}>{day}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Hour UTC</span>
+              <select
+                value={scheduleHourUtc}
+                onChange={(event) => setScheduleHourUtc(Number(event.target.value))}
+                disabled={!canManageKnowledge || scheduleSaving}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {Array.from({ length: 24 }, (_item, hour) => (
+                  <option key={hour} value={hour}>{hour.toString().padStart(2, '0')}:00</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex h-11 items-center justify-between gap-3 rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-[#d8fff1]">
+              <span>Auto-publish</span>
+              <input
+                type="checkbox"
+                checked={scheduleAutoPublish}
+                onChange={(event) => setScheduleAutoPublish(event.target.checked)}
+                disabled={!canManageKnowledge || scheduleSaving}
+                className="size-4 accent-emerald-400"
+              />
+            </label>
             <button
               type="button"
               onClick={saveSchedule}
               disabled={!canManageKnowledge || scheduleSaving || !scheduleUrl.trim()}
               className="inline-flex h-11 items-center justify-center rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Save schedule
+              Add Schedule
             </button>
           </div>
           {scheduleMessage && (
@@ -2017,17 +2080,40 @@ export default function RagChatbotPage() {
                       <div>
                         <p className="break-all font-bold text-white">{schedule.url}</p>
                         <p className="text-xs text-[#8bb4a5]">
-                          {schedule.frequency} · {schedule.pageLimit} pages · {schedule.isActive ? 'active' : 'inactive'}
+                          {schedule.frequency} · {schedule.pageLimit} pages · {schedule.autoPublish ? 'auto-publish enabled' : 'review required'} · {schedule.isActive ? 'active' : 'paused'}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => deleteSchedule(schedule.id)}
-                        disabled={!canManageKnowledge || scheduleSaving}
-                        className="rounded-lg border border-red-300/40 px-2 py-1 text-xs font-bold text-red-100 hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled
+                          className="rounded-lg border border-[#315846] px-2 py-1 text-xs font-bold text-[#8bb4a5] opacity-70"
+                        >
+                          {schedule.isActive ? 'Pause' : 'Resume'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled
+                          className="rounded-lg border border-[#315846] px-2 py-1 text-xs font-bold text-[#8bb4a5] opacity-70"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled
+                          className="rounded-lg border border-[#315846] px-2 py-1 text-xs font-bold text-[#8bb4a5] opacity-70"
+                        >
+                          Require Review
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteSchedule(schedule.id)}
+                          disabled={!canManageKnowledge || scheduleSaving}
+                          className="rounded-lg border border-red-300/40 px-2 py-1 text-xs font-bold text-red-100 hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -2056,6 +2142,24 @@ export default function RagChatbotPage() {
                     {(history.changeSummary || history.errorMessage) && (
                       <p className="text-xs text-[#a9c6bb]">{history.errorMessage ?? history.changeSummary}</p>
                     )}
+                    <div className="flex flex-wrap gap-2">
+                      {history.status === 'draft_ready' && (
+                        <button
+                          type="button"
+                          disabled
+                          className="rounded-lg border border-emerald-300/40 px-2 py-1 text-xs font-bold text-emerald-100 opacity-80"
+                        >
+                          Review & Publish
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-lg border border-[#315846] px-2 py-1 text-xs font-bold text-[#8bb4a5] opacity-70"
+                      >
+                        Load More
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -2074,13 +2178,22 @@ export default function RagChatbotPage() {
                 Review knowledge gaps from dashboard or WhatsApp fallbacks. Add missing answers to the knowledge base when useful.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={loadKnowledgeGaps}
-              className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
-            >
-              Refresh
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={loadKnowledgeGaps}
+                className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
+              >
+                Show Recent 20
+              </button>
+              <button
+                type="button"
+                disabled
+                className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#8bb4a5] opacity-70"
+              >
+                View All
+              </button>
+            </div>
           </div>
           {gapsMessage && (
             <p className="mb-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
@@ -2103,13 +2216,20 @@ export default function RagChatbotPage() {
                 {gap.suggestedAction && (
                   <p className="text-sm text-[#a9c6bb]">{gap.suggestedAction}</p>
                 )}
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-lg border border-emerald-300/40 px-2 py-1 text-xs font-bold text-emerald-100 opacity-80"
+                >
+                  Add to Knowledge Base
+                </button>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+      <section className="grid gap-6">
         <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -2212,117 +2332,6 @@ export default function RagChatbotPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
-          <div className="mb-5 flex items-start justify-between gap-4">
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <Send className="size-5 text-emerald-300" />
-                <h2 className="text-lg font-bold text-white">WhatsApp Auto Reply</h2>
-              </div>
-              <p className="text-sm leading-6 text-[#a9c6bb]">
-                Optional RAG replies for inbound WhatsApp text messages. It is OFF by default
-                and never sends debug text.
-              </p>
-            </div>
-            <span className={cn(
-              'shrink-0 rounded-full border px-3 py-1 text-xs font-bold',
-              autoReply?.enabled
-                ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
-                : 'border-[#315846] bg-[#0d1b15] text-[#d8fff1]',
-            )}>
-              {autoReply?.enabled ? 'Enabled' : 'Disabled'}
-            </span>
-          </div>
-
-          <div className="mb-5 grid gap-2 text-sm">
-            {[
-              ['WhatsApp', autoReply?.whatsappConnected],
-              ['AI Provider', autoReply?.providerConfigured],
-              ['Knowledge', autoReply?.knowledgeReady],
-            ].map(([label, ready]) => (
-              <div key={label as string} className="flex items-center justify-between rounded-xl border border-[#214b39] bg-[#0d1b15]/70 px-3 py-2">
-                <span className="text-[#a9c6bb]">{label as string}</span>
-                <span className={cn(
-                  'rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
-                  ready ? 'bg-emerald-400/15 text-emerald-100' : 'bg-amber-300/15 text-amber-100',
-                )}>
-                  {ready ? 'Ready' : 'Not ready'}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {autoReply ? (
-            <div className="space-y-4">
-              <label className="flex items-start gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
-                <input
-                  type="checkbox"
-                  checked={autoReply.enabled}
-                  disabled={!canEnableAutoReply || autoReplySaving}
-                  onChange={(event) => saveAutoReply({ enabled: event.target.checked })}
-                  className="mt-1 size-4 accent-emerald-400"
-                />
-                <span>
-                  <span className="block font-bold text-white">Enable AI replies on WhatsApp</span>
-                  <span className="mt-1 block text-sm text-[#a9c6bb]">
-                    When disabled, the webhook behavior stays the same and no AI call is made.
-                  </span>
-                </span>
-              </label>
-
-              <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
-                <p className="text-sm font-bold text-white">Auto-reply mode</p>
-                <p className="mt-1 text-sm text-[#a9c6bb]">Answer only when knowledge is available.</p>
-              </div>
-
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-[#d8fff1]">Fallback behavior</span>
-                <select
-                  value={autoReply.fallbackMode}
-                  disabled={!canEnableAutoReply || autoReplySaving}
-                  onChange={(event) =>
-                    saveAutoReply({ fallbackMode: event.target.value as RagAutoReplySettings['fallbackMode'] })
-                  }
-                  className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="do_not_reply">Do not send message if answer is not found</option>
-                  <option value="send_fallback">Send fallback message</option>
-                </select>
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-[#d8fff1]">Fallback message</span>
-                <textarea
-                  value={autoReply.fallbackMessage}
-                  disabled={!canEnableAutoReply || autoReplySaving}
-                  rows={4}
-                  maxLength={500}
-                  onChange={(event) =>
-                    setAutoReply((current) => current ? { ...current, fallbackMessage: event.target.value } : current)
-                  }
-                  onBlur={() => saveAutoReply()}
-                  className="w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-
-              {!canEnableAutoReply && (
-                <p className="text-xs text-[#8bb4a5]">
-                  Enable RAG Auto Reply permission is required to change these settings.
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
-              Auto reply settings will load after the migration is applied.
-            </p>
-          )}
-
-          {autoReplyMessage && (
-            <p className="mt-4 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
-              {autoReplyMessage}
-            </p>
-          )}
-        </div>
       </section>
 
       {loading && (
@@ -2477,7 +2486,7 @@ function ActionRow({
         className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-        {busy ? 'Saving...' : 'Save'}
+        {busy ? 'Saving...' : 'Save Settings'}
       </button>
       <button
         type="button"
@@ -2486,7 +2495,7 @@ function ActionRow({
         className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#315846] px-4 text-sm font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
-        {busy ? 'Testing...' : 'Test'}
+        {busy ? 'Testing...' : 'Test Connection'}
       </button>
       {!canManage && (
         <p className="basis-full text-xs text-[#8bb4a5]">
@@ -2494,5 +2503,26 @@ function ActionRow({
         </p>
       )}
     </div>
+  )
+}
+
+function SwitchPill({ checked }: { readonly checked: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        'relative inline-flex h-6 w-11 shrink-0 rounded-full border transition',
+        checked
+          ? 'border-emerald-300/60 bg-emerald-400'
+          : 'border-[#315846] bg-[#07130e]',
+      )}
+    >
+      <span
+        className={cn(
+          'absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition',
+          checked ? 'left-5' : 'left-0.5',
+        )}
+      />
+    </span>
   )
 }
