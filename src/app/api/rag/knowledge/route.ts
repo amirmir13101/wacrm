@@ -6,12 +6,14 @@ import {
 } from '@/lib/rag/knowledge-store'
 import {
   createSkippedRagEmbeddingSummary,
-  embedRagManualKnowledgeSource,
-  shouldAutoEmbedRagKnowledge,
 } from '@/lib/rag/embedding-store'
 import { RAG_KNOWLEDGE_CHARACTER_LIMIT } from '@/lib/rag/knowledge'
-import { sanitizeProviderError } from '@/lib/rag/security'
 import { requireRagPermission, safeErrorMessage } from '../_helpers'
+
+function readSourceType(value: unknown): 'manual' | 'website' | 'faq' | 'note' {
+  if (value === 'website' || value === 'faq' || value === 'note') return value
+  return 'manual'
+}
 
 export async function GET() {
   const auth = await requireRagPermission('view_rag_chatbot')
@@ -36,29 +38,16 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}))
     const title = typeof body.title === 'string' ? body.title : ''
     const content = typeof body.content === 'string' ? body.content : ''
+    const sourceType = readSourceType(body.sourceType)
 
     const source = await createRagManualKnowledge({
       workspaceId: auth.workspace.workspaceId,
       userId: auth.workspace.userId,
       title,
       content,
+      sourceType,
     })
-    const embeddingSummary = shouldAutoEmbedRagKnowledge(source.chunkCount)
-      ? await embedRagManualKnowledgeSource({
-        workspaceId: auth.workspace.workspaceId,
-        sourceId: source.id,
-      }).catch((error) => ({
-        chunksProcessed: 0,
-        embeddingsCreated: 0,
-        embeddingsSkipped: 0,
-        embeddingsFailed: 0,
-        status: 'failed' as const,
-        message: sanitizeProviderError(error),
-        embeddingsReady: false,
-        embeddingErrorCategory: 'unknown_embedding_error' as const,
-        userMessage: 'Chunks ready. Embeddings could not be prepared. Please check your AI provider settings or click Prepare for Chatbot again.',
-      }))
-      : createSkippedRagEmbeddingSummary(source.chunkCount)
+    const embeddingSummary = createSkippedRagEmbeddingSummary(source.chunkCount)
 
     return NextResponse.json({
       source,

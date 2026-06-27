@@ -368,6 +368,7 @@ interface RagProviderSettingsRow {
   readonly provider: string | null
   readonly encrypted_api_key: string | null
   readonly enabled: boolean | null
+  readonly backend_config?: Record<string, unknown> | null
 }
 
 interface RagVectorMatchRow {
@@ -415,7 +416,7 @@ async function getDashboardProviderConfig(
 ): Promise<RagResolvedProviderConfig> {
   const { data, error } = await supabaseAdmin()
     .from('rag_provider_settings')
-    .select('provider, encrypted_api_key, enabled')
+    .select('provider, encrypted_api_key, enabled, backend_config')
     .eq('workspace_id', workspaceId)
     .maybeSingle()
 
@@ -427,7 +428,15 @@ async function getDashboardProviderConfig(
 
   const provider = fallbackProvider(row.provider)
   const apiKey = decrypt(row.encrypted_api_key)
-  return resolveRagProviderConfig({ provider, apiKey })
+  const backend = row.backend_config ?? {}
+  return resolveRagProviderConfig({
+    provider,
+    apiKey,
+    baseUrl: typeof backend.baseUrl === 'string' ? backend.baseUrl : null,
+    chatModel: typeof backend.chatModel === 'string' ? backend.chatModel : null,
+    embeddingModel: typeof backend.embeddingModel === 'string' ? backend.embeddingModel : null,
+    embeddingDimensions: typeof backend.embeddingDimensions === 'number' ? backend.embeddingDimensions : null,
+  })
 }
 
 function toRetrievedChunk(row: RagVectorMatchRow, index: number): RagRetrievedChunk {

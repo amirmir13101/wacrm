@@ -24,6 +24,7 @@ interface RagProviderSettingsRow {
   readonly provider: string | null
   readonly encrypted_api_key: string | null
   readonly enabled: boolean | null
+  readonly backend_config?: Record<string, unknown> | null
 }
 
 interface RagKnowledgeSourceRow {
@@ -124,7 +125,15 @@ function safeProviderConfig(row: RagProviderSettingsRow | null): {
 
   try {
     const apiKey = decrypt(row.encrypted_api_key)
-    const config = resolveRagProviderConfig({ provider, apiKey })
+    const backend = row.backend_config ?? {}
+    const config = resolveRagProviderConfig({
+      provider,
+      apiKey,
+      baseUrl: typeof backend.baseUrl === 'string' ? backend.baseUrl : null,
+      chatModel: typeof backend.chatModel === 'string' ? backend.chatModel : null,
+      embeddingModel: typeof backend.embeddingModel === 'string' ? backend.embeddingModel : null,
+      embeddingDimensions: typeof backend.embeddingDimensions === 'number' ? backend.embeddingDimensions : null,
+    })
     if (config.embeddingDimensions !== RAG_EMBEDDING_DIMENSIONS) {
       return {
         config: null,
@@ -162,7 +171,7 @@ async function getEmbeddableSource(
     .select('id, metadata')
     .eq('workspace_id', workspaceId)
     .eq('id', sourceId)
-    .in('source_type', ['manual', 'website'])
+    .in('source_type', ['manual', 'website', 'faq', 'note'])
     .eq('status', 'active')
     .is('deleted_at', null)
     .maybeSingle()
@@ -174,7 +183,7 @@ async function getEmbeddableSource(
 async function getProviderSettings(workspaceId: string): Promise<RagProviderSettingsRow | null> {
   const { data, error } = await supabaseAdmin()
     .from('rag_provider_settings')
-    .select('provider, encrypted_api_key, enabled')
+    .select('provider, encrypted_api_key, enabled, backend_config')
     .eq('workspace_id', workspaceId)
     .maybeSingle()
 

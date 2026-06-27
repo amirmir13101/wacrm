@@ -41,8 +41,10 @@ describe('RAG Phase 1 foundation', () => {
     expect(RAG_PROVIDER_TYPES).toEqual([
       'openai',
       'openrouter',
+      'groq',
       'ollama',
       'custom_openai_compatible',
+      'gemini',
     ])
     expect(RAG_PROVIDER_TYPES).not.toContain('anthropic')
     expect(RAG_PROVIDER_TYPES).not.toContain('claude')

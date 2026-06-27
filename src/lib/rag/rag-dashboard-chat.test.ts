@@ -25,8 +25,8 @@ describe('RAG dashboard test chat', () => {
     expect(page).toContain('Ask a question from your saved knowledge...')
     expect(page).toContain('Prepare your knowledge for chatbot first.')
     expect(page).toContain('Add and test your AI provider key first.')
-    expect(page).toContain('Retrieved Knowledge')
-    expect(page).toContain('Match quality')
+    expect(page).toContain('This customer-style tester only shows the final chatbot answer.')
+    expect(page).toContain('Retrieval/debug')
 
     expect(page).not.toContain('raw chunk IDs')
     expect(page).not.toContain('debug JSON')

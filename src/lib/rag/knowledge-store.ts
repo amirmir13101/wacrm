@@ -10,7 +10,7 @@ import {
 export interface RagKnowledgeListItem {
   readonly id: string
   readonly title: string
-  readonly sourceType: 'manual' | 'website'
+  readonly sourceType: 'manual' | 'website' | 'faq' | 'note'
   readonly sourceUrl: string | null
   readonly status: 'draft' | 'active' | 'archived' | 'failed'
   readonly createdAt: string
@@ -77,7 +77,8 @@ function normalizeStatus(status: string): RagKnowledgeListItem['status'] {
 }
 
 function normalizeSourceType(sourceType: string): RagKnowledgeListItem['sourceType'] {
-  return sourceType === 'website' ? 'website' : 'manual'
+  if (sourceType === 'website' || sourceType === 'faq' || sourceType === 'note') return sourceType
+  return 'manual'
 }
 
 function toListItem(
@@ -177,7 +178,7 @@ export async function listRagKnowledgeSources(
     .from('rag_knowledge_sources')
     .select('id, title, source_type, source_url, status, cleaned_content, created_at, updated_at, metadata')
     .eq('workspace_id', workspaceId)
-    .in('source_type', ['manual', 'website'])
+    .in('source_type', ['manual', 'website', 'faq', 'note'])
     .eq('status', 'active')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -202,7 +203,7 @@ export async function getRagKnowledgeSource(args: {
     .select('id, title, source_type, source_url, status, cleaned_content, created_at, updated_at, metadata')
     .eq('workspace_id', args.workspaceId)
     .eq('id', args.sourceId)
-    .in('source_type', ['manual', 'website'])
+    .in('source_type', ['manual', 'website', 'faq', 'note'])
     .eq('status', 'active')
     .is('deleted_at', null)
     .maybeSingle()
@@ -226,13 +227,14 @@ export async function createRagManualKnowledge(args: {
   readonly userId: string
   readonly title: string
   readonly content: string
+  readonly sourceType?: 'manual' | 'website' | 'faq' | 'note'
 }): Promise<RagKnowledgeDetail> {
   const title = safeRagKnowledgeTitle(args.title)
   const prepared = prepareRagKnowledgeSource({
     workspaceId: args.workspaceId,
     title,
     content: args.content,
-    sourceType: 'manual',
+    sourceType: args.sourceType ?? 'manual',
   })
 
   const { data: source, error: sourceError } = await supabaseAdmin()
@@ -240,7 +242,7 @@ export async function createRagManualKnowledge(args: {
     .insert({
       workspace_id: args.workspaceId,
       title: prepared.source.title,
-      source_type: 'manual',
+      source_type: prepared.source.sourceType,
       status: 'active',
       raw_content: prepared.source.rawContent,
       cleaned_content: prepared.source.cleanedContent,
@@ -250,7 +252,7 @@ export async function createRagManualKnowledge(args: {
         chunk_count: prepared.chunks.length,
         chunk_coverage: 'full',
         chunk_overlap_chars: RAG_CHUNK_OVERLAP_CHARS,
-        source: 'manual_dashboard',
+        source: prepared.source.sourceType === 'website' ? 'website_manual_dashboard' : 'manual_dashboard',
         version: 1,
         embedding_status: 'not_embedded',
       },
@@ -274,6 +276,7 @@ export async function updateRagManualKnowledge(args: {
   readonly sourceId: string
   readonly title: string
   readonly content: string
+  readonly sourceType?: 'manual' | 'website' | 'faq' | 'note'
   readonly status?: 'active'
 }): Promise<RagKnowledgeDetail> {
   const existing = await getRagKnowledgeSource({
@@ -287,7 +290,7 @@ export async function updateRagManualKnowledge(args: {
     workspaceId: args.workspaceId,
     title,
     content: args.content,
-    sourceType: existing.sourceType,
+    sourceType: args.sourceType ?? existing.sourceType,
     sourceUrl: existing.sourceUrl,
   })
 
@@ -295,6 +298,7 @@ export async function updateRagManualKnowledge(args: {
     .from('rag_knowledge_sources')
     .update({
       title: prepared.source.title,
+      source_type: prepared.source.sourceType,
       raw_content: prepared.source.rawContent,
       cleaned_content: prepared.source.cleanedContent,
       source_url: prepared.source.sourceUrl ?? null,
@@ -304,7 +308,7 @@ export async function updateRagManualKnowledge(args: {
         chunk_count: prepared.chunks.length,
         chunk_coverage: 'full',
         chunk_overlap_chars: RAG_CHUNK_OVERLAP_CHARS,
-        source: existing.sourceType === 'website' ? 'website_import' : 'manual_dashboard',
+        source: prepared.source.sourceType === 'website' ? 'website_manual_dashboard' : 'manual_dashboard',
         version: 1,
         embedding_status: 'not_embedded',
         updated_via: 'manual_dashboard',

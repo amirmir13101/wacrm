@@ -97,7 +97,7 @@ describe('RAG manual embedding generation', () => {
     expect(embedRoute).toContain("requireRagPermission('manage_rag_chatbot')")
     expect(embedRoute).toContain('embedRagManualKnowledgeSource')
     expect(embeddingStore).toContain("eq('workspace_id', workspaceId)")
-    expect(embeddingStore).toContain("in('source_type', ['manual', 'website'])")
+    expect(embeddingStore).toContain("in('source_type', ['manual', 'website', 'faq', 'note'])")
     expect(embeddingStore).not.toContain("from('ai_")
   })
 
@@ -117,7 +117,7 @@ describe('RAG manual embedding generation', () => {
     expect(statusRoute).toContain('failedEmbeddings')
     expect(page).not.toContain('embedding vector')
     expect(page).not.toContain('vector dimensions')
-    expect(page).not.toContain('embeddingModel')
+    expect(page).not.toContain('Embedding Model')
     expect(page).not.toContain('raw provider')
   })
 

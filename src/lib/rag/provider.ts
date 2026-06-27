@@ -19,6 +19,12 @@ export const DEFAULT_RAG_PROVIDER_CONFIG = {
     embeddingModel: 'openai/text-embedding-3-small',
     embeddingDimensions: 1536,
   },
+  groq: {
+    baseUrl: 'https://api.groq.com/openai/v1',
+    chatModel: 'llama-3.1-8b-instant',
+    embeddingModel: 'text-embedding-3-small',
+    embeddingDimensions: 1536,
+  },
   ollama: {
     baseUrl: process.env.RAG_OLLAMA_BASE_URL ?? 'http://127.0.0.1:11434/v1',
     chatModel: process.env.RAG_OLLAMA_CHAT_MODEL ?? 'llama3.1',
@@ -31,6 +37,12 @@ export const DEFAULT_RAG_PROVIDER_CONFIG = {
     embeddingModel:
       process.env.RAG_CUSTOM_OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
     embeddingDimensions: Number(process.env.RAG_CUSTOM_OPENAI_EMBEDDING_DIMENSIONS ?? 1536),
+  },
+  gemini: {
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    chatModel: 'gemini-2.0-flash',
+    embeddingModel: 'text-embedding-3-small',
+    embeddingDimensions: 1536,
   },
 } as const satisfies Record<
   RagProviderType,
@@ -49,20 +61,27 @@ export function resolveRagProviderConfig(
   if (!apiKey) throw new Error('AI provider API key is required.')
 
   const defaults = DEFAULT_RAG_PROVIDER_CONFIG[input.provider]
+  const baseUrl = (input.baseUrl?.trim() || defaults.baseUrl).replace(/\/+$/, '')
+  const chatModel = input.chatModel?.trim() || defaults.chatModel
+  const embeddingModel = input.embeddingModel?.trim() || defaults.embeddingModel
+  const embeddingDimensions = Number.isFinite(input.embeddingDimensions ?? NaN)
+    ? Number(input.embeddingDimensions)
+    : defaults.embeddingDimensions
+
   if (input.provider === 'ollama' && !process.env.RAG_OLLAMA_BASE_URL) {
     throw new Error('Ollama is not configured on the server.')
   }
-  if (input.provider === 'custom_openai_compatible' && !defaults.baseUrl) {
+  if (input.provider === 'custom_openai_compatible' && !baseUrl) {
     throw new Error('Custom provider is not configured on the server.')
   }
 
   return {
     provider: input.provider,
     apiKey,
-    baseUrl: defaults.baseUrl,
-    chatModel: defaults.chatModel,
-    embeddingModel: defaults.embeddingModel,
-    embeddingDimensions: defaults.embeddingDimensions,
+    baseUrl,
+    chatModel,
+    embeddingModel,
+    embeddingDimensions,
     headers:
       input.provider === 'openrouter'
         ? {

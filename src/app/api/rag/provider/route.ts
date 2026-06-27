@@ -27,6 +27,11 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}))
     const provider = typeof body.provider === 'string' ? body.provider : ''
     const apiKey = typeof body.apiKey === 'string' ? body.apiKey : ''
+    const baseUrl = typeof body.baseUrl === 'string' ? body.baseUrl : null
+    const chatModel = typeof body.chatModel === 'string' ? body.chatModel : null
+    const embeddingModel = typeof body.embeddingModel === 'string' ? body.embeddingModel : null
+    const embeddingDimensions =
+      typeof body.embeddingDimensions === 'number' ? body.embeddingDimensions : null
 
     if (!isRagProviderType(provider)) {
       return NextResponse.json({ error: 'Unsupported provider.' }, { status: 400 })
@@ -36,6 +41,10 @@ export async function POST(request: Request) {
       workspaceId: auth.workspace.workspaceId,
       provider,
       apiKey,
+      baseUrl,
+      chatModel,
+      embeddingModel,
+      embeddingDimensions,
     })
 
     return NextResponse.json({ provider: settings })

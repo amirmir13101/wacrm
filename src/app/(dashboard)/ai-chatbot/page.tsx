@@ -32,6 +32,8 @@ interface ProviderView {
   readonly configured: boolean
   readonly provider: RagProviderType
   readonly maskedKey: string | null
+  readonly baseUrl: string | null
+  readonly chatModel: string | null
   readonly lastTestStatus: ConnectionStatus
   readonly lastTestError: string | null
 }
@@ -57,7 +59,7 @@ interface RagStatusPayload {
 interface KnowledgeSourceItem {
   readonly id: string
   readonly title: string
-  readonly sourceType: 'manual' | 'website'
+  readonly sourceType: 'manual' | 'website' | 'faq' | 'note'
   readonly sourceUrl: string | null
   readonly status: 'draft' | 'active' | 'archived' | 'failed'
   readonly createdAt: string
@@ -109,6 +111,14 @@ interface RagAutoReplySettings {
   readonly knowledgeReady: boolean
 }
 
+interface RagChatbotSettings {
+  readonly enabled: boolean
+  readonly tone: 'professional' | 'friendly' | 'concise' | 'helpful'
+  readonly handoverEnabled: boolean
+  readonly fallbackMessage: string
+  readonly handoverMessage: string
+}
+
 interface WebsiteImportStats {
   readonly pagesFound: number
   readonly pagesImported: number
@@ -136,11 +146,76 @@ interface WebsiteImportStats {
   readonly skippedReasons?: Readonly<Record<string, number>>
 }
 
+interface WebsiteImportJob {
+  readonly id: string
+  readonly websiteUrl: string
+  readonly status: 'running' | 'draft_ready' | 'published' | 'failed' | 'discarded'
+  readonly pageLimit: number
+  readonly pagesFound: number
+  readonly pagesImported: number
+  readonly pagesSkipped: number
+  readonly pagesFailed: number
+  readonly duplicatePages: number
+  readonly savedCharacters: number
+  readonly capped: boolean
+  readonly draftTitle: string | null
+  readonly draftContent: string | null
+  readonly qualityWarnings: ReadonlyArray<string>
+  readonly createdAt: string
+}
+
+interface WebsiteImportPage {
+  readonly id?: string
+  readonly url: string
+  readonly canonicalUrl: string | null
+  readonly title: string | null
+  readonly status: 'imported' | 'skipped' | 'failed' | 'duplicate'
+  readonly skipReason: string | null
+  readonly characterCount?: number
+}
+
+interface RagImportHistoryItem {
+  readonly id: string
+  readonly url: string | null
+  readonly triggerType: string
+  readonly status: string
+  readonly pagesFound: number
+  readonly pagesImported: number
+  readonly pagesSkipped: number
+  readonly pagesFailed: number
+  readonly createdAt: string
+  readonly changeSummary: string | null
+  readonly errorMessage: string | null
+}
+
+interface RagScrapeSchedule {
+  readonly id: string
+  readonly url: string
+  readonly frequency: 'daily' | 'weekly' | 'monthly'
+  readonly pageLimit: number
+  readonly autoPublish: boolean
+  readonly isActive: boolean
+  readonly lastRunStatus: string | null
+  readonly createdAt: string
+}
+
+interface RagKnowledgeGap {
+  readonly id: string
+  readonly question: string
+  readonly channel: string
+  readonly reason: string
+  readonly count: number
+  readonly suggestedAction: string | null
+  readonly lastAskedAt: string
+}
+
 const providerLabels: Record<RagProviderType, string> = {
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
+  groq: 'Groq',
   ollama: 'Ollama',
-  custom_openai_compatible: 'Custom Provider',
+  custom_openai_compatible: 'Custom OpenAI-compatible',
+  gemini: 'Gemini',
 }
 
 const providers = Object.entries(providerLabels) as Array<[RagProviderType, string]>
@@ -191,7 +266,10 @@ function formatDateTime(value: string): string {
 }
 
 function sourceTypeLabel(sourceType: KnowledgeSourceItem['sourceType']): string {
-  return sourceType === 'website' ? 'Website' : 'Manual'
+  if (sourceType === 'website') return 'Website import'
+  if (sourceType === 'faq') return 'FAQ'
+  if (sourceType === 'note') return 'Instructions'
+  return 'Business knowledge'
 }
 
 type KnowledgeProgressKind = 'manual' | 'website' | 'prepare'
@@ -308,20 +386,29 @@ export default function RagChatbotPage() {
   const [error, setError] = useState<string | null>(null)
   const [provider, setProvider] = useState<RagProviderType>('openai')
   const [providerKey, setProviderKey] = useState('')
+  const [providerBaseUrl, setProviderBaseUrl] = useState('')
+  const [providerModel, setProviderModel] = useState('')
   const [firecrawlKey, setFirecrawlKey] = useState('')
   const [providerSaving, setProviderSaving] = useState(false)
   const [firecrawlSaving, setFirecrawlSaving] = useState(false)
   const [providerMessage, setProviderMessage] = useState<string | null>(null)
   const [firecrawlMessage, setFirecrawlMessage] = useState<string | null>(null)
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSourceItem[]>([])
+  const [knowledgeSourceType, setKnowledgeSourceType] = useState<'manual' | 'faq' | 'note' | 'website'>('manual')
   const [knowledgeTitle, setKnowledgeTitle] = useState('')
   const [knowledgeText, setKnowledgeText] = useState('')
   const [knowledgeMessage, setKnowledgeMessage] = useState<string | null>(null)
   const [knowledgeSaving, setKnowledgeSaving] = useState(false)
   const [knowledgeProgress, setKnowledgeProgress] = useState<KnowledgeProgressState | null>(null)
   const [websiteUrl, setWebsiteUrl] = useState('')
+  const [websitePageLimit, setWebsitePageLimit] = useState(25)
   const [websiteImportMessage, setWebsiteImportMessage] = useState<string | null>(null)
   const [websiteImportStats, setWebsiteImportStats] = useState<WebsiteImportStats | null>(null)
+  const [websiteImportJob, setWebsiteImportJob] = useState<WebsiteImportJob | null>(null)
+  const [websiteImportPages, setWebsiteImportPages] = useState<WebsiteImportPage[]>([])
+  const [websiteDraftTitle, setWebsiteDraftTitle] = useState('')
+  const [websiteDraftContent, setWebsiteDraftContent] = useState('')
+  const [websiteDraftSaving, setWebsiteDraftSaving] = useState(false)
   const [websiteImporting, setWebsiteImporting] = useState(false)
   const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeSourceItem | null>(null)
   const [editingKnowledgeId, setEditingKnowledgeId] = useState<string | null>(null)
@@ -338,6 +425,18 @@ export default function RagChatbotPage() {
   const [autoReply, setAutoReply] = useState<RagAutoReplySettings | null>(null)
   const [autoReplySaving, setAutoReplySaving] = useState(false)
   const [autoReplyMessage, setAutoReplyMessage] = useState<string | null>(null)
+  const [chatbotSettings, setChatbotSettings] = useState<RagChatbotSettings | null>(null)
+  const [chatbotSettingsSaving, setChatbotSettingsSaving] = useState(false)
+  const [chatbotSettingsMessage, setChatbotSettingsMessage] = useState<string | null>(null)
+  const [importHistory, setImportHistory] = useState<RagImportHistoryItem[]>([])
+  const [schedules, setSchedules] = useState<RagScrapeSchedule[]>([])
+  const [scheduleUrl, setScheduleUrl] = useState('')
+  const [scheduleFrequency, setScheduleFrequency] = useState<'daily' | 'weekly' | 'monthly'>('weekly')
+  const [schedulePageLimit, setSchedulePageLimit] = useState(25)
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleMessage, setScheduleMessage] = useState<string | null>(null)
+  const [knowledgeGaps, setKnowledgeGaps] = useState<RagKnowledgeGap[]>([])
+  const [gapsMessage, setGapsMessage] = useState<string | null>(null)
 
   const cards = useMemo(() => {
     const providerConfigured = status?.provider.configured === true
@@ -420,6 +519,8 @@ export default function RagChatbotPage() {
         if (cancelled) return
         setStatus(payload)
         setProvider(payload.provider.provider)
+        setProviderBaseUrl(payload.provider.baseUrl ?? '')
+        setProviderModel(payload.provider.chatModel ?? '')
         setError(null)
       })
       .catch((loadError) => {
@@ -439,6 +540,10 @@ export default function RagChatbotPage() {
     loadKnowledge()
     loadLogs()
     loadAutoReply()
+    loadChatbotSettings()
+    loadImportHistory()
+    loadSchedules()
+    loadKnowledgeGaps()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace.loading, canView])
 
@@ -465,6 +570,131 @@ export default function RagChatbotPage() {
     }
   }
 
+  async function loadChatbotSettings() {
+    setChatbotSettingsMessage(null)
+    try {
+      const response = await fetch('/api/rag/chatbot-settings')
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to load chatbot instructions.')
+      setChatbotSettings(payload.settings)
+    } catch (loadError) {
+      setChatbotSettingsMessage(
+        loadError instanceof Error
+          ? loadError.message
+          : 'Chatbot instructions will load after the dashboard migration is applied.',
+      )
+    }
+  }
+
+  async function saveChatbotSettings(next?: Partial<RagChatbotSettings>) {
+    const updated: RagChatbotSettings = {
+      enabled: chatbotSettings?.enabled ?? true,
+      tone: chatbotSettings?.tone ?? 'professional',
+      handoverEnabled: chatbotSettings?.handoverEnabled ?? true,
+      fallbackMessage:
+        chatbotSettings?.fallbackMessage ?? 'I do not see that information in the current knowledge base.',
+      handoverMessage:
+        chatbotSettings?.handoverMessage ?? 'I can connect you with a team member if you want.',
+      ...(next ?? {}),
+    }
+    setChatbotSettingsSaving(true)
+    setChatbotSettingsMessage(null)
+    try {
+      const response = await fetch('/api/rag/chatbot-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to save chatbot instructions.')
+      setChatbotSettings(payload.settings)
+      setChatbotSettingsMessage('Chatbot instructions saved.')
+    } catch (saveError) {
+      setChatbotSettingsMessage(saveError instanceof Error ? saveError.message : 'Failed to save chatbot instructions.')
+    } finally {
+      setChatbotSettingsSaving(false)
+    }
+  }
+
+  async function loadImportHistory() {
+    try {
+      const response = await fetch('/api/rag/import-history')
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to load import history.')
+      setImportHistory(payload.history ?? [])
+    } catch {
+      setImportHistory([])
+    }
+  }
+
+  async function loadSchedules() {
+    setScheduleMessage(null)
+    try {
+      const response = await fetch('/api/rag/schedules')
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to load schedules.')
+      setSchedules(payload.schedules ?? [])
+    } catch (loadError) {
+      setScheduleMessage(loadError instanceof Error ? loadError.message : 'Schedules will load after the dashboard migration is applied.')
+    }
+  }
+
+  async function saveSchedule() {
+    setScheduleSaving(true)
+    setScheduleMessage(null)
+    try {
+      const response = await fetch('/api/rag/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: scheduleUrl,
+          frequency: scheduleFrequency,
+          pageLimit: schedulePageLimit,
+          autoPublish: false,
+          isActive: false,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to save schedule.')
+      setScheduleUrl('')
+      setScheduleMessage('Schedule saved. The scheduler is storage-only until scheduled sync is approved.')
+      await loadSchedules()
+    } catch (saveError) {
+      setScheduleMessage(saveError instanceof Error ? saveError.message : 'Failed to save schedule.')
+    } finally {
+      setScheduleSaving(false)
+    }
+  }
+
+  async function deleteSchedule(id: string) {
+    if (!window.confirm('Delete this scrape schedule?')) return
+    setScheduleSaving(true)
+    setScheduleMessage(null)
+    try {
+      const response = await fetch(`/api/rag/schedules/${id}`, { method: 'DELETE' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to delete schedule.')
+      setScheduleMessage('Schedule deleted.')
+      await loadSchedules()
+    } catch (deleteError) {
+      setScheduleMessage(deleteError instanceof Error ? deleteError.message : 'Failed to delete schedule.')
+    } finally {
+      setScheduleSaving(false)
+    }
+  }
+
+  async function loadKnowledgeGaps() {
+    setGapsMessage(null)
+    try {
+      const response = await fetch('/api/rag/gaps')
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to load unanswered questions.')
+      setKnowledgeGaps(payload.gaps ?? [])
+    } catch (loadError) {
+      setGapsMessage(loadError instanceof Error ? loadError.message : 'Unanswered questions will load after the dashboard migration is applied.')
+    }
+  }
+
   async function saveProvider() {
     setProviderSaving(true)
     setProviderMessage(null)
@@ -472,11 +702,18 @@ export default function RagChatbotPage() {
       const response = await fetch('/api/rag/provider', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, apiKey: providerKey }),
+        body: JSON.stringify({
+          provider,
+          apiKey: providerKey,
+          baseUrl: providerBaseUrl,
+          chatModel: providerModel,
+        }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'Failed to save provider.')
       setStatus((current) => current ? { ...current, provider: payload.provider } : current)
+      setProviderBaseUrl(payload.provider?.baseUrl ?? providerBaseUrl)
+      setProviderModel(payload.provider?.chatModel ?? providerModel)
       setProviderKey('')
       setProviderMessage('Provider saved. Your key is stored securely.')
     } catch (saveError) {
@@ -609,23 +846,24 @@ export default function RagChatbotPage() {
       const response = await fetch('/api/rag/website-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: websiteUrl }),
+        body: JSON.stringify({ url: websiteUrl, pageLimit: websitePageLimit }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'Import failed.')
 
       setWebsiteUrl('')
-      setSelectedKnowledge(payload.source ?? null)
       setWebsiteImportStats(payload.stats ?? null)
+      setWebsiteImportJob(payload.job ?? null)
+      setWebsiteImportPages(payload.pages ?? payload.stats?.pages ?? [])
+      setWebsiteDraftTitle(payload.job?.draftTitle ?? 'Website knowledge')
+      setWebsiteDraftContent(payload.job?.draftContent ?? '')
       const message = cleanOperationMessage(
         payload.userMessage ?? payload.embeddingSummary?.userMessage ?? payload.embeddingSummary?.message ?? payload.message,
-        'Website imported, cleaned, and chunked.',
+        'Website draft created. Review before publishing.',
       )
-      setKnowledgeProgress(
-        createProgressFromEmbeddingSummary('website', payload.embeddingSummary, message),
-      )
+      setKnowledgeProgress(createKnowledgeProgress('website', 'warning', message, 3))
       setWebsiteImportMessage(message)
-      await loadKnowledge()
+      await loadImportHistory()
       await refreshStatusCounts()
     } catch (importError) {
       const message = cleanOperationMessage(
@@ -636,6 +874,46 @@ export default function RagChatbotPage() {
       setWebsiteImportMessage(message)
     } finally {
       setWebsiteImporting(false)
+    }
+  }
+
+  async function saveWebsiteDraft(action: 'update' | 'publish' | 'discard') {
+    if (!websiteImportJob) return
+    setWebsiteDraftSaving(true)
+    setWebsiteImportMessage(null)
+    try {
+      const response = await fetch(`/api/rag/website-import/${websiteImportJob.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          title: websiteDraftTitle,
+          content: websiteDraftContent,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to update website draft.')
+
+      setWebsiteImportJob(payload.job ?? null)
+      setWebsiteImportPages(payload.pages ?? [])
+      if (action === 'publish') {
+        setWebsiteImportMessage('Website draft published to the knowledge base. Use Prepare for Chatbot when ready.')
+        setWebsiteDraftTitle('')
+        setWebsiteDraftContent('')
+        await loadKnowledge()
+        await refreshStatusCounts()
+      } else if (action === 'discard') {
+        setWebsiteImportMessage('Website draft discarded.')
+        setWebsiteDraftTitle('')
+        setWebsiteDraftContent('')
+      } else {
+        setWebsiteImportMessage('Website draft saved.')
+      }
+      await loadImportHistory()
+    } catch (draftError) {
+      setWebsiteImportMessage(draftError instanceof Error ? draftError.message : 'Failed to update website draft.')
+    } finally {
+      setWebsiteDraftSaving(false)
     }
   }
 
@@ -654,6 +932,7 @@ export default function RagChatbotPage() {
         body: JSON.stringify({
           title: knowledgeTitle,
           content: knowledgeText,
+          sourceType: knowledgeSourceType,
           status: 'active',
         }),
       })
@@ -662,6 +941,7 @@ export default function RagChatbotPage() {
 
       setKnowledgeTitle('')
       setKnowledgeText('')
+      setKnowledgeSourceType('manual')
       setEditingKnowledgeId(null)
       setSelectedKnowledge(payload.source ?? null)
       const message = cleanOperationMessage(
@@ -709,6 +989,7 @@ export default function RagChatbotPage() {
     setEditingKnowledgeId(id)
     setKnowledgeTitle(payload.source.title)
     setKnowledgeText(payload.source.content)
+    setKnowledgeSourceType(payload.source.sourceType ?? 'manual')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -862,7 +1143,7 @@ export default function RagChatbotPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <SettingsCard
           title="AI Provider Settings"
-          description="Choose your provider and save your API key. Advanced model and vector settings are handled safely by the backend."
+          description="Choose your provider and save your API key. Model and base URL are stored server-side; no API key is returned to the browser."
           icon={KeyRound}
           status={statusLabel(status?.provider.lastTestStatus ?? null, status?.provider.configured === true)}
           statusClassName={statusClasses(status?.provider.lastTestStatus ?? null, status?.provider.configured === true)}
@@ -881,6 +1162,26 @@ export default function RagChatbotPage() {
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-[#d8fff1]">Model</span>
+            <input
+              value={providerModel}
+              onChange={(event) => setProviderModel(event.target.value)}
+              placeholder="Example: gpt-4o-mini, openai/gpt-4o-mini, gemini-2.0-flash"
+              disabled={!canManageProvider}
+              className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-[#d8fff1]">Base URL</span>
+            <input
+              value={providerBaseUrl}
+              onChange={(event) => setProviderBaseUrl(event.target.value)}
+              placeholder="Optional OpenAI-compatible base URL"
+              disabled={!canManageProvider}
+              className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+            />
           </label>
           <label className="space-y-2">
             <span className="text-sm font-medium text-[#d8fff1]">API Key</span>
@@ -904,7 +1205,7 @@ export default function RagChatbotPage() {
 
         <SettingsCard
           title="Firecrawl Settings"
-          description="Save your Firecrawl key so you can import one website page into the knowledge base."
+          description="Save your Firecrawl key so website import can crawl, clean, and create a review draft before publishing."
           icon={Globe}
           status={statusLabel(status?.firecrawl.lastTestStatus ?? null, status?.firecrawl.configured === true)}
           statusClassName={statusClasses(status?.firecrawl.lastTestStatus ?? null, status?.firecrawl.configured === true)}
@@ -931,6 +1232,115 @@ export default function RagChatbotPage() {
           />
         </SettingsCard>
       </div>
+
+      <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <Bot className="size-5 text-emerald-300" />
+              <h2 className="text-lg font-bold text-white">Chatbot Instructions</h2>
+            </div>
+            <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+              Configure customer-facing tone, fallback text, and handover copy. These settings are
+              RAG-native and do not expose prompts, retrieval debug, or provider secrets.
+            </p>
+          </div>
+          <span className={cn(
+            'rounded-full border px-3 py-1 text-xs font-bold',
+            chatbotSettings?.enabled
+              ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
+              : 'border-[#315846] bg-[#0d1b15] text-[#d8fff1]',
+          )}>
+            {chatbotSettings?.enabled ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+
+        {chatbotSettings ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <label className="flex items-start gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+              <input
+                type="checkbox"
+                checked={chatbotSettings.enabled}
+                disabled={!canManageKnowledge || chatbotSettingsSaving}
+                onChange={(event) => saveChatbotSettings({ enabled: event.target.checked })}
+                className="mt-1 size-4 accent-emerald-400"
+              />
+              <span>
+                <span className="block font-bold text-white">Enable dashboard chatbot</span>
+                <span className="mt-1 block text-sm text-[#a9c6bb]">Keeps the AI Chatbot tab usable for safe dashboard tests.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+              <input
+                type="checkbox"
+                checked={chatbotSettings.handoverEnabled}
+                disabled={!canManageKnowledge || chatbotSettingsSaving}
+                onChange={(event) => saveChatbotSettings({ handoverEnabled: event.target.checked })}
+                className="mt-1 size-4 accent-emerald-400"
+              />
+              <span>
+                <span className="block font-bold text-white">Allow handover offer</span>
+                <span className="mt-1 block text-sm text-[#a9c6bb]">Missing knowledge can offer a team connection without forcing Human Needed.</span>
+              </span>
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Tone</span>
+              <select
+                value={chatbotSettings.tone}
+                disabled={!canManageKnowledge || chatbotSettingsSaving}
+                onChange={(event) =>
+                  saveChatbotSettings({ tone: event.target.value as RagChatbotSettings['tone'] })
+                }
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="professional">Professional</option>
+                <option value="friendly">Friendly</option>
+                <option value="concise">Concise</option>
+                <option value="helpful">Helpful</option>
+              </select>
+            </label>
+            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 text-sm text-[#a9c6bb]">
+              <p className="font-bold text-white">Live WhatsApp switch</p>
+              <p className="mt-1">Use the WhatsApp Auto Reply panel below. The webhook and credentials are not modified here.</p>
+            </div>
+            <label className="space-y-2 lg:col-span-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Fallback message</span>
+              <textarea
+                value={chatbotSettings.fallbackMessage}
+                disabled={!canManageKnowledge || chatbotSettingsSaving}
+                rows={3}
+                onChange={(event) =>
+                  setChatbotSettings((current) => current ? { ...current, fallbackMessage: event.target.value } : current)
+                }
+                onBlur={() => saveChatbotSettings()}
+                className="w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+            <label className="space-y-2 lg:col-span-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Handover message</span>
+              <textarea
+                value={chatbotSettings.handoverMessage}
+                disabled={!canManageKnowledge || chatbotSettingsSaving}
+                rows={3}
+                onChange={(event) =>
+                  setChatbotSettings((current) => current ? { ...current, handoverMessage: event.target.value } : current)
+                }
+                onBlur={() => saveChatbotSettings()}
+                className="w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+          </div>
+        ) : (
+          <p className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+            Chatbot instructions will be available after the RAG dashboard migration is applied.
+          </p>
+        )}
+        {chatbotSettingsMessage && (
+          <p className="mt-4 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
+            {chatbotSettingsMessage}
+          </p>
+        )}
+      </section>
 
       <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -965,6 +1375,19 @@ export default function RagChatbotPage() {
               disabled={!canManageKnowledge || websiteImporting}
               className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
             />
+          </label>
+          <label className="space-y-2 lg:w-44">
+            <span className="text-sm font-medium text-[#d8fff1]">Page limit</span>
+            <select
+              value={websitePageLimit}
+              onChange={(event) => setWebsitePageLimit(Number(event.target.value))}
+              disabled={!canManageKnowledge || websiteImporting}
+              className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {[5, 25, 50, 100].map((limit) => (
+                <option key={limit} value={limit}>{limit} pages</option>
+              ))}
+            </select>
           </label>
           <button
             type="button"
@@ -1068,6 +1491,112 @@ export default function RagChatbotPage() {
             )}
           </div>
         )}
+
+        {websiteImportJob && (
+          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-white">Review draft before publishing</h3>
+                  <p className="text-xs text-[#8bb4a5]">
+                    Draft status: {websiteImportJob.status.replace('_', ' ')} · {websiteImportJob.savedCharacters.toLocaleString()} characters
+                  </p>
+                </div>
+                <span className="rounded-full border border-emerald-300/40 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-bold uppercase text-emerald-100">
+                  Provider: Firecrawl
+                </span>
+              </div>
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-[#d8fff1]">Draft title</span>
+                <input
+                  value={websiteDraftTitle}
+                  onChange={(event) => setWebsiteDraftTitle(event.target.value)}
+                  disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready'}
+                  className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+              <label className="mt-3 block space-y-2">
+                <span className="text-sm font-medium text-[#d8fff1]">Draft content</span>
+                <textarea
+                  value={websiteDraftContent}
+                  onChange={(event) => setWebsiteDraftContent(event.target.value)}
+                  disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready'}
+                  rows={12}
+                  className="min-h-72 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-[#8bb4a5]">
+                  {(websiteDraftContent.length || 0).toLocaleString()} / {RAG_KNOWLEDGE_CHARACTER_LIMIT.toLocaleString()} characters
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => saveWebsiteDraft('discard')}
+                    disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready'}
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-300/40 px-3 text-sm font-bold text-red-100 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Discard draft
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => saveWebsiteDraft('update')}
+                    disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready'}
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#315846] px-3 text-sm font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Save draft
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => saveWebsiteDraft('publish')}
+                    disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready' || !websiteDraftContent.trim()}
+                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Publish to Knowledge Base
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+              <h3 className="text-sm font-bold text-white">Page review list</h3>
+              <p className="mt-1 text-xs text-[#8bb4a5]">Showing up to 30 checked pages.</p>
+              <div className="mt-3 max-h-[34rem] space-y-2 overflow-y-auto">
+                {websiteImportPages.slice(0, 30).map((importPage, index) => (
+                  <div key={`${importPage.url}:${index}`} className="rounded-xl border border-[#1b3c2d] bg-[#07130e]/80 p-3 text-xs">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="min-w-0 break-words font-semibold text-white">
+                        {importPage.title ?? importPage.canonicalUrl ?? importPage.url}
+                      </p>
+                      <span className={cn(
+                        'shrink-0 rounded-full border px-2 py-0.5 font-bold uppercase',
+                        importPage.status === 'imported'
+                          ? 'border-emerald-300/50 text-emerald-100'
+                          : importPage.status === 'failed'
+                            ? 'border-red-300/50 text-red-100'
+                            : 'border-amber-300/50 text-amber-100',
+                      )}>
+                        {importPage.status}
+                      </span>
+                    </div>
+                    <p className="mt-1 break-all text-[#8bb4a5]">{importPage.canonicalUrl ?? importPage.url}</p>
+                    {typeof importPage.characterCount === 'number' && (
+                      <p className="mt-1 text-[#8bb4a5]">{importPage.characterCount.toLocaleString()} characters</p>
+                    )}
+                    {importPage.skipReason && (
+                      <p className="mt-1 text-amber-100">Reason: {importPage.skipReason.replaceAll('_', ' ')}</p>
+                    )}
+                  </div>
+                ))}
+                {websiteImportPages.length === 0 && (
+                  <p className="rounded-xl border border-[#214b39] bg-[#07130e]/70 px-3 py-6 text-center text-sm text-[#8bb4a5]">
+                    Page review details will appear after an import.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
@@ -1090,6 +1619,20 @@ export default function RagChatbotPage() {
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="space-y-4 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Knowledge type</span>
+              <select
+                value={knowledgeSourceType}
+                onChange={(event) => setKnowledgeSourceType(event.target.value as typeof knowledgeSourceType)}
+                disabled={!canManageKnowledge}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="manual">Business knowledge</option>
+                <option value="faq">FAQ</option>
+                <option value="note">Instructions</option>
+                <option value="website">Website import</option>
+              </select>
+            </label>
             <label className="space-y-2">
               <span className="text-sm font-medium text-[#d8fff1]">Knowledge Title</span>
               <input
@@ -1123,6 +1666,7 @@ export default function RagChatbotPage() {
                       setEditingKnowledgeId(null)
                       setKnowledgeTitle('')
                       setKnowledgeText('')
+                      setKnowledgeSourceType('manual')
                     }}
                     className="h-10 rounded-xl border border-[#315846] px-4 text-sm font-bold text-[#d8fff1] hover:bg-[#123226]"
                   >
@@ -1372,27 +1916,195 @@ export default function RagChatbotPage() {
               )}
             </div>
 
-            {chatAnswer?.sources.length ? (
-              <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
-                <div className="border-b border-[#214b39] px-4 py-3">
-                  <h3 className="font-bold text-white">Retrieved Knowledge</h3>
-                  <p className="text-xs text-[#8bb4a5]">Safe snippets used to answer.</p>
-                </div>
-                <div className="divide-y divide-[#214b39]">
-                  {chatAnswer.sources.map((source, index) => (
-                    <article key={`${source.title}-${index}`} className="space-y-2 px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h4 className="text-sm font-bold text-white">{source.title}</h4>
-                        <span className="rounded-full border border-[#315846] px-2 py-1 text-[11px] font-bold text-[#d8fff1]">
-                          Match quality {Math.round(source.matchQuality * 100)}%
-                        </span>
-                      </div>
-                      <p className="text-sm leading-6 text-[#a9c6bb]">{source.snippet}</p>
-                    </article>
-                  ))}
-                </div>
+            {chatAnswer && (
+              <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 text-sm text-[#a9c6bb]">
+                This customer-style tester only shows the final chatbot answer. Retrieval/debug
+                details are intentionally hidden from the restored dashboard UI.
               </div>
-            ) : null}
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <Clock className="size-5 text-emerald-300" />
+                <h2 className="text-lg font-bold text-white">Schedule & Import History</h2>
+              </div>
+              <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+                Store planned re-scrape schedules and review recent website import activity.
+                Actual scheduled sync remains pending until explicitly approved.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                loadSchedules()
+                loadImportHistory()
+              }}
+              className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
+            >
+              Refresh
+            </button>
+          </div>
+
+          <div className="grid gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 lg:grid-cols-[minmax(0,1fr)_150px_120px_auto] lg:items-end">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Website URL</span>
+              <input
+                value={scheduleUrl}
+                onChange={(event) => setScheduleUrl(event.target.value)}
+                placeholder="https://example.com"
+                disabled={!canManageKnowledge || scheduleSaving}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Frequency</span>
+              <select
+                value={scheduleFrequency}
+                onChange={(event) => setScheduleFrequency(event.target.value as typeof scheduleFrequency)}
+                disabled={!canManageKnowledge || scheduleSaving}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Limit</span>
+              <select
+                value={schedulePageLimit}
+                onChange={(event) => setSchedulePageLimit(Number(event.target.value))}
+                disabled={!canManageKnowledge || scheduleSaving}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {[5, 25, 50, 100].map((limit) => (
+                  <option key={limit} value={limit}>{limit}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={saveSchedule}
+              disabled={!canManageKnowledge || scheduleSaving || !scheduleUrl.trim()}
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Save schedule
+            </button>
+          </div>
+          {scheduleMessage && (
+            <p className="mt-3 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
+              {scheduleMessage}
+            </p>
+          )}
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
+              <div className="border-b border-[#214b39] px-4 py-3">
+                <h3 className="font-bold text-white">Saved schedules</h3>
+              </div>
+              <div className="divide-y divide-[#214b39]">
+                {schedules.length === 0 ? (
+                  <p className="px-4 py-6 text-sm text-[#8bb4a5]">No schedules saved yet.</p>
+                ) : schedules.map((schedule) => (
+                  <article key={schedule.id} className="space-y-2 px-4 py-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="break-all font-bold text-white">{schedule.url}</p>
+                        <p className="text-xs text-[#8bb4a5]">
+                          {schedule.frequency} · {schedule.pageLimit} pages · {schedule.isActive ? 'active' : 'inactive'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => deleteSchedule(schedule.id)}
+                        disabled={!canManageKnowledge || scheduleSaving}
+                        className="rounded-lg border border-red-300/40 px-2 py-1 text-xs font-bold text-red-100 hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
+              <div className="border-b border-[#214b39] px-4 py-3">
+                <h3 className="font-bold text-white">Import history</h3>
+              </div>
+              <div className="max-h-80 divide-y divide-[#214b39] overflow-y-auto">
+                {importHistory.length === 0 ? (
+                  <p className="px-4 py-6 text-sm text-[#8bb4a5]">No import history yet.</p>
+                ) : importHistory.map((history) => (
+                  <article key={history.id} className="space-y-2 px-4 py-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="rounded-full border border-[#315846] px-2 py-1 text-[11px] font-bold uppercase text-[#d8fff1]">
+                        {history.status.replace('_', ' ')}
+                      </span>
+                      <span className="text-xs text-[#8bb4a5]">{formatDateTime(history.createdAt)}</span>
+                    </div>
+                    <p className="break-all font-semibold text-white">{history.url ?? 'Manual import'}</p>
+                    <p className="text-xs text-[#8bb4a5]">
+                      {history.pagesFound} found · {history.pagesImported} imported · {history.pagesSkipped} skipped · {history.pagesFailed} failed
+                    </p>
+                    {(history.changeSummary || history.errorMessage) && (
+                      <p className="text-xs text-[#a9c6bb]">{history.errorMessage ?? history.changeSummary}</p>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <MessageSquare className="size-5 text-emerald-300" />
+                <h2 className="text-lg font-bold text-white">Unanswered Questions</h2>
+              </div>
+              <p className="text-sm leading-6 text-[#a9c6bb]">
+                Review knowledge gaps from dashboard or WhatsApp fallbacks. Add missing answers to the knowledge base when useful.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadKnowledgeGaps}
+              className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
+            >
+              Refresh
+            </button>
+          </div>
+          {gapsMessage && (
+            <p className="mb-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
+              {gapsMessage}
+            </p>
+          )}
+          <div className="divide-y divide-[#214b39] overflow-hidden rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
+            {knowledgeGaps.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-[#8bb4a5]">No unanswered questions recorded yet.</p>
+            ) : knowledgeGaps.map((gap) => (
+              <article key={gap.id} className="space-y-2 px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="rounded-full border border-[#315846] px-2 py-1 text-[11px] font-bold uppercase text-[#d8fff1]">
+                    {gap.channel}
+                  </span>
+                  <span className="text-xs text-[#8bb4a5]">{gap.count}× · {formatDateTime(gap.lastAskedAt)}</span>
+                </div>
+                <p className="text-sm font-semibold text-white">{gap.question}</p>
+                <p className="text-xs text-[#8bb4a5]">Reason: {gap.reason.replaceAll('_', ' ')}</p>
+                {gap.suggestedAction && (
+                  <p className="text-sm text-[#a9c6bb]">{gap.suggestedAction}</p>
+                )}
+              </article>
+            ))}
           </div>
         </div>
       </section>

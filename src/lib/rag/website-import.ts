@@ -278,6 +278,15 @@ export interface RagWebsiteImportResult {
   readonly stats: RagWebsiteImportStats
 }
 
+export interface RagWebsiteImportDraft {
+  readonly title: string
+  readonly content: string
+  readonly sourceUrl: string
+  readonly finalUrl: string
+  readonly stats: RagWebsiteImportStats
+  readonly message: string
+}
+
 export function validateRagWebsiteUrl(value: string): string {
   const trimmed = value.trim()
   if (!trimmed) throw new Error('Website URL is required.')
@@ -2120,6 +2129,29 @@ export async function importRagWebsiteKnowledge(args: {
   readonly url: string
   readonly pageLimit?: number
 }): Promise<RagWebsiteImportResult> {
+  const draft = await createRagWebsiteImportDraft(args)
+
+  const source = await createRagWebsiteKnowledge({
+    workspaceId: args.workspaceId,
+    userId: args.userId,
+    title: draft.title,
+    content: draft.content,
+    sourceUrl: draft.sourceUrl,
+    finalUrl: draft.finalUrl,
+  })
+
+  return {
+    source,
+    stats: draft.stats,
+    message: draft.message,
+  }
+}
+
+export async function createRagWebsiteImportDraft(args: {
+  readonly workspaceId: string
+  readonly url: string
+  readonly pageLimit?: number
+}): Promise<RagWebsiteImportDraft> {
   const url = validateRagWebsiteUrl(args.url)
   const apiKey = await getFirecrawlApiKey(args.workspaceId)
 
@@ -2134,21 +2166,15 @@ export async function importRagWebsiteKnowledge(args: {
     throw new Error(sanitizeProviderError(error) || 'Import failed.')
   }
 
-  const source = await createRagWebsiteKnowledge({
-    workspaceId: args.workspaceId,
-    userId: args.userId,
+  return {
     title: imported.title,
     content: imported.content,
     sourceUrl: url,
     finalUrl: imported.finalUrl,
-  })
-
-  return {
-    source,
     stats: imported.stats,
     message: imported.stats.capped
-      ? 'Website imported and capped at the knowledge character limit.'
-      : 'Website imported successfully.',
+      ? 'Website draft was created and capped at the knowledge character limit.'
+      : 'Website draft is ready to review before publishing.',
   }
 }
 

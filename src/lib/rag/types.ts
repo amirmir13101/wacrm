@@ -9,8 +9,10 @@
 export const RAG_PROVIDER_TYPES = [
   'openai',
   'openrouter',
+  'groq',
   'ollama',
   'custom_openai_compatible',
+  'gemini',
 ] as const
 
 export type RagProviderType = (typeof RAG_PROVIDER_TYPES)[number]
@@ -20,6 +22,10 @@ export const CUSTOMER_FACING_RAG_PROVIDER_FIELDS = ['provider', 'apiKey'] as con
 export interface CustomerFacingRagProviderInput {
   readonly provider: RagProviderType
   readonly apiKey: string
+  readonly baseUrl?: string | null
+  readonly chatModel?: string | null
+  readonly embeddingModel?: string | null
+  readonly embeddingDimensions?: number | null
 }
 
 export interface RagResolvedProviderConfig {
@@ -36,6 +42,10 @@ export interface RagProviderPublicStatus {
   readonly provider: RagProviderType
   readonly configured: boolean
   readonly keyLast4: string | null
+  readonly baseUrl?: string | null
+  readonly chatModel?: string | null
+  readonly embeddingModel?: string | null
+  readonly embeddingDimensions?: number | null
   readonly lastTestStatus?: 'not_tested' | 'success' | 'failed' | null
 }
 
