@@ -9,6 +9,7 @@ import type { RagProviderType, RagResolvedProviderConfig } from './types'
 const RAG_EMBEDDING_DIMENSIONS = 1536
 const ZERO_EMBEDDING = Array.from({ length: RAG_EMBEDDING_DIMENSIONS }, () => 0)
 export const RAG_AUTO_EMBED_CHUNK_LIMIT = 0
+export const RAG_EMBEDDING_BATCH_SIZE = 50
 
 type EmbeddingRunStatus = 'ready' | 'partial' | 'failed' | 'not_configured' | 'skipped'
 export type RagEmbeddingErrorCategory =
@@ -291,8 +292,8 @@ function summarize(args: {
   const message = args.message ?? (
     args.status === 'ready'
       ? 'Knowledge is prepared for chatbot.'
-      : args.status === 'partial'
-        ? 'Some knowledge was prepared, but a few chunks failed.'
+    : args.status === 'partial'
+        ? 'Some embeddings were prepared. Click Prepare for Chatbot again to continue remaining chunks.'
         : args.status === 'skipped'
           ? 'Chunks ready. Click Prepare for Chatbot to create embeddings.'
           : ragEmbeddingUserMessage(errorCategory)
@@ -360,13 +361,16 @@ export async function embedRagManualKnowledgeSource(args: {
   if (!providerConfig.config) {
     const category = providerConfig.errorCategory ?? categorizeRagEmbeddingError(providerConfig.error)
     logEmbeddingFailure(category, 'provider_config')
-    for (const chunk of chunks) {
-      const current = existing.get(chunk.id)
-      if (current?.embedding_status === 'ready') {
-        skipped += 1
-        continue
-      }
+    const readyChunkIds = new Set(
+      chunks
+        .filter((chunk) => existing.get(chunk.id)?.embedding_status === 'ready')
+        .map((chunk) => chunk.id),
+    )
+    skipped = readyChunkIds.size
+    const chunksNeedingEmbeddings = chunks.filter((chunk) => !readyChunkIds.has(chunk.id))
+    const batch = chunksNeedingEmbeddings.slice(0, RAG_EMBEDDING_BATCH_SIZE)
 
+    for (const chunk of batch) {
       await upsertEmbedding({
         workspaceId: args.workspaceId,
         chunkId: chunk.id,
@@ -378,13 +382,16 @@ export async function embedRagManualKnowledgeSource(args: {
       failed += 1
     }
 
+    const remainingAfterBatch = Math.max(0, chunksNeedingEmbeddings.length - batch.length)
     const summary = summarize({
       chunksProcessed: chunks.length,
       embeddingsCreated: created,
       embeddingsSkipped: skipped,
       embeddingsFailed: failed,
       status: 'not_configured',
-      message: ragEmbeddingUserMessage(category),
+      message: remainingAfterBatch > 0
+        ? `${ragEmbeddingUserMessage(category)} ${remainingAfterBatch.toLocaleString()} chunks were not processed in this batch.`
+        : ragEmbeddingUserMessage(category),
       embeddingErrorCategory: category,
     })
     await updateSourceEmbeddingMetadata({
@@ -398,13 +405,17 @@ export async function embedRagManualKnowledgeSource(args: {
 
   let firstFailureCategory: RagEmbeddingErrorCategory | null = null
 
-  for (const chunk of chunks) {
-    const current = existing.get(chunk.id)
-    if (current?.embedding_status === 'ready') {
-      skipped += 1
-      continue
-    }
+  const readyChunkIds = new Set(
+    chunks
+      .filter((chunk) => existing.get(chunk.id)?.embedding_status === 'ready')
+      .map((chunk) => chunk.id),
+  )
+  skipped = readyChunkIds.size
+  const chunksNeedingEmbeddings = chunks.filter((chunk) => !readyChunkIds.has(chunk.id))
+  const batch = chunksNeedingEmbeddings.slice(0, RAG_EMBEDDING_BATCH_SIZE)
+  const remainingAfterBatch = Math.max(0, chunksNeedingEmbeddings.length - batch.length)
 
+  for (const chunk of batch) {
     try {
       const embedding = await generateRagEmbedding(chunk.chunk_text, providerConfig.config)
       if (embedding.length !== RAG_EMBEDDING_DIMENSIONS) {
@@ -436,12 +447,15 @@ export async function embedRagManualKnowledgeSource(args: {
   }
 
   const status: EmbeddingRunStatus =
-    failed === 0
+    failed === 0 && remainingAfterBatch === 0
       ? 'ready'
       : created > 0 || skipped > 0
         ? 'partial'
         : 'failed'
 
+  const remainingMessage = remainingAfterBatch > 0
+    ? ` ${remainingAfterBatch.toLocaleString()} chunks remain. Click Prepare for Chatbot again to continue remaining chunks.`
+    : ''
   const summary = summarize({
     chunksProcessed: chunks.length,
     embeddingsCreated: created,
@@ -450,6 +464,8 @@ export async function embedRagManualKnowledgeSource(args: {
     status,
     message: status === 'ready'
       ? 'Knowledge is prepared for chatbot.'
+      : status === 'partial' && remainingAfterBatch > 0
+        ? `Prepared ${created.toLocaleString()} embeddings in this batch.${remainingMessage}`
       : ragEmbeddingUserMessage(firstFailureCategory),
     embeddingErrorCategory: status === 'ready' ? null : firstFailureCategory,
   })

@@ -56,17 +56,21 @@ describe('RAG manual embedding generation', () => {
   it('stores embeddings in rag_embeddings and prevents duplicate ready embeddings', () => {
     expect(embeddingStore).toContain("from('rag_embeddings')")
     expect(embeddingStore).toContain("onConflict: 'chunk_id,embedding_model'")
-    expect(embeddingStore).toContain("current?.embedding_status === 'ready'")
+    expect(embeddingStore).toContain("embedding_status === 'ready'")
+    expect(embeddingStore).toContain('readyChunkIds')
     expect(embeddingStore).toContain('embeddingsSkipped')
     expect(embeddingStore).toContain("embedding_status: args.status")
   })
 
-  it('keeps save/import chunk-only by default while still embedding every chunk when manually prepared', () => {
+  it('keeps save/import chunk-only by default while preparing embeddings in resumable batches', () => {
     expect(embeddingStore).toContain('RAG_AUTO_EMBED_CHUNK_LIMIT = 0')
+    expect(embeddingStore).toContain('RAG_EMBEDDING_BATCH_SIZE = 50')
     expect(embeddingStore).toContain('shouldAutoEmbedRagKnowledge')
     expect(embeddingStore).toContain('createSkippedRagEmbeddingSummary')
     expect(embeddingStore).toContain('RAG_AUTO_EMBED_CHUNK_LIMIT > 0')
-    expect(embeddingStore).toContain('for (const chunk of chunks)')
+    expect(embeddingStore).toContain('chunksNeedingEmbeddings.slice(0, RAG_EMBEDDING_BATCH_SIZE)')
+    expect(embeddingStore).toContain('remainingAfterBatch')
+    expect(embeddingStore).toContain('Click Prepare for Chatbot again to continue remaining chunks')
     expect(embeddingStore).not.toContain('.slice(0, 160)')
   })
 
@@ -100,6 +104,7 @@ describe('RAG manual embedding generation', () => {
   it('adds customer-facing preparation controls and status counts without vectors or debug output', () => {
     expect(page).toContain('Prepare for Chatbot')
     expect(page).toContain('Use Prepare for Chatbot when you are ready to create embeddings')
+    expect(page).toContain('Preparing embeddings in batches...')
     expect(page).toContain('provider API cost')
     expect(page).toContain('Prepare for Chatbot')
     expect(page).toContain('createProgressFromEmbeddingSummary')

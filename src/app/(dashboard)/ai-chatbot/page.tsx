@@ -211,7 +211,7 @@ const knowledgeProgressSteps: Record<KnowledgeProgressKind, ReadonlyArray<string
     'Cleaning content...',
     'Creating chunks...',
     'Chunks ready',
-    'Preparing embeddings...',
+    'Preparing embeddings in batches...',
     'Ready for chatbot',
   ],
   website: [
@@ -220,12 +220,12 @@ const knowledgeProgressSteps: Record<KnowledgeProgressKind, ReadonlyArray<string
     'Cleaning content...',
     'Creating chunks...',
     'Chunks ready',
-    'Preparing embeddings...',
+    'Preparing embeddings in batches...',
     'Ready for chatbot',
   ],
   prepare: [
     'Checking chunks...',
-    'Preparing embeddings...',
+    'Preparing embeddings in batches...',
     'Ready for chatbot',
   ],
 }
@@ -252,7 +252,7 @@ function createProgressFromEmbeddingSummary(
 ): KnowledgeProgressState {
   const steps = knowledgeProgressSteps[kind]
   const chunkReadyStep = steps.indexOf('Chunks ready')
-  const preparingStep = steps.indexOf('Preparing embeddings...')
+  const preparingStep = steps.indexOf('Preparing embeddings in batches...')
   const message = cleanOperationMessage(summary?.userMessage ?? summary?.message, fallbackMessage)
 
   if (summary?.status === 'ready') {

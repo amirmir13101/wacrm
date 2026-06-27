@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import {
+  DEFAULT_RAG_MAX_CHUNKS_PER_SOURCE,
   RAG_CHUNK_OVERLAP_CHARS,
   createRagChunks,
   maxRagChunksForContent,
@@ -89,8 +90,29 @@ describe('RAG manual knowledge management', () => {
 
   it('aligns safe max chunks with the full 500,000 character knowledge limit', () => {
     expect(RAG_CHUNK_OVERLAP_CHARS).toBeGreaterThanOrEqual(100)
+    expect(DEFAULT_RAG_MAX_CHUNKS_PER_SOURCE).toBe(2_000)
     expect(maxRagChunksForContent(RAG_KNOWLEDGE_CHARACTER_LIMIT)).toBeGreaterThan(500)
     expect(maxRagChunksForContent(RAG_KNOWLEDGE_CHARACTER_LIMIT)).toBeGreaterThan(160)
+  })
+
+  it('allows normal large website imports that need 466 chunks', () => {
+    const content = Array.from({ length: 466 }, (_item, index) =>
+      `# Imported Page ${index + 1}\n\nUseful business fact ${index + 1}: support, service, policy, pricing, plan, contact, location, and product details are preserved for chatbot answers.`,
+    ).join('\n\n')
+
+    const chunks = createRagChunks(content)
+
+    expect(chunks).toHaveLength(466)
+    expect(chunks.at(465)?.content).toContain('Useful business fact 466')
+  })
+
+  it('keeps only a high emergency cap for abnormal chunk counts', () => {
+    const content = Array.from({ length: 2_001 }, (_item, index) =>
+      `# Tiny Imported Section ${index + 1}\n\nImportant fact ${index + 1}.`,
+    ).join('\n\n')
+
+    expect(() => createRagChunks(content)).toThrow('above the emergency limit of 2,000')
+    expect(() => createRagChunks(content)).not.toThrow('Shorten the content or split it')
   })
 
   it('cleans dangerous control characters and rejects empty or oversized content', () => {
@@ -126,7 +148,7 @@ describe('RAG manual knowledge management', () => {
     expect(page).toContain('Saving knowledge...')
     expect(page).toContain('Cleaning content...')
     expect(page).toContain('Creating chunks...')
-    expect(page).toContain('Preparing embeddings...')
+    expect(page).toContain('Preparing embeddings in batches...')
     expect(page).toContain('Ready for chatbot')
     expect(page).toContain('animate-spin')
 

@@ -2,7 +2,15 @@ import type { RagChunk } from './types'
 
 export const RAG_KNOWLEDGE_CHARACTER_LIMIT = 500_000
 export const RAG_CHUNK_OVERLAP_CHARS = 150
-export const RAG_MAX_SAFE_CHUNKS_PER_SOURCE = 1_200
+export const DEFAULT_RAG_MAX_CHUNKS_PER_SOURCE = 2_000
+
+export function ragMaxChunksPerSource(): number {
+  const configured = Number(process.env.RAG_MAX_CHUNKS_PER_SOURCE)
+  if (Number.isFinite(configured) && configured >= 500) {
+    return Math.floor(configured)
+  }
+  return DEFAULT_RAG_MAX_CHUNKS_PER_SOURCE
+}
 
 export const DEFAULT_RAG_CHUNK_OPTIONS = {
   maxChunkLength: 1000,
@@ -35,13 +43,9 @@ export function maxRagChunksForContent(
   contentLength: number,
   options: RagChunkOptions = {},
 ): number {
-  const maxChunkLength = options.maxChunkLength ?? DEFAULT_RAG_CHUNK_OPTIONS.maxChunkLength
-  const estimatedMinimumChunkSize = Math.max(1, Math.floor(maxChunkLength / 2))
-  const estimatedChunks = Math.ceil(Math.max(contentLength, 1) / estimatedMinimumChunkSize)
-  return Math.min(
-    RAG_MAX_SAFE_CHUNKS_PER_SOURCE,
-    Math.max(25, estimatedChunks + 25),
-  )
+  void contentLength
+  void options
+  return ragMaxChunksPerSource()
 }
 
 function trailingOverlap(value: string, overlapChars: number): string {
@@ -151,7 +155,7 @@ export function createRagChunks(
 
   if (packedChunks.length > maxChunksPerSource) {
     throw new Error(
-      `Knowledge content needs ${packedChunks.length.toLocaleString()} chunks, which exceeds the safe limit of ${maxChunksPerSource.toLocaleString()} chunks. Shorten the content or split it into multiple knowledge sources.`,
+      `This knowledge source is unusually large and needs ${packedChunks.length.toLocaleString()} chunks, above the emergency limit of ${maxChunksPerSource.toLocaleString()}. Please reduce the content or split it into multiple knowledge sources.`,
     )
   }
 
