@@ -306,6 +306,139 @@ describe('RAG Firecrawl website import', () => {
     expect(imported.content).not.toContain('data:image/png;base64')
   })
 
+  it('removes Elementor, accessibility, sitemap, chat widget, nav JSON, and canvas fragments from imported knowledge', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://example.com/',
+      pageLimit: 5,
+      client: {
+        crawl: async () => [
+          {
+            markdown: [
+              '# VPS Plans',
+              'Sitemap',
+              'Text',
+              'Visual',
+              'Opens Chat This icon Opens the chat window',
+              'Ally by Elementor go.elementor.com',
+              '"library":"fa-solid"},"toggle":"burger"}" data-widget_type="nav-menu.default">',
+              'p.t+=p.speed',
+              'if(p.t>1)p.t=0',
+              'landPoly(c)',
+              '})();',
+              'Wagon VPS x12 current price is $9.20/mo with 12GB RAM, 6 Core CPU, and 240GB NVMe Storage.',
+            ].join('\n'),
+            rawHtml: `
+              <html>
+                <body>
+                  <nav data-widget_type="nav-menu.default">{"library":"fa-solid"},"toggle":"burger"}</nav>
+                  <main>
+                    <h1>VPS Plans</h1>
+                    <script>p.t+=p.speed; if(p.t>1)p.t=0; landPoly(c);</script>
+                    <section class="pricing-card">
+                      <h2>Wagon VPS x12</h2>
+                      <p>Starting at: $9.20/mo</p>
+                      <p><s>$11.50</s> 20% OFF</p>
+                      <p>12GB RAM, 6 Core CPU, 240GB NVMe Storage</p>
+                    </section>
+                  </main>
+                </body>
+              </html>
+            `,
+            metadata: { title: 'VPS Plans', sourceURL: 'https://example.com/vps/' },
+          },
+        ],
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    expect(imported.content).toContain('Wagon VPS x12')
+    expect(imported.content).toContain('$9.20/mo')
+    expect(imported.content).toContain('12GB RAM')
+    expect(imported.content).not.toContain('Sitemap')
+    expect(imported.content).not.toContain('Opens Chat This icon')
+    expect(imported.content).not.toContain('Ally by Elementor')
+    expect(imported.content).not.toContain('go.elementor.com')
+    expect(imported.content).not.toContain('data-widget_type')
+    expect(imported.content).not.toContain('fa-solid')
+    expect(imported.content).not.toContain('p.t+=')
+    expect(imported.content).not.toContain('landPoly')
+  })
+
+  it('classifies terms, privacy, and refund pages only as policies even when policy text mentions prices', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://example.com/',
+      pageLimit: 10,
+      client: {
+        crawl: async () => [
+          {
+            markdown: '# Terms and Conditions\n\nRefunds are handled according to billing terms. Prices may change at renewal.',
+            metadata: { title: 'Terms and Conditions', sourceURL: 'https://example.com/terms-and-conditions/' },
+          },
+          {
+            markdown: '# Refund Policy\n\nCustomers may cancel according to the refund policy. Plan pricing is not refunded after service use.',
+            metadata: { title: 'Refund Policy', sourceURL: 'https://example.com/refund-policy/' },
+          },
+        ],
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    expect(imported.content).toContain('# Policies')
+    expect(imported.content).toContain('## Page: Terms and Conditions')
+    expect(imported.content).toContain('## Page: Refund Policy')
+    expect(imported.content).not.toContain('# Plans / Packages / Pricing\n\n## Page: Terms and Conditions')
+    expect(imported.content).not.toContain('# Plans / Packages / Pricing\n\n## Page: Refund Policy')
+  })
+
+  it('keeps legacy DOM pricing cards as one clean block with plan, current/original price, discount, specs, and order link', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://example.com/',
+      pageLimit: 5,
+      client: {
+        crawl: async () => [
+          {
+            rawHtml: `
+              <html><body>
+                <main>
+                  <section class="pricing-grid">
+                    <article class="plan-card">
+                      <h2>Ultimate Hosting</h2>
+                      <p>Starting at:</p>
+                      <p>$2.70/mo</p>
+                      <p><del>$3.00</del> 10% OFF</p>
+                      <ul>
+                        <li>Unlimited disk space</li>
+                        <li>Unlimited email accounts</li>
+                        <li>Free SSL and backups</li>
+                      </ul>
+                      <a href="/order/ultimate-hosting">Order Now</a>
+                    </article>
+                  </section>
+                </main>
+                <footer><a href="/privacy-policy/">Privacy Policy</a><a href="/refund-policy/">Refund Policy</a></footer>
+              </body></html>
+            `,
+            metadata: { title: 'Web Hosting Plans', sourceURL: 'https://example.com/web-hosting/' },
+          },
+        ],
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    const planIndex = imported.content.indexOf('Ultimate Hosting')
+    const planBlock = imported.content.slice(planIndex, planIndex + 800)
+    expect(planBlock).toContain('$2.70/mo')
+    expect(planBlock).toContain('original price $3.00')
+    expect(planBlock).toContain('Unlimited disk space')
+    expect(planBlock).toContain('Unlimited email accounts')
+    expect(planBlock).toContain('Free SSL and backups')
+    expect(planBlock).toContain('Order Now')
+    expect(imported.content).not.toContain('# Policies\n\n## Page: Web Hosting Plans')
+  })
+
   it('keeps tables and business categories generic for restaurant, clinic, and ecommerce examples', async () => {
     const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
       startUrl: 'https://business.example/',

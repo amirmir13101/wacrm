@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { load } from 'cheerio'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { decrypt } from '@/lib/whatsapp/encryption'
@@ -79,15 +80,18 @@ const SKIP_FILE_EXTENSIONS = [
 ]
 
 const JUNK_LINE_PATTERNS = [
+  /^sitemap$/i,
+  /^text$/i,
+  /^visual$/i,
   /\b(skip to content|toggle navigation|open menu|close menu|menu|hamburger)\b/i,
-  /\b(accessibility|accessibility widget|increase text|decrease text|grayscale|high contrast|negative contrast|light background|readable font|reset all)\b/i,
-  /\b(close|loading|hide|reset|spinner|please wait)\b/i,
+  /\b(accessibility|accessibility widget|increase text|decrease text|grayscale|high contrast|negative contrast|light background|readable font|reset all|ally by elementor|go\.elementor\.com)\b/i,
+  /\b(opens chat|opens the chat window|chat this icon|close|loading|hide|reset|spinner|please wait)\b/i,
   /\b(cookie|cookies|accept all|reject all|privacy preferences)\b/i,
   /\b(newsletter|subscribe to our newsletter|enter your email)\b/i,
   /\b(lorem ipsum|hello world|welcome to wordpress|uncategorized)\b/i,
   /\b(add to cart|view cart|checkout|coupon code|billing details)\b/i,
   /\b(username|password|remember me|forgot password|log in|register)\b/i,
-  /\b(function\s*\(|var\s+|let\s+|const\s+|=>|document\.|window\.|canvas|getcontext|requestanimationframe|ctx\.|elementor|wp-json)\b/i,
+  /\b(function\s*\(|var\s+|let\s+|const\s+|=>|document\.|window\.|canvas|getcontext|requestanimationframe|ctx\.|elementor|wp-json|data-widget_type|fa-solid|landpoly|p\.t\s*[+>]?=)\b/i,
 ]
 
 interface RagFirecrawlSettingsRow {
@@ -529,7 +533,11 @@ function extractWebsiteKnowledgeText(html: string): string {
   return cleanRagKnowledgeContent([
     extractHtmlMetadataText(html),
     extractJsonLdText(html),
+    extractBreadcrumbsText(html),
     extractTablesText(html),
+    extractBusinessCardsText(html),
+    extractBusinessDetailsText(html),
+    extractFaqSectionsText(html),
     extractContactLinksText(html),
     extractFooterText(html),
     extractHeadingHierarchyText(html),
@@ -538,34 +546,41 @@ function extractWebsiteKnowledgeText(html: string): string {
 }
 
 function readHtmlTitle(html: string): string | null {
-  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
-  return match?.[1] ? decodeHtmlEntities(stripTags(match[1])).trim().slice(0, 160) : null
+  const $ = load(html)
+  return normalizeOptionalText($('title').first().text(), 160)
 }
 
 function extractHtmlMetadataText(html: string): string {
+  const $ = load(html)
   const title = readHtmlTitle(html)
-  const description = readMetaContent(html, 'description')
-  const canonical = html.match(/<link[^>]+rel=["'][^"']*canonical[^"']*["'][^>]*>/i)?.[0]
-  const canonicalHref = canonical?.match(/href=["']([^"']+)["']/i)?.[1]
+  const description = readMetaContent(html, 'description') ?? readMetaContent(html, 'og:description')
+  const canonicalHref = $('link[rel~="canonical" i]').first().attr('href')
+  const openGraph = new Map<string, string>()
+  $('meta[property^="og:" i], meta[name^="og:" i]').each((_index, element) => {
+    const property = ($(element).attr('property') ?? $(element).attr('name') ?? '').trim().toLowerCase()
+    const content = normalizeOptionalText($(element).attr('content'), 500)
+    if (property && content && !openGraph.has(property)) openGraph.set(property, content)
+  })
   const lines = [
     title ? `Title: ${title}` : '',
     description ? `Description: ${description}` : '',
     canonicalHref ? `Canonical URL: ${decodeHtmlEntities(canonicalHref)}` : '',
+    ...Array.from(openGraph.entries()).map(([key, value]) => `${humanizeLabel(key)}: ${value}`),
   ].filter(Boolean)
   return lines.length ? ['## Page Metadata', ...lines].join('\n') : ''
 }
 
 function readMetaContent(html: string, name: string): string | null {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const regex = new RegExp(`<meta[^>]+(?:name|property)=["']${escaped}["'][^>]*>`, 'i')
-  const tag = html.match(regex)?.[0]
-  const content = tag?.match(/content=["']([^"']+)["']/i)?.[1]
-  return content ? decodeHtmlEntities(content).trim().slice(0, 500) : null
+  const $ = load(html)
+  const content = $(`meta[name="${name}" i], meta[property="${name}" i]`).first().attr('content')
+  return normalizeOptionalText(content, 500)
 }
 
 function extractJsonLdText(html: string): string {
-  const blocks = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi))
-    .map((match) => match[1]?.trim())
+  const $ = load(html)
+  const blocks = $('script[type="application/ld+json" i]')
+    .map((_index, element) => $(element).text().trim())
+    .get()
     .filter((value): value is string => Boolean(value))
     .slice(0, 8)
 
@@ -579,6 +594,28 @@ function extractJsonLdText(html: string): string {
     }
   }
   return lines.length ? ['## Structured Website Data', ...lines].join('\n') : ''
+}
+
+function extractBreadcrumbsText(html: string): string {
+  const $ = load(html)
+  const trails: string[] = []
+  const selectors = [
+    '[aria-label*="breadcrumb" i]',
+    '[class*="breadcrumb" i]',
+    '[id*="breadcrumb" i]',
+    '[itemtype*="BreadcrumbList" i]',
+  ]
+  $(selectors.join(', ')).each((_index, element) => {
+    const items = $(element)
+      .find('a, li, [itemprop="name"]')
+      .map((_itemIndex, item) => normalizeExtractedHtmlText($(item).text()))
+      .get()
+      .filter(Boolean)
+    const trail = Array.from(new Set(items)).join(' > ')
+    if (trail) trails.push(trail)
+  })
+  const unique = trails.filter(uniqueByLowercase).slice(0, 10)
+  return unique.length ? ['## Breadcrumbs', ...unique.map((trail) => `- ${trail}`)].join('\n') : ''
 }
 
 function flattenStructuredJsonLd(value: unknown, prefix = ''): string[] {
@@ -608,69 +645,175 @@ function scalarJsonLd(value: unknown): string | null {
 }
 
 function extractTablesText(html: string): string {
-  const tables = Array.from(html.matchAll(/<table[\s\S]*?<\/table>/gi))
-    .map((match, index) => {
-      const table = match[0]
-      const rows = Array.from(table.matchAll(/<tr[\s\S]*?<\/tr>/gi))
-        .map((rowMatch) => Array.from(rowMatch[0].matchAll(/<(?:th|td)[^>]*>([\s\S]*?)<\/(?:th|td)>/gi))
-          .map((cell) => cleanHtmlToText(cell[1] ?? '').replace(/\n+/g, ' / '))
-          .filter(Boolean))
-        .filter((row) => row.length > 0)
-      if (rows.length === 0) return ''
-      const width = Math.max(...rows.map((row) => row.length))
-      const normalized = rows.map((row) => Array.from({ length: width }, (_item, rowIndex) => row[rowIndex] ?? ''))
-      const header = normalized[0]
-      const separator = header.map(() => '---')
-      return [`### Table ${index + 1}`, ...[header, separator, ...normalized.slice(1)].map((row) => `| ${row.join(' | ')} |`)].join('\n')
+  const $ = load(html)
+  const tables = $('table')
+    .map((index, element) => {
+      const markdown = tableHtmlToMarkdown($.html(element) ?? '')
+      return markdown ? `### Table ${index + 1}\n${markdown}` : ''
     })
+    .get()
     .filter(Boolean)
     .slice(0, 12)
   return tables.length ? ['## Structured Tables', ...tables].join('\n\n') : ''
 }
 
+function extractBusinessCardsText(html: string): string {
+  const attributeCards = extractElementsByAttributeKeyword(html, [
+    'pricing',
+    'price',
+    'plan',
+    'package',
+    'tier',
+    'product',
+    'service',
+    'menu',
+    'dish',
+    'food',
+    'course',
+    'program',
+    'treatment',
+    'appointment',
+    'booking',
+    'offer',
+    'deal',
+    'catalog',
+    'item',
+    'ncard',
+    'ngrid',
+    'npname',
+    'np-price',
+    'server',
+    'hosting',
+  ])
+  const repeatedCards = extractRepeatedContentBlocks(html)
+  const cards = [
+    ...repeatedCards.map((cardHtml) => ({ html: cardHtml, structurallyDetected: true })),
+    ...attributeCards.map((cardHtml) => ({ html: cardHtml, structurallyDetected: false })),
+  ]
+    .map(({ html: cardHtml, structurallyDetected }) => ({
+      text: structureBusinessCardText(normalizeExtractedHtmlText(cleanHtmlToText(cardHtml))),
+      structurallyDetected,
+    }))
+    .filter(({ text, structurallyDetected }) => text.length >= 30 && (structurallyDetected || looksLikeBusinessCardContent(text)))
+    .map(({ text }) => text)
+    .filter(uniqueByLowercase)
+    .slice(0, 80)
+
+  return cards.length ? ['## Products, Services, Plans and Pricing', ...cards].join('\n\n') : ''
+}
+
+function extractBusinessDetailsText(html: string): string {
+  const $ = load(html)
+  const sections = [
+    {
+      heading: '## Business Hours and Booking',
+      keywords: ['hours', 'opening', 'schedule', 'appointment', 'booking', 'reservation'],
+    },
+    {
+      heading: '## Contact and Locations',
+      keywords: ['contact', 'location', 'address', 'branch', 'phone', 'email', 'map'],
+    },
+    {
+      heading: '## Delivery, Returns and Policies',
+      keywords: ['delivery', 'shipping', 'return', 'refund', 'policy', 'terms', 'warranty', 'cancellation'],
+    },
+  ]
+
+  return sections
+    .map(({ heading, keywords }) => {
+      const text: string[] = []
+      $('[class], [id]').each((_index, element) => {
+        const attributes = `${$(element).attr('class') ?? ''} ${$(element).attr('id') ?? ''}`.toLowerCase()
+        if (!keywords.some((keyword) => attributes.includes(keyword))) return
+        const value = normalizeExtractedHtmlText($(element).text())
+        if (value.length >= 30) text.push(value)
+      })
+      const uniqueText = text.filter(uniqueByLowercase).slice(0, 12)
+      return uniqueText.length ? [heading, ...uniqueText].join('\n\n') : ''
+    })
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+function extractFaqSectionsText(html: string): string {
+  const $ = load(html)
+  const faqValues: string[] = []
+  $('details').each((_index, element) => {
+    const value = normalizeExtractedHtmlText($(element).text())
+    if (value) faqValues.push(value)
+  })
+  $('[class], [id]').each((_index, element) => {
+    const attributes = `${$(element).attr('class') ?? ''} ${$(element).attr('id') ?? ''}`.toLowerCase()
+    if (!/(faq|accordion|question|answer)/.test(attributes)) return
+    const value = normalizeExtractedHtmlText($(element).text())
+    if (value) faqValues.push(value)
+  })
+  const faqs = faqValues.filter((text) => text.length >= 40).filter(uniqueByLowercase).slice(0, 30)
+  return faqs.length ? ['## FAQs', ...faqs.map((faq, index) => `### FAQ section ${index + 1}\n${faq}`)].join('\n\n') : ''
+}
+
 function extractContactLinksText(html: string): string {
-  const links = Array.from(html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi))
+  const $ = load(html)
   const lines = new Set<string>()
-  for (const [, href = '', labelHtml = ''] of links) {
-    const label = cleanHtmlToText(labelHtml)
+  $('a[href]').each((_index, element) => {
+    const href = $(element).attr('href') ?? ''
+    const label = normalizeExtractedHtmlText($(element).text())
     if (/^mailto:/i.test(href)) lines.add(`- Email: ${label ? `${label}: ` : ''}${href.replace(/^mailto:/i, '').split('?')[0]}`)
     if (/^tel:/i.test(href)) lines.add(`- Phone: ${label ? `${label}: ` : ''}${href.replace(/^tel:/i, '')}`)
     if (/wa\.me|whatsapp/i.test(href)) lines.add(`- WhatsApp: ${label ? `${label}: ` : ''}${href}`)
-  }
+  })
   return lines.size ? ['## Contact Links', ...Array.from(lines)].join('\n') : ''
 }
 
 function extractHtmlLinks(html: string, startUrl: string): ReadonlyArray<StructuredLink> {
-  return Array.from(html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi))
-    .map((match) => {
-      const rawUrl = match[1] ?? ''
+  const $ = load(html)
+  return $('a[href]')
+    .map((_index, element) => {
+      const rawUrl = $(element).attr('href') ?? ''
       const normalized = normalizeWebsiteCandidateUrl(rawUrl, startUrl) ?? rawUrl
-      const label = cleanHtmlToText(match[2] ?? '').slice(0, 160) || null
+      const label = normalizeExtractedHtmlText($(element).text()).slice(0, 160) || null
       return {
         url: normalized,
         label,
         type: classifyLink(normalized, label),
       } satisfies StructuredLink
     })
+    .get()
     .filter((link) => link.type !== 'asset')
     .filter((link, index, values) => values.findIndex((item) => item.url === link.url && item.type === link.type) === index)
     .slice(0, 300)
 }
 
 function extractFooterText(html: string): string {
-  const footers = Array.from(html.matchAll(/<footer[\s\S]*?<\/footer>/gi))
-    .map((match) => cleanHtmlToText(match[0]).slice(0, 6000))
+  const $ = load(html)
+  const footers = $('footer')
+    .map((_index, element) => {
+      const footer = $(element).clone()
+      footer.find('script, style, svg, form, button, iframe').remove()
+      footer.find('br').replaceWith('\n')
+      footer.find('p, div, section, li, address, time').each((_childIndex, child) => {
+        $(child).append('\n')
+      })
+      return normalizeExtractedHtmlText(footer.text()).slice(0, 6000)
+    })
+    .get()
     .filter((value) => value.length >= 20)
+    .filter(uniqueByLowercase)
     .slice(0, 4)
   return footers.length ? ['## Footer Information', ...footers].join('\n\n') : ''
 }
 
 function extractHeadingHierarchyText(html: string): string {
-  const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? html
-  const nodes = Array.from(body.matchAll(/<(h[1-6]|p|li|address|time|summary)[^>]*>([\s\S]*?)<\/\1>/gi))
-    .map((match) => {
-      const tag = match[1]?.toLowerCase() ?? ''
-      const text = cleanHtmlToText(match[2] ?? '')
+  const $ = load(html)
+  const scope = $('main').first().length ? $('main').first().clone() : $('body').first().clone()
+  scope.find('script, style, noscript, svg, nav, header, footer, aside, form, button, iframe').remove()
+  const nodes = scope
+    .find('h1, h2, h3, h4, h5, h6, p, li, dt, dd, address, time, figcaption, summary')
+    .map((_index, element) => {
+      const node = $(element)
+      if (node.is('p, li, dt, dd') && node.parents('p, li, dt, dd').length > 0) return ''
+      const tag = element.type === 'tag' ? element.name.toLowerCase() : ''
+      const text = normalizeExtractedHtmlText(node.text())
       if (!text || text.length < 2) return ''
       if (/^h[1-6]$/.test(tag)) {
         const level = Math.min(6, Math.max(2, Number(tag.slice(1)) + 1))
@@ -678,6 +821,7 @@ function extractHeadingHierarchyText(html: string): string {
       }
       return text
     })
+    .get()
     .filter(Boolean)
     .filter(uniqueByLowercase)
     .slice(0, 500)
@@ -685,23 +829,42 @@ function extractHeadingHierarchyText(html: string): string {
 }
 
 function cleanHtmlToText(html: string): string {
-  return decodeHtmlEntities(
-    html
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-      .replace(/<(br|\/p|\/div|\/section|\/article|\/li|\/tr|h[1-6])\b[^>]*>/gi, '\n')
-      .replace(/<[^>]+>/g, ' '),
-  )
+  const $ = load(html)
+  $('script, style, noscript, svg, head, nav, header, footer, aside, form, button, iframe').remove()
+  $('del, s, strike, [style*="line-through" i]').each((_index, element) => {
+    const text = normalizeExtractedHtmlText($(element).text())
+    if (!text || !/(\$|£|€|₹|rs\.?|pkr|usd|eur|gbp)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:usd|eur|gbp|pkr)/i.test(text)) return
+    $(element).text(` original price ${text} `)
+  })
+  $('br').replaceWith('\n')
+  $('p, div, section, article, li, h1, h2, h3, h4, h5, h6, tr').each((_index, element) => {
+    $(element).append('\n')
+  })
+  return normalizeExtractedHtmlText($.root().text())
+}
+
+function normalizeExtractedHtmlText(value: string): string {
+  const lines = decodeHtmlEntities(value)
+    .replace(/\u00a0/g, ' ')
     .split(/\n+/)
     .map((line) => line.replace(/\s+/g, ' ').trim())
     .filter((line) => line.length > 1)
-    .filter(uniqueByLowercase)
-    .join('\n')
+
+  const seen = new Set<string>()
+  const uniqueLines: string[] = []
+  for (const line of lines) {
+    const key = line.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    uniqueLines.push(line)
+  }
+  return uniqueLines.join('\n').trim()
 }
 
-function stripTags(value: string): string {
-  return value.replace(/<[^>]+>/g, ' ')
+function normalizeOptionalText(value: string | null | undefined, maxLength: number): string | null {
+  if (!value) return null
+  const normalized = normalizeExtractedHtmlText(value)
+  return normalized ? normalized.slice(0, maxLength) : null
 }
 
 function decodeHtmlEntities(value: string): string {
@@ -720,6 +883,191 @@ function humanizeLabel(value: string): string {
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function tableHtmlToMarkdown(tableHtml: string): string {
+  const $ = load(tableHtml)
+  const rows: string[][] = []
+  $('tr').each((_rowIndex, rowElement) => {
+    const cells: string[] = []
+    $(rowElement).children('th, td').each((_cellIndex, cellElement) => {
+      const value = markdownCellText($.html(cellElement) ?? '')
+      if (value) cells.push(value)
+    })
+    if (cells.length > 0) rows.push(cells)
+  })
+
+  if (rows.length === 0) return ''
+  const width = Math.max(...rows.map((row) => row.length))
+  const normalizedRows = rows.map((row) => Array.from({ length: width }, (_item, index) => row[index] ?? ''))
+  const header = normalizedRows[0] ?? []
+  const separator = header.map((cell) => (looksLikePriceHeader(cell) ? '---:' : '---'))
+  const body = normalizedRows.slice(1)
+
+  return [header, separator, ...body]
+    .map((row) => `| ${row.map((cell) => cell || ' ').join(' | ')} |`)
+    .join('\n')
+}
+
+function markdownCellText(html: string): string {
+  return normalizeExtractedHtmlText(cleanHtmlToText(html))
+    .replace(/\n+/g, '<br>')
+    .replace(/\|/g, '\\|')
+    .trim()
+}
+
+function looksLikePriceHeader(value: string): boolean {
+  return /\b(price|amount|cost|fee|rate|monthly|yearly|annual|billing)\b/i.test(value)
+}
+
+function extractElementsByAttributeKeyword(html: string, keywords: readonly string[]): string[] {
+  const $ = load(html)
+  const results: string[] = []
+  $('[class], [id]').each((_index, element) => {
+    const attributes = `${$(element).attr('class') ?? ''} ${$(element).attr('id') ?? ''}`.toLowerCase()
+    if (!keywords.some((keyword) => attributes.includes(keyword))) return
+    const outerHtml = $.html(element)
+    if (outerHtml) results.push(outerHtml)
+  })
+  return results
+}
+
+function extractRepeatedContentBlocks(html: string): string[] {
+  const $ = load(html)
+  const results: string[] = []
+  const seen = new Set<string>()
+
+  $('main, section, article, div, ul, ol').each((_parentIndex, parentElement) => {
+    const children = $(parentElement).children('article, section, div, li')
+    if (children.length < 2 || children.length > 30) return
+
+    const groups = new Map<string, string[]>()
+    children.each((_childIndex, childElement) => {
+      const child = $(childElement)
+      const text = normalizeExtractedHtmlText(child.text())
+      if (text.length < 30 || text.length > 1800) return
+      const heading = normalizeExtractedHtmlText(child.find('h1, h2, h3, h4, h5, h6, [role="heading"]').first().text())
+      const detailCount = child.find('p, li, dt, dd, time, address, strong').length
+      if (!heading || detailCount < 1) return
+
+      const directShape = child
+        .children()
+        .map((_index, element) => (element.type === 'tag' ? element.name.toLowerCase() : ''))
+        .get()
+        .filter(Boolean)
+        .slice(0, 8)
+        .join(',')
+      const tagName = childElement.type === 'tag' ? childElement.name.toLowerCase() : ''
+      const signature = `${tagName}|${directShape}|${Math.min(detailCount, 5)}`
+      const values = groups.get(signature) ?? []
+      const outerHtml = $.html(childElement)
+      if (outerHtml) values.push(outerHtml)
+      groups.set(signature, values)
+    })
+
+    for (const values of groups.values()) {
+      if (values.length < 2) continue
+      for (const value of values) {
+        const key = normalizeExtractedHtmlText(cleanHtmlToText(value)).toLowerCase()
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        results.push(value)
+      }
+    }
+  })
+
+  return results.slice(0, 80)
+}
+
+function structureBusinessCardText(text: string): string {
+  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+  if (lines.length === 0) return ''
+
+  const structured: string[] = []
+  let index = 0
+  const heading = lines[index]
+  if (heading && heading.length <= 80) {
+    structured.push(`### ${heading}`)
+    index += 1
+  }
+
+  while (index < lines.length) {
+    const current = lines[index] ?? ''
+    const next = lines[index + 1] ?? ''
+    const afterNext = lines[index + 2] ?? ''
+    const inlinePrice = normalizeInlinePrice(current)
+
+    if (inlinePrice) {
+      structured.push(`- Price: ${inlinePrice}`)
+      index += 1
+      continue
+    }
+
+    if (isCurrencySymbol(current) && isAmount(next)) {
+      const period = isBillingPeriod(afterNext) ? afterNext : ''
+      structured.push(`- Price: ${current}${next}${period}`)
+      index += period ? 3 : 2
+      continue
+    }
+
+    if (isAmount(current) && isBillingPeriod(next)) {
+      structured.push(`- Price: ${current}${next}`)
+      index += 2
+      continue
+    }
+
+    if (looksLikePlanSpec(current)) {
+      structured.push(`- ${current}`)
+    } else if (!/^buy now|order now|get started|select plan|choose plan/i.test(current)) {
+      structured.push(current)
+    }
+    index += 1
+  }
+
+  return structured.join('\n')
+}
+
+function isCurrencySymbol(value: string): boolean {
+  return /^[$£€₹]$|^(rs\.?|pkr|usd)$/i.test(value.trim())
+}
+
+function isAmount(value: string): boolean {
+  return /^\d+(?:[.,]\d+)?$/.test(value.trim()) || /^[$£€₹]\s?\d+(?:[.,]\d+)?/i.test(value.trim())
+}
+
+function isBillingPeriod(value: string): boolean {
+  return /^\/?\s?(mo|month|monthly|yr|year|yearly|quarter|quarterly|semi-annual|semi annual|2-year|3-year)$/i.test(value.trim())
+}
+
+function looksLikePlanSpec(value: string): boolean {
+  return /\b(cpu|core|ram|gb|tb|mb|nvme|ssd|storage|bandwidth|traffic|backup|ssl|domain|database|email|workflow|execution|memory|includes?|serves?|serving|people|person|minutes?|hours?|duration|session|appointment|booking|required|delivery|shipping|size|weight|kg|ml|litre|liter|bed|bath|sq\.?\s?ft|location|branch|level|lessons?|classes?|weeks?|months?|network|port|ddos|root access)\b/i.test(value)
+}
+
+function normalizeInlinePrice(value: string): string | null {
+  const trimmed = value.trim()
+  const compact = trimmed.match(/^([$£€₹])\s*(\d+(?:[.,]\d+)?)\s*(\/?\s?(?:mo|month|monthly|yr|year|yearly|quarter|quarterly|semi-annual|semi annual|2-year|3-year))$/i)
+  if (compact) {
+    const period = compact[3]?.replace(/\s+/g, '') ?? ''
+    return `${compact[1]}${compact[2]}${period}`
+  }
+
+  const named = trimmed.match(/^(USD|PKR|Rs\.?)\s+(\d[\d,.]*)\s*(\/?\s?(?:mo|month|monthly|yr|year|yearly|quarter|quarterly|semi-annual|semi annual|2-year|3-year))?$/i)
+  if (named) {
+    return [named[1], named[2], named[3]?.replace(/\s+/g, '')].filter(Boolean).join(' ')
+  }
+
+  return null
+}
+
+function looksLikeBusinessCardContent(value: string): boolean {
+  return (
+    looksLikePricingContent(value) ||
+    /\b(product|service|menu|dish|course|program|treatment|appointment|booking|serves?|duration|delivery|shipping|return|sale|offer|cpu|ram|storage|server|hosting)\b/i.test(value)
+  )
+}
+
+function looksLikePricingContent(value: string): boolean {
+  return /(\$|£|€|₹|rs\.?|pkr|usd|month|monthly|year|yearly|annual|plan|package|price|discount|setup fee|included|features?)/i.test(value)
 }
 
 function hashContent(content: string): string {
@@ -794,6 +1142,17 @@ function lineLooksGlobalFact(value: string): boolean {
   return /(?:@|mailto:|tel:|wa\.me|whatsapp|phone|email|address|hours|company|registration|sales|support)/i.test(value)
 }
 
+function lineLooksHardJunk(value: string): boolean {
+  return (
+    /^sitemap$/i.test(value) ||
+    /^text$/i.test(value) ||
+    /^visual$/i.test(value) ||
+    /\b(opens chat|opens the chat window|chat this icon|ally by elementor|go\.elementor\.com)\b/i.test(value) ||
+    /\b(data-widget_type|fa-solid|nav-menu\.default|landpoly|p\.t\s*[+>]?=|requestanimationframe|ctx\.|getcontext)\b/i.test(value) ||
+    (/^[{}[\],:;"'`=<>/\\()._-]{3,}$/.test(value) && !lineLooksImportant(value))
+  )
+}
+
 function removeJunkFromContent(content: string): string {
   return cleanRagKnowledgeContent(content
     .replace(/data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/gi, ' ')
@@ -804,6 +1163,7 @@ function removeJunkFromContent(content: string): string {
     .map((line) => line.replace(/\s+/g, ' ').trim())
     .filter((line) => {
       if (!line) return false
+      if (lineLooksHardJunk(line)) return false
       if (line.length > 2_000 && !lineLooksImportant(line)) return false
       if (/^[{}[\],:;"'`=<>/\\()._-]{8,}$/.test(line)) return false
       if (JUNK_LINE_PATTERNS.some((pattern) => pattern.test(line)) && !lineLooksImportant(line)) return false
