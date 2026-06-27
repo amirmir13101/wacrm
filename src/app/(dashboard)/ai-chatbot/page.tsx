@@ -15,7 +15,6 @@ import {
   MessageSquare,
   Pencil,
   Send,
-  ShieldCheck,
   Sparkles,
   Trash2,
   XCircle,
@@ -41,8 +40,19 @@ interface ProviderView {
 interface FirecrawlView {
   readonly configured: boolean
   readonly maskedKey: string | null
+  readonly lastTestedAt: string | null
   readonly lastTestStatus: ConnectionStatus
   readonly lastTestError: string | null
+  readonly creditUsage?: FirecrawlCreditUsage | null
+}
+
+interface FirecrawlCreditUsage {
+  readonly remainingCredits: number | null
+  readonly totalCredits: number | null
+  readonly usedCredits: number | null
+  readonly plan: string | null
+  readonly limit: number | null
+  readonly lastUpdatedAt: string
 }
 
 interface RagStatusPayload {
@@ -393,6 +403,7 @@ export default function RagChatbotPage() {
   const [firecrawlSaving, setFirecrawlSaving] = useState(false)
   const [providerMessage, setProviderMessage] = useState<string | null>(null)
   const [firecrawlMessage, setFirecrawlMessage] = useState<string | null>(null)
+  const [firecrawlCredits, setFirecrawlCredits] = useState<FirecrawlCreditUsage | null>(null)
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSourceItem[]>([])
   const [knowledgeSourceType, setKnowledgeSourceType] = useState<'manual' | 'faq' | 'note' | 'website'>('manual')
   const [knowledgeTitle, setKnowledgeTitle] = useState('')
@@ -514,6 +525,7 @@ export default function RagChatbotPage() {
         setProvider(payload.provider.provider)
         setProviderBaseUrl(payload.provider.baseUrl ?? '')
         setProviderModel(payload.provider.chatModel ?? '')
+        setFirecrawlCredits(payload.firecrawl.creditUsage ?? null)
         setError(null)
       })
       .catch((loadError) => {
@@ -763,6 +775,7 @@ export default function RagChatbotPage() {
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'Firecrawl test failed.')
       setStatus((current) => current ? { ...current, firecrawl: payload.firecrawl } : current)
+      setFirecrawlCredits(payload.firecrawl?.creditUsage ?? null)
       setFirecrawlMessage(payload.message ?? 'Firecrawl settings checked.')
     } catch (testError) {
       setFirecrawlMessage(testError instanceof Error ? testError.message : 'Firecrawl test failed.')
@@ -848,6 +861,20 @@ export default function RagChatbotPage() {
 
       setWebsiteUrl('')
       setWebsiteImportStats(payload.stats ?? null)
+      setFirecrawlCredits((current) => {
+        const creditsUsed = typeof payload.stats?.creditsUsed === 'number' ? payload.stats.creditsUsed : null
+        if (creditsUsed === null && current === null) return null
+        return {
+          remainingCredits: current?.remainingCredits ?? null,
+          totalCredits: current?.totalCredits ?? null,
+          usedCredits: typeof current?.usedCredits === 'number' && creditsUsed !== null
+            ? current.usedCredits + creditsUsed
+            : current?.usedCredits ?? creditsUsed,
+          plan: current?.plan ?? null,
+          limit: current?.limit ?? null,
+          lastUpdatedAt: new Date().toISOString(),
+        }
+      })
       setWebsiteImportJob(payload.job ?? null)
       setWebsiteImportPages(payload.pages ?? payload.stats?.pages ?? [])
       setWebsiteDraftTitle(payload.job?.draftTitle ?? 'Website knowledge')
@@ -1080,48 +1107,38 @@ export default function RagChatbotPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">AI Chatbot</h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-            Manage AI replies, knowledge, website imports, and chatbot testing.
-          </p>
-        </div>
-        <div className="inline-flex items-center gap-2 rounded-2xl border border-[#214b39] bg-[#07130e]/80 px-3 py-2 text-xs font-semibold text-[#d8fff1]">
-          <ShieldCheck className="size-4 text-emerald-300" />
-          Keys stay encrypted and hidden
-        </div>
-      </header>
-
       {error && (
         <div className="rounded-xl border border-red-400/40 bg-red-950/30 px-4 py-3 text-sm text-red-100">
           {error}
         </div>
       )}
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section data-ai-status-cards className="grid gap-5 lg:grid-cols-3">
         {cards.map((card) => (
-          <div key={card.title} className="rounded-3xl border border-[#17402f] bg-gradient-to-br from-[#07130e] to-[#0b1d15] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="flex size-11 items-center justify-center rounded-2xl border border-emerald-300/20 bg-emerald-300/10">
-                <card.icon className="size-5 text-emerald-300" />
+          <div
+            key={card.title}
+            className="group min-h-44 rounded-[2rem] border border-[#245940] bg-gradient-to-br from-[#07130e] via-[#0a1a13] to-[#10261b] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)] transition hover:border-[#3ddf84]/70 hover:bg-[#123226]/70 sm:p-7"
+          >
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <span className="flex size-14 items-center justify-center rounded-3xl border border-emerald-300/25 bg-emerald-300/12 shadow-[0_12px_35px_rgba(61,223,132,0.12)]">
+                <card.icon className="size-6 text-emerald-300" />
               </span>
               <span
                 className={cn(
-                  'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+                  'shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-wide',
                   card.tone === 'good'
-                    ? 'bg-emerald-400/15 text-emerald-200'
+                    ? 'border-emerald-300/50 bg-emerald-400/15 text-emerald-100'
                     : card.tone === 'warn'
-                      ? 'border-amber-300/40 bg-amber-300/15 text-amber-100'
-                      : 'border-[#315846] bg-[#0d1b15] text-slate-200',
+                      ? 'border-amber-300/45 bg-amber-300/15 text-amber-100'
+                      : 'border-[#5f5326] bg-[#3a3215] text-amber-100',
                 )}
               >
                 {card.value}
               </span>
             </div>
-            <p className="text-base font-bold text-white">{card.title}</p>
-            <p className="mt-2 text-sm font-semibold text-emerald-100">{card.eyebrow}</p>
-            <p className="mt-1 text-xs leading-5 text-[#8bb4a5]">{card.detail}</p>
+            <p className="text-lg font-black tracking-tight text-white">{card.title}</p>
+            <p className="mt-3 text-sm font-bold text-emerald-100">{card.eyebrow}</p>
+            <p className="mt-2 text-sm leading-6 text-[#a9c6bb]">{card.detail}</p>
           </div>
         ))}
       </section>
@@ -1216,6 +1233,7 @@ export default function RagChatbotPage() {
             onTest={testFirecrawl}
             saveDisabled={!firecrawlKey.trim()}
           />
+          <FirecrawlCreditsPanel credits={firecrawlCredits} lastTestedAt={status?.firecrawl.lastTestedAt ?? null} />
         </SettingsCard>
       </div>
 
@@ -1242,43 +1260,56 @@ export default function RagChatbotPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 lg:flex-row lg:items-end">
-          <label className="flex-1 space-y-2">
-            <span className="text-sm font-medium text-[#d8fff1]">Website URL</span>
-            <input
-              value={websiteUrl}
-              onChange={(event) => setWebsiteUrl(event.target.value)}
-              placeholder="https://example.com"
-              disabled={!canManageKnowledge || websiteImporting}
-              className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </label>
-          <label className="space-y-2 lg:w-44">
-            <span className="text-sm font-medium text-[#d8fff1]">Page limit</span>
-            <select
-              value={websitePageLimit}
-              onChange={(event) => setWebsitePageLimit(Number(event.target.value))}
-              disabled={!canManageKnowledge || websiteImporting}
-              className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+        <div className="grid gap-5 rounded-3xl border border-[#245940] bg-[#0d1b15]/75 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)] xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <div className="space-y-4 rounded-2xl border border-[#214b39] bg-[#07130e]/70 p-4">
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Website URL</span>
+              <input
+                value={websiteUrl}
+                onChange={(event) => setWebsiteUrl(event.target.value)}
+                placeholder="https://example.com"
+                disabled={!canManageKnowledge || websiteImporting}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Page limit</span>
+              <select
+                value={websitePageLimit}
+                onChange={(event) => setWebsitePageLimit(Number(event.target.value))}
+                disabled={!canManageKnowledge || websiteImporting}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {[5, 25, 50, 100].map((limit) => (
+                  <option key={limit} value={limit}>{limit} pages</option>
+                ))}
+              </select>
+            </label>
+            <p className="rounded-2xl border border-[#214b39] bg-[#0d1b15] p-3 text-xs leading-5 text-[#a9c6bb]">
+              The import creates a review draft and chunks only. Embeddings stay pending until you click Prepare for Chatbot.
+            </p>
+            <button
+              type="button"
+              onClick={importWebsite}
+              disabled={!canManageKnowledge || websiteImporting || !websiteUrl.trim()}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
             >
-              {[5, 25, 50, 100].map((limit) => (
-                <option key={limit} value={limit}>{limit} pages</option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={importWebsite}
-            disabled={!canManageKnowledge || websiteImporting || !websiteUrl.trim()}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {websiteImporting ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Globe className="size-4" />
-            )}
-              {websiteImporting ? 'Importing website...' : 'Import Website Knowledge'}
-          </button>
+              {websiteImporting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Globe className="size-4" />
+              )}
+                {websiteImporting ? 'Importing website...' : 'Import Website Knowledge'}
+            </button>
+          </div>
+
+          <WebsiteImportLiveScreen
+            importing={websiteImporting}
+            url={websiteUrl || websiteImportJob?.websiteUrl || websiteImportStats?.pages?.[0]?.url || ''}
+            stats={websiteImportStats}
+            pages={websiteImportPages}
+            message={websiteImportMessage}
+          />
         </div>
         {websiteImportMessage && (
           <p className="mt-4 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
@@ -1430,7 +1461,7 @@ export default function RagChatbotPage() {
                     type="button"
                     onClick={() => saveWebsiteDraft('publish')}
                     disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready' || !websiteDraftContent.trim()}
-                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                   >
                     Publish to Knowledge Base
                   </button>
@@ -1563,7 +1594,7 @@ export default function RagChatbotPage() {
                     !knowledgeTitle.trim() ||
                     !knowledgeText.trim()
                   }
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                 >
                   {knowledgeSaving ? (
                     <>
@@ -1587,15 +1618,32 @@ export default function RagChatbotPage() {
                 {knowledgeMessage}
               </p>
             )}
-            {knowledgeProgress && (
-              <KnowledgeProgressPanel progress={knowledgeProgress} />
-            )}
           </div>
 
-          <div className="space-y-4">
+          <ManualKnowledgeStatusScreen progress={knowledgeProgress} saving={knowledgeSaving} />
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-[#245940] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <Database className="size-5 text-emerald-300" />
+              <h2 className="text-lg font-bold text-white">Saved Knowledge</h2>
+            </div>
+            <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+              Review active sources, prepare chunks for chatbot answers, edit content, or permanently delete old knowledge.
+            </p>
+          </div>
+          <span className="rounded-full border border-[#315846] bg-[#0d1b15] px-3 py-1 text-xs font-bold text-[#d8fff1]">
+            {knowledgeSources.length.toLocaleString()} sources
+          </span>
+        </div>
+
+        <div className="space-y-4">
             <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
               <div className="border-b border-[#214b39] px-4 py-3">
-                <h3 className="font-bold text-white">Saved Knowledge</h3>
+                <h3 className="font-bold text-white">Knowledge Preview</h3>
                 <p className="text-xs text-[#8bb4a5]">Knowledge preview, preparation status, and source actions.</p>
               </div>
               <div className="divide-y divide-[#214b39]">
@@ -1706,7 +1754,6 @@ export default function RagChatbotPage() {
                 </pre>
               </div>
             )}
-          </div>
         </div>
       </section>
 
@@ -1840,7 +1887,7 @@ export default function RagChatbotPage() {
                 type="button"
                 onClick={() => saveChatbotSettings()}
                 disabled={chatbotSettingsSaving || !chatbotSettings}
-                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
               >
                 {chatbotSettingsSaving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                 Save Settings
@@ -1913,7 +1960,7 @@ export default function RagChatbotPage() {
                   type="button"
                   onClick={askTestChat}
                   disabled={chatLoading || Boolean(chatUnavailableMessage) || !chatQuestion.trim()}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                 >
                   <MessageSquare className="size-4" />
                   {chatLoading ? 'Asking...' : 'Ask Test Question'}
@@ -2041,21 +2088,20 @@ export default function RagChatbotPage() {
                 ))}
               </select>
             </label>
-            <label className="flex h-11 items-center justify-between gap-3 rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-[#d8fff1]">
+            <button
+              type="button"
+              onClick={() => setScheduleAutoPublish((value) => !value)}
+              disabled={!canManageKnowledge || scheduleSaving}
+              className="flex h-11 items-center justify-between gap-3 rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-[#d8fff1] transition hover:border-[#3ddf84]/60 hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-60"
+            >
               <span>Auto-publish</span>
-              <input
-                type="checkbox"
-                checked={scheduleAutoPublish}
-                onChange={(event) => setScheduleAutoPublish(event.target.checked)}
-                disabled={!canManageKnowledge || scheduleSaving}
-                className="size-4 accent-emerald-400"
-              />
-            </label>
+              <SwitchPill checked={scheduleAutoPublish} />
+            </button>
             <button
               type="button"
               onClick={saveSchedule}
               disabled={!canManageKnowledge || scheduleSaving || !scheduleUrl.trim()}
-              className="inline-flex h-11 items-center justify-center rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
             >
               Add Schedule
             </button>
@@ -2167,18 +2213,33 @@ export default function RagChatbotPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
-          <div className="mb-5 flex items-start justify-between gap-4">
+      </section>
+
+      <section className="grid gap-6">
+        <div className="rounded-3xl border border-[#245940] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="mb-2 flex items-center gap-2">
                 <MessageSquare className="size-5 text-emerald-300" />
-                <h2 className="text-lg font-bold text-white">Unanswered Questions</h2>
+                <h2 className="text-lg font-bold text-white">Chatbot Activity & Unanswered Questions</h2>
               </div>
-              <p className="text-sm leading-6 text-[#a9c6bb]">
-                Review knowledge gaps from dashboard or WhatsApp fallbacks. Add missing answers to the knowledge base when useful.
+              <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
+                Review recent activity, fallbacks, failures, and unanswered questions in one place.
+                Secrets, raw prompts, provider JSON, and embeddings are never shown here.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  loadLogs()
+                  loadKnowledgeGaps()
+                }}
+                disabled={logsLoading}
+                className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {logsLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
               <button
                 type="button"
                 onClick={loadKnowledgeGaps}
@@ -2186,70 +2247,22 @@ export default function RagChatbotPage() {
               >
                 Show Recent 20
               </button>
-              <button
-                type="button"
-                disabled
-                className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#8bb4a5] opacity-70"
-              >
-                View All
-              </button>
             </div>
           </div>
-          {gapsMessage && (
-            <p className="mb-3 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
-              {gapsMessage}
-            </p>
-          )}
-          <div className="divide-y divide-[#214b39] overflow-hidden rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
-            {knowledgeGaps.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-[#8bb4a5]">No unanswered questions recorded yet.</p>
-            ) : knowledgeGaps.map((gap) => (
-              <article key={gap.id} className="space-y-2 px-4 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="rounded-full border border-[#315846] px-2 py-1 text-[11px] font-bold uppercase text-[#d8fff1]">
-                    {gap.channel}
-                  </span>
-                  <span className="text-xs text-[#8bb4a5]">{gap.count}× · {formatDateTime(gap.lastAskedAt)}</span>
-                </div>
-                <p className="text-sm font-semibold text-white">{gap.question}</p>
-                <p className="text-xs text-[#8bb4a5]">Reason: {gap.reason.replaceAll('_', ' ')}</p>
-                {gap.suggestedAction && (
-                  <p className="text-sm text-[#a9c6bb]">{gap.suggestedAction}</p>
-                )}
-                <button
-                  type="button"
-                  disabled
-                  className="rounded-lg border border-emerald-300/40 px-2 py-1 text-xs font-bold text-emerald-100 opacity-80"
-                >
-                  Add to Knowledge Base
-                </button>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
 
-      <section className="grid gap-6">
-        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <Clock className="size-5 text-emerald-300" />
-                <h2 className="text-lg font-bold text-white">Logs</h2>
-              </div>
-              <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-                Recent chatbot activity for this workspace. Secrets, raw prompts,
-                provider JSON, and embeddings are never shown here.
-              </p>
+          <div className="mb-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Answered</p>
+              <p className="mt-1 text-2xl font-black text-emerald-100">{logs.filter((log) => log.status === 'answered').length}</p>
             </div>
-            <button
-              type="button"
-              onClick={loadLogs}
-              disabled={logsLoading}
-              className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {logsLoading ? 'Refreshing...' : 'Refresh'}
-            </button>
+            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Fallback / Failed</p>
+              <p className="mt-1 text-2xl font-black text-amber-100">{logs.filter((log) => log.status !== 'answered').length}</p>
+            </div>
+            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Unanswered</p>
+              <p className="mt-1 text-2xl font-black text-white">{knowledgeGaps.length}</p>
+            </div>
           </div>
 
           <div className="mb-4 flex flex-wrap gap-2">
@@ -2277,58 +2290,87 @@ export default function RagChatbotPage() {
             ))}
           </div>
 
-          {logsMessage && (
+          {(logsMessage || gapsMessage) && (
             <p className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
-              {logsMessage}
+              {logsMessage ?? gapsMessage}
             </p>
           )}
 
-          <div className="divide-y divide-[#214b39] overflow-hidden rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
-            {logs.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-[#8bb4a5]">
-                No chatbot logs yet.
-              </div>
-            ) : (
-              logs.map((log) => (
-                <article key={log.id} className="space-y-3 px-4 py-4">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+            <div className="divide-y divide-[#214b39] overflow-hidden rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
+              {logs.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-[#8bb4a5]">
+                  No chatbot activity yet.
+                </div>
+              ) : (
+                logs.map((log) => (
+                  <article key={log.id} className="space-y-3 px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-[#315846] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#d8fff1]">
+                          {log.channel}
+                        </span>
+                        <span className={cn(
+                          'rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+                          log.status === 'answered'
+                            ? 'bg-emerald-400/15 text-emerald-100'
+                            : log.status === 'fallback'
+                              ? 'bg-amber-300/15 text-amber-100'
+                              : 'bg-red-400/15 text-red-100',
+                        )}>
+                          {log.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <span className="text-xs text-[#8bb4a5]">{formatDateTime(log.createdAt)}</span>
+                    </div>
+                    <div className="grid gap-3 text-sm lg:grid-cols-2">
+                      <div>
+                        <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Question</p>
+                        <p className="line-clamp-4 whitespace-pre-wrap text-[#d8fff1]">{log.userQuestion}</p>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Answer</p>
+                        <p className="line-clamp-4 whitespace-pre-wrap text-[#a9c6bb]">
+                          {log.answer || 'No answer recorded.'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-xs text-[#8bb4a5]">
+                      <span>{log.retrievedSourceCount} retrieved sources</span>
+                      {typeof log.latencyMs === 'number' && <span>{log.latencyMs} ms latency</span>}
+                      {log.fallbackReason && <span>Fallback: {log.fallbackReason}</span>}
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+
+            <div className="divide-y divide-[#214b39] overflow-hidden rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
+              {knowledgeGaps.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-[#8bb4a5]">No unanswered questions recorded yet.</p>
+              ) : knowledgeGaps.map((gap) => (
+                <article key={gap.id} className="space-y-2 px-4 py-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-[#315846] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#d8fff1]">
-                        {log.channel}
-                      </span>
-                      <span className={cn(
-                        'rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
-                        log.status === 'answered'
-                          ? 'bg-emerald-400/15 text-emerald-100'
-                          : log.status === 'fallback'
-                            ? 'bg-amber-300/15 text-amber-100'
-                            : 'bg-red-400/15 text-red-100',
-                      )}>
-                        {log.status.replace('_', ' ')}
-                      </span>
-                    </div>
-                    <span className="text-xs text-[#8bb4a5]">{formatDateTime(log.createdAt)}</span>
+                    <span className="rounded-full border border-[#315846] px-2 py-1 text-[11px] font-bold uppercase text-[#d8fff1]">
+                      {gap.channel}
+                    </span>
+                    <span className="text-xs text-[#8bb4a5]">{gap.count}? ? {formatDateTime(gap.lastAskedAt)}</span>
                   </div>
-                  <div className="grid gap-3 text-sm lg:grid-cols-2">
-                    <div>
-                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Question</p>
-                      <p className="line-clamp-4 whitespace-pre-wrap text-[#d8fff1]">{log.userQuestion}</p>
-                    </div>
-                    <div>
-                      <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Answer</p>
-                      <p className="line-clamp-4 whitespace-pre-wrap text-[#a9c6bb]">
-                        {log.answer || 'No answer recorded.'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-3 text-xs text-[#8bb4a5]">
-                    <span>{log.retrievedSourceCount} retrieved sources</span>
-                    {typeof log.latencyMs === 'number' && <span>{log.latencyMs} ms latency</span>}
-                    {log.fallbackReason && <span>Fallback: {log.fallbackReason}</span>}
-                  </div>
+                  <p className="text-sm font-semibold text-white">{gap.question}</p>
+                  <p className="text-xs text-[#8bb4a5]">Reason: {gap.reason.replaceAll('_', ' ')}</p>
+                  {gap.suggestedAction && (
+                    <p className="text-sm text-[#a9c6bb]">{gap.suggestedAction}</p>
+                  )}
+                  <button
+                    type="button"
+                    disabled
+                    className="rounded-lg border border-emerald-300/40 px-2 py-1 text-xs font-bold text-emerald-100 opacity-80"
+                  >
+                    Add to Knowledge Base
+                  </button>
                 </article>
-              ))
-            )}
+              ))}
+            </div>
           </div>
         </div>
 
@@ -2415,6 +2457,189 @@ function KnowledgeProgressPanel({
   )
 }
 
+function FirecrawlCreditsPanel({
+  credits,
+  lastTestedAt,
+}: {
+  readonly credits: FirecrawlCreditUsage | null
+  readonly lastTestedAt: string | null
+}) {
+  const remaining = credits?.remainingCredits
+  const total = credits?.totalCredits ?? credits?.limit
+  const used = credits?.usedCredits
+  const plan = credits?.plan
+  const updatedAt = credits?.lastUpdatedAt ?? lastTestedAt
+
+  return (
+    <div className="rounded-2xl border border-[#245940] bg-[#0d1b15]/80 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.16)]">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-white">Firecrawl credits</p>
+          <p className="text-xs text-[#8bb4a5]">Updated after Test Connection or website import when Firecrawl returns usage.</p>
+        </div>
+        <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-bold text-emerald-100">
+          Usage
+        </span>
+      </div>
+      <dl className="grid gap-3 text-sm sm:grid-cols-3">
+        <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 p-3">
+          <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Credits left</dt>
+          <dd className="mt-1 font-bold text-white">
+            {typeof remaining === 'number'
+              ? total
+                ? `${remaining.toLocaleString()} / ${total.toLocaleString()}`
+                : remaining.toLocaleString()
+              : 'Run test'}
+          </dd>
+        </div>
+        <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 p-3">
+          <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Used</dt>
+          <dd className="mt-1 font-bold text-white">{typeof used === 'number' ? used.toLocaleString() : '—'}</dd>
+        </div>
+        <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 p-3">
+          <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Plan</dt>
+          <dd className="mt-1 font-bold text-white">{plan ?? 'Not returned'}</dd>
+        </div>
+      </dl>
+      <p className="mt-3 text-xs text-[#8bb4a5]">
+        Last updated: {updatedAt ? formatDateTime(updatedAt) : 'Not tested yet'}
+      </p>
+    </div>
+  )
+}
+
+function WebsiteImportLiveScreen({
+  importing,
+  url,
+  stats,
+  pages,
+  message,
+}: {
+  readonly importing: boolean
+  readonly url: string
+  readonly stats: WebsiteImportStats | null
+  readonly pages: ReadonlyArray<WebsiteImportPage>
+  readonly message: string | null
+}) {
+  const latestPage = pages.find((page) => page.status === 'imported') ?? pages[0] ?? stats?.pages?.[0]
+  const steps = [
+    'Waiting for website URL',
+    'Starting import',
+    'Fetching website content',
+    'Discovering sitemap/pages',
+    latestPage?.title || latestPage?.url ? `Crawling page: ${latestPage.title ?? latestPage.url}` : 'Crawling page: pending',
+    'Cleaning content',
+    'Removing duplicate/footer/widget junk',
+    'Creating source draft/content',
+    'Creating chunks',
+    'Chunks ready',
+    'Embeddings pending',
+    stats ? 'Import completed' : importing ? 'Import running' : 'Waiting',
+  ]
+  const activeIndex = stats ? steps.length - 1 : importing ? Math.min(steps.length - 2, 8) : 0
+
+  return (
+    <div className="min-h-[24rem] rounded-2xl border border-[#245940] bg-[#04100b] p-4 shadow-inner">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-black text-white">Live import screen</p>
+          <p className="mt-1 break-all text-xs text-[#8bb4a5]">{url || 'Waiting for website URL'}</p>
+        </div>
+        <span className={cn(
+          'w-fit rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+          stats
+            ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
+            : importing
+              ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
+              : 'border-amber-300/35 bg-[#3a3215] text-amber-100',
+        )}>
+          {stats ? 'Completed' : importing ? 'Running' : 'Idle'}
+        </span>
+      </div>
+
+      <div className="grid gap-2 text-xs">
+        {steps.map((step, index) => {
+          const complete = index < activeIndex
+          const active = index === activeIndex
+          return (
+            <div
+              key={`${step}:${index}`}
+              className={cn(
+                'flex items-start gap-2 rounded-xl border px-3 py-2',
+                complete
+                  ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100'
+                  : active
+                    ? 'border-amber-300/35 bg-[#3a3215] text-amber-100'
+                    : 'border-[#193a2b] bg-[#07130e] text-[#8bb4a5]',
+              )}
+            >
+              <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-current text-[9px]">
+                {complete ? '✓' : index + 1}
+              </span>
+              <span className="min-w-0 break-words">{step}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {stats && (
+        <dl className="mt-4 grid gap-2 text-xs text-[#d8fff1] sm:grid-cols-4">
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">{stats.pagesImported} imported</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">{stats.pagesSkipped} skipped</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">{stats.pagesFailed} failed</div>
+          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">{stats.duplicatePages} duplicate</div>
+        </dl>
+      )}
+      {message && (
+        <p className="mt-4 rounded-xl border border-[#315846] bg-[#07130e] px-3 py-2 text-xs leading-5 text-[#d8fff1]">
+          {message}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ManualKnowledgeStatusScreen({
+  progress,
+  saving,
+}: {
+  readonly progress: KnowledgeProgressState | null
+  readonly saving: boolean
+}) {
+  const currentProgress = progress ?? createKnowledgeProgress(
+    'manual',
+    'warning',
+    'Ready to save. Manual knowledge will create chunks automatically, while embeddings remain pending until you click Prepare for Chatbot.',
+    0,
+  )
+
+  return (
+    <div className="rounded-2xl border border-[#245940] bg-[#0d1b15]/80 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.18)]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-white">Manual save progress</p>
+          <p className="text-xs leading-5 text-[#8bb4a5]">Chunks are created on save. Embeddings are pending until preparation.</p>
+        </div>
+        <span className={cn(
+          'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+          saving
+            ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
+            : 'border-amber-300/35 bg-[#3a3215] text-amber-100',
+        )}>
+          {saving ? 'Processing' : 'Standby'}
+        </span>
+      </div>
+      <KnowledgeProgressPanel progress={currentProgress} />
+      <div className="mt-4 rounded-2xl border border-[#214b39] bg-[#07130e]/70 p-4">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Next step</p>
+        <p className="mt-2 text-sm leading-6 text-[#d8fff1]">
+          After saving, check the Saved Knowledge section below. Ready to click Prepare for Chatbot when you want embeddings created.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function SettingsCard({
   title,
   description,
@@ -2483,7 +2708,7 @@ function ActionRow({
         type="button"
         onClick={onSave}
         disabled={!canManage || busy || saveDisabled}
-        className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#54f398] disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#123226] hover:text-white disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
         {busy ? 'Saving...' : 'Save Settings'}
@@ -2514,7 +2739,7 @@ function SwitchPill({ checked }: { readonly checked: boolean }) {
         'relative inline-flex h-6 w-11 shrink-0 rounded-full border transition',
         checked
           ? 'border-emerald-300/60 bg-emerald-400'
-          : 'border-[#315846] bg-[#07130e]',
+          : 'border-amber-300/35 bg-[#3a3215]',
       )}
     >
       <span

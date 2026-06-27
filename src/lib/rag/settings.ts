@@ -32,6 +32,16 @@ export interface RagFirecrawlSettingsView {
   readonly lastTestedAt: string | null
   readonly lastTestStatus: RagConnectionStatus | null
   readonly lastTestError: string | null
+  readonly creditUsage?: RagFirecrawlCreditUsage | null
+}
+
+export interface RagFirecrawlCreditUsage {
+  readonly remainingCredits: number | null
+  readonly totalCredits: number | null
+  readonly usedCredits: number | null
+  readonly plan: string | null
+  readonly limit: number | null
+  readonly lastUpdatedAt: string
 }
 
 interface RagProviderSettingsRow {
@@ -99,6 +109,7 @@ function toFirecrawlView(row: RagFirecrawlSettingsRow | null): RagFirecrawlSetti
     lastTestedAt: row?.last_tested_at ?? null,
     lastTestStatus: safeStatus(row?.last_test_status),
     lastTestError: row?.last_test_error ?? null,
+    creditUsage: null,
   }
 }
 
@@ -272,8 +283,13 @@ export async function testRagFirecrawlSettings(
   try {
     const apiKey = decrypt(data.encrypted_api_key)
     if (apiKey.trim().length < 8) throw new Error('Firecrawl API key looks too short.')
-    await testFirecrawlAccount(apiKey)
+    const creditUsage = await testFirecrawlAccount(apiKey)
     await updateFirecrawlTestStatus(workspaceId, 'success', null)
+    const settings = await getRagFirecrawlSettings(workspaceId)
+    return {
+      ...settings,
+      creditUsage,
+    }
   } catch (error) {
     await updateFirecrawlTestStatus(workspaceId, 'failed', sanitizeProviderError(error))
   }
@@ -298,7 +314,69 @@ async function updateFirecrawlTestStatus(
   if (updateError) throw new Error(updateError.message)
 }
 
-async function testFirecrawlAccount(apiKey: string): Promise<void> {
+function readNumber(payload: Record<string, unknown>, names: ReadonlyArray<string>): number | null {
+  for (const name of names) {
+    const value = payload[name]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) return Number(value)
+  }
+  return null
+}
+
+function readString(payload: Record<string, unknown>, names: ReadonlyArray<string>): string | null {
+  for (const name of names) {
+    const value = payload[name]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return null
+}
+
+function normalizeFirecrawlCreditUsage(payload: Record<string, unknown>): RagFirecrawlCreditUsage {
+  const nested = (
+    typeof payload.data === 'object' && payload.data !== null
+      ? payload.data
+      : typeof payload.team === 'object' && payload.team !== null
+        ? payload.team
+        : payload
+  ) as Record<string, unknown>
+
+  const remainingCredits = readNumber(nested, [
+    'remainingCredits',
+    'remaining_credits',
+    'creditsRemaining',
+    'credits_remaining',
+    'remaining',
+    'creditsLeft',
+    'credits_left',
+  ])
+  const totalCredits = readNumber(nested, [
+    'totalCredits',
+    'total_credits',
+    'creditLimit',
+    'credit_limit',
+    'creditsLimit',
+    'credits_limit',
+    'limit',
+  ])
+  const usedCredits = readNumber(nested, [
+    'usedCredits',
+    'used_credits',
+    'creditsUsed',
+    'credits_used',
+    'used',
+  ]) ?? (remainingCredits !== null && totalCredits !== null ? Math.max(totalCredits - remainingCredits, 0) : null)
+
+  return {
+    remainingCredits,
+    totalCredits,
+    usedCredits,
+    plan: readString(nested, ['plan', 'planName', 'plan_name', 'tier']),
+    limit: totalCredits,
+    lastUpdatedAt: new Date().toISOString(),
+  }
+}
+
+async function testFirecrawlAccount(apiKey: string): Promise<RagFirecrawlCreditUsage> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FIRECRAWL_REQUEST_TIMEOUT_MS)
   try {
@@ -309,13 +387,14 @@ async function testFirecrawlAccount(apiKey: string): Promise<void> {
       },
       signal: controller.signal,
     })
-    const payload = await response.json().catch(() => ({})) as { readonly error?: string; readonly message?: string }
+    const payload = await response.json().catch(() => ({})) as Record<string, unknown> & { readonly error?: string; readonly message?: string }
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) throw new Error('Firecrawl API key is missing, invalid, or rejected.')
       if (response.status === 402) throw new Error('Firecrawl credits or billing issue. Please check your Firecrawl account.')
       if (response.status === 429) throw new Error('Firecrawl rate limit reached. Please try again later.')
       throw new Error(payload.error ?? payload.message ?? `Firecrawl returned HTTP ${response.status}.`)
     }
+    return normalizeFirecrawlCreditUsage(payload)
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Firecrawl request timed out.')
