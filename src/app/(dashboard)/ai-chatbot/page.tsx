@@ -229,6 +229,10 @@ const providerLabels: Record<RagProviderType, string> = {
 }
 
 const providers = Object.entries(providerLabels) as Array<[RagProviderType, string]>
+const chatbotCardBorderClass =
+  'border border-[#3ddf84]/60 shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition hover:border-[#3ddf84]/80'
+const chatbotPanelBorderClass =
+  'border border-[#3ddf84]/40 shadow-[0_12px_35px_rgba(0,0,0,0.14)] transition hover:border-[#3ddf84]/60'
 
 function statusLabel(status: ConnectionStatus, configured: boolean): string {
   if (!configured) return 'Not configured'
@@ -1139,7 +1143,10 @@ export default function RagChatbotPage() {
         {cards.map((card) => (
           <div
             key={card.title}
-            className="group min-h-44 rounded-[2rem] border border-[#245940] bg-gradient-to-br from-[#07130e] via-[#0a1a13] to-[#10261b] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)] transition hover:border-[#3ddf84]/70 hover:bg-[#123226]/70 sm:p-7"
+            className={cn(
+              'group min-h-44 rounded-[2rem] bg-gradient-to-br from-[#07130e] via-[#0a1a13] to-[#10261b] p-6 hover:bg-[#123226]/70 sm:p-7',
+              chatbotCardBorderClass,
+            )}
           >
             <div className="mb-6 flex items-start justify-between gap-4">
               <span className="flex size-14 items-center justify-center rounded-3xl border border-emerald-300/25 bg-emerald-300/12 shadow-[0_12px_35px_rgba(61,223,132,0.12)]">
@@ -1259,7 +1266,7 @@ export default function RagChatbotPage() {
         </SettingsCard>
       </div>
 
-      <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+      <section className="rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2">
@@ -1282,8 +1289,8 @@ export default function RagChatbotPage() {
           </div>
         )}
 
-        <div className="grid gap-5 rounded-3xl border border-[#245940] bg-[#0d1b15]/75 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)] xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-          <div className="space-y-4 rounded-2xl border border-[#214b39] bg-[#07130e]/70 p-4">
+        <div className="grid gap-5 rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#0d1b15]/75 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)] xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <div className="space-y-4 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/70 p-4">
             <label className="block space-y-2">
               <span className="text-sm font-medium text-[#d8fff1]">Website URL</span>
               <input
@@ -1307,7 +1314,7 @@ export default function RagChatbotPage() {
                 ))}
               </select>
             </label>
-            <p className="rounded-2xl border border-[#214b39] bg-[#0d1b15] p-3 text-xs leading-5 text-[#a9c6bb]">
+            <p className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15] p-3 text-xs leading-5 text-[#a9c6bb]">
               The import creates a review draft and chunks only. Embeddings stay pending until you click Prepare for Chatbot.
             </p>
             <button
@@ -1324,14 +1331,14 @@ export default function RagChatbotPage() {
                 {websiteImporting ? 'Importing...' : 'Import Website Knowledge'}
             </button>
             <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-1">
-              <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 px-3 py-2 text-[#d8fff1]">
+              <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/70 px-3 py-2 text-[#d8fff1]">
                 Page limit: {websitePageLimit.toLocaleString()} pages
               </div>
-              <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 px-3 py-2 text-[#d8fff1]">
+              <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/70 px-3 py-2 text-[#d8fff1]">
                 Firecrawl: {firecrawlReady ? 'Configured' : 'Needs API key'}
               </div>
               {websiteImportStats && (
-                <div className="rounded-xl border border-[#214b39] bg-[#07130e]/70 px-3 py-2 text-[#d8fff1] sm:col-span-2 xl:col-span-1">
+                <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/70 px-3 py-2 text-[#d8fff1] sm:col-span-2 xl:col-span-1">
                   Last import: {websiteImportStats.pagesImported} imported · {websiteImportStats.pagesSkipped} skipped · {websiteImportStats.pagesFailed} failed
                 </div>
               )}
@@ -1353,7 +1360,7 @@ export default function RagChatbotPage() {
           </p>
         )}
         {websiteImportStats && (
-          <div className="mt-4 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+          <div className="mt-4 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-bold text-white">Website import summary</h3>
               <span className={cn(
@@ -1404,7 +1411,7 @@ export default function RagChatbotPage() {
               </p>
             )}
             {websiteImportStats.pages && websiteImportStats.pages.length > 0 && (
-              <div className="mt-4 max-h-72 overflow-y-auto rounded-2xl border border-[#214b39] bg-[#07130e]/70 p-3">
+              <div className="mt-4 max-h-72 overflow-y-auto rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/70 p-3">
                 <p className="mb-2 text-xs font-bold uppercase tracking-wide text-emerald-200">Pages checked</p>
                 <div className="space-y-2">
                   {websiteImportStats.pages.slice(0, 50).map((importPage, index) => (
@@ -1438,7 +1445,7 @@ export default function RagChatbotPage() {
 
         {websiteImportJob && (
           <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-bold text-white">Review draft before publishing</h3>
@@ -1505,7 +1512,7 @@ export default function RagChatbotPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
               <h3 className="text-sm font-bold text-white">Page review list</h3>
               <p className="mt-1 text-xs text-[#8bb4a5]">Showing up to 30 checked pages.</p>
               <div className="mt-3 max-h-[34rem] space-y-2 overflow-y-auto">
@@ -1536,7 +1543,7 @@ export default function RagChatbotPage() {
                   </div>
                 ))}
                 {websiteImportPages.length === 0 && (
-                  <p className="rounded-xl border border-[#214b39] bg-[#07130e]/70 px-3 py-6 text-center text-sm text-[#8bb4a5]">
+                  <p className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/70 px-3 py-6 text-center text-sm text-[#8bb4a5]">
                     Page review details will appear after an import.
                   </p>
                 )}
@@ -1546,7 +1553,7 @@ export default function RagChatbotPage() {
         )}
       </section>
 
-      <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+      <section className="rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2">
@@ -1565,7 +1572,7 @@ export default function RagChatbotPage() {
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <div className="space-y-4 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+          <div className="space-y-4 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
             <label className="space-y-2">
               <span className="text-sm font-medium text-[#d8fff1]">Knowledge type</span>
               <select
@@ -1660,7 +1667,7 @@ export default function RagChatbotPage() {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-[#245940] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+      <section className="rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2">
@@ -1677,12 +1684,12 @@ export default function RagChatbotPage() {
         </div>
 
         <div className="space-y-4">
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
-              <div className="border-b border-[#214b39] px-4 py-3">
+            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70">
+              <div className="border-b border-[#3ddf84]/35 px-4 py-3">
                 <h3 className="font-bold text-white">Knowledge Preview</h3>
                 <p className="text-xs text-[#8bb4a5]">Knowledge preview, preparation status, and source actions.</p>
               </div>
-              <div className="divide-y divide-[#214b39]">
+              <div className="divide-y divide-[#3ddf84]/25">
                 {knowledgeSources.length === 0 ? (
                   <div className="px-4 py-8 text-center text-sm text-[#8bb4a5]">
                     No knowledge added yet.
@@ -1769,7 +1776,7 @@ export default function RagChatbotPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+        <div className="rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="mb-2 flex items-center gap-2">
@@ -1797,7 +1804,7 @@ export default function RagChatbotPage() {
                 type="button"
                 onClick={() => saveChatbotSettings({ enabled: !(chatbotSettings?.enabled ?? true) })}
                 disabled={chatbotSettingsSaving}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 text-left transition hover:border-emerald-300/50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4 text-left transition hover:border-emerald-300/50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span>
                   <span className="block text-sm font-bold text-white">Chatbot enabled</span>
@@ -1809,7 +1816,7 @@ export default function RagChatbotPage() {
                 type="button"
                 onClick={() => saveChatbotSettings({ handoverEnabled: !(chatbotSettings?.handoverEnabled ?? true) })}
                 disabled={chatbotSettingsSaving}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 text-left transition hover:border-emerald-300/50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4 text-left transition hover:border-emerald-300/50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span>
                   <span className="block text-sm font-bold text-white">Handover enabled</span>
@@ -1821,7 +1828,7 @@ export default function RagChatbotPage() {
                 type="button"
                 onClick={() => saveAutoReply({ enabled: !(autoReply?.enabled ?? false) })}
                 disabled={!autoReply || autoReplySaving || !canEnableAutoReply}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 text-left transition hover:border-emerald-300/50 disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4 text-left transition hover:border-emerald-300/50 disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
               >
                 <span>
                   <span className="block text-sm font-bold text-white">Live WhatsApp auto-reply</span>
@@ -1913,7 +1920,7 @@ export default function RagChatbotPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+        <div className="rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="mb-2 flex items-center gap-2">
@@ -1938,7 +1945,7 @@ export default function RagChatbotPage() {
           )}
 
           <div className="grid gap-5">
-          <div className="space-y-4 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+          <div className="space-y-4 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
             <label className="space-y-2">
               <span className="text-sm font-medium text-[#d8fff1]">Question</span>
               <textarea
@@ -1986,7 +1993,7 @@ export default function RagChatbotPage() {
           </div>
 
           <div className="space-y-4">
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
               <h3 className="font-bold text-white">Answer</h3>
               {chatAnswer ? (
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#d8fff1]">
@@ -2000,7 +2007,7 @@ export default function RagChatbotPage() {
             </div>
 
             {chatAnswer && (
-              <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 text-sm text-[#a9c6bb]">
+              <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4 text-sm text-[#a9c6bb]">
                 This customer-style tester only shows the final chatbot answer. Retrieval/debug
                 details are intentionally hidden from the restored dashboard UI.
               </div>
@@ -2011,7 +2018,7 @@ export default function RagChatbotPage() {
       </section>
 
       <section className="grid gap-6">
-        <div className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+        <div className="rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="mb-2 flex items-center gap-2">
@@ -2035,7 +2042,7 @@ export default function RagChatbotPage() {
             </button>
           </div>
 
-          <div className="grid gap-3 rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4 lg:grid-cols-[minmax(0,1fr)_140px_120px_120px_120px_auto] lg:items-end">
+          <div className="grid gap-3 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4 lg:grid-cols-[minmax(0,1fr)_140px_120px_120px_120px_auto] lg:items-end">
             <label className="space-y-2">
               <span className="text-sm font-medium text-[#d8fff1]">Website URL</span>
               <input
@@ -2124,11 +2131,11 @@ export default function RagChatbotPage() {
           )}
 
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
-              <div className="border-b border-[#214b39] px-4 py-3">
+            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70">
+              <div className="border-b border-[#3ddf84]/35 px-4 py-3">
                 <h3 className="font-bold text-white">Saved schedules</h3>
               </div>
-              <div className="divide-y divide-[#214b39]">
+              <div className="divide-y divide-[#3ddf84]/25">
                 {schedules.length === 0 ? (
                   <p className="px-4 py-6 text-sm text-[#8bb4a5]">No schedules saved yet.</p>
                 ) : schedules.map((schedule) => (
@@ -2177,11 +2184,11 @@ export default function RagChatbotPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
-              <div className="border-b border-[#214b39] px-4 py-3">
+            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70">
+              <div className="border-b border-[#3ddf84]/35 px-4 py-3">
                 <h3 className="font-bold text-white">Import history</h3>
               </div>
-              <div className="max-h-80 divide-y divide-[#214b39] overflow-y-auto">
+              <div className="max-h-80 divide-y divide-[#3ddf84]/25 overflow-y-auto">
                 {importHistory.length === 0 ? (
                   <p className="px-4 py-6 text-sm text-[#8bb4a5]">No import history yet.</p>
                 ) : importHistory.map((history) => (
@@ -2227,7 +2234,7 @@ export default function RagChatbotPage() {
       </section>
 
       <section className="grid gap-6">
-        <div className="rounded-3xl border border-[#245940] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+        <div className="rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="mb-2 flex items-center gap-2">
@@ -2262,15 +2269,15 @@ export default function RagChatbotPage() {
           </div>
 
           <div className="mb-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
               <p className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Answered</p>
               <p className="mt-1 text-2xl font-black text-emerald-100">{logs.filter((log) => log.status === 'answered').length}</p>
             </div>
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
               <p className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Fallback / Failed</p>
               <p className="mt-1 text-2xl font-black text-amber-100">{logs.filter((log) => log.status !== 'answered').length}</p>
             </div>
-            <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
               <p className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Unanswered</p>
               <p className="mt-1 text-2xl font-black text-white">{knowledgeGaps.length}</p>
             </div>
@@ -2307,7 +2314,7 @@ export default function RagChatbotPage() {
             </p>
           )}
 
-          <div className="divide-y divide-[#214b39] overflow-hidden rounded-2xl border border-[#214b39] bg-[#0d1b15]/70">
+          <div className="divide-y divide-[#3ddf84]/25 overflow-hidden rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70">
             {visibleActivityItems.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-[#8bb4a5]">
                 No chatbot activity or unanswered questions yet.
@@ -2386,8 +2393,8 @@ export default function RagChatbotPage() {
 
       {selectedKnowledge && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-3xl border border-[#245940] bg-[#07130e] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
-            <div className="flex items-start justify-between gap-4 border-b border-[#214b39] p-5">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+            <div className="flex items-start justify-between gap-4 border-b border-[#3ddf84]/35 p-5">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Knowledge source</p>
                 <h3 className="mt-1 text-xl font-black text-white">{selectedKnowledge.title}</h3>
@@ -2405,22 +2412,22 @@ export default function RagChatbotPage() {
             </div>
             <div className="grid max-h-[calc(90vh-7rem)] gap-4 overflow-y-auto p-5 lg:grid-cols-[0.8fr_1.2fr]">
               <dl className="space-y-3 text-sm text-[#a9c6bb]">
-                <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
                   <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Created</dt>
                   <dd className="mt-1 text-white">{formatDate(selectedKnowledge.createdAt)}</dd>
                 </div>
-                <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
                   <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Updated</dt>
                   <dd className="mt-1 text-white">{formatDate(selectedKnowledge.updatedAt)}</dd>
                 </div>
-                <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
                   <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Chunks / Embeddings</dt>
                   <dd className="mt-1 text-white">
                     {selectedKnowledge.chunkCount} chunks · {selectedKnowledge.readyEmbeddingCount} ready · {selectedKnowledge.failedEmbeddingCount} failed
                   </dd>
                 </div>
                 {selectedKnowledge.sourceUrl && (
-                  <div className="rounded-2xl border border-[#214b39] bg-[#0d1b15]/70 p-4">
+                  <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
                     <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Source URL</dt>
                     <dd className="mt-1 break-all text-white">{selectedKnowledge.sourceUrl}</dd>
                   </div>
@@ -2436,8 +2443,8 @@ export default function RagChatbotPage() {
 
       {editingKnowledgeId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-3xl border border-[#245940] bg-[#07130e] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
-            <div className="border-b border-[#214b39] p-5">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+            <div className="border-b border-[#3ddf84]/35 p-5">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Edit knowledge</p>
               <h3 className="mt-1 text-xl font-black text-white">Update Knowledge</h3>
               <p className="mt-1 text-sm text-[#8bb4a5]">
@@ -2561,7 +2568,7 @@ function KnowledgeProgressPanel({
           <XCircle className="size-4 shrink-0 text-red-200" />
         )}
       </div>
-      <div className="rounded-2xl border border-[#214b39] bg-[#04100b]/80 p-4">
+      <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#04100b]/80 p-4">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">
           {isDone ? 'Complete' : isFailed ? 'Needs attention' : `Step ${safeStep + 1} of ${steps.length}`}
         </p>
@@ -2599,7 +2606,7 @@ function FirecrawlCreditsPanel({
     : 'Credits left: run Test Connection'
 
   return (
-    <div className="rounded-2xl border border-[#245940] bg-[#0d1b15]/80 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.16)]">
+    <div className="rounded-2xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#0d1b15]/80 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.16)]">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-black text-white">Firecrawl credits</p>
@@ -2633,7 +2640,7 @@ function WebsiteImportLiveScreen({
 }) {
   if (!importing && !stats) {
     return (
-      <div className="min-h-[18rem] rounded-2xl border border-[#245940] bg-[#04100b] p-5 shadow-inner">
+      <div className={cn('min-h-[18rem] bg-[#04100b] p-5', chatbotPanelBorderClass)}>
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-black text-white">Ready to import website</p>
@@ -2652,7 +2659,7 @@ function WebsiteImportLiveScreen({
             'Knowledge chunks will be created',
             'Embeddings stay pending until Prepare for Chatbot',
           ].map((item) => (
-            <div key={item} className="flex items-center gap-2 rounded-xl border border-[#214b39] bg-[#07130e]/80 px-3 py-2 text-[#d8fff1]">
+            <div key={item} className="flex items-center gap-2 rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/80 px-3 py-2 text-[#d8fff1]">
               <span className="size-2 rounded-full bg-[#3ddf84]" />
               {item}
             </div>
@@ -2664,7 +2671,7 @@ function WebsiteImportLiveScreen({
 
   if (importing) {
     return (
-      <div className="min-h-[22rem] rounded-2xl border border-[#245940] bg-[#04100b] p-5 shadow-inner">
+      <div className={cn('min-h-[22rem] bg-[#04100b] p-5', chatbotPanelBorderClass)}>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-black text-white">Live import screen</p>
@@ -2680,7 +2687,7 @@ function WebsiteImportLiveScreen({
   }
 
   return (
-    <div className="min-h-[22rem] rounded-2xl border border-[#245940] bg-[#04100b] p-5 shadow-inner">
+    <div className={cn('min-h-[22rem] bg-[#04100b] p-5', chatbotPanelBorderClass)}>
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-black text-white">Website import result</p>
@@ -2692,12 +2699,12 @@ function WebsiteImportLiveScreen({
       </div>
       {stats && (
         <dl className="grid gap-2 text-xs text-[#d8fff1] sm:grid-cols-2 xl:grid-cols-3">
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Pages imported: {stats.pagesImported}</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Pages skipped: {stats.pagesSkipped}</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Pages failed: {stats.pagesFailed}</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Duplicate pages: {stats.duplicatePages}</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Chunks ready</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#07130e] p-3">Next step: Prepare for Chatbot</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Pages imported: {stats.pagesImported}</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Pages skipped: {stats.pagesSkipped}</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Pages failed: {stats.pagesFailed}</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Duplicate pages: {stats.duplicatePages}</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Chunks ready</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Next step: Prepare for Chatbot</div>
         </dl>
       )}
       {stats?.warnings && stats.warnings.length > 0 && (
@@ -2708,7 +2715,7 @@ function WebsiteImportLiveScreen({
       {pages.length > 0 && (
         <div className="mt-4 max-h-48 space-y-2 overflow-y-auto">
           {pages.slice(0, 8).map((page, index) => (
-            <div key={`${page.url}:${index}`} className="rounded-xl border border-[#214b39] bg-[#07130e]/80 px-3 py-2 text-xs">
+            <div key={`${page.url}:${index}`} className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/80 px-3 py-2 text-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="min-w-0 break-words text-[#d8fff1]">{page.title ?? page.url}</span>
                 <span className="rounded-full border border-[#315846] px-2 py-0.5 uppercase text-[#8bb4a5]">{page.status}</span>
@@ -2735,7 +2742,7 @@ function ManualKnowledgeStatusScreen({
 }) {
   if (!progress) {
     return (
-      <div className="rounded-2xl border border-[#245940] bg-[#0d1b15]/80 p-5 shadow-[0_14px_40px_rgba(0,0,0,0.18)]">
+      <div className={cn('bg-[#0d1b15]/80 p-5', chatbotPanelBorderClass)}>
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-black text-white">Ready to save knowledge</p>
@@ -2753,7 +2760,7 @@ function ManualKnowledgeStatusScreen({
             'Chunks will be created automatically',
             'Embeddings will stay pending until Prepare for Chatbot',
           ].map((item) => (
-            <div key={item} className="flex items-center gap-2 rounded-xl border border-[#214b39] bg-[#07130e]/80 px-3 py-2 text-[#d8fff1]">
+            <div key={item} className="flex items-center gap-2 rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/80 px-3 py-2 text-[#d8fff1]">
               <span className="size-2 rounded-full bg-[#3ddf84]" />
               {item}
             </div>
@@ -2764,7 +2771,7 @@ function ManualKnowledgeStatusScreen({
   }
 
   return (
-    <div className="rounded-2xl border border-[#245940] bg-[#0d1b15]/80 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.18)]">
+    <div className={cn('bg-[#0d1b15]/80 p-4', chatbotPanelBorderClass)}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-black text-white">
@@ -2784,12 +2791,12 @@ function ManualKnowledgeStatusScreen({
         </span>
       </div>
       <KnowledgeProgressPanel progress={progress} />
-      <div className="mt-4 rounded-2xl border border-[#214b39] bg-[#07130e]/70 p-4">
+      <div className="mt-4 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/70 p-4">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Result</p>
         <dl className="mt-2 grid gap-2 text-sm leading-6 text-[#d8fff1] sm:grid-cols-3">
-          <div className="rounded-xl border border-[#214b39] bg-[#04100b]/70 px-3 py-2">Knowledge saved</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#04100b]/70 px-3 py-2">Chunks ready</div>
-          <div className="rounded-xl border border-[#214b39] bg-[#04100b]/70 px-3 py-2">Embeddings pending</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#04100b]/70 px-3 py-2">Knowledge saved</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#04100b]/70 px-3 py-2">Chunks ready</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#04100b]/70 px-3 py-2">Embeddings pending</div>
         </dl>
         <p className="mt-2 text-sm leading-6 text-[#d8fff1]">
           Next step: Prepare for Chatbot when you are ready.
@@ -2819,7 +2826,7 @@ function SettingsCard({
   readonly children: React.ReactNode
 }) {
   return (
-    <section className="rounded-3xl border border-[#17402f] bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+    <section className={cn('rounded-3xl bg-[#07130e]/85 p-5', chatbotCardBorderClass)}>
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <div className="mb-2 flex items-center gap-2">
