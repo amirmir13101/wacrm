@@ -31,6 +31,16 @@ describe('platform admin routing separation', () => {
     expect(middleware).toContain("url.pathname = '/admintops'")
   })
 
+  it('keeps CRM routes on the app subdomain while admin stays on the root domain', () => {
+    expect(middleware).toContain("const ROOT_DOMAIN = 'talkwagon.chat'")
+    expect(middleware).toContain("const APP_DOMAIN = 'app.talkwagon.chat'")
+    expect(middleware).toContain('routeProductionDomains(request)')
+    expect(middleware).toContain("hostname === ROOT_DOMAIN")
+    expect(middleware).toContain("url.hostname = APP_DOMAIN")
+    expect(middleware).toContain("hostname === APP_DOMAIN && (pathname === '/admin' || pathname.startsWith('/admintops'))")
+    expect(middleware).toContain("url.hostname = ROOT_DOMAIN")
+  })
+
   it('blocks non-admins from admin routes', () => {
     expect(middleware).toContain("if (isAdminPagePath && !isAdmin(profile))")
     expect(middleware).toContain("url.pathname = '/dashboard'")

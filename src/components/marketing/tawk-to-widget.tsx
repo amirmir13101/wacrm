@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Script from 'next/script';
 
@@ -33,9 +33,40 @@ const TAWK_PUBLIC_PATHS = new Set([
   '/security',
 ]);
 
+const MARKETING_HOSTS = new Set([
+  'talkwagon.chat',
+  'www.talkwagon.chat',
+  'localhost',
+  '127.0.0.1',
+]);
+
+function isMarketingHost(hostname: string): boolean {
+  if (hostname === 'app.talkwagon.chat') return false;
+  return MARKETING_HOSTS.has(hostname) || hostname.endsWith('.localhost');
+}
+
 export function TawkToWidget() {
   const pathname = usePathname();
-  const shouldShowTawk = TAWK_PUBLIC_PATHS.has(pathname);
+  const [shouldShowTawk, setShouldShowTawk] = useState(false);
+
+  useEffect(() => {
+    const allowed =
+      typeof window !== 'undefined' &&
+      isMarketingHost(window.location.hostname.toLowerCase()) &&
+      TAWK_PUBLIC_PATHS.has(pathname);
+
+    setShouldShowTawk(allowed);
+    window.__talkWagonTawkAllowed = allowed;
+    const tawk = window.Tawk_API;
+    if (!tawk) return;
+
+    if (allowed) {
+      tawk.showWidget?.();
+      return;
+    }
+
+    tawk.hideWidget?.();
+  }, [pathname]);
 
   useEffect(() => {
     window.__talkWagonTawkAllowed = shouldShowTawk;
