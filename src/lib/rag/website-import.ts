@@ -6,6 +6,11 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import { createRagWebsiteKnowledge, type RagKnowledgeDetail } from './knowledge-store'
 import { cleanRagKnowledgeContent, RAG_KNOWLEDGE_CHARACTER_LIMIT } from './knowledge'
 import { sanitizeProviderError } from './security'
+import {
+  structureRagWebsiteKnowledgeForWorkspace,
+  type RagWebsiteStructuringPage,
+  type RagWebsiteStructuringResult,
+} from './website-structuring'
 
 const FIRECRAWL_V2_BASE_URL = 'https://api.firecrawl.dev/v2'
 const DEFAULT_WEBSITE_IMPORT_PAGE_LIMIT = 50
@@ -111,6 +116,7 @@ type FirecrawlLinkEntry = string | FirecrawlLink
 
 interface FirecrawlScrapeResponse {
   readonly success?: boolean
+  readonly creditsUsed?: number | null
   readonly data?: {
     readonly markdown?: string | null
     readonly text?: string | null
@@ -175,10 +181,29 @@ interface FirecrawlMapResponse {
 }
 
 interface FirecrawlClient {
-  readonly crawl?: (url: string, limit: number) => Promise<ReadonlyArray<FirecrawlCrawlPage>>
-  readonly batchScrape?: (urls: ReadonlyArray<string>) => Promise<ReadonlyArray<FirecrawlCrawlPage>>
+  readonly crawl?: (url: string, limit: number) => Promise<FirecrawlPagesResult | ReadonlyArray<FirecrawlCrawlPage>>
+  readonly batchScrape?: (urls: ReadonlyArray<string>) => Promise<FirecrawlPagesResult | ReadonlyArray<FirecrawlCrawlPage>>
   readonly map: (url: string, limit: number) => Promise<FirecrawlMapResponse>
   readonly scrape: (url: string) => Promise<FirecrawlScrapeResponse>
+}
+
+interface FirecrawlPagesResult {
+  readonly pages: ReadonlyArray<FirecrawlCrawlPage>
+  readonly creditsUsed: number | null
+}
+
+type WebsiteKnowledgeStructurer = (args: {
+  readonly startUrl: string
+  readonly pages: ReadonlyArray<RagWebsiteStructuringPage>
+}) => Promise<RagWebsiteStructuringResult>
+
+function normalizeFirecrawlPagesResult(
+  result: FirecrawlPagesResult | ReadonlyArray<FirecrawlCrawlPage>,
+): FirecrawlPagesResult {
+  if (Array.isArray(result)) {
+    return { pages: result as ReadonlyArray<FirecrawlCrawlPage>, creditsUsed: null }
+  }
+  return result as FirecrawlPagesResult
 }
 
 interface DiscoveredUrl {
@@ -194,6 +219,10 @@ interface ImportedWebsitePage {
   readonly rawCharacters: number
   readonly links: ReadonlyArray<StructuredLink>
   readonly qualityScore: number
+  readonly pricingRecords?: ReadonlyArray<RagPricingRecord>
+  readonly dynamicPricingSuspected?: boolean
+  readonly pricingVariantSignals?: ReadonlyArray<string>
+  readonly pricingExtractionNotes?: ReadonlyArray<string>
 }
 
 export type RagWebsiteImportPageStatus = 'imported' | 'skipped' | 'failed' | 'duplicate'
@@ -214,6 +243,24 @@ interface ExtractedWebsiteContent {
   readonly finalUrl: string | null
   readonly content: string
   readonly links: ReadonlyArray<StructuredLink>
+  readonly pricingRecords: ReadonlyArray<RagPricingRecord>
+  readonly dynamicPricingSuspected: boolean
+  readonly pricingVariantSignals: ReadonlyArray<string>
+  readonly pricingExtractionNotes: ReadonlyArray<string>
+}
+
+export interface RagPricingRecord {
+  readonly type: 'pricing'
+  readonly name: string
+  readonly variant?: string
+  readonly period?: string
+  readonly price: string
+  readonly currency?: string
+  readonly discount?: string
+  readonly features?: ReadonlyArray<string>
+  readonly sourceUrl: string
+  readonly evidenceText: string
+  readonly confidence: 'high' | 'medium' | 'low'
 }
 
 type StructuredLinkType =
@@ -270,6 +317,11 @@ export interface RagWebsiteImportStats {
   readonly structuredRecords: StructuredRecordCounts
   readonly warnings: ReadonlyArray<string>
   readonly skippedReasons: Readonly<Record<string, number>>
+  readonly dynamicPricingSuspected: boolean
+  readonly pricingVariantSignals: ReadonlyArray<string>
+  readonly pricingExtractionNotes: ReadonlyArray<string>
+  readonly pricingRecords: ReadonlyArray<RagPricingRecord>
+  readonly creditsUsed?: number | null
 }
 
 export interface RagWebsiteImportResult {
@@ -574,13 +626,304 @@ function extractPageContent(args: {
       args.text,
     ].filter(Boolean).join('\n\n'),
   )
+  const pricing = analyzePricingEvidence({
+    html: args.html ?? '',
+    content,
+    sourceUrl: startUrl,
+  })
 
   return {
     title: args.metadata?.title ?? args.metadata?.ogTitle ?? readHtmlTitle(args.html ?? '') ?? null,
     finalUrl: args.metadata?.sourceURL ?? args.metadata?.url ?? null,
     content,
     links,
+    pricingRecords: pricing.records,
+    dynamicPricingSuspected: pricing.dynamicPricingSuspected,
+    pricingVariantSignals: pricing.signals,
+    pricingExtractionNotes: pricing.notes,
   }
+}
+
+interface PricingAnalysis {
+  readonly records: ReadonlyArray<RagPricingRecord>
+  readonly dynamicPricingSuspected: boolean
+  readonly signals: ReadonlyArray<string>
+  readonly notes: ReadonlyArray<string>
+}
+
+const PRICING_ELEMENT_SELECTOR = [
+  '[data-price]',
+  '[data-amount]',
+  '[data-cost]',
+  '[data-fee]',
+  '[data-billing]',
+  '[data-period]',
+  '[data-variant]',
+  '[itemprop="offers"]',
+  '[itemprop="price"]',
+  '[class*="pricing" i]',
+  '[class*="price" i]',
+  '[class*="plan" i]',
+  '[class*="package" i]',
+  '[class*="rate" i]',
+].join(', ')
+
+const PRICE_VALUE_PATTERN = /(?:([$€£₹₨])\s*(\d[\d,.]*)(?!\s?%)|\b(USD|EUR|GBP|PKR|AED|CAD|AUD|INR|Rs\.?)\s*[:\-]?\s*(\d[\d,.]*)(?!\s?%))/i
+const PERIOD_PATTERN = /\b(per\s+)?(day|daily|week|weekly|month|monthly|quarter|quarterly|semi[- ]?annual|year|yearly|annual|annually|one[- ]?time|subscription|lifetime|trial|weekday|weekend)\b|\/(day|wk|week|mo(?:nth)?|quarter|qtr|yr|year)\b/i
+const DISCOUNT_PATTERN = /\b(?:save\s+)?\d+(?:\.\d+)?\s*%\s*(?:off|discount)?\b|\bdiscount(?:ed)?\s*(?:by|:)?\s*\d+(?:\.\d+)?\s*%\b/i
+
+function analyzePricingEvidence(args: {
+  readonly html: string
+  readonly content: string
+  readonly sourceUrl: string
+}): PricingAnalysis {
+  const records: RagPricingRecord[] = []
+  const signals = new Set<string>()
+  const htmlHasPrice = PRICE_VALUE_PATTERN.test(normalizeExtractedHtmlText(cleanHtmlToText(args.html)))
+  const $ = load(args.html)
+
+  if (htmlHasPrice) {
+    if ($('[role="tablist"], [role="tab"], [role="tabpanel"]').length > 0) {
+      signals.add('Pricing appears near tab or tab-panel controls.')
+    }
+    if ($('[role="switch"], input[type="radio"], input[type="checkbox"], button[aria-pressed]').length > 0) {
+      signals.add('Pricing page includes switchable controls or billing selectors.')
+    }
+    const dynamicAttributeCount = $('[class], [id], [data-billing], [data-period], [data-variant]').filter((_index, element) => {
+      const attributes = Object.entries($(element).attr() ?? {})
+        .map(([key, value]) => `${key} ${value}`)
+        .join(' ')
+        .toLowerCase()
+      return /(pricing|price|billing|period|variant).*(toggle|tab|switch|selector)|(?:toggle|tab|switch).*(pricing|price|billing|period|variant)/.test(attributes)
+    }).length
+    if (dynamicAttributeCount > 0) signals.add('Pricing or billing toggle attributes were detected.')
+
+    const hiddenPricingCount = $('[hidden], [aria-hidden="true"], [style*="display:none" i], [style*="display: none" i], [class~="hidden" i]')
+      .filter((_index, element) => PRICE_VALUE_PATTERN.test(normalizeExtractedHtmlText($(element).text())))
+      .length
+    if (hiddenPricingCount > 0) signals.add('Hidden pricing blocks were detected in the page HTML.')
+  }
+
+  $(PRICING_ELEMENT_SELECTOR).each((_index, element) => {
+    const node = $(element)
+    const text = normalizeExtractedHtmlText(cleanHtmlToText($.html(element) ?? node.text()))
+    if (!PRICE_VALUE_PATTERN.test(text) || text.length > 2_000) return
+    const attributes = node.attr() ?? {}
+    const attributeVariant = normalizeOptionalText(
+      attributes['data-variant'] ?? attributes['data-billing'] ?? attributes['data-period'],
+      120,
+    )
+    const heading = normalizeOptionalText(
+      node.find('h1, h2, h3, h4, h5, h6, [role="heading"]').first().text(),
+      160,
+    )
+    const record = pricingRecordFromEvidence({
+      evidence: text,
+      sourceUrl: args.sourceUrl,
+      name: heading,
+      variant: attributeVariant,
+    })
+    if (record) records.push(record)
+  })
+
+  records.push(...extractEmbeddedPricingRecords($, args.sourceUrl, signals))
+  records.push(...extractPricingRecordsFromContent(args.content, args.sourceUrl))
+
+  const uniqueRecords = records
+    .filter((record, index, values) => values.findIndex((candidate) =>
+      `${candidate.name}|${candidate.variant ?? ''}|${candidate.period ?? ''}|${candidate.price}|${candidate.sourceUrl}`.toLowerCase() ===
+      `${record.name}|${record.variant ?? ''}|${record.period ?? ''}|${record.price}|${record.sourceUrl}`.toLowerCase(),
+    ) === index)
+    .slice(0, 100)
+  const dynamicPricingSuspected = signals.size > 0
+  const notes = dynamicPricingSuspected
+    ? [
+      'Dynamic pricing options may exist on this page.',
+      'Some prices may require browser-rendered extraction in a future upgrade.',
+    ]
+    : []
+
+  return {
+    records: uniqueRecords,
+    dynamicPricingSuspected,
+    signals: Array.from(signals),
+    notes,
+  }
+}
+
+function pricingRecordFromEvidence(args: {
+  readonly evidence: string
+  readonly sourceUrl: string
+  readonly name?: string | null
+  readonly variant?: string | null
+}): RagPricingRecord | null {
+  const evidence = normalizeExtractedHtmlText(removeJunkFromContent(args.evidence)).slice(0, 1_000)
+  const priceMatch = evidence.match(PRICE_VALUE_PATTERN)
+  if (!priceMatch) return null
+  const currency = priceMatch[1] ?? priceMatch[3]
+  const amount = priceMatch[2] ?? priceMatch[4]
+  if (!amount) return null
+  const periodMatch = evidence.match(PERIOD_PATTERN)
+  const discountMatch = evidence.match(DISCOUNT_PATTERN)
+  const firstLine = evidence.split('\n').find((line) =>
+    line.length <= 160 && !PRICE_VALUE_PATTERN.test(line) && !DISCOUNT_PATTERN.test(line),
+  )
+  const name = normalizeOptionalText(args.name, 160) ?? normalizeOptionalText(firstLine, 160) ?? 'Pricing option'
+  const period = normalizeOptionalText(periodMatch?.[0], 80) ?? undefined
+  const variant = normalizeOptionalText(args.variant, 120) ?? period
+  const featureLines = evidence
+    .split('\n')
+    .filter((line) => line !== firstLine && !PRICE_VALUE_PATTERN.test(line) && !DISCOUNT_PATTERN.test(line))
+    .slice(0, 8)
+
+  return {
+    type: 'pricing',
+    name,
+    ...(variant ? { variant } : {}),
+    ...(period ? { period } : {}),
+    price: `${currency ?? ''}${currency && /^[A-Z]/i.test(currency) ? ' ' : ''}${amount}`,
+    ...(currency ? { currency } : {}),
+    ...(discountMatch?.[0] ? { discount: discountMatch[0] } : {}),
+    ...(featureLines.length ? { features: featureLines } : {}),
+    sourceUrl: args.sourceUrl,
+    evidenceText: evidence,
+    confidence: name !== 'Pricing option' ? 'high' : 'medium',
+  }
+}
+
+function extractPricingRecordsFromContent(content: string, sourceUrl: string): ReadonlyArray<RagPricingRecord> {
+  const blockRecords = content
+    .split(/\n{2,}|(?=^#{2,4}\s)/m)
+    .map((block) => block.trim())
+    .filter((block) => block.length >= 3 && block.length <= 2_000 && PRICE_VALUE_PATTERN.test(block))
+    .map((block) => pricingRecordFromEvidence({
+      evidence: block,
+      sourceUrl,
+      name: block.match(/^#{1,6}\s+(.+)$/m)?.[1] ?? null,
+    }))
+    .filter((record): record is RagPricingRecord => Boolean(record))
+  const lineRecords = extractPricingRecordsFromVisibleLines(content, sourceUrl)
+
+  return [...blockRecords, ...lineRecords]
+    .filter((record, index, values) => values.findIndex((candidate) =>
+      `${candidate.name}|${candidate.variant ?? ''}|${candidate.period ?? ''}|${candidate.price}|${candidate.sourceUrl}`.toLowerCase() ===
+      `${record.name}|${record.variant ?? ''}|${record.period ?? ''}|${record.price}|${record.sourceUrl}`.toLowerCase(),
+    ) === index)
+    .slice(0, 100)
+}
+
+function extractPricingRecordsFromVisibleLines(content: string, sourceUrl: string): ReadonlyArray<RagPricingRecord> {
+  const lines = content
+    .split(/\n+/)
+    .map((line) => normalizeExtractedHtmlText(removeJunkFromContent(line)))
+    .filter(Boolean)
+  const records: RagPricingRecord[] = []
+
+  lines.forEach((line, index) => {
+    if (!PRICE_VALUE_PATTERN.test(line)) return
+    const contextStart = Math.max(0, index - 3)
+    const contextEnd = Math.min(lines.length, index + 4)
+    const previousContext = lines
+      .slice(contextStart, index)
+      .filter((candidate) => !PRICE_VALUE_PATTERN.test(candidate))
+      .slice(-3)
+    const followingContext = lines
+      .slice(index + 1, contextEnd)
+      .filter((candidate) => !PRICE_VALUE_PATTERN.test(candidate))
+      .slice(0, 3)
+    const evidence = [...previousContext, line, ...followingContext].join('\n')
+    const previousLabel = [...lines.slice(contextStart, index)]
+      .reverse()
+      .find((candidate) =>
+        candidate.length <= 160 &&
+        !PRICE_VALUE_PATTERN.test(candidate) &&
+        !DISCOUNT_PATTERN.test(candidate) &&
+        !/^(price|cost|fee|starting at)\b/i.test(candidate),
+      )
+    const record = pricingRecordFromEvidence({
+      evidence,
+      sourceUrl,
+      name: previousLabel ?? null,
+    })
+    if (record) records.push(record)
+  })
+
+  return records
+}
+
+function extractEmbeddedPricingRecords(
+  $: ReturnType<typeof load>,
+  sourceUrl: string,
+  signals: Set<string>,
+): ReadonlyArray<RagPricingRecord> {
+  const records: RagPricingRecord[] = []
+  $('script').each((_index, element) => {
+    const script = $(element).text().trim()
+    if (!script || script.length > 250_000 || !/(price|amount|cost|fee|rate)/i.test(script)) return
+    if (!PRICE_VALUE_PATTERN.test(script) && !/"(?:price|amount|cost|fee)"\s*:\s*\d/i.test(script)) return
+    signals.add('Embedded script or JSON pricing data was detected.')
+    const type = ($(element).attr('type') ?? '').toLowerCase()
+    if (type.includes('json')) {
+      try {
+        records.push(...pricingRecordsFromJson(JSON.parse(script) as unknown, sourceUrl))
+        return
+      } catch {
+        // Fall through to evidence fragments for malformed or JavaScript-wrapped JSON.
+      }
+    }
+    const fragments = script.match(/\{[^{}]{0,1500}(?:price|amount|cost|fee|rate)[^{}]{0,1500}\}/gi) ?? []
+    for (const fragment of fragments.slice(0, 30)) {
+      const record = pricingRecordFromEvidence({
+        evidence: fragment.replace(/[{}"']/g, ' ').replace(/[:,]/g, ' '),
+        sourceUrl,
+      })
+      if (record) records.push({ ...record, confidence: 'low' })
+    }
+  })
+  return records
+}
+
+function pricingRecordsFromJson(value: unknown, sourceUrl: string): ReadonlyArray<RagPricingRecord> {
+  if (Array.isArray(value)) return value.flatMap((item) => pricingRecordsFromJson(item, sourceUrl))
+  if (!value || typeof value !== 'object') return []
+  const record = value as Record<string, unknown>
+  const nested = Object.values(record).flatMap((item) => pricingRecordsFromJson(item, sourceUrl))
+  const priceEntry = Object.entries(record).find(([key, item]) =>
+    /^(price|amount|cost|fee|rate|lowPrice|highPrice)$/i.test(key) &&
+    (typeof item === 'string' || typeof item === 'number'),
+  )
+  if (!priceEntry) return nested
+
+  const currencyValue = readJsonScalar(record.priceCurrency ?? record.currency ?? record.currencyCode)
+  const rawPrice = readJsonScalar(priceEntry[1])
+  if (!rawPrice) return nested
+  const exactPrice = PRICE_VALUE_PATTERN.test(rawPrice)
+    ? rawPrice
+    : `${currencyValue ? `${currencyValue} ` : ''}${rawPrice}`.trim()
+  const evidenceText = JSON.stringify(record).slice(0, 1_000)
+  const name = readJsonScalar(record.name ?? record.title ?? record.plan ?? record.product ?? record.service) ?? 'Pricing option'
+  const variant = readJsonScalar(record.variant ?? record.billing ?? record.billingPeriod ?? record.period ?? record.interval)
+  const period = readJsonScalar(record.period ?? record.billingPeriod ?? record.interval)
+  const discount = readJsonScalar(record.discount ?? record.discountText ?? record.savings)
+
+  return [{
+    type: 'pricing',
+    name,
+    ...(variant ? { variant } : {}),
+    ...(period ? { period } : {}),
+    price: exactPrice,
+    ...(currencyValue ? { currency: currencyValue } : {}),
+    ...(discount ? { discount } : {}),
+    sourceUrl,
+    evidenceText,
+    confidence: name !== 'Pricing option' ? 'high' : 'medium',
+  }, ...nested]
+}
+
+function readJsonScalar(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 160)
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return null
 }
 
 function extractWebsiteKnowledgeText(html: string): string {
@@ -1375,6 +1718,10 @@ function buildWebsiteKnowledgeContent(args: {
   readonly deterministicFallbackUsed: boolean
   readonly structuredRecords: StructuredRecordCounts
   readonly qualityWarnings: ReadonlyArray<string>
+  readonly dynamicPricingSuspected: boolean
+  readonly pricingVariantSignals: ReadonlyArray<string>
+  readonly pricingExtractionNotes: ReadonlyArray<string>
+  readonly pricingRecords: ReadonlyArray<RagPricingRecord>
 } {
   const rawCharacters = args.pages.reduce((sum, page) => sum + page.rawCharacters, 0)
   const usefulPages = args.pages.filter((page) =>
@@ -1390,6 +1737,20 @@ function buildWebsiteKnowledgeContent(args: {
     }))
     .filter((page) => page.content.length >= MIN_USEFUL_PAGE_CHARACTERS)
   const cleanedPageCharacters = cleanedPages.reduce((sum, page) => sum + page.content.length, 0)
+  const pricingRecords = usefulPages
+    .flatMap((page) => page.pricingRecords ?? [])
+    .filter((record, index, values) => values.findIndex((candidate) =>
+      `${candidate.name}|${candidate.variant ?? ''}|${candidate.period ?? ''}|${candidate.price}|${candidate.sourceUrl}`.toLowerCase() ===
+      `${record.name}|${record.variant ?? ''}|${record.period ?? ''}|${record.price}|${record.sourceUrl}`.toLowerCase(),
+    ) === index)
+    .slice(0, 150)
+  const pricingVariantSignals = usefulPages
+    .flatMap((page) => page.pricingVariantSignals ?? [])
+    .filter(uniqueByLowercase)
+  const pricingExtractionNotes = usefulPages
+    .flatMap((page) => page.pricingExtractionNotes ?? [])
+    .filter(uniqueByLowercase)
+  const dynamicPricingSuspected = usefulPages.some((page) => page.dynamicPricingSuspected === true)
   const structuredCounts: StructuredRecordCounts = {
     businessFacts: 0,
     contacts: 0,
@@ -1421,6 +1782,7 @@ function buildWebsiteKnowledgeContent(args: {
     if (key === 'faqs') structuredCounts.faqs += 1
     if (key === 'policies') structuredCounts.policies += 1
   }
+  structuredCounts.plans = Math.max(structuredCounts.plans, pricingRecords.length)
 
   const rankedPages = [...cleanedPages].sort((left, right) => scoreLegacyKnowledgePage(right) - scoreLegacyKnowledgePage(left))
   const includedPageUrls = new Set<string>()
@@ -1436,6 +1798,8 @@ function buildWebsiteKnowledgeContent(args: {
     '',
     '## Business Overview, Services, Pricing, FAQs and Policies',
     globalFacts.section,
+    formatPricingRecordsForKnowledge(pricingRecords),
+    formatVisiblePricingEvidenceForKnowledge(pricingRecords),
   ].filter(Boolean).join('\n')
   const sections: string[] = []
   let usedLength = header.length + 2
@@ -1483,13 +1847,113 @@ function buildWebsiteKnowledgeContent(args: {
     aiStructuringUsed: false,
     deterministicFallbackUsed: false,
     structuredRecords: structuredCounts,
-    qualityWarnings: buildLegacyWebsiteImportQualityWarnings({
+    qualityWarnings: [
+      ...buildLegacyWebsiteImportQualityWarnings({
       pages: cleanedPages,
       importedCount: cleanedPages.length,
       includedCount: includedPageUrls.size,
       contentLength: content.length,
-    }),
+      }),
+      ...(dynamicPricingSuspected
+        ? ['Dynamic pricing options may exist on one or more pages; review the extracted variants before publishing.']
+        : []),
+    ],
+    dynamicPricingSuspected,
+    pricingVariantSignals,
+    pricingExtractionNotes,
+    pricingRecords,
   }
+}
+
+function mergeAiStructuredWebsiteKnowledge(
+  built: ReturnType<typeof buildWebsiteKnowledgeContent>,
+  structuring: RagWebsiteStructuringResult,
+): ReturnType<typeof buildWebsiteKnowledgeContent> {
+  const qualityWarnings = [...built.qualityWarnings, ...structuring.warnings]
+  if (!structuring.used || !structuring.markdown.trim()) {
+    return {
+      ...built,
+      aiStructuringUsed: false,
+      deterministicFallbackUsed: true,
+      qualityWarnings,
+    }
+  }
+
+  const structuredPrefix = [
+    '# Structured Website Knowledge',
+    'This section contains source-grounded facts organized for chatbot use. Review it before publishing.',
+    '',
+    structuring.markdown.trim(),
+    '',
+    '# Raw Visible Firecrawl Evidence',
+    'The source-preserving evidence below remains available if a structured section omitted a useful fact.',
+  ].join('\n')
+  const content = cleanRagKnowledgeContent(
+    `${structuredPrefix}\n\n${built.content}`.slice(0, RAG_KNOWLEDGE_CHARACTER_LIMIT),
+  )
+  const includedPageUrls = new Set(
+    [...built.includedPageUrls].filter((url) => content.includes(url)),
+  )
+
+  return {
+    ...built,
+    content,
+    includedPageUrls,
+    savedCharacters: content.length,
+    capped:
+      built.capped ||
+      content.length >= RAG_KNOWLEDGE_CHARACTER_LIMIT ||
+      includedPageUrls.size < built.includedPageUrls.size,
+    aiStructuringUsed: true,
+    deterministicFallbackUsed: false,
+    qualityWarnings,
+  }
+}
+
+function formatPricingRecordsForKnowledge(records: ReadonlyArray<RagPricingRecord>): string {
+  if (records.length === 0) return ''
+  return [
+    '## Structured Pricing Evidence',
+    ...records.slice(0, 100).map((record) => [
+      `### ${record.name}`,
+      record.variant ? `- Variant: ${record.variant}` : '',
+      record.period ? `- Period: ${record.period}` : '',
+      `- Price: ${record.price}`,
+      record.discount ? `- Discount: ${record.discount}` : '',
+      record.features?.length ? `- Features: ${record.features.join('; ')}` : '',
+      `- Evidence: ${record.evidenceText.replace(/\n+/g, ' | ').slice(0, 500)}`,
+      `- Source: ${record.sourceUrl}`,
+    ].filter(Boolean).join('\n')),
+  ].join('\n\n')
+}
+
+function formatVisiblePricingEvidenceForKnowledge(records: ReadonlyArray<RagPricingRecord>): string {
+  const evidenceBySource = new Map<string, string[]>()
+  for (const record of records) {
+    const evidence = normalizeExtractedHtmlText(record.evidenceText)
+      .replace(/\n+/g, ' | ')
+      .slice(0, 700)
+    if (!evidence || !PRICE_VALUE_PATTERN.test(evidence)) continue
+    const lines = evidenceBySource.get(record.sourceUrl) ?? []
+    const label = [
+      record.name,
+      record.variant ? `variant ${record.variant}` : '',
+      record.period ? `period ${record.period}` : '',
+    ].filter(Boolean).join(' - ')
+    lines.push(`- ${label}: ${evidence}`)
+    evidenceBySource.set(record.sourceUrl, lines)
+  }
+
+  const sections = Array.from(evidenceBySource.entries())
+    .map(([sourceUrl, lines]) => [
+      `### Source: ${sourceUrl}`,
+      ...lines.filter(uniqueByLowercase).slice(0, 20),
+    ].join('\n'))
+    .slice(0, 20)
+
+  return sections.length
+    ? ['## Visible Pricing Text Evidence', ...sections].join('\n\n')
+    : ''
 }
 
 function buildPageReviewText(page: ImportedWebsitePage): string {
@@ -1666,7 +2130,7 @@ async function crawlWithFirecrawl(
   apiKey: string,
   url: string,
   limit: number,
-): Promise<ReadonlyArray<FirecrawlCrawlPage>> {
+): Promise<FirecrawlPagesResult> {
   const started = await firecrawlRequest('/crawl', apiKey, {
     method: 'POST',
     body: JSON.stringify({
@@ -1722,13 +2186,16 @@ async function crawlWithFirecrawl(
     nextUrl = next.next
   }
 
-  return pages
+  return {
+    pages,
+    creditsUsed: typeof latest.creditsUsed === 'number' ? latest.creditsUsed : null,
+  }
 }
 
 async function batchScrapeWithFirecrawl(
   apiKey: string,
   urls: ReadonlyArray<string>,
-): Promise<ReadonlyArray<FirecrawlCrawlPage>> {
+): Promise<FirecrawlPagesResult> {
   const started = await firecrawlRequest<FirecrawlBatchScrapeResponse>('/batch/scrape', apiKey, {
     method: 'POST',
     body: JSON.stringify({
@@ -1740,7 +2207,12 @@ async function batchScrapeWithFirecrawl(
     }),
   })
 
-  if (Array.isArray(started.data) && started.data.length > 0) return started.data
+  if (Array.isArray(started.data) && started.data.length > 0) {
+    return {
+      pages: started.data,
+      creditsUsed: typeof started.creditsUsed === 'number' ? started.creditsUsed : null,
+    }
+  }
 
   const batchId = typeof started.id === 'string' ? started.id : null
   if (!batchId) throw new Error('Firecrawl did not return a batch scrape job ID.')
@@ -1770,7 +2242,10 @@ async function batchScrapeWithFirecrawl(
     if (Array.isArray(next.data)) pages.push(...next.data)
     nextUrl = next.next
   }
-  return pages
+  return {
+    pages,
+    creditsUsed: typeof latest.creditsUsed === 'number' ? latest.creditsUsed : null,
+  }
 }
 
 class FirecrawlRequestError extends Error {
@@ -1875,6 +2350,7 @@ async function importWebsiteWithClient(args: {
   readonly client: FirecrawlClient
   readonly startUrl: string
   readonly pageLimit?: number
+  readonly structureKnowledge?: WebsiteKnowledgeStructurer
 }): Promise<{
   readonly title: string
   readonly content: string
@@ -1889,6 +2365,7 @@ async function importWebsiteWithClient(args: {
   let pagesFailed = 0
   let duplicatePages = 0
   let crawlPagesFound = 0
+  let creditsUsed: number | null = null
   const firecrawlModesUsed = new Set<string>()
   const warnings = new Set<string>()
   const pageRecords: RagWebsiteImportPage[] = []
@@ -1965,6 +2442,10 @@ async function importWebsiteWithClient(args: {
       hash,
       rawCharacters: extracted.content.length,
       links: extracted.links,
+      pricingRecords: extracted.pricingRecords,
+      dynamicPricingSuspected: extracted.dynamicPricingSuspected,
+      pricingVariantSignals: extracted.pricingVariantSignals,
+      pricingExtractionNotes: extracted.pricingExtractionNotes,
       qualityScore: scorePageQuality({
         url: finalUrl,
         title: extracted.title,
@@ -1977,7 +2458,9 @@ async function importWebsiteWithClient(args: {
   if (args.client.crawl) {
     try {
       firecrawlModesUsed.add('crawl')
-      const crawlPages = await args.client.crawl(args.startUrl, pageLimit)
+      const crawlResult = normalizeFirecrawlPagesResult(await args.client.crawl(args.startUrl, pageLimit))
+      const crawlPages = crawlResult.pages
+      if (typeof crawlResult.creditsUsed === 'number') creditsUsed = crawlResult.creditsUsed
       crawlPagesFound = crawlPages.length
       for (const page of crawlPages.slice(0, pageLimit)) {
         const pageUrl = page.metadata?.sourceURL ?? page.metadata?.url ?? args.startUrl
@@ -2027,7 +2510,9 @@ async function importWebsiteWithClient(args: {
   if (importedPages.length === 0 && args.client.batchScrape && discovered.urls.length > 1) {
     try {
       firecrawlModesUsed.add('batch_scrape')
-      const pages = await args.client.batchScrape(discovered.urls)
+      const batchResult = normalizeFirecrawlPagesResult(await args.client.batchScrape(discovered.urls))
+      const pages = batchResult.pages
+      if (typeof batchResult.creditsUsed === 'number') creditsUsed = batchResult.creditsUsed
       for (const page of pages) {
         const pageUrl = page.metadata?.sourceURL ?? page.metadata?.url ?? args.startUrl
         addImportedPage(pageUrl, extractFirecrawlCrawlPageContent(page))
@@ -2044,6 +2529,9 @@ async function importWebsiteWithClient(args: {
       try {
         firecrawlModesUsed.add('scrape')
         const scraped = await args.client.scrape(pageUrl)
+        if (typeof scraped.creditsUsed === 'number') {
+          creditsUsed = (creditsUsed ?? 0) + scraped.creditsUsed
+        }
         addImportedPage(pageUrl, extractFirecrawlContent(scraped))
       } catch {
         pagesFailed += 1
@@ -2071,10 +2559,34 @@ async function importWebsiteWithClient(args: {
     )
   }
 
-  const built = buildWebsiteKnowledgeContent({
+  const deterministic = buildWebsiteKnowledgeContent({
     pages: importedPages,
     startUrl: args.startUrl,
   })
+  let built = deterministic
+  if (args.structureKnowledge) {
+    try {
+      const structuring = await args.structureKnowledge({
+        startUrl: args.startUrl,
+        pages: importedPages.map((page) => ({
+          url: page.url,
+          title: page.title,
+          content: page.content,
+        })),
+      })
+      built = mergeAiStructuredWebsiteKnowledge(deterministic, structuring)
+    } catch {
+      built = mergeAiStructuredWebsiteKnowledge(deterministic, {
+        markdown: '',
+        used: false,
+        batchesAttempted: 0,
+        batchesSucceeded: 0,
+        recordsAccepted: 0,
+        recordsDropped: 0,
+        warnings: ['AI structuring was unavailable. The deterministic structure and visible Firecrawl evidence were preserved.'],
+      })
+    }
+  }
   if (built.lowValuePagesSkipped > 0) {
     skippedReasons.set(
       'low_value_page_content',
@@ -2119,6 +2631,11 @@ async function importWebsiteWithClient(args: {
       structuredRecords: built.structuredRecords,
       warnings: Array.from(warnings),
       skippedReasons: Object.fromEntries(skippedReasons),
+      dynamicPricingSuspected: built.dynamicPricingSuspected,
+      pricingVariantSignals: built.pricingVariantSignals,
+      pricingExtractionNotes: built.pricingExtractionNotes,
+      pricingRecords: built.pricingRecords,
+      creditsUsed,
     },
   }
 }
@@ -2161,6 +2678,11 @@ export async function createRagWebsiteImportDraft(args: {
       client: createFirecrawlClient(apiKey),
       startUrl: url,
       pageLimit: args.pageLimit,
+      structureKnowledge: ({ startUrl, pages }) => structureRagWebsiteKnowledgeForWorkspace({
+        workspaceId: args.workspaceId,
+        startUrl,
+        pages,
+      }),
     })
   } catch (error) {
     throw new Error(sanitizeProviderError(error) || 'Import failed.')

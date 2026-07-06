@@ -90,32 +90,86 @@ const nextConfig: NextConfig = {
    * below — Next.js merges headers from every matching rule, so
    * they apply to every response regardless of which cache rule
    * matched.
-   */
+  */
   async headers() {
+    const privatePageSources = [
+      "/dashboard/:path*",
+      "/inbox/:path*",
+      "/contacts/:path*",
+      "/pipelines/:path*",
+      "/broadcasts/:path*",
+      "/automations/:path*",
+      "/flows/:path*",
+      "/ai-chatbot/:path*",
+      "/billing/:path*",
+      "/whatsapp-api-pricing/:path*",
+      "/settings/:path*",
+      "/team/:path*",
+      "/admin/:path*",
+      "/checkout/:path*",
+      "/invite/:path*",
+      "/change-password",
+      "/pending-approval",
+      "/login",
+      "/signup",
+      "/forgot-password",
+    ]
+    const publicPageSources = [
+      "/",
+      "/pricing",
+      "/features/:path*",
+      "/about",
+      "/contact",
+      "/privacy-policy",
+      "/terms-and-conditions",
+      "/refund-policy",
+      "/security",
+    ]
+    const productionCacheHeaders =
+      process.env.NODE_ENV === "production"
+        ? [
+          {
+            source: "/_next/static/:path*",
+            headers: [
+              {
+                key: "Cache-Control",
+                value: "public, max-age=31536000, immutable",
+              },
+            ],
+          },
+          {
+            source: "/api/:path*",
+            headers: [
+              {
+                key: "Cache-Control",
+                value: "private, no-store, max-age=0, must-revalidate",
+              },
+            ],
+          },
+          ...privatePageSources.map((source) => ({
+            source,
+            headers: [
+              {
+                key: "Cache-Control",
+                value: "private, no-store, max-age=0, must-revalidate",
+              },
+            ],
+          })),
+          ...publicPageSources.map((source) => ({
+            source,
+            headers: [
+              {
+                key: "Cache-Control",
+                value:
+                  "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
+              },
+            ],
+          })),
+        ]
+        : [];
+
     return [
-      {
-        source: "/_next/static/:path*",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
-        ],
-      },
-      {
-        source: "/api/:path*",
-        headers: [{ key: "Cache-Control", value: "no-store" }],
-      },
-      {
-        source: "/:path*",
-        headers: [
-          {
-            key: "Cache-Control",
-            value:
-              "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
-          },
-        ],
-      },
+      ...productionCacheHeaders,
       {
         // Security headers on every response, including /_next/static
         // assets (nosniff matters there) and /api/* (HSTS + referrer-

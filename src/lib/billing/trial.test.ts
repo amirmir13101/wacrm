@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { calculateTrialStatus, trialBlockMessage } from './trial'
+import { PRO_BROADCAST_MONTHLY_LIMIT, calculateTrialStatus, trialBlockMessage } from './trial'
 
 describe('workspace trial status', () => {
   const now = new Date('2026-06-14T00:00:00.000Z')
@@ -71,6 +71,8 @@ describe('workspace trial status', () => {
     expect(status.isProExpired).toBe(false)
     expect(status.hasTrialBroadcastLimit).toBe(false)
     expect(status.trialBroadcastRemaining).toBeNull()
+    expect(status.proBroadcastLimit).toBe(PRO_BROADCAST_MONTHLY_LIMIT)
+    expect(status.proBroadcastRemaining).toBe(PRO_BROADCAST_MONTHLY_LIMIT)
   })
 
   it('does not treat expired Pro workspaces as active Pro', () => {
@@ -119,6 +121,9 @@ describe('workspace trial status', () => {
   it('returns clear beginner-friendly trial block messages', () => {
     expect(trialBlockMessage({ reason: 'trial_expired' })).toMatch(/14-day free trial has ended/)
     expect(trialBlockMessage({ reason: 'pro_expired' })).toMatch(/Pro plan has expired/)
+    expect(trialBlockMessage({ reason: 'pro_limit_exceeded', remaining: 230000 })).toContain(
+      '250,000 broadcast messages per month',
+    )
     expect(trialBlockMessage({ reason: 'trial_limit_exceeded', remaining: 100 })).toContain(
       'You have 100 remaining',
     )

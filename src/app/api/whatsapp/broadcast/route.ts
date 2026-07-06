@@ -19,8 +19,8 @@ import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 import {
-  releaseTrialBroadcastUsage,
-  reserveTrialBroadcastUsage,
+  releaseWorkspaceBroadcastUsage,
+  reserveWorkspaceBroadcastUsage,
 } from '@/lib/billing/trial'
 import type { Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
 
@@ -391,7 +391,7 @@ export async function POST(request: Request) {
 
     const recipientResult = evaluateBroadcastRecipients(contacts)
     const eligibleContacts = recipientResult.eligible.map((recipient) => recipient.contact)
-    const usageReservation = await reserveTrialBroadcastUsage({
+    const usageReservation = await reserveWorkspaceBroadcastUsage({
       workspaceId: workspace.workspaceId,
       count: eligibleContacts.length,
     })
@@ -471,7 +471,7 @@ export async function POST(request: Request) {
         }
       }
     } catch (error) {
-      await releaseTrialBroadcastUsage({
+      await releaseWorkspaceBroadcastUsage({
         workspaceId: workspace.workspaceId,
         count: usageReservation.reserved,
       })

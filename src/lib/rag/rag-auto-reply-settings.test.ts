@@ -79,7 +79,7 @@ describe('RAG logs and WhatsApp auto reply activation', () => {
 
   it('uses the required customer-safe default fallback message', () => {
     expect(RAG_AUTO_REPLY_DEFAULT_FALLBACK).toBe(
-      "Sorry, I don't have that information right now. A team member will help you soon.",
+      "I don't have that exact detail right now. Would you like me to connect you with a team member?",
     )
     expect(autoReplyRoute).toContain("requireRagPermission('enable_rag_auto_reply')")
   })

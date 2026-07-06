@@ -7,9 +7,9 @@ import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection }
 const canonicalUrl = "https://vpscoaster.live/about";
 
 export const metadata: Metadata = {
-  title: "About Talk Wagon | WhatsApp CRM for Customer Communication",
+  title: "About Us | Talk Wagon CRM",
   description:
-    "Learn about Talk Wagon, a WhatsApp CRM for customer communication, shared inboxes, contacts, broadcasts, automation, permissions, and follow-up workflows.",
+    "Learn about Talk Wagon CRM, a Berankify LTD project for WhatsApp CRM, chatbot automation, broadcasts, team inboxes, contacts, and customer communication.",
   alternates: {
     canonical: canonicalUrl,
   },
@@ -56,8 +56,8 @@ export default function AboutPage() {
       <InfoHero
         eyebrow="About Talk Wagon"
         title="A WhatsApp CRM Built for Customer Communication Teams"
-        description="Talk Wagon helps businesses turn WhatsApp customer conversations into a secure CRM workspace for sales, support, approved broadcasts, follow-ups, automation, and team workflows."
-        badges={["Team Inbox", "Contacts", "Broadcasts", "Automation", "Pipeline"]}
+        description="Talk Wagon CRM is a Berankify LTD project built to help businesses manage WhatsApp conversations, automate replies, send broadcasts, organize contacts, and manage customer journeys from one workspace."
+        badges={["Berankify LTD project", "Team Inbox", "Chatbot", "Broadcasts", "Automation"]}
       />
 
       <InfoSection
@@ -66,9 +66,15 @@ export default function AboutPage() {
       >
         <div className="rounded-[26px] border border-[#dce9e2] bg-white p-6 text-base leading-8 text-[#48675b] shadow-[0_18px_45px_rgba(7,19,14,0.08)]">
           <p>
-            Talk Wagon is designed for businesses that need a shared team inbox, customer contact management, broadcast
-            preparation, template-aware messaging, automation, pipeline tracking, and role-based access in one workspace.
-            The goal is simple: help teams follow up faster while keeping customer context and permissions clear.
+            Talk Wagon CRM is a project of Berankify LTD. It is designed for businesses that need a shared team inbox,
+            customer contact management, broadcast preparation, template-aware messaging, chatbot automation, pipeline
+            tracking, and role-based access in one workspace. The goal is simple: help teams follow up faster while
+            keeping customer context and permissions clear.
+          </p>
+          <p className="mt-4">
+            We are building Talk Wagon to be one of the most affordable WhatsApp chatbot automation and CRM tools for
+            growing businesses, especially small teams that need practical customer communication software without heavy
+            enterprise complexity.
           </p>
         </div>
       </InfoSection>

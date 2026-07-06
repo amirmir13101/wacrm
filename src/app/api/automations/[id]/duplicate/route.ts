@@ -1,24 +1,23 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { requireWorkspacePermission } from '@/lib/team/server'
 
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const workspaceResult = await requireWorkspacePermission('create_automations')
+  if (!workspaceResult.ok) {
+    return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
+  }
 
   const admin = supabaseAdmin()
   const { data: original, error: origErr } = await admin
     .from('automations')
     .select('*')
     .eq('id', id)
-    .eq('user_id', user.id)
+    .eq('workspace_id', workspaceResult.workspace.workspaceId)
     .maybeSingle()
   if (origErr) return NextResponse.json({ error: origErr.message }, { status: 500 })
   if (!original) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -26,7 +25,8 @@ export async function POST(
   const { data: copy, error: copyErr } = await admin
     .from('automations')
     .insert({
-      user_id: user.id,
+      user_id: workspaceResult.workspace.userId,
+      workspace_id: workspaceResult.workspace.workspaceId,
       name: `${original.name} (Copy)`,
       description: original.description,
       trigger_type: original.trigger_type,

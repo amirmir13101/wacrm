@@ -8,6 +8,7 @@ import {
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
 import { automationSendSkipReason } from './send-safety'
+import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 
 // ------------------------------------------------------------
 // Automation-side Meta sender.
@@ -22,6 +23,7 @@ import { automationSendSkipReason } from './send-safety'
 
 interface SendTextArgs {
   userId: string
+  workspaceId: string
   conversationId: string
   contactId: string
   text: string
@@ -29,6 +31,7 @@ interface SendTextArgs {
 
 interface SendTemplateArgs {
   userId: string
+  workspaceId: string
   conversationId: string
   contactId: string
   templateName: string
@@ -75,7 +78,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     // return an error, which looks like "contact not found" to users.
     .select('*')
     .eq('id', input.contactId)
-    .eq('user_id', input.userId)
+    .eq('workspace_id', input.workspaceId)
     .maybeSingle()
   if (contactErr || !contact?.phone) {
     throw new Error('contact not found for this user')
@@ -93,11 +96,13 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('user_id', input.userId)
-    .single()
+  const { config, error: configErr } = await findWorkspaceWhatsAppConfig<{
+    phone_number_id: string
+    access_token: string
+  }>({
+    workspaceId: input.workspaceId,
+    columns: 'phone_number_id, access_token, status',
+  })
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
@@ -147,7 +152,11 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   if (lastError) throw lastError
 
   if (workingPhone !== sanitized) {
-    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+    await db
+      .from('contacts')
+      .update({ phone: workingPhone })
+      .eq('id', contact.id)
+      .eq('workspace_id', input.workspaceId)
   }
 
   // Persist the sent message so it appears in the inbox with a real
@@ -181,6 +190,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       updated_at: new Date().toISOString(),
     })
     .eq('id', input.conversationId)
+    .eq('workspace_id', input.workspaceId)
 
   return { whatsapp_message_id: waMessageId }
 }

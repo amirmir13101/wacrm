@@ -16,12 +16,20 @@ const websiteImportRoute = readFileSync(
   join(process.cwd(), 'src/app/api/rag/website-import/route.ts'),
   'utf8',
 )
+const websiteImportPublishRoute = readFileSync(
+  join(process.cwd(), 'src/app/api/rag/website-import/[id]/route.ts'),
+  'utf8',
+)
 const websiteImport = readFileSync(
   join(process.cwd(), 'src/lib/rag/website-import.ts'),
   'utf8',
 )
 const knowledgeStore = readFileSync(
   join(process.cwd(), 'src/lib/rag/knowledge-store.ts'),
+  'utf8',
+)
+const embeddingStore = readFileSync(
+  join(process.cwd(), 'src/lib/rag/embedding-store.ts'),
   'utf8',
 )
 const webhookRoute = readFileSync(
@@ -55,6 +63,152 @@ describe('RAG Firecrawl website import', () => {
     expect(extracted.title).toBe('Example Support')
     expect(extracted.finalUrl).toBe('https://example.com/support')
     expect(extracted.content).toContain('Support email is support@example.com')
+  })
+
+  it('detects dynamic pricing controls and preserves hidden and embedded pricing variants', () => {
+    const extracted = __ragWebsiteImportTestUtils.extractFirecrawlContent({
+      success: true,
+      data: {
+        html: `
+          <main>
+            <h1>Packages</h1>
+            <div class="pricing-toggle" role="tablist">
+              <button role="tab" data-billing="monthly">Monthly</button>
+              <button role="tab" data-billing="quarterly">Quarterly</button>
+            </div>
+            <section class="plan-card" role="tabpanel" data-variant="Quarterly" hidden>
+              <h2>Starter Package</h2>
+              <p>$27 per quarter</p>
+              <p>10% off quarterly</p>
+            </section>
+            <script type="application/json">
+              {"offers":[{"name":"Consultation","variant":"Weekend","period":"one-time","price":"£50","discount":"5% off"}]}
+            </script>
+          </main>
+        `,
+        metadata: {
+          title: 'Packages',
+          sourceURL: 'https://example.com/packages',
+        },
+      },
+    })
+
+    expect(extracted.dynamicPricingSuspected).toBe(true)
+    expect(extracted.pricingVariantSignals).toContain('Pricing appears near tab or tab-panel controls.')
+    expect(extracted.pricingVariantSignals).toContain('Hidden pricing blocks were detected in the page HTML.')
+    expect(extracted.pricingVariantSignals).toContain('Embedded script or JSON pricing data was detected.')
+    expect(extracted.pricingRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: 'Starter Package',
+        variant: 'Quarterly',
+        period: 'per quarter',
+        price: '$27',
+        discount: '10% off',
+        sourceUrl: 'https://example.com/packages',
+      }),
+      expect.objectContaining({
+        name: 'Consultation',
+        variant: 'Weekend',
+        period: 'one-time',
+        price: '£50',
+        discount: '5% off',
+        sourceUrl: 'https://example.com/packages',
+      }),
+    ]))
+    expect(extracted.pricingRecords.every((record) => record.evidenceText.length > 0)).toBe(true)
+  })
+
+  it('does not flag an ordinary static pricing page as dynamic or invent missing prices', () => {
+    const staticPricing = __ragWebsiteImportTestUtils.extractFirecrawlContent({
+      success: true,
+      data: {
+        html: '<main><h1>Services</h1><article><h2>Standard</h2><p>Price: $25 one-time.</p></article></main>',
+        metadata: { sourceURL: 'https://example.com/services' },
+      },
+    })
+    const missingPrice = __ragWebsiteImportTestUtils.extractFirecrawlContent({
+      success: true,
+      data: {
+        html: '<main><h1>Custom Service</h1><p>Contact us for a tailored quote.</p></main>',
+        metadata: { sourceURL: 'https://example.com/custom' },
+      },
+    })
+
+    expect(staticPricing.dynamicPricingSuspected).toBe(false)
+    expect(staticPricing.pricingRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({ price: '$25', period: 'one-time' }),
+    ]))
+    expect(missingPrice.dynamicPricingSuspected).toBe(false)
+    expect(missingPrice.pricingRecords).toHaveLength(0)
+  })
+
+  it('adds exact structured pricing evidence and dynamic notes to the review draft stats', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://example.com/',
+      pageLimit: 5,
+      client: {
+        crawl: async () => [{
+          markdown: '# Memberships\n\nChoose the option that matches your needs.',
+          rawHtml: `
+            <main>
+              <h1>Memberships</h1>
+              <div role="tablist" class="billing-tabs"><button role="tab">Weekly</button><button role="tab">Annual</button></div>
+              <article class="price-card" data-variant="Weekly"><h2>Standard</h2><p>USD 12 per week</p></article>
+              <article class="price-card" data-variant="Annual"><h2>Standard</h2><p>USD 500 per year</p><p>20% discount</p></article>
+            </main>
+          `,
+          metadata: { title: 'Memberships', sourceURL: 'https://example.com/' },
+        }],
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    expect(imported.stats.dynamicPricingSuspected).toBe(true)
+    expect(imported.stats.pricingRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Standard', variant: 'Weekly', price: 'USD 12' }),
+      expect.objectContaining({ name: 'Standard', variant: 'Annual', price: 'USD 500', discount: '20% discount' }),
+    ]))
+    expect(imported.stats.pricingExtractionNotes).toContain('Some prices may require browser-rendered extraction in a future upgrade.')
+    expect(imported.content).toContain('## Structured Pricing Evidence')
+    expect(imported.content).toContain('- Variant: Weekly')
+    expect(imported.content).toContain('- Price: USD 12')
+    expect(imported.content).toContain('## Visible Pricing Text Evidence')
+    expect(imported.content).toContain('USD 12 per week')
+    expect(imported.content).toContain('USD 500 per year')
+  })
+
+  it('preserves visible Firecrawl pricing text with exact billing periods for generic businesses', async () => {
+    const imported = await __ragWebsiteImportTestUtils.importWebsiteWithClient({
+      startUrl: 'https://services.example/',
+      pageLimit: 5,
+      client: {
+        crawl: async () => [{
+          markdown: [
+            '# Service Packages',
+            'Starter Care',
+            '4 visits included.',
+            'Price: $9.99 per week',
+            'Growth Care',
+            '8 visits included.',
+            'Price: $13.99/week',
+          ].join('\n'),
+          metadata: { title: 'Service Packages', sourceURL: 'https://services.example/packages/' },
+        }],
+        map: async () => ({ success: true, links: [] }),
+        scrape: async () => ({ success: true, data: { markdown: '' } }),
+      },
+    })
+
+    expect(imported.content).toContain('## Visible Pricing Text Evidence')
+    expect(imported.content).toContain('Starter Care')
+    expect(imported.content).toContain('$9.99 per week')
+    expect(imported.content).toContain('Growth Care')
+    expect(imported.content).toContain('$13.99/week')
+    expect(imported.stats.pricingRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({ price: '$9.99', period: 'per week' }),
+      expect.objectContaining({ price: '$13.99', period: '/week' }),
+    ]))
   })
 
   it('discovers and imports multiple public pages from Firecrawl map results', async () => {
@@ -614,6 +768,12 @@ describe('RAG Firecrawl website import', () => {
     expect(websiteImportRoute).not.toContain('embedRagManualKnowledgeSource')
     expect(websiteImportRoute).not.toContain('shouldAutoEmbedRagKnowledge')
     expect(websiteImportRoute).not.toContain('encrypted_api_key')
+    expect(websiteImportPublishRoute).toContain('publishRagWebsiteImportJob')
+    expect(websiteImportPublishRoute).toContain('embedRagManualKnowledgeSource')
+    expect(websiteImportPublishRoute).toContain('recordFailedRagEmbeddingSummary')
+    expect(websiteImportPublishRoute).toContain('embeddingWarning')
+    expect(websiteImportPublishRoute).toContain('sourceId: result.sourceId')
+    expect(websiteImportPublishRoute).toContain("action === 'discard'")
 
     expect(websiteImport).toContain("from('rag_firecrawl_settings')")
     expect(websiteImport).toContain('decrypt(row.encrypted_api_key)')
@@ -626,6 +786,21 @@ describe('RAG Firecrawl website import', () => {
     expect(websiteImport).toContain('crawlEntireDomain: true')
     expect(websiteImport).toContain("formats: ['markdown', 'rawHtml', 'links']")
     expect(websiteImport).toContain("formats: ['markdown', 'html', 'links']")
+  })
+
+  it('publishes large website drafts safely and separates embedding failures from save failures', () => {
+    expect(websiteImportPublishRoute).toContain("const title = typeof body.title === 'string' ? body.title : undefined")
+    expect(websiteImportPublishRoute).toContain("const content = typeof body.content === 'string' ? body.content : undefined")
+    expect(websiteImportPublishRoute).toContain('embeddingSummary = await embedRagManualKnowledgeSource')
+    expect(websiteImportPublishRoute).toContain('sourceId: result.sourceId')
+    expect(websiteImportPublishRoute).toContain('} catch (embeddingError) {')
+    expect(websiteImportPublishRoute).toContain('embeddingSummary = await recordFailedRagEmbeddingSummary')
+    expect(websiteImportPublishRoute).toContain('published: true')
+    expect(websiteImportPublishRoute).toContain('saved: true')
+    expect(websiteImportPublishRoute).toContain('embeddingWarning')
+    expect(websiteImportPublishRoute).toContain('userMessage: embeddingSummary.userMessage')
+    expect(embeddingStore).toContain('recordFailedRagEmbeddingSummary')
+    expect(embeddingStore).toContain('updateSourceEmbeddingMetadata')
   })
 
   it('enforces readable content and the shared 500,000 character limit', () => {
@@ -663,12 +838,15 @@ describe('RAG Firecrawl website import', () => {
     expect(page).toContain('Creating searchable knowledge chunks...')
     expect(page).not.toContain('Removing duplicate/footer/widget junk')
     expect(page).not.toContain('Crawling current page')
-    expect(page).toContain('Embeddings pending')
-    expect(page).toContain('The import creates a review draft and chunks only.')
-    expect(page).toContain('Website import summary')
-    expect(page).toContain('pages imported')
-    expect(page).toContain('characters saved')
-    expect(page).toContain('Content limit reached')
+    expect(page).toContain('Embeddings automatic')
+    expect(page).toContain('The import creates a review draft first.')
+    expect(page).toContain('Embeddings are created automatically only after you save the reviewed knowledge.')
+    expect(page).not.toContain('Website import summary')
+    expect(page).toContain('Review Imported Website Knowledge')
+    expect(page).toContain('Pages imported')
+    expect(page).toContain('Saved characters')
+    expect(page).toContain('Content capped')
+    expect(page).toContain('Estimated time: Up to 25 pages may take around 2–3 minutes')
     expect(page).toContain('Importing...')
     expect(page).toContain('Add your Firecrawl API key first.')
     expect(page).toContain('/api/rag/website-import')

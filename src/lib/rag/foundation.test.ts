@@ -221,16 +221,51 @@ describe('RAG Phase 1 foundation', () => {
     )
   })
 
+  it('expands broad company, offerings, and owner questions toward overview and legal evidence', () => {
+    expect(buildRagRetrievalQueries('What is Acme Digital Studio?')).toEqual(expect.arrayContaining([
+      'What is Acme Digital Studio?',
+      'What business overview, homepage, about, services, products, offers, pricing, support, contact, and policies are available for acme digital studio?',
+      'What does acme digital studio do, provide, sell, or offer according to the business knowledge?',
+    ]))
+
+    expect(buildRagRetrievalQueries('What is Acme Digital Studio offering?')).toEqual(expect.arrayContaining([
+      'What business overview, homepage, about, services, products, offers, pricing, support, contact, and policies are available for acme digital studio?',
+    ]))
+
+    expect(buildRagRetrievalQueries('owner of Acme Digital Studio')).toEqual(expect.arrayContaining([
+      'What owner, founder, director, legal entity, company number, registration, about, and company details are available for acme digital studio?',
+      'Who owns or is behind acme digital studio, and what legal company details are listed?',
+    ]))
+  })
+
   it('extracts generic keyword terms for exact retrieval supplementation', () => {
     expect(extractRagKeywordTerms('Whatsapp support available?')).toEqual([
       'whatsapp',
       'support',
     ])
     expect(extractRagKeywordTerms('12 gb vps price monthly and yearly')).toEqual([
+      '12gb',
+      '12 gb',
       'vps',
       'price',
       'monthly',
       'yearly',
+    ])
+    expect(extractRagKeywordTerms('12GB RAM price')).toEqual([
+      '12gb',
+      '12 gb',
+      '12gb',
+      'ram',
+      'price',
+    ].filter((term, index, values) => values.indexOf(term) === index))
+  })
+
+  it('keeps exact numeric/spec pricing questions focused instead of broadening them', () => {
+    expect(buildRagRetrievalQueries('12 GB RAM price')).toEqual([
+      '12 GB RAM price',
+    ])
+    expect(buildRagRetrievalQueries('12gb ram price?')).toEqual([
+      '12gb ram price?',
     ])
   })
 
@@ -257,6 +292,14 @@ describe('RAG Phase 1 foundation', () => {
       content: 'Support is available by WhatsApp at https://wa.me/123456789 and by email.',
     })
     expect(contactScore).toBeGreaterThan(overviewScore)
+
+    const ownerScore = scoreKeywordRagChunk({
+      question: 'Who owns Acme Digital Studio?',
+      terms: ['owns', 'acme', 'digital', 'studio'],
+      matchedTerms: ['acme', 'digital', 'studio'],
+      content: 'Business Profile: Acme Digital Studio. Legal name: Acme Digital Studio Ltd. Company number: 123456. Director: Jane Doe.',
+    })
+    expect(ownerScore).toBeGreaterThan(overviewScore)
   })
 
   it('masks secrets and sanitizes provider errors', () => {

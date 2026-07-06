@@ -36,19 +36,32 @@ const featureImages = {
   automation: "/hostiko-crm/generated/features/talk-wagon-features-ai-automation.webp",
   pipeline: "/hostiko-crm/generated/features/talk-wagon-features-sales-pipeline.webp",
   permissions: "/hostiko-crm/generated/features/talk-wagon-features-permissions.webp",
+  flows: "/hostiko-crm/generated/flows/talk-wagon-flows-builder-nodes.webp",
+  templates: "/hostiko-crm/generated/flows/talk-wagon-flows-meta-template-submission.webp",
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp CRM Features for Teams, Broadcasts and Automation | Talk Wagon",
+  title: "WhatsApp CRM Features for Teams, Flows, Broadcasts and Automation | Talk Wagon",
   description:
-    "Explore Talk Wagon WhatsApp CRM features for shared inboxes, contacts, approved broadcasts, templates, automation, agent permissions, analytics, and pipeline tracking.",
+    "Explore Talk Wagon WhatsApp CRM features for shared inboxes, contacts, visual flows, approved broadcasts, Meta template approval, automation, agent permissions, analytics, and pipeline tracking.",
+  keywords: [
+    "WhatsApp CRM features",
+    "WhatsApp automation flows",
+    "WhatsApp team inbox",
+    "WhatsApp broadcast CRM",
+    "Meta WhatsApp template approval",
+    "customer journey automation",
+    "sales pipeline CRM",
+    "WhatsApp CRM for teams",
+  ],
+  category: "Business software",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
     title: "Talk Wagon WhatsApp CRM Features for Growing Teams",
     description:
-      "Discover WhatsApp CRM tools for shared inboxes, contacts, approved broadcasts, templates, automation, permissions, analytics, and pipeline tracking.",
+      "Discover WhatsApp CRM tools for shared inboxes, contacts, visual flows, approved broadcasts, Meta template approval, automation, permissions, analytics, and pipeline tracking.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -65,7 +78,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Talk Wagon WhatsApp CRM Features for Growing Teams",
     description:
-      "WhatsApp CRM features for shared inboxes, contacts, approved broadcasts, templates, automation, permissions, analytics, and pipeline tracking.",
+      "WhatsApp CRM features for shared inboxes, contacts, visual flows, approved broadcasts, Meta template approval, automation, permissions, analytics, and pipeline tracking.",
     images: [featureImages.hero],
   },
   robots: {
@@ -77,7 +90,9 @@ export const metadata: Metadata = {
 const heroPills = [
   "Team Inbox",
   "Contacts",
+  "Flows",
   "Broadcasts",
+  "Meta Templates",
   "AI Automation",
   "Pipeline",
   "Permissions",
@@ -90,6 +105,13 @@ const featureCards = [
     href: "/features/team-inbox",
     description:
       "Manage customer chats in a shared inbox instead of scattered phones. Agents can work assigned conversations, managers can monitor queues, and every customer message stays connected to CRM history.",
+  },
+  {
+    title: "Flows",
+    icon: GitBranch,
+    href: "/features/flows",
+    description:
+      "Create visual WhatsApp automation flows for follow-ups, reminders, routing, approved template messages, and customer journeys. Teams can connect triggers, conditions, waits, actions, and run history in one builder.",
   },
   {
     title: "Contact Management",
@@ -106,11 +128,11 @@ const featureCards = [
       "Prepare WhatsApp template broadcasts with eligibility checks, consent controls, preflight review, queue processing, and live delivery updates. This gives campaigns structure before they reach customers.",
   },
   {
-    title: "WhatsApp Templates",
+    title: "Meta Template Approval",
     icon: Tags,
-    href: "/features#templates",
+    href: "/features/flows#meta-template-submission",
     description:
-      "Sync and organize approved Meta WhatsApp templates for compliant outreach. Template-based messaging keeps follow-ups and campaigns aligned with WhatsApp Business Platform rules.",
+      "Create WhatsApp message templates, submit them to Meta/Facebook for approval, sync approved templates back into the CRM, and use them inside broadcasts or automation flows.",
   },
   {
     title: "AI Workflow Automation",
@@ -199,7 +221,7 @@ const faqs = [
   {
     question: "What are WhatsApp CRM features?",
     answer:
-      "WhatsApp CRM features are tools that help a business manage conversations, contacts, broadcasts, automations, agents, permissions, and sales follow-ups from one workspace.",
+      "WhatsApp CRM features are tools that help a business manage conversations, contacts, visual flows, broadcasts, automations, agents, permissions, and sales follow-ups from one workspace.",
   },
   {
     question: "Does Talk Wagon support a shared WhatsApp inbox?",
@@ -219,7 +241,12 @@ const faqs = [
   {
     question: "Does the CRM support WhatsApp template messages?",
     answer:
-      "Yes. The CRM can sync and use approved Meta WhatsApp templates, including variable mapping for automation template sends.",
+      "Yes. The CRM can create WhatsApp templates, submit them to Meta/Facebook for approval, sync approved templates back, and use them for broadcasts or automation template sends.",
+  },
+  {
+    question: "Does Talk Wagon support visual automation flows?",
+    answer:
+      "Yes. Talk Wagon supports visual WhatsApp automation flows for triggers, conditions, waits, approved template messages, team routing, follow-ups, and run history.",
   },
   {
     question: "Can automations reply to keywords?",
@@ -256,7 +283,7 @@ const softwareSchema = {
   operatingSystem: "Web",
   url: canonicalUrl,
   description:
-    "WhatsApp CRM features for team inboxes, contact management, broadcasts, templates, AI automation, follow-ups, role-based agents, permissions, and sales pipeline tracking.",
+    "WhatsApp CRM features for team inboxes, contact management, visual flows, broadcasts, Meta template approval, AI automation, follow-ups, role-based agents, permissions, and sales pipeline tracking.",
   offers: {
     "@type": "Offer",
     category: "WhatsApp CRM",
@@ -313,9 +340,9 @@ export default function FeaturesPage() {
               WhatsApp CRM Features for Teams, Automation and Growth
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Explore tools for shared inboxes, contact management, approved template
-              broadcasts, automation workflows, follow-ups, role-based agents, analytics,
-              and sales pipeline tracking.
+              Explore tools for shared inboxes, contact management, visual flows,
+              approved template broadcasts, Meta template approval, automation workflows,
+              follow-ups, role-based agents, analytics, and sales pipeline tracking.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
@@ -358,9 +385,9 @@ export default function FeaturesPage() {
               Everything Your WhatsApp Customer Workflow Needs in One CRM
             </h2>
             <p className="mt-4 text-[#5b7169]">
-              Talk Wagon combines daily WhatsApp communication, team workflows,
-              automation, broadcasts, permissions, and sales tracking so businesses can
-              manage customer growth from one workspace.
+              Talk Wagon combines daily WhatsApp communication, visual flows,
+              team workflows, automation, broadcasts, template approval, permissions,
+              and sales tracking so businesses can manage customer growth from one workspace.
             </p>
           </div>
 
@@ -388,6 +415,79 @@ export default function FeaturesPage() {
                 </Link>
               </article>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="visual-flows" className="bg-[#f7fbf8] px-5 py-20 sm:px-8 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <div className="mx-auto max-w-3xl text-center">
+            <SectionEyebrow>Flows and approved templates</SectionEyebrow>
+            <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
+              Build Customer Journeys and Manage Approved Messages Visually
+            </h2>
+            <p className="mt-4 text-[#5b7169]">
+              Connect triggers, conditions, waits, team routing, and approved message
+              templates in one workspace, then review how each customer journey runs.
+            </p>
+          </div>
+
+          <div className="mt-10 grid gap-6 lg:grid-cols-2">
+            <Link
+              href="/features/flows"
+              className="group overflow-hidden rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)] ring-1 ring-[#e1eee8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4]"
+            >
+              <div className="overflow-hidden bg-[#f4fff9]">
+                <Image
+                  src={featureImages.flows}
+                  alt="Talk Wagon visual flow builder with connected customer journey nodes"
+                  width={1168}
+                  height={880}
+                  loading="lazy"
+                  className="h-auto w-full transition duration-300 group-hover:scale-[1.03]"
+                />
+              </div>
+              <div className="p-6 sm:p-7">
+                <h3 className="text-2xl font-extrabold text-[#07130e]">Visual Flows</h3>
+                <p className="mt-3 text-sm leading-7 text-[#5b7169]">
+                  Design branching customer journeys with triggers, conditions, waits,
+                  messages, team assignments, webhooks, and transparent run history.
+                </p>
+                <span className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] group-hover:text-[#07130e]">
+                  Explore Flows
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </span>
+              </div>
+            </Link>
+
+            <Link
+              href="/features/flows#meta-template-submission"
+              className="group overflow-hidden rounded-[30px] bg-white shadow-[0_20px_60px_rgba(7,19,14,0.10)] ring-1 ring-[#e1eee8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4]"
+            >
+              <div className="overflow-hidden bg-[#f4fff9]">
+                <Image
+                  src={featureImages.templates}
+                  alt="Talk Wagon message template editor with approval and sync statuses"
+                  width={1168}
+                  height={880}
+                  loading="lazy"
+                  className="h-auto w-full transition duration-300 group-hover:scale-[1.03]"
+                />
+              </div>
+              <div className="p-6 sm:p-7">
+                <h3 className="text-2xl font-extrabold text-[#07130e]">
+                  Template Approval and Sync
+                </h3>
+                <p className="mt-3 text-sm leading-7 text-[#5b7169]">
+                  Create message templates, submit them for approval, track status, sync
+                  approved templates, and reuse them in broadcasts or Flows.
+                </p>
+                <span className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] group-hover:text-[#07130e]">
+                  See Template Workflow
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </span>
+              </div>
+            </Link>
           </div>
         </div>
       </section>

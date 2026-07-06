@@ -10,9 +10,10 @@ import { resolveWhatsAppConfigScope, sanitizeWhatsAppConfigForClient } from '@/l
 /**
  * GET /api/whatsapp/config
  *
- * Used by the "Test API Connection" button and by the page to check
- * whether the saved config is healthy. Returns 200 in all non-auth cases
- * so the UI can render an appropriate message rather than show a 500.
+ * Used by the settings/inbox UI to load saved WhatsApp status quickly.
+ * Pass `?verify=1` from the "Test API Connection" button to run the
+ * slower live Meta API verification on demand. Returns 200 in all non-auth
+ * cases so the UI can render an appropriate message rather than show a 500.
  *
  * Response shape:
  *   { connected: true,  phone_info: {...} }
@@ -20,8 +21,9 @@ import { resolveWhatsAppConfigScope, sanitizeWhatsAppConfigForClient } from '@/l
  *   { connected: false, reason: 'token_corrupted',  message: '...', needs_reset: true }
  *   { connected: false, reason: 'meta_api_error',   message: '...' }
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const shouldVerifyWithMeta = new URL(request.url).searchParams.get('verify') === '1'
     const workspaceResult = await requireCurrentWorkspace()
     if (!workspaceResult.ok) {
       return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
@@ -83,6 +85,19 @@ export async function GET() {
           },
           { status: 200 }
         )
+      }
+
+      if (!shouldVerifyWithMeta) {
+        const savedConnected = ownConfig.status === 'connected'
+        return NextResponse.json({
+          connected: savedConnected,
+          reason: savedConnected ? undefined : 'saved_not_verified',
+          own_config: true,
+          config: sanitizeWhatsAppConfigForClient(ownConfig),
+          message: savedConnected
+            ? 'Saved WhatsApp configuration loaded. Click Test API Connection to verify it with Meta.'
+            : 'Your WhatsApp configuration is saved but not marked connected. Click Test API Connection to verify it with Meta.',
+        })
       }
 
       try {
@@ -165,6 +180,22 @@ export async function GET() {
         },
         { status: 200 }
       )
+    }
+
+    if (!shouldVerifyWithMeta) {
+      const savedConnected = config.status === 'connected'
+      return NextResponse.json({
+        connected: savedConnected,
+        reason: savedConnected ? undefined : 'saved_not_verified',
+        config: canManage ? sanitizeWhatsAppConfigForClient(config) : undefined,
+        managed_by_owner: !(canManage || canConnectOwn),
+        legacy_config_source: source === 'legacy_member',
+        message: savedConnected
+          ? 'Saved WhatsApp configuration loaded. Click Test API Connection to verify it with Meta.'
+          : canManage || canConnectOwn
+            ? 'WhatsApp configuration is saved but not marked connected. Click Test API Connection to verify it with Meta.'
+            : 'Workspace WhatsApp is not marked connected. Ask the workspace owner to verify it.',
+      })
     }
 
     // Validate credentials against Meta

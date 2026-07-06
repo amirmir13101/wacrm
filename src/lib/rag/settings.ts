@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { decrypt, encrypt } from '@/lib/whatsapp/encryption'
 import { resolveRagProviderConfig } from './provider'
+import { AI_PROVIDER_DEFAULTS } from './provider-config'
 import { getSecretLast4, maskSecret, sanitizeProviderError } from './security'
 import { RAG_PROVIDER_TYPES, type RagProviderType } from './types'
 
@@ -135,16 +136,17 @@ export async function saveRagProviderSettings(args: {
   readonly embeddingModel?: string | null
   readonly embeddingDimensions?: number | null
 }): Promise<RagProviderSettingsView> {
-  const apiKey = args.apiKey.trim()
+  const apiKey = args.apiKey.trim() || (args.provider === 'ollama' ? 'ollama-local' : '')
   if (!apiKey) throw new Error('API key is required.')
+  const defaults = AI_PROVIDER_DEFAULTS[args.provider]
 
   const resolved = resolveRagProviderConfig({
     provider: args.provider,
     apiKey,
-    baseUrl: args.baseUrl,
-    chatModel: args.chatModel,
-    embeddingModel: args.embeddingModel,
-    embeddingDimensions: args.embeddingDimensions,
+    baseUrl: args.provider === 'ollama' ? args.baseUrl || defaults.baseUrl : defaults.baseUrl,
+    chatModel: defaults.chatModel,
+    embeddingModel: defaults.embeddingModel,
+    embeddingDimensions: defaults.embeddingDimensions,
   })
 
   const { error } = await supabaseAdmin()

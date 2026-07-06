@@ -6,7 +6,7 @@ import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection }
 const canonicalUrl = "https://vpscoaster.live/terms-and-conditions";
 
 export const metadata: Metadata = {
-  title: "Terms and Conditions | Talk Wagon WhatsApp CRM",
+  title: "Terms of Service | Talk Wagon CRM",
   description:
     "Review Talk Wagon terms for WhatsApp CRM account use, workspace access, responsible messaging, contact consent, subscriptions, and acceptable use.",
   alternates: {
@@ -32,7 +32,7 @@ export default function TermsAndConditionsPage() {
       <InfoHero
         eyebrow="Terms and Conditions"
         title="Terms for Using Talk Wagon WhatsApp CRM"
-        description="These terms describe the basic rules for using Talk Wagon, managing a workspace, connecting WhatsApp workflows, and keeping customer communication responsible."
+        description="These terms describe the basic rules for using Talk Wagon CRM, a Berankify LTD project, managing a workspace, connecting WhatsApp workflows, and keeping customer communication responsible."
         badges={["Workspace accounts", "Responsible messaging", "Client-owned data", "Fair platform use"]}
       />
 
@@ -105,6 +105,10 @@ export default function TermsAndConditionsPage() {
           <InfoCard title="WhatsApp and third-party costs">
             WhatsApp, Meta, hosting, payment, or third-party integration costs may be separate from Talk Wagon fees
             unless explicitly included in your selected setup.
+          </InfoCard>
+          <InfoCard title="AI chatbot limitations">
+            AI chatbot, website import, and automation features are support tools. Your business should review knowledge
+            base content, customer replies, policy statements, and automated responses before relying on them.
           </InfoCard>
           <InfoCard title="Service changes">
             Features may change over time as the CRM improves. We aim to keep the service reliable, but no online system

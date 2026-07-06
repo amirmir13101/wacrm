@@ -93,9 +93,11 @@ export async function POST(request: Request) {
     if (assignedToUserId) {
       runAutomationsForTrigger({
         userId: conversation.user_id,
+        workspaceId: workspace.workspaceId,
         triggerType: 'conversation_assigned',
         contactId: conversation.contact_id,
         context: {
+          workspace_id: workspace.workspaceId,
           conversation_id: targetId,
           agent_id: assignedToUserId,
         },

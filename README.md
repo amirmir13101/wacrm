@@ -160,6 +160,35 @@ curl -fsS -X GET https://crm.example.com/api/automations/cron \
 Use the same `AUTOMATION_CRON_SECRET` as the broadcast worker. Never print the
 real secret in logs or commit it to Git.
 
+## Production Flows cron
+
+Flows use a separate timeout sweep so abandoned active runs do not block a
+contact from entering a later flow. Call it every five minutes (or every minute
+if you prefer one schedule for all CRM jobs).
+
+```text
+GET /api/flows/cron
+x-cron-secret: <AUTOMATION_CRON_SECRET>
+```
+
+VPS cron example:
+
+```cron
+*/5 * * * * curl -fsS -X GET https://crm.example.com/api/flows/cron -H "x-cron-secret: ${AUTOMATION_CRON_SECRET}" >/dev/null 2>&1
+```
+
+Recommended VPS crontab (replace the example domain and load the secret from a
+root-readable environment file; do not paste a real secret into the repository):
+
+```cron
+* * * * * curl -fsS -X POST https://crm.example.com/api/whatsapp/broadcast/worker -H "x-cron-secret: ${AUTOMATION_CRON_SECRET}" >/dev/null 2>&1
+* * * * * curl -fsS -X GET https://crm.example.com/api/automations/cron -H "x-cron-secret: ${AUTOMATION_CRON_SECRET}" >/dev/null 2>&1
+*/5 * * * * curl -fsS -X GET https://crm.example.com/api/flows/cron -H "x-cron-secret: ${AUTOMATION_CRON_SECRET}" >/dev/null 2>&1
+```
+
+The existing `wacrm-scheduler` PM2 process remains an idle compatibility
+placeholder. These HTTP cron calls are the production job runners.
+
 ## Contributing
 
 This is a template, not a collaborative product — the expected flow is

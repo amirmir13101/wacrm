@@ -99,7 +99,7 @@ async function processTimeBasedAutomations(admin: ReturnType<typeof supabaseAdmi
   const { data: automations, error } = await admin
     .from('automations')
     .select(
-      'id, user_id, trigger_type, trigger_config, last_scheduled_run_at, next_scheduled_run_at, created_at',
+      'id, user_id, workspace_id, trigger_type, trigger_config, last_scheduled_run_at, next_scheduled_run_at, created_at',
     )
     .eq('trigger_type', 'time_based')
     .eq('is_active', true)
@@ -112,6 +112,7 @@ async function processTimeBasedAutomations(admin: ReturnType<typeof supabaseAdmi
   for (const automation of automations as Array<{
     id: string
     user_id: string
+    workspace_id: string
     trigger_config: { schedule?: unknown }
     last_scheduled_run_at?: string | null
   }>) {
@@ -138,10 +139,12 @@ async function processTimeBasedAutomations(admin: ReturnType<typeof supabaseAdmi
 
     await runAutomationsForTrigger({
       userId: automation.user_id,
+      workspaceId: automation.workspace_id,
       automationId: automation.id,
       triggerType: 'time_based',
       contactId: null,
       context: {
+        workspace_id: automation.workspace_id,
         vars: {
           schedule,
           scheduled_at: decision.dueAt?.toISOString() ?? now.toISOString(),

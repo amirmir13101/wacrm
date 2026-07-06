@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 
 export const RAG_AUTO_REPLY_DEFAULT_FALLBACK =
-  "Sorry, I don't have that information right now. A team member will help you soon."
+  "I don't have that exact detail right now. Would you like me to connect you with a team member?"
 
 export type RagAutoReplyFallbackMode = 'do_not_reply' | 'send_fallback'
 

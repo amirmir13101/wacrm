@@ -11,6 +11,10 @@ describe('workspace trial migration', () => {
     join(process.cwd(), 'supabase/migrations/032_workspace_subscription_expiry.sql'),
     'utf8',
   )
+  const monthlyUsageMigration = readFileSync(
+    join(process.cwd(), 'supabase/migrations/054_workspace_monthly_broadcast_usage.sql'),
+    'utf8',
+  )
 
   it('adds workspace plan and trial broadcast usage fields', () => {
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS plan_type')
@@ -46,5 +50,19 @@ describe('workspace trial migration', () => {
     expect(subscriptionMigration).toContain("'lifetime_setup_not_hosted'")
     expect(subscriptionMigration).not.toContain("workspace_row.plan_type IN ('pro', 'lifetime')")
     expect(subscriptionMigration).not.toContain("workspace_row.subscription_status IN ('active', 'manual') THEN")
+  })
+
+  it('adds workspace-scoped monthly Pro broadcast usage with an atomic reserve function', () => {
+    expect(monthlyUsageMigration).toContain('CREATE TABLE IF NOT EXISTS public.workspace_broadcast_usage')
+    expect(monthlyUsageMigration).toContain('workspace_id UUID NOT NULL REFERENCES public.workspaces')
+    expect(monthlyUsageMigration).toContain('period_start DATE NOT NULL')
+    expect(monthlyUsageMigration).toContain('messages_used INTEGER NOT NULL DEFAULT 0')
+    expect(monthlyUsageMigration).toContain('public.workspace_has_permission(workspace_id, \'view_broadcasts\')')
+    expect(monthlyUsageMigration).toContain('CREATE OR REPLACE FUNCTION public.reserve_workspace_broadcast_usage')
+    expect(monthlyUsageMigration).toContain('pro_limit INTEGER := 250000')
+    expect(monthlyUsageMigration).toContain('FOR UPDATE')
+    expect(monthlyUsageMigration).toContain("'pro_limit_exceeded'")
+    expect(monthlyUsageMigration).toContain('date_trunc(\'month\'')
+    expect(monthlyUsageMigration).toContain('CREATE OR REPLACE FUNCTION public.release_workspace_broadcast_usage')
   })
 })

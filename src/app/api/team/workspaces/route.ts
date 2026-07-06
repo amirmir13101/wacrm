@@ -28,18 +28,12 @@ export async function POST(request: Request) {
   const workspaceId = typeof body.workspace_id === 'string' ? body.workspace_id : ''
   if (!workspaceId) return NextResponse.json({ error: 'Workspace is required' }, { status: 400 })
 
+  const allowedWorkspaces = await listCurrentUserWorkspaces(user.id)
+  if (!allowedWorkspaces.some((workspace) => workspace.workspace_id === workspaceId)) {
+    return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+  }
+
   const admin = supabaseAdmin()
-  const { data: member, error } = await admin
-    .from('workspace_members')
-    .select('workspace_id')
-    .eq('workspace_id', workspaceId)
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .maybeSingle()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!member) return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
-
   const { error: updateError } = await admin
     .from('profiles')
     .update({ active_workspace_id: workspaceId })

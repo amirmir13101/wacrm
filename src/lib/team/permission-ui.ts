@@ -12,6 +12,7 @@ export type PermissionGroupId =
   | 'broadcasts'
   | 'templates'
   | 'automations'
+  | 'flows'
   | 'pipeline'
   | 'reports'
   | 'pricing'
@@ -113,6 +114,18 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'create_automations', label: 'Create automations' },
       { key: 'edit_automations', label: 'Edit automations' },
       { key: 'activate_deactivate_automations', label: 'Activate/deactivate automations' },
+    ],
+  },
+  {
+    id: 'flows',
+    title: 'Flows',
+    helper: 'WhatsApp button/list flow builder access and activation controls.',
+    section: 'main',
+    items: [
+      { key: 'view_flows', label: 'View flows' },
+      { key: 'create_flows', label: 'Create flows' },
+      { key: 'edit_flows', label: 'Edit flows' },
+      { key: 'activate_deactivate_flows', label: 'Activate/deactivate flows' },
     ],
   },
   {
@@ -240,7 +253,7 @@ export const ADVANCED_PERMISSION_SECTIONS = [
   {
     id: 'main',
     title: 'Main access',
-    groupIds: ['dashboard', 'inbox', 'contacts', 'pipeline', 'broadcasts', 'automations', 'reports'],
+    groupIds: ['dashboard', 'inbox', 'contacts', 'pipeline', 'broadcasts', 'automations', 'flows', 'reports'],
   },
   {
     id: 'conversation',
@@ -285,6 +298,7 @@ export const MAIN_ACCESS_PERMISSIONS: Array<{
   { key: 'view_pipeline', label: 'Pipeline' },
   { key: 'view_broadcasts', label: 'Broadcasts' },
   { key: 'view_automations', label: 'Automations' },
+  { key: 'view_flows', label: 'Flows' },
   { key: 'view_reports', label: 'Reports' },
 ]
 

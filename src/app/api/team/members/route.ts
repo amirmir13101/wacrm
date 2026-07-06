@@ -7,7 +7,13 @@ import {
   requireCurrentWorkspace,
   listWorkspaceMembers,
 } from '@/lib/team/server'
-import { canManageTeamWithPermissions, defaultPermissionsForRole } from '@/lib/team/permissions'
+import {
+  canDelegatePermissions,
+  canManageTeamWithPermissions,
+  canManageWorkspaceRole,
+  defaultPermissionsForRole,
+  hasWorkspacePermission,
+} from '@/lib/team/permissions'
 
 function passwordValidationError(password: string) {
   if (password.length < 8) return 'Temporary password must be at least 8 characters.'
@@ -80,10 +86,7 @@ export async function POST(request: Request) {
       ? body.confirm_temporary_password
       : ''
   const role = typeof body.role === 'string' ? body.role : 'agent'
-  const permissions =
-    body.permissions && typeof body.permissions === 'object'
-      ? body.permissions
-      : defaultPermissionsForRole(role)
+  const permissions = body.permissions ?? defaultPermissionsForRole(role)
   const canConnectOwnWhatsApp = Boolean(body.can_connect_own_whatsapp)
   const contactVisibility = typeof body.contact_visibility === 'string' ? body.contact_visibility : role === 'agent' ? 'assigned_only' : 'all'
   const conversationVisibility = typeof body.conversation_visibility === 'string' ? body.conversation_visibility : role === 'agent' ? 'unassigned_and_assigned' : 'all'
@@ -104,6 +107,30 @@ export async function POST(request: Request) {
   }
   if (!['admin', 'manager', 'agent'].includes(role)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+  }
+  const actor = {
+    role: workspaceResult.workspace.role,
+    permissions: workspaceResult.workspace.permissions,
+    can_connect_own_whatsapp: workspaceResult.workspace.canConnectOwnWhatsApp,
+  }
+  if (!canManageWorkspaceRole(actor.role, role)) {
+    return NextResponse.json({ error: 'You cannot assign this role' }, { status: 403 })
+  }
+  if (!canDelegatePermissions(actor, permissions)) {
+    return NextResponse.json(
+      { error: 'You cannot grant permissions that you do not have' },
+      { status: 403 },
+    )
+  }
+  if (
+    canConnectOwnWhatsApp &&
+    !hasWorkspacePermission(actor, 'connect_own_whatsapp_config') &&
+    actor.role !== 'owner'
+  ) {
+    return NextResponse.json(
+      { error: 'You cannot grant personal WhatsApp connection access' },
+      { status: 403 },
+    )
   }
 
   const admin = supabaseAdmin()

@@ -28,6 +28,10 @@ export const WORKSPACE_PERMISSIONS = [
   'create_automations',
   'edit_automations',
   'activate_deactivate_automations',
+  'view_flows',
+  'create_flows',
+  'edit_flows',
+  'activate_deactivate_flows',
   'view_rag_chatbot',
   'manage_rag_chatbot',
   'manage_rag_provider',
@@ -95,6 +99,10 @@ const MANAGER_PERMISSIONS: WorkspacePermissions = {
   create_automations: true,
   edit_automations: true,
   activate_deactivate_automations: true,
+  view_flows: true,
+  create_flows: true,
+  edit_flows: true,
+  activate_deactivate_flows: true,
   view_rag_chatbot: true,
   manage_rag_chatbot: true,
   view_pipeline: true,
@@ -165,6 +173,52 @@ export function canManageTeamWithPermissions(subject: PermissionSubject): boolea
   )
 }
 
+const WORKSPACE_ROLE_RANK: Record<WorkspaceRole, number> = {
+  owner: 4,
+  admin: 3,
+  manager: 2,
+  agent: 1,
+}
+
+export function canManageWorkspaceRole(
+  actorRole: WorkspaceRole | string | null | undefined,
+  targetRole: WorkspaceRole | string | null | undefined,
+): boolean {
+  if (actorRole === 'owner') {
+    return (
+      typeof targetRole === 'string' &&
+      targetRole in WORKSPACE_ROLE_RANK &&
+      targetRole !== 'owner'
+    )
+  }
+  if (
+    typeof actorRole !== 'string' ||
+    typeof targetRole !== 'string' ||
+    !(actorRole in WORKSPACE_ROLE_RANK) ||
+    !(targetRole in WORKSPACE_ROLE_RANK)
+  ) {
+    return false
+  }
+  return (
+    WORKSPACE_ROLE_RANK[actorRole as WorkspaceRole] >
+    WORKSPACE_ROLE_RANK[targetRole as WorkspaceRole]
+  )
+}
+
+export function canDelegatePermissions(
+  actor: PermissionSubject,
+  requested: unknown,
+): requested is WorkspacePermissions {
+  if (!requested || typeof requested !== 'object' || Array.isArray(requested)) return false
+
+  for (const [key, value] of Object.entries(requested)) {
+    if (!(WORKSPACE_PERMISSIONS as readonly string[]).includes(key)) return false
+    if (typeof value !== 'boolean') return false
+    if (value && !hasWorkspacePermission(actor, key as WorkspacePermission)) return false
+  }
+  return true
+}
+
 export function canAccessDashboardPath(
   subject: PermissionSubject,
   pathname: string,
@@ -175,7 +229,15 @@ export function canAccessDashboardPath(
   if (pathname.startsWith('/pipelines')) return hasWorkspacePermission(subject, 'view_pipeline')
   if (pathname.startsWith('/broadcasts')) return hasWorkspacePermission(subject, 'view_broadcasts')
   if (pathname.startsWith('/automations')) return hasWorkspacePermission(subject, 'view_automations')
+  if (pathname.startsWith('/flows')) return hasWorkspacePermission(subject, 'view_flows')
   if (pathname.startsWith('/ai-chatbot')) return hasWorkspacePermission(subject, 'view_rag_chatbot')
+  if (pathname.startsWith('/billing')) return true
+  if (pathname.startsWith('/whatsapp-api-pricing')) {
+    return (
+      hasWorkspacePermission(subject, 'view_pricing') ||
+      hasWorkspacePermission(subject, 'use_cost_calculator')
+    )
+  }
   if (pathname.startsWith('/team')) {
     return (
       hasWorkspacePermission(subject, 'view_team') ||

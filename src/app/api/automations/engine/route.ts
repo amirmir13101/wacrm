@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import type { AutomationTriggerType } from '@/types'
+import { requireWorkspacePermission } from '@/lib/team/server'
 
 /**
  * Manual trigger for testing or for external integrations that want
@@ -9,11 +9,10 @@ import type { AutomationTriggerType } from '@/types'
  * used so RLS-safe data remains per-user.
  */
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const workspaceResult = await requireWorkspacePermission('edit_automations')
+  if (!workspaceResult.ok) {
+    return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
+  }
 
   const body = await request.json().catch(() => null)
   if (!body?.trigger_type) {
@@ -21,7 +20,8 @@ export async function POST(request: Request) {
   }
 
   await runAutomationsForTrigger({
-    userId: user.id,
+    userId: workspaceResult.workspace.userId,
+    workspaceId: workspaceResult.workspace.workspaceId,
     triggerType: body.trigger_type as AutomationTriggerType,
     contactId: body.contact_id ?? null,
     context: body.context ?? {},

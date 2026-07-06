@@ -12,6 +12,11 @@ import {
   type WorkspacePermissions,
 } from '@/lib/team/permissions'
 import { INVITE_TOKEN_COOKIE } from '@/lib/team/invite-constants'
+import {
+  evaluateWorkspaceBillingAccess,
+  isBillingLockAllowedPath,
+  type WorkspaceBillingAccessRow,
+} from '@/lib/billing/access'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -43,7 +48,10 @@ export async function middleware(request: NextRequest) {
     role: string | null
     permissions?: WorkspacePermissions | null
     can_connect_own_whatsapp?: boolean | null
-    workspace?: { archived_at?: string | null } | Array<{ archived_at?: string | null }> | null
+    workspace?:
+      | (WorkspaceBillingAccessRow & { archived_at?: string | null })
+      | Array<WorkspaceBillingAccessRow & { archived_at?: string | null }>
+      | null
   } | null = null
   if (user) {
     const { data } = await supabase
@@ -57,7 +65,7 @@ export async function middleware(request: NextRequest) {
 
     let memberQuery = supabase
       .from('workspace_members')
-      .select('role, permissions, can_connect_own_whatsapp, workspace:workspaces(archived_at)')
+      .select('role, permissions, can_connect_own_whatsapp, workspace:workspaces(archived_at, plan_type, subscription_status, billing_period, trial_ends_at, subscription_ends_at)')
       .eq('user_id', user.id)
       .eq('status', 'active')
 
@@ -77,7 +85,7 @@ export async function middleware(request: NextRequest) {
     if (!member && activeWorkspaceId) {
       const fallback = await supabase
         .from('workspace_members')
-        .select('role, permissions, can_connect_own_whatsapp, workspace:workspaces(archived_at)')
+        .select('role, permissions, can_connect_own_whatsapp, workspace:workspaces(archived_at, plan_type, subscription_status, billing_period, trial_ends_at, subscription_ends_at)')
         .eq('user_id', user.id)
         .eq('status', 'active')
         .order('joined_at', { ascending: true })
@@ -119,7 +127,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings', '/team', '/admin']
+  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/flows', '/ai-chatbot', '/billing', '/whatsapp-api-pricing', '/settings', '/team', '/admin']
   if (
     !user &&
     (
@@ -184,6 +192,18 @@ export async function middleware(request: NextRequest) {
     if (
       !request.nextUrl.pathname.startsWith('/admin') &&
       workspaceMember &&
+      !isBillingLockAllowedPath(request.nextUrl.pathname) &&
+      !evaluateWorkspaceBillingAccess(readBillingWorkspace(workspaceMember.workspace)).canUseHostedCrm
+    ) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      url.searchParams.set('upgrade', 'required')
+      return NextResponse.redirect(url)
+    }
+
+    if (
+      !request.nextUrl.pathname.startsWith('/admin') &&
+      workspaceMember &&
       !canAccessDashboardPath(workspaceMember, request.nextUrl.pathname)
     ) {
       const url = request.nextUrl.clone()
@@ -203,6 +223,11 @@ export async function middleware(request: NextRequest) {
     Boolean(process.env.AUTOMATION_CRON_SECRET) &&
     request.headers.get('x-cron-secret') === process.env.AUTOMATION_CRON_SECRET
 
+  const isCronProtectedFlows =
+    request.nextUrl.pathname === '/api/flows/cron' &&
+    Boolean(process.env.AUTOMATION_CRON_SECRET) &&
+    request.headers.get('x-cron-secret') === process.env.AUTOMATION_CRON_SECRET
+
   if (!user && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
       !request.nextUrl.pathname.includes('/webhook') &&
       !isCronProtectedBroadcastWorker) {
@@ -218,6 +243,8 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/api/team') ||
     request.nextUrl.pathname.startsWith('/api/contacts') ||
     request.nextUrl.pathname.startsWith('/api/pricing') ||
+    request.nextUrl.pathname.startsWith('/api/rag') ||
+    (request.nextUrl.pathname.startsWith('/api/flows') && !isCronProtectedFlows) ||
     request.nextUrl.pathname.startsWith('/api/admin') ||
     request.nextUrl.pathname.startsWith('/api/auth/change-password')
 
@@ -248,6 +275,22 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 
+  if (
+    user &&
+    workspaceMember &&
+    approvalProtectedApi &&
+    !request.nextUrl.pathname.startsWith('/api/admin') &&
+    !isBillingLockAllowedPath(request.nextUrl.pathname)
+  ) {
+    const access = evaluateWorkspaceBillingAccess(readBillingWorkspace(workspaceMember.workspace))
+    if (!access.canUseHostedCrm) {
+      return NextResponse.json(
+        { error: access.message ?? 'Upgrade required to continue using CRM features.', reason: access.reason },
+        { status: 402 },
+      )
+    }
+  }
+
   if (user && workspaceMember) {
     const path = request.nextUrl.pathname
     const method = request.method
@@ -264,8 +307,13 @@ export async function middleware(request: NextRequest) {
     if (path.startsWith('/api/whatsapp/send') && !hasWorkspacePermission(workspaceMember, 'reply_to_conversations')) {
       return deny('You cannot reply to conversations')
     }
-    if (path.startsWith('/api/whatsapp/broadcast') && method !== 'GET' && !hasWorkspacePermission(workspaceMember, 'queue_broadcasts')) {
-      return deny('You cannot manage broadcasts')
+    if (path.startsWith('/api/whatsapp/broadcast') && method !== 'GET') {
+      const permission = path.endsWith('/control')
+        ? 'pause_resume_cancel_broadcasts'
+        : 'queue_broadcasts'
+      if (!hasWorkspacePermission(workspaceMember, permission)) {
+        return deny('You cannot manage broadcasts')
+      }
     }
     if (path.startsWith('/api/team') && method !== 'GET' && !hasWorkspacePermission(workspaceMember, 'manage_team_members')) {
       return deny('You cannot manage team members')
@@ -291,6 +339,16 @@ function workspaceIsArchived(
 ): boolean {
   if (Array.isArray(workspace)) return Boolean(workspace[0]?.archived_at)
   return Boolean(workspace?.archived_at)
+}
+
+function readBillingWorkspace(
+  workspace?:
+    | (WorkspaceBillingAccessRow & { archived_at?: string | null })
+    | Array<WorkspaceBillingAccessRow & { archived_at?: string | null }>
+    | null,
+): WorkspaceBillingAccessRow | null {
+  if (Array.isArray(workspace)) return workspace[0] ?? null
+  return workspace ?? null
 }
 
 export const config = {

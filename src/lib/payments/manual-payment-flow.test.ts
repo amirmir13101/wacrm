@@ -93,17 +93,9 @@ describe('manual payment flow wiring', () => {
 
   it('lets platform admins approve Pro customers and activate monthly or yearly workspace plans', () => {
     expect(adminReviewRoute).toContain('requirePlatformAdmin')
-    expect(adminReviewRoute).toContain('approvePaymentCustomer')
-    expect(adminReviewRoute).toContain("approval_status: 'approved'")
-    expect(adminReviewRoute).toContain('approved_by: approvedByProfileId')
+    expect(adminReviewRoute).toContain('approve_manual_pro_payment')
     expect(adminReviewRoute).toContain("paymentRequest.plan_type === 'pro'")
-    expect(adminReviewRoute).toContain("billing_period: billingPeriod")
-    expect(adminReviewRoute).toContain("endsAt.setMonth(endsAt.getMonth() + 1)")
-    expect(adminReviewRoute).toContain("endsAt.setFullYear(endsAt.getFullYear() + 1)")
-    expect(adminReviewRoute).toContain('subscription_started_at')
-    expect(adminReviewRoute).toContain('subscription_ends_at')
-    expect(adminReviewRoute).toContain("subscription_status: 'active'")
-    expect(adminReviewRoute).toContain('ensureApprovedUserOwnWorkspace')
+    expect(adminReviewRoute).toContain(".rpc('approve_manual_pro_payment'")
     expect(adminReviewRoute).toContain("status: 'rejected'")
     expect(adminReviewRoute).not.toContain('Ask the customer to sign up or login')
   })
@@ -139,9 +131,10 @@ describe('manual payment flow wiring', () => {
     expect(adminPaymentsPage).not.toContain('disabled={savingId === request.id || request.status === "approved"}')
   })
 
-  it('routes Pro monthly, Pro yearly, and Lifetime setup pricing CTAs to manual checkout', () => {
+  it('routes Pro monthly and Lifetime setup pricing CTAs to manual checkout without public yearly pricing', () => {
     expect(pricingPage).toContain('href: "/checkout/pro"')
-    expect(pricingPage).toContain('yearlyHref: "/checkout/pro-yearly"')
+    expect(pricingPage).not.toContain('yearlyHref: "/checkout/pro-yearly"')
+    expect(pricingPage).not.toContain('$12/year')
     expect(pricingPage).toContain('href: "/checkout/lifetime"')
     expect(trialCard).toContain('href="/checkout/pro"')
     expect(trialCard).toContain('Renew Pro')
@@ -149,7 +142,8 @@ describe('manual payment flow wiring', () => {
     expect(trialCard).not.toContain('Request Lifetime Setup')
     expect(trialCard).not.toContain('Lifetime plan active')
     expect(trialCard).toContain('Lifetime is a self-hosted setup request')
-    expect(trialCard).toContain('You are now a Pro user. You can use Talk Wagon CRM with unlimited Pro access.')
+    expect(trialCard).toContain('broadcast messages used this month')
+    expect(trialCard).toContain('remaining this month')
     expect(trialCard).not.toContain('Broadcast sending is not limited by the free trial quota')
   })
 

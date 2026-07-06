@@ -116,7 +116,15 @@ export interface Conversation {
 }
 
 export type SenderType = 'customer' | 'agent' | 'bot';
-export type ContentType = 'text' | 'image' | 'document' | 'audio' | 'video' | 'location' | 'template';
+export type ContentType =
+  | 'text'
+  | 'image'
+  | 'document'
+  | 'audio'
+  | 'video'
+  | 'location'
+  | 'template'
+  | 'interactive';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Message {
@@ -132,6 +140,7 @@ export interface Message {
   status: MessageStatus;
   created_at: string;
   reply_to_message_id?: string;
+  interactive_reply_id?: string;
 }
 
 export type ReactionActor = 'customer' | 'agent';
@@ -158,6 +167,31 @@ export interface WhatsAppConfig {
   connected_at?: string;
 }
 
+export type MessageTemplateStatus =
+  | 'Draft'
+  | 'Pending'
+  | 'Approved'
+  | 'Rejected'
+  | 'DRAFT'
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'PAUSED'
+  | 'DISABLED'
+  | 'IN_APPEAL'
+  | 'PENDING_DELETION';
+
+export type TemplateButton =
+  | { type: 'QUICK_REPLY'; text: string }
+  | { type: 'URL'; text: string; url: string; example?: string }
+  | { type: 'PHONE_NUMBER'; text: string; phone_number: string }
+  | { type: 'COPY_CODE'; text: string; example: string };
+
+export interface TemplateSampleValues {
+  body?: string[];
+  header?: string[];
+}
+
 export interface MessageTemplate {
   id: string;
   user_id: string;
@@ -165,12 +199,20 @@ export interface MessageTemplate {
   name: string;
   category: 'Marketing' | 'Utility' | 'Authentication';
   language?: string;
-  header_type?: 'text' | 'image' | 'video' | 'document';
+  header_type?: 'text' | 'image' | 'video' | 'document' | null;
   header_content?: string;
+  header_handle?: string;
+  header_media_url?: string;
   body_text: string;
   footer_text?: string;
-  buttons?: Record<string, unknown>[];
-  status?: 'Draft' | 'Pending' | 'Approved' | 'Rejected';
+  buttons?: TemplateButton[];
+  sample_values?: TemplateSampleValues;
+  status?: MessageTemplateStatus;
+  meta_template_id?: string;
+  rejection_reason?: string;
+  quality_score?: 'GREEN' | 'YELLOW' | 'RED' | string | null;
+  submission_error?: string;
+  last_submitted_at?: string;
   created_at: string;
 }
 

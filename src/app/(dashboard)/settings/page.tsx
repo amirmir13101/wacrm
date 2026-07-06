@@ -1,18 +1,17 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Calculator, Settings, MessageSquare, Tag, User } from 'lucide-react';
+import { Settings, MessageSquare, Tag, User } from 'lucide-react';
 import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
 import { TemplateManager } from '@/components/settings/template-manager';
 import { TagManager } from '@/components/settings/tag-manager';
 import { ProfileForm } from '@/components/settings/profile-form';
 import { PasswordForm } from '@/components/settings/password-form';
 import { SessionsCard } from '@/components/settings/sessions-card';
-import { WhatsAppPricingManager } from '@/components/settings/whatsapp-pricing-manager';
 import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions';
 import { cn } from '@/lib/utils';
 
-const TAB_VALUES = ['profile', 'whatsapp', 'templates', 'pricing', 'tags'] as const;
+const TAB_VALUES = ['profile', 'whatsapp', 'templates', 'tags'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 function isTabValue(v: string | null): v is TabValue {
@@ -36,7 +35,6 @@ export default function SettingsPage() {
       workspace.has('connect_own_whatsapp_config') ||
       workspace.has('use_workspace_whatsapp_config'),
     templates: workspace.has('view_templates'),
-    pricing: workspace.has('view_pricing') || workspace.has('use_cost_calculator'),
     tags: workspace.has('edit_contacts') || workspace.has('view_contacts'),
   } satisfies Record<TabValue, boolean>;
 
@@ -53,7 +51,6 @@ export default function SettingsPage() {
     { value: 'profile', label: 'Profile', icon: User, visible: availableTabs.profile },
     { value: 'whatsapp', label: 'WhatsApp Config', icon: Settings, visible: availableTabs.whatsapp },
     { value: 'templates', label: 'Templates', icon: MessageSquare, visible: availableTabs.templates },
-    { value: 'pricing', label: 'Pricing', icon: Calculator, visible: availableTabs.pricing },
     { value: 'tags', label: 'Tags', icon: Tag, visible: availableTabs.tags },
   ] satisfies Array<{
     value: TabValue;
@@ -118,10 +115,6 @@ export default function SettingsPage() {
 
         {availableTabs.templates && tab === 'templates' && (
           <TemplateManager />
-        )}
-
-        {availableTabs.pricing && tab === 'pricing' && (
-          <WhatsAppPricingManager />
         )}
 
         {availableTabs.tags && tab === 'tags' && (

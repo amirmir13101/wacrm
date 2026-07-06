@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 
 import { requirePlatformAdmin } from '@/lib/admin/auth'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { ensureApprovedUserOwnWorkspace } from '@/lib/team/server'
 
 type PaymentAction = 'approve' | 'reject'
 
@@ -65,6 +64,7 @@ export async function PATCH(
         rejected_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('status', 'pending')
       .select('id, status')
       .single()
 
@@ -72,119 +72,36 @@ export async function PATCH(
     return NextResponse.json({ request: data })
   }
 
-  let workspaceId = paymentRequest.workspace_id
-
   if (paymentRequest.plan_type === 'pro') {
-    const customerUserId = await approvePaymentCustomer(paymentRequest, adminCheck.profile.id)
-    workspaceId = await resolveWorkspaceId(paymentRequest, customerUserId)
-    if (!workspaceId) {
-      return NextResponse.json(
-        {
-          error:
-            'This payment request is not linked to a customer workspace. Ask the customer to resubmit checkout or contact support.',
-        },
-        { status: 400 },
-      )
-    }
-
-    const billingPeriod = paymentRequest.billing_period === 'yearly' ? 'yearly' : 'monthly'
-    const now = new Date()
-    const endsAt = new Date(now)
-    if (billingPeriod === 'yearly') {
-      endsAt.setFullYear(endsAt.getFullYear() + 1)
-    } else {
-      endsAt.setMonth(endsAt.getMonth() + 1)
-    }
-
-    const { error: workspaceError } = await admin
-      .from('workspaces')
-      .update({
-        plan_type: 'pro',
-        subscription_status: 'active',
-        billing_period: billingPeriod,
-        subscription_started_at: now.toISOString(),
-        subscription_ends_at: endsAt.toISOString(),
-        plan_updated_at: now.toISOString(),
+    const { data, error } = await admin
+      .rpc('approve_manual_pro_payment', {
+        p_request_id: paymentRequest.id,
+        p_admin_profile_id: adminCheck.profile.id,
+        p_admin_note: adminNote || null,
+        p_now: new Date().toISOString(),
       })
-      .eq('id', workspaceId)
+      .single()
 
-    if (workspaceError) return NextResponse.json({ error: workspaceError.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ request: data })
   }
 
   const { data, error } = await admin
     .from('manual_payment_requests')
     .update({
-      workspace_id: workspaceId,
+      workspace_id: paymentRequest.workspace_id,
       status: 'approved',
       admin_note: adminNote || null,
       approved_by: adminCheck.profile.id,
       approved_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .eq('status', 'pending')
     .select('id, status, workspace_id')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ request: data })
-}
-
-async function approvePaymentCustomer(
-  paymentRequest: ManualPaymentRequestRow,
-  approvedByProfileId: string,
-): Promise<string | null> {
-  const admin = supabaseAdmin()
-  let userId = paymentRequest.user_id
-
-  if (!userId) {
-    const { data: profile, error } = await admin
-      .from('profiles')
-      .select('user_id')
-      .ilike('email', paymentRequest.payer_email)
-      .or('account_type.is.null,account_type.neq.team_member')
-      .maybeSingle()
-
-    if (error) throw new Error(error.message)
-    userId = profile?.user_id ?? null
-  }
-
-  if (!userId) return null
-
-  const { error } = await admin
-    .from('profiles')
-    .update({
-      approval_status: 'approved',
-      approved_at: new Date().toISOString(),
-      approved_by: approvedByProfileId,
-    })
-    .eq('user_id', userId)
-
-  if (error) throw new Error(error.message)
-  return userId
-}
-
-async function resolveWorkspaceId(
-  paymentRequest: ManualPaymentRequestRow,
-  approvedUserId: string | null,
-): Promise<string | null> {
-  if (paymentRequest.workspace_id) return paymentRequest.workspace_id
-
-  const admin = supabaseAdmin()
-  let userId = approvedUserId ?? paymentRequest.user_id
-
-  if (!userId) {
-    const { data: profile, error } = await admin
-      .from('profiles')
-      .select('user_id')
-      .ilike('email', paymentRequest.payer_email)
-      .or('account_type.is.null,account_type.neq.team_member')
-      .maybeSingle()
-
-    if (error) throw new Error(error.message)
-    userId = profile?.user_id ?? null
-  }
-
-  if (!userId) return null
-  return ensureApprovedUserOwnWorkspace(userId)
 }
 
 export async function DELETE(

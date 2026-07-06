@@ -38,6 +38,7 @@ describe('team permission UI helpers', () => {
       'Pipeline',
       'Broadcasts',
       'Automations',
+      'Flows',
       'Reports',
     ])
     expect(mainAccessLabels).not.toContain('AI Chatbot')

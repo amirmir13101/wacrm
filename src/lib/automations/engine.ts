@@ -51,6 +51,7 @@ export interface AutomationContext {
 
 export interface DispatchInput {
   userId: string
+  workspaceId: string
   automationId?: string
   triggerType: AutomationTriggerType
   contactId?: string | null
@@ -70,7 +71,7 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     let query = db
       .from('automations')
       .select('*')
-      .eq('user_id', input.userId)
+      .eq('workspace_id', input.workspaceId)
       .eq('trigger_type', input.triggerType)
       .eq('is_active', true)
     if (input.automationId) {
@@ -338,6 +339,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       const conversationId = await resolveConversationId(args)
       const { whatsapp_message_id } = await engineSendText({
         userId: args.automation.user_id,
+        workspaceId: requireAutomationWorkspaceId(args.automation),
         conversationId,
         contactId: args.contactId,
         text,
@@ -353,10 +355,10 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       const { data: template } = await db
         .from('message_templates')
         .select('body_text')
-        .eq('user_id', args.automation.user_id)
+        .eq('workspace_id', requireAutomationWorkspaceId(args.automation))
         .eq('name', cfg.template_name)
         .eq('language', cfg.language || 'en_US')
-        .eq('status', 'Approved')
+        .in('status', ['Approved', 'APPROVED'])
         .maybeSingle()
       const templateVariables = extractTemplateVariableNumbers(template?.body_text)
       const requiredVariables =
@@ -365,7 +367,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .from('contacts')
         .select('name, phone, email, company')
         .eq('id', args.contactId)
-        .eq('user_id', args.automation.user_id)
+        .eq('workspace_id', requireAutomationWorkspaceId(args.automation))
         .maybeSingle()
       if (contactErr || !contact) throw new Error('contact not found for template variables')
       const params = resolveTemplateParams({
@@ -383,6 +385,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       }
       const { whatsapp_message_id } = await engineSendTemplate({
         userId: args.automation.user_id,
+        workspaceId: requireAutomationWorkspaceId(args.automation),
         conversationId,
         contactId: args.contactId,
         templateName: cfg.template_name,
@@ -429,14 +432,14 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       const { data: conversation } = await db
         .from('conversations')
         .select('id, assigned_agent_id, workspace_id')
-        .eq('user_id', args.automation.user_id)
+        .eq('workspace_id', requireAutomationWorkspaceId(args.automation))
         .eq('contact_id', args.contactId)
         .maybeSingle()
 
       await db
         .from('conversations')
         .update({ assigned_agent_id: agentId })
-        .eq('user_id', args.automation.user_id)
+        .eq('workspace_id', requireAutomationWorkspaceId(args.automation))
         .eq('contact_id', args.contactId)
       if (conversation?.workspace_id && conversation?.id) {
         await db.from('assignment_history').insert({
@@ -462,6 +465,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .from('contacts')
         .update({ [cfg.field]: cfg.value, updated_at: new Date().toISOString() })
         .eq('id', args.contactId)
+        .eq('workspace_id', requireAutomationWorkspaceId(args.automation))
       return `${cfg.field} updated`
     }
 
@@ -470,6 +474,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!cfg.pipeline_id || !cfg.stage_id) throw new Error('create_deal needs pipeline + stage')
       await db.from('deals').insert({
         user_id: args.automation.user_id,
+        workspace_id: requireAutomationWorkspaceId(args.automation),
         pipeline_id: cfg.pipeline_id,
         stage_id: cfg.stage_id,
         contact_id: args.contactId,
@@ -498,7 +503,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       await db
         .from('conversations')
         .update({ status: 'closed', updated_at: new Date().toISOString() })
-        .eq('user_id', args.automation.user_id)
+        .eq('workspace_id', requireAutomationWorkspaceId(args.automation))
         .eq('contact_id', args.contactId)
       return 'conversation closed'
     }
@@ -526,12 +531,17 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
   const { data, error } = await supabaseAdmin()
     .from('conversations')
     .select('id')
-    .eq('user_id', args.automation.user_id)
+    .eq('workspace_id', requireAutomationWorkspaceId(args.automation))
     .eq('contact_id', args.contactId)
     .maybeSingle()
   if (error) throw new Error(`conversation lookup failed: ${error.message}`)
   if (!data?.id) throw new Error('no conversation for contact')
   return data.id as string
+}
+
+function requireAutomationWorkspaceId(automation: Automation): string {
+  if (!automation.workspace_id) throw new Error('automation workspace is missing')
+  return automation.workspace_id
 }
 
 function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
@@ -642,6 +652,7 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
         .from('contacts')
         .select(cfg.operand)
         .eq('id', args.contactId)
+        .eq('workspace_id', requireAutomationWorkspaceId(args.automation))
         .maybeSingle()
       const v = (data as Record<string, unknown> | null)?.[cfg.operand]
       return v != null && String(v) === String(cfg.value ?? '')

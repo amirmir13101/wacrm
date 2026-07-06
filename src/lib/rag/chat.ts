@@ -10,6 +10,11 @@ import {
   sanitizeRagConversationMessages,
 } from './memory'
 import { createRagOpenAICompatibleProvider, resolveRagProviderConfig } from './provider'
+import {
+  getRagConversationControl,
+  isRagConversationAiPaused,
+  upsertRagConversationControl,
+} from './conversation-controls'
 import { sanitizeProviderError } from './security'
 import { isRagProviderType } from './settings'
 import type {
@@ -23,9 +28,18 @@ import type {
 
 export const RAG_CLEAN_FALLBACK =
   'I do not see that information in the current knowledge base.'
+export const RAG_BUSINESS_MISSING_HANDOFF_PROMPT =
+  "I don't have that exact detail right now. Would you like me to connect you with a team member?"
+export const RAG_HUMAN_REQUESTED_REPLY =
+  "I've sent your request to the team. I can keep helping here until a team member takes over."
+export const RAG_HUMAN_DECLINED_REPLY =
+  'No problem — I can keep helping here.'
 export const RAG_PROVIDER_ERROR_FALLBACK =
   'Sorry, I could not answer this right now. Please contact support.'
 export const RAG_CHAT_QUESTION_LIMIT = 2_000
+const RAG_KEYWORD_CANDIDATE_LIMIT = 200
+
+export type RagCustomerLanguageStyle = 'english' | 'roman_urdu' | 'urdu_script' | 'hindi_script' | 'arabic_script'
 
 export function buildRagSystemPrompt(): string {
   return `You are a helpful business support assistant.
@@ -59,6 +73,11 @@ Pricing and numeric facts:
 Contact and support facts:
 - For support, contact, phone, email, ticket, live chat, social, or messaging questions, include the exact available contact details from the provided knowledge when present.
 - If the context contains a contact link, email, phone number, or messaging link that directly answers the question, include it in the answer.
+
+Business overview and ownership facts:
+- For "what is this business", "what does this business offer", or short company/about questions, summarize the business from homepage, about, service, product, pricing, and policy snippets when present.
+- For owner, founder, director, legal entity, registration, or company-number questions, answer from explicit owner/legal evidence only.
+- If the knowledge lists a legal company/entity but not an individual owner, say the legal company/entity is listed but an individual owner is not explicitly listed.
 
 Location and availability facts:
 - For location, service-area, datacenter, delivery-area, address, availability, or test-IP questions, include the exact listed places and any listed addresses, test IPs, URLs, or availability details when present.
@@ -97,16 +116,22 @@ export function buildRagRetrievalQueries(question: string): string[] {
   const variants = new Set<string>([clean])
   const lower = clean.toLowerCase()
   const keywordTerms = extractRagKeywordTerms(clean)
+  const subjectTerms = extractRagSubjectTerms(clean)
   const wordCount = clean.split(/\s+/).filter(Boolean).length
-  const subject = keywordTerms.join(' ')
+  const subject = (subjectTerms.length > 0 ? subjectTerms : keywordTerms).join(' ')
   const hasMonthly = /\b(monthly|month-to-month|one month|per month|\/mo|month)\b/.test(lower)
   const hasYearly = /\b(yearly|annual|annually|per year|\/year|year)\b/.test(lower)
+  const hasPricingOrSpecIntent =
+    /\b(price|prices|pricing|cost|costs|fee|fees|monthly|yearly|annual|annually|discount|total|bill|billing)\b/.test(lower) ||
+    /\b\d+(?:\.\d+)?\s*(?:kb|mb|gb|tb|core|cores|cpu|ram|nvme|ssd|iops|mbps|gbps|kg|g|mg|ml|l|cm|mm|m|inch|inches|ft|feet|hour|hours|day|days|week|weeks|month|months|year|years|seat|seats|user|users|page|pages)\b/i.test(clean)
   const isShortTopicQuery =
-    Boolean(subject) && keywordTerms.length <= 3 && wordCount <= 4
+    Boolean(subject) && keywordTerms.length <= 3 && wordCount <= 4 && !hasPricingOrSpecIntent
   const hasLocationOrAvailabilityIntent =
     /\b(available|availability|where|location|locations|address|addresses|city|country|region|area|areas|ip|ips)\b/.test(lower)
   const hasContactOrSupportIntent =
     /\b(contact|support|help|ticket|email|phone|whatsapp|chat|call|message)\b/.test(lower)
+  const hasBroadOverviewIntent = isRagBroadBusinessOverviewQuestion(clean)
+  const hasOwnershipOrLegalIntent = isRagOwnershipOrLegalQuestion(clean)
   const combinedParts = clean
     .split(/\s+(?:and|&)\s+/i)
     .map((part) => part.trim())
@@ -143,6 +168,18 @@ export function buildRagRetrievalQueries(question: string): string[] {
     variants.add(
       `What support, features, specs, availability, and important details are listed for ${subject}?`,
     )
+  }
+
+  if (hasBroadOverviewIntent) {
+    const target = subject || clean
+    variants.add(`What business overview, homepage, about, services, products, offers, pricing, support, contact, and policies are available for ${target}?`)
+    variants.add(`What does ${target} do, provide, sell, or offer according to the business knowledge?`)
+  }
+
+  if (hasOwnershipOrLegalIntent) {
+    const target = subject || clean
+    variants.add(`What owner, founder, director, legal entity, company number, registration, about, and company details are available for ${target}?`)
+    variants.add(`Who owns or is behind ${target}, and what legal company details are listed?`)
   }
 
   if (subject && hasLocationOrAvailabilityIntent) {
@@ -184,9 +221,76 @@ const RAG_KEYWORD_STOPWORDS = new Set([
   'your',
 ])
 
+const RAG_GENERIC_INTENT_TERMS = new Set([
+  'about',
+  'available',
+  'availability',
+  'business',
+  'company',
+  'contact',
+  'cost',
+  'costs',
+  'director',
+  'email',
+  'fee',
+  'fees',
+  'founder',
+  'legal',
+  'location',
+  'locations',
+  'monthly',
+  'offer',
+  'offering',
+  'offerings',
+  'offers',
+  'owner',
+  'package',
+  'packages',
+  'phone',
+  'plan',
+  'plans',
+  'price',
+  'prices',
+  'pricing',
+  'product',
+  'products',
+  'provide',
+  'provides',
+  'service',
+  'services',
+  'selling',
+  'support',
+  'whatsapp',
+  'yearly',
+])
+
+const RAG_GENERIC_SPEC_TERMS = new Set([
+  'bandwidth',
+  'core',
+  'cores',
+  'cpu',
+  'gb',
+  'iops',
+  'mb',
+  'memory',
+  'nvme',
+  'ram',
+  'ssd',
+  'storage',
+  'tb',
+])
+
 export function extractRagKeywordTerms(question: string): string[] {
   const clean = cleanQuestion(question).toLowerCase()
   if (!clean) return []
+
+  const numericUnitTerms = Array.from(clean.matchAll(
+    /\b(\d+(?:\.\d+)?)\s*(kb|mb|gb|tb|core|cores|cpu|ram|nvme|ssd|iops|mbps|gbps|kg|g|mg|ml|l|cm|mm|m|inch|inches|ft|feet|hour|hours|day|days|week|weeks|month|months|year|years|seat|seats|user|users|page|pages)\b/gi,
+  )).flatMap((match) => {
+    const amount = match[1]?.toLowerCase()
+    const unit = match[2]?.toLowerCase()
+    return amount && unit ? [`${amount}${unit}`, `${amount} ${unit}`] : []
+  })
 
   const terms = clean
     .match(/[a-z0-9][a-z0-9.+@:/-]{1,}/gi)
@@ -196,7 +300,13 @@ export function extractRagKeywordTerms(question: string): string[] {
     .filter((term) => !/^\d{1,2}$/.test(term))
     ?? []
 
-  return Array.from(new Set(terms)).slice(0, 6)
+  return Array.from(new Set([...numericUnitTerms, ...terms])).slice(0, 8)
+}
+
+function extractRagSubjectTerms(question: string): string[] {
+  const terms = extractRagKeywordTerms(question)
+  const subjectTerms = terms.filter((term) => !RAG_GENERIC_INTENT_TERMS.has(term))
+  return subjectTerms.length > 0 ? subjectTerms.slice(0, 4) : terms.slice(0, 4)
 }
 
 interface RagQuestionIntent {
@@ -205,16 +315,46 @@ interface RagQuestionIntent {
   readonly pricing: boolean
   readonly policy: boolean
   readonly overview: boolean
+  readonly ownershipOrLegal: boolean
 }
 
 function hasRagEvidenceTerm(value: string, terms: ReadonlyArray<string>): boolean {
   return terms.some((term) => value.includes(term))
 }
 
+function escapeRagRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function ragTextMatchesQueryTerm(value: string, term: string): boolean {
+  const normalized = term.toLowerCase().trim()
+  if (!normalized) return false
+  if (normalized.includes(' ') || /[^a-z0-9]/i.test(normalized)) return value.includes(normalized)
+
+  const escaped = escapeRagRegex(normalized)
+  if (/^\d+(?:\.\d+)?[a-z]+$/.test(normalized)) {
+    return new RegExp(`(^|[^a-z0-9])${escaped}([a-z]*\\b|[^a-z0-9]|$)`, 'i').test(value)
+  }
+
+  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(value)
+}
+
+function ragQueryTermWeight(term: string): number {
+  const normalized = term.toLowerCase().trim()
+  if (/^\d+(?:\.\d+)?\s?[a-z]+$/.test(normalized)) return 2
+  if (RAG_GENERIC_INTENT_TERMS.has(normalized) || RAG_GENERIC_SPEC_TERMS.has(normalized)) return 1
+  return 2
+}
+
+function scoreMatchedRagTerms(terms: ReadonlyArray<string>): number {
+  return terms.reduce((score, term) => score + ragQueryTermWeight(term), 0)
+}
+
 function detectRagQuestionIntent(question: string, terms: ReadonlyArray<string>): RagQuestionIntent {
   const lower = cleanQuestion(question).toLowerCase()
   const wordCount = lower.split(/\s+/).filter(Boolean).length
   const shortTopic = terms.length > 0 && terms.length <= 3 && wordCount <= 4
+  const ownershipOrLegal = isRagOwnershipOrLegalQuestion(lower)
 
   return {
     contact: /\b(contact|support|help|ticket|email|mail|phone|tel|whatsapp|wa\.me|chat|call|message)\b/.test(lower),
@@ -223,7 +363,9 @@ function detectRagQuestionIntent(question: string, terms: ReadonlyArray<string>)
     policy: /\b(policy|policies|refund|return|returns|cancel|cancellation|terms|abuse|illegal|prohibited|allowed|not allowed)\b/.test(lower),
     overview:
       shortTopic ||
-      /\b(service|services|product|products|plan|plans|package|packages|offer|offers|provide|provides|available|include|includes|features|about)\b/.test(lower),
+      isRagBroadBusinessOverviewQuestion(lower) ||
+      /\b(service|services|product|products|plan|plans|package|packages|offer|offering|offerings|offers|provide|provides|sell|selling|available|include|includes|features|about)\b/.test(lower),
+    ownershipOrLegal,
   }
 }
 
@@ -237,7 +379,7 @@ export function scoreKeywordRagChunk(args: {
   const intent = detectRagQuestionIntent(args.question, args.terms)
   const cleanQuery = cleanQuestion(args.question).toLowerCase()
 
-  let score = 0.44 + Math.min(0.18, args.matchedTerms.length * 0.06)
+  let score = 0.44 + Math.min(0.22, scoreMatchedRagTerms(args.matchedTerms) * 0.04)
 
   if (cleanQuery && lowerText.includes(cleanQuery)) score += 0.08
 
@@ -311,6 +453,14 @@ export function scoreKeywordRagChunk(args: {
   if (
     intent.overview &&
     hasRagEvidenceTerm(lowerText, [
+      'about',
+      'business overview',
+      'business profile',
+      'company',
+      'homepage',
+      'home page',
+      'important pages imported',
+      'meta description',
       'service',
       'services',
       'product',
@@ -325,9 +475,35 @@ export function scoreKeywordRagChunk(args: {
       'features',
       'support',
       'available',
+      'what we do',
+      'who we are',
+      'website knowledge summary',
     ])
   ) {
-    score += 0.16
+    score += 0.22
+  }
+
+  if (
+    intent.ownershipOrLegal &&
+    hasRagEvidenceTerm(lowerText, [
+      'owner',
+      'owned by',
+      'founder',
+      'founded by',
+      'director',
+      'legal',
+      'legal name',
+      'company number',
+      'registration',
+      'registered',
+      'incorporated',
+      'behind',
+      'about',
+      'business profile',
+      'company',
+    ])
+  ) {
+    score += 0.26
   }
 
   const isImportOrPromptNoise = hasRagEvidenceTerm(lowerText, [
@@ -391,6 +567,9 @@ export interface RagDashboardChatResult {
   readonly answer: string
   readonly sources: ReadonlyArray<RagDashboardChatSource>
   readonly fallbackReason: string | null
+  readonly intent?: 'general_conversation' | 'business_knowledge' | 'human_help_requested' | 'business_answer_missing'
+  readonly humanRequestStatus?: 'none' | 'requested' | 'accepted' | 'rejected' | null
+  readonly aiPaused?: boolean
 }
 
 interface RagAnswerOptions {
@@ -405,6 +584,191 @@ interface RagAnswerOptions {
 
 function cleanQuestion(value: string): string {
   return value.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function isRagBroadBusinessOverviewQuestion(question: string): boolean {
+  const clean = cleanQuestion(question)
+  if (!clean) return false
+  const lower = clean.toLowerCase()
+  const keywordTerms = extractRagKeywordTerms(clean)
+  const nonIntentSubjectTerms = keywordTerms.filter((term) => !RAG_GENERIC_INTENT_TERMS.has(term))
+  const hasNamedSubject = nonIntentSubjectTerms.length >= 2
+  const hasExplicitBusinessScope =
+    /\b(company|business|brand|shop|store|service|provider|team|organization|organisation)\b/.test(lower)
+  const asksAboutEntity =
+    /^\s*(what is|who is|tell me about|about)\s+[\p{L}\p{N}\s.'&-]{2,120}\??\s*$/iu.test(clean) &&
+    (hasNamedSubject || hasExplicitBusinessScope)
+  const asksOfferings =
+    /\b(what do you offer|what are you offering|what services do you provide|what products do you (?:sell|have|offer)|what do you provide|what do you sell|what are your services|what are your products)\b/.test(lower) ||
+    /\bwhat\s+(?:does|is|are)\s+[\p{L}\p{N}\s.'&-]{2,120}\s+(?:offer|offering|provide|provides|sell|selling|do)\??\s*$/iu.test(clean)
+
+  return asksAboutEntity || asksOfferings || (keywordTerms.length <= 3 && hasExplicitBusinessScope)
+}
+
+function isRagOwnershipOrLegalQuestion(question: string): boolean {
+  const lower = cleanQuestion(question).toLowerCase()
+  return /\b(owner|owns|owned by|founder|founded by|co-founder|director|legal owner|legal name|company number|registration number|registered company|incorporated|behind (?:the )?(?:company|business|brand))\b/.test(lower)
+}
+
+export function isRagHumanHelpRequest(question: string): boolean {
+  const lower = cleanQuestion(question).toLowerCase()
+  return /\b(human|real person|real agent|agent|support agent|team member|your team|talk to support|speak to support|connect me|call me|someone call|live agent|representative)\b/.test(lower)
+    || /\b(i need|need|want|please)\s+(human|support|agent|help|team)\b/.test(lower)
+    || /\b(human chahiye|insan se baat|aadmi se baat|agent se baat|support se connect|team se baat|real person se baat|connect kar dein|connect kar do|baat karwa dein|baat karwa do)\b/.test(lower)
+}
+
+export function isRagHumanConfirmationYes(question: string): boolean {
+  const lower = cleanQuestion(question).toLowerCase()
+  return /^(yes|yeah|yep|ok|okay|sure|please|pls|connect|connect me|support|human|human please|please connect me|i want support|i need support|go ahead)\b/.test(lower)
+    || /^(han|haan|ha|ji|g|theek hai|thik hai|connect kar dein|connect kar do|team se baat karwa dein|support se connect kar dein)\b/.test(lower)
+}
+
+export function isRagHumanConfirmationNo(question: string): boolean {
+  const lower = cleanQuestion(question).toLowerCase()
+  return /^(no|nope|not now|it's okay|its okay|continue|keep helping|never mind|nevermind)\b/.test(lower)
+    || /^(nahi|nahin|nai|abhi nahi|abhi nahin|zaroorat nahi|zarurat nahi)\b/.test(lower)
+}
+
+function hasArabicScript(value: string): boolean {
+  return /[\u0600-\u06FF]/.test(value)
+}
+
+function hasUrduScript(value: string): boolean {
+  return hasArabicScript(value)
+    && (/(آپ|اپ|ٹھیک|شکریہ|کیا|حال|میں|ہوں|ہے|ہیں|سب|خیریت|نہیں|جی|ہاں)/.test(value)
+      || /[ٹڈڑںے]/.test(value))
+}
+
+function hasHindiScript(value: string): boolean {
+  return /[\u0900-\u097F]/.test(value)
+}
+
+function hasRomanUrduSignals(value: string): boolean {
+  return /\b(aap|ap|kaise|kayse|kese|kya|kia|kay|hal|haal|theek|thik|thk|khairiyat|sub|sab|shukriya|shukria|allah|shukar|mein|main|hun|hoon|hain|nahi|nahin|haan|han|mujhe|insan|aadmi|baat|karni|karwa|karein|zaroorat|zarurat|chahiye)\b/.test(value)
+}
+
+export function detectRagCustomerLanguageStyle(question: string): RagCustomerLanguageStyle {
+  const clean = cleanQuestion(question)
+  const lower = clean.toLowerCase()
+  if (hasUrduScript(clean)) return 'urdu_script'
+  if (hasArabicScript(clean)) return 'arabic_script'
+  if (hasHindiScript(clean)) return 'hindi_script'
+  if (hasRomanUrduSignals(lower)) return 'roman_urdu'
+  return 'english'
+}
+
+function removeLatinDiacritics(value: string): string {
+  return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+}
+
+export function hasRagBusinessKnowledgeIntent(question: string): boolean {
+  const clean = cleanQuestion(question)
+  const lower = clean.toLowerCase()
+  const normalized = removeLatinDiacritics(lower)
+
+  return /\b(company|business|price|prices|pricing|cost|fee|plan|plans|package|packages|service|services|product|products|refund|return|policy|policies|phone|number|email|whatsapp|contact|address|office|location|located|opening|hours|available|availability|owner|legal|company number|support ticket|live chat|delivery|shipping|appointment|booking|order|orders|payment|payments|pay|buy|sell|selling|provide|hosting|domain|server|dedicated|invoice|subscription)\b/.test(lower)
+    || /\b(do you|can i|can we|what are your|how much|where is your|where are you located|who owns)\b/.test(lower)
+    || isRagBroadBusinessOverviewQuestion(clean)
+    || isRagOwnershipOrLegalQuestion(clean)
+    || /\b(precio|precios|costo|plan|planes|paquete|paquetes|servicio|servicios|producto|productos|reembolso|politica|telefono|numero|correo|contacto|direccion|ubicacion|dueno|propietario|pedido|pago|pagos|soporte)\b/.test(normalized)
+    || /\b(prix|cout|forfait|forfaits|service|services|produit|produits|remboursement|politique|telephone|numero|courriel|email|contact|adresse|emplacement|proprietaire|commande|paiement|support)\b/.test(normalized)
+    || /\b(fiyat|ucret|plan|paket|hizmet|urun|iade|politika|telefon|numara|eposta|iletisim|adres|konum|sahip|siparis|odeme|destek)\b/.test(normalized)
+    || /\b(qeemat|keemat|kitna|kitni|plan|package|service|phone|number|whatsapp|email|rabta|address|pata|location|owner|malik|company|order|payment|support)\b/.test(lower)
+    || /(سعر|أسعار|السعر|خطة|خطط|باقة|باقات|خدمة|خدمات|منتج|منتجات|استرداد|سياسة|هاتف|رقم|واتساب|بريد|تواصل|عنوان|موقع|مالك|شركة|طلب|دفع|دعم)/.test(clean)
+    || /(قیمت|پلان|پیکج|سروس|خدمات|فون|نمبر|واٹس|ای میل|رابطہ|پتہ|مقام|مالک|کمپنی|آرڈر|ادائیگی|سپورٹ)/.test(clean)
+    || /(कीमत|दाम|योजना|प्लान|पैकेज|सेवा|फ़ोन|फोन|नंबर|संपर्क|भुगतान|ऑर्डर|सपोर्ट|पता|मालिक|कंपनी)/.test(clean)
+}
+
+function isShortNonBusinessSocialMessage(question: string): boolean {
+  const clean = cleanQuestion(question)
+  if (!clean) return false
+  if (hasRagBusinessKnowledgeIntent(clean)) return false
+  if (/[$€£¥₹]|https?:\/\/|www\.|@|\d{3,}/i.test(clean)) return false
+
+  const tokenCount = clean.split(/\s+/).filter(Boolean).length
+  return clean.length <= 90 && tokenCount <= 10
+}
+
+export function ragBusinessMissingHandoffPromptFor(question: string): string {
+  const style = detectRagCustomerLanguageStyle(question)
+  if (style === 'urdu_script') {
+    return 'میرے پاس اس وقت یہ exact detail نہیں ہے۔ کیا میں آپ کو team member سے connect کر دوں؟'
+  }
+  if (style === 'hindi_script') {
+    return 'मेरे पास अभी यह exact detail नहीं है। क्या मैं आपको team member से connect कर दूँ?'
+  }
+  if (style === 'arabic_script') {
+    return 'لا أملك هذه التفاصيل الدقيقة الآن. هل تريد أن أوصلك بأحد أعضاء الفريق؟'
+  }
+  if (style === 'roman_urdu') {
+    return 'Mere paas is waqt yeh exact detail nahi hai. Kya main aapko team member se connect kar doon?'
+  }
+  return RAG_BUSINESS_MISSING_HANDOFF_PROMPT
+}
+
+function ragHumanRequestedReplyFor(question: string): string {
+  const style = detectRagCustomerLanguageStyle(question)
+  if (style === 'urdu_script') {
+    return 'ٹھیک ہے، میں نے آپ کی request team کو بھیج دی ہے۔ Team member کے take over کرنے تک میں یہاں help کر سکتا ہوں۔'
+  }
+  if (style === 'hindi_script') {
+    return 'ठीक है, मैंने आपकी request team को भेज दी है। Team member के take over करने तक मैं यहाँ help कर सकता हूँ।'
+  }
+  if (style === 'arabic_script') {
+    return 'حسنًا، أرسلت طلبك إلى الفريق. يمكنني الاستمرار في المساعدة هنا إلى أن يتولى أحد أعضاء الفريق المحادثة.'
+  }
+  if (style === 'roman_urdu') {
+    return 'Theek hai, maine aapki request team ko bhej di hai. Team member ke take over karne tak main yahan help kar sakta hoon.'
+  }
+  return RAG_HUMAN_REQUESTED_REPLY
+}
+
+function ragHumanDeclinedReplyFor(question: string): string {
+  const style = detectRagCustomerLanguageStyle(question)
+  if (style === 'urdu_script') return 'کوئی بات نہیں — میں یہاں help کر سکتا ہوں۔'
+  if (style === 'hindi_script') return 'कोई बात नहीं — मैं यहाँ help कर सकता हूँ।'
+  if (style === 'arabic_script') return 'لا بأس — يمكنني الاستمرار في المساعدة هنا.'
+  if (style === 'roman_urdu') return 'Theek hai — main yahan help kar sakta hoon.'
+  return RAG_HUMAN_DECLINED_REPLY
+}
+
+function isSimpleArithmetic(question: string): boolean {
+  return /^\s*\d+(?:\.\d+)?\s*(?:\+|-|\*|x|×|\/|÷)\s*\d+(?:\.\d+)?\s*\??\s*$/i.test(question)
+    || /^\s*what\s+is\s+\d+(?:\.\d+)?\s*(?:\+|-|\*|x|×|\/|÷)\s*\d+(?:\.\d+)?\s*\??\s*$/i.test(question)
+}
+
+export function classifyRagCustomerIntent(question: string): 'general_conversation' | 'business_knowledge' | 'human_help_requested' {
+  const clean = cleanQuestion(question)
+  const lower = clean.toLowerCase()
+
+  if (isRagHumanHelpRequest(clean)) return 'human_help_requested'
+
+  if (hasRagBusinessKnowledgeIntent(clean)) return 'business_knowledge'
+
+  const generalSmallTalk =
+    /^(hi|hello|hey|salam|assalam|thanks|thank you|ok thanks|how are you|how r you|are you okay|are you ok|good morning|good afternoon|good evening|good night|nice|ok|okay|i am fine|i'm fine|im fine|i am good|i'm good|im good|i am okay|i'm okay|im okay|i am doing well|yes i am fine)\b/i.test(clean)
+    || /\b(ap|aap)\s+(ka|ke|kay)\s+(kya|kia|kay)?\s*(hal|haal)\s*(hai|hy|he)?\b/.test(lower)
+    || /\b(ap|aap)\s+kaise\s+(hain|ho|hai|hy)\b/.test(lower)
+    || /\b(ap|aap)\s+(thk|thik|theek)\s+(hain|ho|hai|hy)\s*(na)?\b/.test(lower)
+    || /\b(kya|kia|kay)\s+(hal|haal)\s*(hai|hy|he)?\s*((ap|aap)\s+ka)?\b/.test(lower)
+    || /\b(kaise|kese|kayse)\s+(hain|ho)\b/.test(lower)
+    || /\b(sub|sab)\s+khairiyat\s+(hai|hy|he)?\s*(na)?\b/.test(lower)
+    || /\b(main|mein|me)\s+(theek|thik)\s+(hun|hoon|hu|hon)\b/.test(lower)
+    || /\b(theek|thik|thk)\s+(hai|hy|he|hain|ho)\s*(na)?\b/.test(lower)
+    || /\b(shukriya|shukria|allah\s+ka\s+shukar)\b/.test(lower)
+    || (/^[\u0600-\u06FF\s؟،]+$/.test(clean) && /(سلام|شکریہ|کیسے|حال|ٹھیک)/.test(clean))
+    || (/^[\u0900-\u097F\s?।,]+$/.test(clean) && /(नमस्ते|धन्यवाद|कैसे|हाल|ठीक)/.test(clean))
+
+  if (generalSmallTalk || isSimpleArithmetic(clean) || isShortNonBusinessSocialMessage(clean)) {
+    return 'general_conversation'
+  }
+
+  const genericDefinition =
+    /^\s*(what is|what are|explain|define|meaning of)\s+[\w\s-]{2,80}\??\s*$/i.test(clean)
+
+  if (genericDefinition) return 'general_conversation'
+
+  return 'business_knowledge'
 }
 
 function fallbackProvider(provider: string | null | undefined): RagProviderType {
@@ -509,6 +873,167 @@ function cleanStandaloneQuery(value: string | null | undefined, fallback: string
   if (!clean) return fallback
   if (clean.length > 240) return fallback
   return clean
+}
+
+export function deterministicGeneralReply(question: string): string | null {
+  const lower = cleanQuestion(question).toLowerCase()
+  const style = detectRagCustomerLanguageStyle(question)
+
+  if (style === 'roman_urdu') {
+    if (/\b(ap|aap)\s+(ka|ke|kay)\s+(kya|kia|kay)?\s*(hal|haal)\s*(hai|hy|he)?\b/.test(lower)
+      || /\b(ap|aap)\s+kaise\s+(hain|ho|hai|hy)\b/.test(lower)
+      || /\b(ap|aap)\s+(thk|thik|theek)\s+(hain|ho|hai|hy)\s*(na)?\b/.test(lower)
+      || /\b(kya|kia|kay)\s+(hal|haal)\s*(hai|hy|he)?\b/.test(lower)
+      || /\b(kaise|kese|kayse)\s+(hain|ho)\b/.test(lower)
+      || /\b(sub|sab)\s+khairiyat\s+(hai|hy|he)?\s*(na)?\b/.test(lower)) {
+      return 'Main theek hoon, shukriya. Aap bataiye, main aapki kya madad kar sakta hoon?'
+    }
+    if (/\b(main|mein|me)\s+(theek|thik)\s+(hun|hoon|hu|hon)\b/.test(lower)) {
+      return 'Achha, shukriya. Aapko kis cheez mein madad chahiye?'
+    }
+    if (/\b(shukriya|shukria|allah\s+ka\s+shukar)\b/.test(lower)) {
+      return 'Aapka shukriya. Main kis tarah madad kar sakta hoon?'
+    }
+    if (/\b(theek|thik)\s+(hai|hy|he)\b/.test(lower)) {
+      return 'Theek hai. Aapko kis cheez mein madad chahiye?'
+    }
+  }
+
+  if (style === 'urdu_script') {
+    if (/(سلام|کیسے|حال)/.test(question)) {
+      return 'میں ٹھیک ہوں، شکریہ۔ آپ بتائیں، میں آپ کی کیا مدد کر سکتا ہوں؟'
+    }
+    if (/(ٹھیک|شکریہ)/.test(question)) {
+      return 'اچھا، شکریہ۔ آپ کو کس چیز میں مدد چاہیے؟'
+    }
+  }
+
+  if (style === 'hindi_script') {
+    if (/(नमस्ते|कैसे|हाल)/.test(question)) {
+      return 'मैं ठीक हूँ, धन्यवाद। बताइए, मैं आपकी क्या मदद कर सकता हूँ?'
+    }
+    if (/(ठीक|धन्यवाद)/.test(question)) {
+      return 'अच्छा, धन्यवाद। आपको किस चीज़ में मदद चाहिए?'
+    }
+  }
+
+  if (style === 'arabic_script') {
+    if (/(مرحبا|السلام|أهلا|اهلا|كيف|حالك)/.test(question)) {
+      return 'أنا بخير، شكرًا. كيف يمكنني مساعدتك؟'
+    }
+    if (/(شكرا|شكرًا)/.test(question)) {
+      return 'على الرحب والسعة. كيف يمكنني مساعدتك؟'
+    }
+  }
+
+  const normalized = removeLatinDiacritics(lower)
+  if (/^(hola|buenos dias|buenas tardes|buenas noches)\b/.test(normalized)) {
+    return 'Hola, estoy bien. ¿Cómo puedo ayudarte?'
+  }
+  if (/^(gracias|muchas gracias)\b/.test(normalized)) {
+    return 'De nada. ¿Cómo puedo ayudarte?'
+  }
+  if (/^(como estas|que tal)\b/.test(normalized)) {
+    return 'Estoy bien, gracias. ¿Cómo puedo ayudarte?'
+  }
+  if (/^(bonjour|bonsoir|salut)\b/.test(normalized)) {
+    return 'Bonjour, je vais bien. Comment puis-je vous aider ?'
+  }
+  if (/^(merci|comment ca va)\b/.test(normalized)) {
+    return 'Je vais bien, merci. Comment puis-je vous aider ?'
+  }
+  if (/^(merhaba|nasilsin|nasilsiniz)\b/.test(normalized)) {
+    return 'İyiyim, teşekkürler. Size nasıl yardımcı olabilirim?'
+  }
+  if (/^(tesekkurler|tesekkur ederim)\b/.test(normalized)) {
+    return 'Rica ederim. Size nasıl yardımcı olabilirim?'
+  }
+
+  if (/^(hi|hello|hey|salam|assalam)\b/.test(lower)) return 'Hi! How can I help you today?'
+  if (/^how are you\b/.test(lower) || /^how r you\b/.test(lower)) {
+    return "I'm doing well, thank you. How can I help?"
+  }
+  if (/^(i am fine|i'm fine|im fine|i am good|i'm good|im good|i am okay|i'm okay|im okay|i am doing well|yes i am fine)\b/.test(lower)) {
+    return 'Glad to hear that. How can I help you today?'
+  }
+  if (/^(thanks|thank you|ok thanks)\b/.test(lower)) return "You're welcome."
+  if (/^(nice|ok|okay)\b/.test(lower)) return 'Great. How can I help you?'
+
+  const arithmetic = lower.match(/(?:what\s+is\s+)?(\d+(?:\.\d+)?)\s*(\+|-|\*|x|×|\/|÷)\s*(\d+(?:\.\d+)?)/)
+  if (arithmetic) {
+    const left = Number(arithmetic[1])
+    const operator = arithmetic[2]
+    const right = Number(arithmetic[3])
+    const value = operator === '+'
+      ? left + right
+      : operator === '-'
+        ? left - right
+        : operator === '*' || operator === 'x' || operator === '×'
+          ? left * right
+          : right === 0
+            ? null
+            : left / right
+    if (value !== null && Number.isFinite(value)) {
+      return `${arithmetic[1]} ${operator} ${arithmetic[3]} is ${Number.isInteger(value) ? value : Number(value.toFixed(4))}.`
+    }
+  }
+
+  return null
+}
+
+function buildGeneralConversationPrompt(question: string): string {
+  const missingBusinessAnswer = ragBusinessMissingHandoffPromptFor(question)
+  return `Answer only general/small-talk/simple knowledge questions.
+Do not invent business-specific facts, prices, contact details, policies, availability, services, products, locations, legal details, or guarantees.
+Match the customer's language and writing style, including English, Roman Urdu/Hindi, Urdu script, Hindi script, Arabic, Spanish, French, Turkish, or any other language.
+If the question asks about this business, its plans, prices, contact details, support, services, policies, or availability, say exactly:
+"${missingBusinessAnswer}"
+Keep the answer short and professional.
+
+Customer question:
+${question}`
+}
+
+async function answerGeneralConversation(args: {
+  readonly workspaceId: string
+  readonly question: string
+  readonly providerConfig: RagResolvedProviderConfig | null
+}): Promise<{
+  readonly answer: string
+  readonly providerConfig: RagResolvedProviderConfig | null
+  readonly tokenUsage?: Readonly<Record<string, unknown>>
+}> {
+  const deterministic = deterministicGeneralReply(args.question)
+
+  if (!args.providerConfig) {
+    return {
+      answer: deterministic ?? 'AI provider is not configured yet.',
+      providerConfig: null,
+    }
+  }
+
+  try {
+    const provider = createRagOpenAICompatibleProvider(args.providerConfig)
+    const result = await generateText({
+      model: provider(args.providerConfig.chatModel),
+      system: 'You are a helpful business assistant. Answer only general conversation, greetings, thanks, polite replies, and simple non-business questions. Match the customer language and writing style. Keep the answer short and natural. Do not invent business-specific facts such as prices, services, contact details, policies, availability, owner, address, plans, orders, payments, or guarantees. If the user asks anything business-specific, do not answer it here.',
+      prompt: buildGeneralConversationPrompt(args.question),
+      temperature: 0,
+      maxOutputTokens: 120,
+    })
+
+    const answer = safeAnswer(result.text)
+    return {
+      answer: answer === RAG_CLEAN_FALLBACK
+        ? deterministic ?? RAG_PROVIDER_ERROR_FALLBACK
+        : answer,
+      providerConfig: args.providerConfig,
+      tokenUsage: result.usage ? { ...result.usage } : {},
+    }
+  } catch {
+    if (deterministic) return { answer: deterministic, providerConfig: args.providerConfig }
+    throw new Error('General conversation provider failed.')
+  }
 }
 
 async function rewriteRagStandaloneQuestion(args: {
@@ -619,7 +1144,7 @@ async function retrieveKeywordRagChunks(args: {
     .eq('rag_knowledge_sources.status', 'active')
     .is('rag_knowledge_sources.deleted_at', null)
     .or(orFilter)
-    .limit(40)
+    .limit(RAG_KEYWORD_CANDIDATE_LIMIT)
 
   if (error) throw new Error(error.message)
 
@@ -640,7 +1165,7 @@ async function retrieveKeywordRagChunks(args: {
       | null
   }>).map((row) => {
     const lowerText = row.chunk_text.toLowerCase()
-    const matchedTerms = args.terms.filter((term) => lowerText.includes(term.toLowerCase()))
+    const matchedTerms = args.terms.filter((term) => ragTextMatchesQueryTerm(lowerText, term))
     const score = scoreKeywordRagChunk({
       question: args.question,
       terms: args.terms,
@@ -676,7 +1201,7 @@ async function retrieveRagChunksForQueries(args: {
 }): Promise<ReadonlyArray<RagRetrievedChunk>> {
   const chunksById = new Map<string, RagRetrievedChunk>()
   const originalQuestion = args.queries[0] ?? ''
-  const keywordTerms = extractRagKeywordTerms(originalQuestion)
+  const keywordTerms = Array.from(new Set(args.queries.flatMap((query) => extractRagKeywordTerms(query)))).slice(0, 12)
   const keywordChunks = await retrieveKeywordRagChunks({
     workspaceId: args.workspaceId,
     question: originalQuestion,
@@ -724,7 +1249,24 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
   let standaloneQuestion = question
 
   try {
-    providerConfig = await getDashboardProviderConfig(args.workspaceId)
+    if (args.conversationId) {
+      const aiPaused = await isRagConversationAiPaused({
+        workspaceId: args.workspaceId,
+        conversationId: args.conversationId,
+      })
+      if (aiPaused) {
+        return {
+          status: 'fallback',
+          answer: '',
+          sources: [],
+          fallbackReason: 'ai_paused_for_human',
+          intent: 'human_help_requested',
+          humanRequestStatus: 'accepted',
+          aiPaused: true,
+        }
+      }
+    }
+
     recentMessages = args.recentMessages
       ? sanitizeRagConversationMessages(args.recentMessages)
       : await loadRagConversationMemory({
@@ -732,6 +1274,131 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
           conversationId: args.conversationId,
           excludeMessageId: args.messageId,
         })
+
+    const control = args.conversationId
+      ? await getRagConversationControl({
+          workspaceId: args.workspaceId,
+          conversationId: args.conversationId,
+        })
+      : null
+
+    if (args.conversationId && control?.waitingForHumanConfirmation) {
+      const confirmationYes = isRagHumanConfirmationYes(question)
+      const confirmationNo = isRagHumanConfirmationNo(question)
+      if (confirmationYes || confirmationNo) {
+        const nextControl = await upsertRagConversationControl({
+          workspaceId: args.workspaceId,
+          conversationId: args.conversationId,
+          action: confirmationYes ? 'request_human' : 'clear_human_confirmation',
+          reason: confirmationYes ? 'customer_confirmed_handoff' : 'customer_declined_handoff',
+        })
+        const answer = confirmationYes ? ragHumanRequestedReplyFor(question) : ragHumanDeclinedReplyFor(question)
+        await insertRagChatLog({
+          workspaceId: args.workspaceId,
+          question,
+          answer,
+          status: 'answered',
+          fallbackReason: confirmationYes ? 'human_request_pending_owner_acceptance' : null,
+          provider: null,
+          chatModel: null,
+          embeddingModel: null,
+          retrievedChunkIds: [],
+          retrievalScores: [{ intent: confirmationYes ? 'human_help_requested' : 'general_conversation' }],
+          latencyMs: Date.now() - startedAt,
+          channel: args.channel,
+          conversationId: args.conversationId,
+          messageId: args.messageId,
+        })
+        return {
+          status: 'answered',
+          answer,
+          sources: [],
+          fallbackReason: confirmationYes ? 'human_request_pending_owner_acceptance' : null,
+          intent: confirmationYes ? 'human_help_requested' : 'general_conversation',
+          humanRequestStatus: nextControl.humanRequestStatus,
+          aiPaused: nextControl.aiPaused,
+        }
+      }
+    }
+
+    const intent = classifyRagCustomerIntent(question)
+    if (intent === 'human_help_requested') {
+      const nextControl = args.conversationId
+        ? await upsertRagConversationControl({
+            workspaceId: args.workspaceId,
+            conversationId: args.conversationId,
+            action: 'request_human',
+            reason: 'customer_requested_human',
+          })
+        : null
+      await insertRagChatLog({
+        workspaceId: args.workspaceId,
+        question,
+        answer: ragHumanRequestedReplyFor(question),
+        status: 'answered',
+        fallbackReason: 'human_request_pending_owner_acceptance',
+        provider: null,
+        chatModel: null,
+        embeddingModel: null,
+        retrievedChunkIds: [],
+        retrievalScores: [{ intent }],
+        latencyMs: Date.now() - startedAt,
+        channel: args.channel,
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+      })
+      return {
+        status: 'answered',
+        answer: ragHumanRequestedReplyFor(question),
+        sources: [],
+        fallbackReason: 'human_request_pending_owner_acceptance',
+        intent,
+        humanRequestStatus: nextControl?.humanRequestStatus ?? 'requested',
+        aiPaused: nextControl?.aiPaused ?? false,
+      }
+    }
+
+    if (intent === 'general_conversation') {
+      try {
+        providerConfig = await getDashboardProviderConfig(args.workspaceId)
+      } catch {
+        providerConfig = null
+      }
+      const general = await answerGeneralConversation({
+        workspaceId: args.workspaceId,
+        question,
+        providerConfig,
+      })
+      providerConfig = general.providerConfig
+      await insertRagChatLog({
+        workspaceId: args.workspaceId,
+        question,
+        answer: general.answer,
+        status: 'answered',
+        fallbackReason: null,
+        provider: providerConfig?.provider ?? null,
+        chatModel: providerConfig?.chatModel ?? null,
+        embeddingModel: providerConfig?.embeddingModel ?? null,
+        retrievedChunkIds: [],
+        retrievalScores: [{ intent }],
+        tokenUsage: general.tokenUsage,
+        latencyMs: Date.now() - startedAt,
+        channel: args.channel,
+        conversationId: args.conversationId,
+        messageId: args.messageId,
+      })
+      return {
+        status: 'answered',
+        answer: general.answer,
+        sources: [],
+        fallbackReason: null,
+        intent,
+        humanRequestStatus: control?.humanRequestStatus ?? null,
+        aiPaused: control?.aiPaused ?? false,
+      }
+    }
+
+    providerConfig = await getDashboardProviderConfig(args.workspaceId)
     standaloneQuestion = await rewriteRagStandaloneQuestion({
       question,
       recentMessages,
@@ -749,11 +1416,23 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
     })
 
     if (retrievedChunks.length === 0) {
+      const handoffAnswer = ragBusinessMissingHandoffPromptFor(question)
+      if (args.conversationId) {
+        await upsertRagConversationControl({
+          workspaceId: args.workspaceId,
+          conversationId: args.conversationId,
+          action: 'await_human_confirmation',
+          reason: 'business_answer_missing_no_matching_knowledge',
+        })
+      }
       const result: RagDashboardChatResult = {
-        status: 'fallback',
-        answer: RAG_CLEAN_FALLBACK,
+        status: 'answered',
+        answer: handoffAnswer,
         sources: [],
         fallbackReason: 'no_matching_knowledge',
+        intent: 'business_answer_missing',
+        humanRequestStatus: control?.humanRequestStatus ?? null,
+        aiPaused: false,
       }
       await insertRagChatLog({
         workspaceId: args.workspaceId,
@@ -768,7 +1447,10 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
         retrievalScores: [
           {
             standaloneQuestion,
+            retrievalQueries,
+            keywordTerms: extractRagKeywordTerms(standaloneQuestion),
             memoryMessageCount: recentMessages.length,
+            intent,
           },
         ],
         latencyMs: Date.now() - startedAt,
@@ -795,19 +1477,32 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
     })
 
     const answer = safeAnswer(textResult.text)
-    const status = answer === RAG_CLEAN_FALLBACK ? 'fallback' : 'answered'
-    const fallbackReason = status === 'fallback' ? 'model_returned_fallback' : null
+    const modelReturnedFallback = answer === RAG_CLEAN_FALLBACK
+    const finalAnswer = modelReturnedFallback ? ragBusinessMissingHandoffPromptFor(question) : answer
+    const status = 'answered'
+    const fallbackReason = modelReturnedFallback ? 'model_returned_fallback' : null
+    if (modelReturnedFallback && args.conversationId) {
+      await upsertRagConversationControl({
+        workspaceId: args.workspaceId,
+        conversationId: args.conversationId,
+        action: 'await_human_confirmation',
+        reason: 'business_answer_missing_model_fallback',
+      })
+    }
     const result: RagDashboardChatResult = {
       status,
-      answer,
+      answer: finalAnswer,
       sources: retrievedChunks.map(toDashboardSource),
       fallbackReason,
+      intent: modelReturnedFallback ? 'business_answer_missing' : 'business_knowledge',
+      humanRequestStatus: control?.humanRequestStatus ?? null,
+      aiPaused: false,
     }
 
     await insertRagChatLog({
       workspaceId: args.workspaceId,
       question,
-      answer,
+      answer: finalAnswer,
       status,
       fallbackReason,
       provider: providerConfig.provider,
@@ -817,10 +1512,15 @@ async function answerRagQuestion(args: RagAnswerOptions): Promise<RagDashboardCh
       retrievalScores: [
         {
           standaloneQuestion,
+          retrievalQueries,
+          keywordTerms: extractRagKeywordTerms(standaloneQuestion),
           memoryMessageCount: recentMessages.length,
+          intent,
         },
         ...retrievedChunks.map((chunk) => ({
+          chunkId: chunk.chunkId,
           sourceTitle: chunk.sourceTitle,
+          sourceUrl: chunk.sourceUrl,
           similarity: chunk.similarity,
         })),
       ],

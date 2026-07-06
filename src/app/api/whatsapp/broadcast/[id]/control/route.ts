@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { requireWorkspacePermission } from '@/lib/team/server'
 
 interface RouteContext {
   params: Promise<{ id: string }>
@@ -9,12 +10,12 @@ type BroadcastAction = 'pause' | 'resume' | 'cancel'
 
 export async function POST(request: Request, { params }: RouteContext) {
   const { id } = await params
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const workspaceResult = await requireWorkspacePermission('pause_resume_cancel_broadcasts')
+  if (!workspaceResult.ok) {
+    return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
+  }
+  const workspaceId = workspaceResult.workspace.workspaceId
+  const supabase = supabaseAdmin()
 
   const body = await request.json().catch(() => null)
   const action = body?.action as BroadcastAction | undefined
@@ -26,7 +27,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     .from('broadcasts')
     .select('id, status')
     .eq('id', id)
-    .eq('user_id', user.id)
+    .eq('workspace_id', workspaceId)
     .maybeSingle()
 
   if (!broadcast) return NextResponse.json({ error: 'Broadcast not found' }, { status: 404 })
@@ -42,7 +43,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       .from('broadcasts')
       .update({ status: 'paused', paused_at: new Date().toISOString() })
       .eq('id', id)
-      .eq('user_id', user.id)
+      .eq('workspace_id', workspaceId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true, status: 'paused' })
   }
@@ -58,7 +59,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       .from('broadcasts')
       .update({ status: 'queued', paused_at: null })
       .eq('id', id)
-      .eq('user_id', user.id)
+      .eq('workspace_id', workspaceId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true, status: 'queued' })
   }
@@ -75,7 +76,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     .from('broadcasts')
     .update({ status: 'cancelled', cancelled_at: now })
     .eq('id', id)
-    .eq('user_id', user.id)
+    .eq('workspace_id', workspaceId)
 
   if (broadcastError) {
     return NextResponse.json({ error: broadcastError.message }, { status: 500 })

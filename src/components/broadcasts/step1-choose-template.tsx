@@ -31,7 +31,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
         const { data, error: fetchError } = await supabase
           .from('message_templates')
           .select('*')
-          .eq('status', 'Approved')
+          .in('status', ['Approved', 'APPROVED'])
           .order('created_at', { ascending: false });
 
         if (fetchError) throw fetchError;

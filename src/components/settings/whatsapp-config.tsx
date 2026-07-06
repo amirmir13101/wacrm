@@ -186,7 +186,7 @@ export function WhatsAppConfig() {
   async function handleTestConnection() {
     try {
       setTesting(true);
-      const res = await fetch('/api/whatsapp/config', { method: 'GET' });
+      const res = await fetch('/api/whatsapp/config?verify=1', { method: 'GET' });
       const payload = await res.json();
 
       if (payload.connected) {

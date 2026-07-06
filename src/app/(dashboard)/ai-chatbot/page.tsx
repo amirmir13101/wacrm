@@ -14,14 +14,19 @@ import {
   Lock,
   MessageSquare,
   Pencil,
+  RefreshCw,
   Send,
-  Sparkles,
   Trash2,
   XCircle,
 } from 'lucide-react'
 
 import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions'
 import { RAG_KNOWLEDGE_CHARACTER_LIMIT } from '@/lib/rag/knowledge'
+import {
+  AI_PROVIDER_CONFIG,
+  isSimpleRagProviderType,
+  SIMPLE_RAG_PROVIDER_TYPES,
+} from '@/lib/rag/provider-config'
 import { cn } from '@/lib/utils'
 import type { RagProviderType } from '@/lib/rag/types'
 
@@ -33,6 +38,8 @@ interface ProviderView {
   readonly maskedKey: string | null
   readonly baseUrl: string | null
   readonly chatModel: string | null
+  readonly embeddingModel: string | null
+  readonly embeddingDimensions: number | null
   readonly lastTestStatus: ConnectionStatus
   readonly lastTestError: string | null
 }
@@ -79,6 +86,9 @@ interface KnowledgeSourceItem {
   readonly readyEmbeddingCount: number
   readonly failedEmbeddingCount: number
   readonly embeddingStatus: 'not_embedded' | 'ready' | 'failed' | 'partial'
+  readonly embeddingMessage: string | null
+  readonly embeddingProvider: string | null
+  readonly embeddingModel: string | null
   readonly content?: string
 }
 
@@ -145,6 +155,7 @@ interface WebsiteImportStats {
   readonly rawCharacters?: number
   readonly duplicateJunkCharactersRemoved?: number
   readonly savedCharacters: number
+  readonly creditsUsed?: number | null
   readonly capped: boolean
   readonly pageLimit: number
   readonly lowValuePagesSkipped?: number
@@ -154,6 +165,9 @@ interface WebsiteImportStats {
   readonly structuredRecords?: Readonly<Record<string, number>>
   readonly warnings?: ReadonlyArray<string>
   readonly skippedReasons?: Readonly<Record<string, number>>
+  readonly dynamicPricingSuspected?: boolean
+  readonly pricingVariantSignals?: ReadonlyArray<string>
+  readonly pricingExtractionNotes?: ReadonlyArray<string>
 }
 
 interface WebsiteImportJob {
@@ -171,6 +185,7 @@ interface WebsiteImportJob {
   readonly draftTitle: string | null
   readonly draftContent: string | null
   readonly qualityWarnings: ReadonlyArray<string>
+  readonly stats?: WebsiteImportStats | null
   readonly createdAt: string
 }
 
@@ -193,6 +208,7 @@ interface RagImportHistoryItem {
   readonly pagesImported: number
   readonly pagesSkipped: number
   readonly pagesFailed: number
+  readonly creditsUsed: number | null
   readonly createdAt: string
   readonly changeSummary: string | null
   readonly errorMessage: string | null
@@ -219,20 +235,18 @@ interface RagKnowledgeGap {
   readonly lastAskedAt: string
 }
 
-const providerLabels: Record<RagProviderType, string> = {
-  openai: 'OpenAI',
-  openrouter: 'OpenRouter',
-  groq: 'Groq',
-  ollama: 'Ollama',
-  custom_openai_compatible: 'Custom OpenAI-compatible',
-  gemini: 'Gemini',
-}
-
-const providers = Object.entries(providerLabels) as Array<[RagProviderType, string]>
+const providers = SIMPLE_RAG_PROVIDER_TYPES.map((value) => [value, AI_PROVIDER_CONFIG[value].label] as const)
 const chatbotCardBorderClass =
   'border border-[#3ddf84]/60 shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition hover:border-[#3ddf84]/80'
 const chatbotPanelBorderClass =
   'border border-[#3ddf84]/40 shadow-[0_12px_35px_rgba(0,0,0,0.14)] transition hover:border-[#3ddf84]/60'
+const chatbotWarningCardClass =
+  'border border-[#ffbd29]/55 bg-[#2a220b]/20 shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition hover:border-[#ffbd29]/75'
+const chatbotStatusIconClass =
+  'flex size-14 items-center justify-center rounded-3xl border shadow-[0_12px_35px_rgba(61,223,132,0.12)]'
+const SAVED_KNOWLEDGE_PREVIEW_LIMIT = 4
+const chatbotPrimaryActionButtonClass =
+  'inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-70'
 
 function statusLabel(status: ConnectionStatus, configured: boolean): string {
   if (!configured) return 'Not configured'
@@ -243,16 +257,16 @@ function statusLabel(status: ConnectionStatus, configured: boolean): string {
 
 function statusClasses(status: ConnectionStatus, configured: boolean): string {
   if (!configured) return 'border-slate-700 bg-slate-900/50 text-slate-300'
-  if (status === 'success') return 'border-emerald-400/50 bg-emerald-400/10 text-emerald-200'
+  if (status === 'success') return 'border-[#3ddf84]/70 bg-[#3ddf84] text-[#07130e]'
   if (status === 'failed') return 'border-red-400/50 bg-red-400/10 text-red-200'
   return 'border-amber-300/50 bg-amber-300/10 text-amber-100'
 }
 
 function embeddingStatusLabel(status: KnowledgeSourceItem['embeddingStatus']): string {
   if (status === 'ready') return 'Ready for Chatbot'
-  if (status === 'failed') return 'Needs attention'
-  if (status === 'partial') return 'Partially ready'
-  return 'Chunks ready'
+  if (status === 'failed') return 'Embedding failed'
+  if (status === 'partial') return 'Creating embeddings automatically'
+  return 'Embedding will be created automatically'
 }
 
 function embeddingStatusClasses(status: KnowledgeSourceItem['embeddingStatus']): string {
@@ -286,8 +300,38 @@ function sourceTypeLabel(sourceType: KnowledgeSourceItem['sourceType']): string 
   return 'Business knowledge'
 }
 
-type KnowledgeProgressKind = 'manual' | 'website' | 'prepare'
+function websiteImportTimeEstimate(pageLimit: number): string {
+  if (pageLimit <= 5) {
+    return 'Estimated time: 1–5 pages usually finish in under 1 minute, depending on website speed and page size.'
+  }
+  if (pageLimit <= 25) {
+    return 'Estimated time: Up to 25 pages may take around 2–3 minutes, depending on website speed and page size.'
+  }
+  return 'Estimated time: Larger imports may take several minutes and can take longer on slower websites.'
+}
+
+function embeddingTimeEstimate(): string {
+  return 'Estimated time: Embeddings may take 1-3 minutes depending on content size and provider speed.'
+}
+
+function isVisibleWebsiteImportWarning(warning: string): boolean {
+  const normalized = warning.toLowerCase()
+  return ![
+    'browser-render',
+    'browser rendered',
+    'browser rendering',
+    'browser-rendered',
+    'dynamic pricing options',
+  ].some((hiddenWarning) => normalized.includes(hiddenWarning))
+}
+
+function visibleWebsiteImportWarnings(warnings: ReadonlyArray<string> | undefined): ReadonlyArray<string> {
+  return (warnings ?? []).filter(isVisibleWebsiteImportWarning)
+}
+
+type KnowledgeProgressKind = 'manual' | 'website'
 type KnowledgeProgressStatus = 'running' | 'done' | 'warning' | 'failed'
+type EmbeddingPreparationStatus = 'running' | 'ready' | 'warning'
 
 interface KnowledgeProgressState {
   readonly kind: KnowledgeProgressKind
@@ -296,13 +340,24 @@ interface KnowledgeProgressState {
   readonly message: string | null
 }
 
+interface EmbeddingPreparationProgress {
+  readonly sourceId: string
+  readonly status: EmbeddingPreparationStatus
+  readonly message: string
+  readonly totalChunks: number | null
+  readonly readyChunks: number | null
+  readonly processedThisBatch: number | null
+  readonly remainingChunks: number | null
+  readonly percentComplete: number | null
+}
+
 const knowledgeProgressSteps: Record<KnowledgeProgressKind, ReadonlyArray<string>> = {
   manual: [
     'Saving knowledge...',
     'Preparing your content...',
     'Creating knowledge chunks...',
-    'Knowledge saved.',
-    'Embeddings are pending. Click Prepare for Chatbot when ready.',
+    'Creating embeddings automatically...',
+    'Embeddings ready.',
   ],
   website: [
     'Starting website import...',
@@ -311,13 +366,8 @@ const knowledgeProgressSteps: Record<KnowledgeProgressKind, ReadonlyArray<string
     'Cleaning unnecessary website text...',
     'Preparing chatbot knowledge...',
     'Creating searchable knowledge chunks...',
-    'Website knowledge saved.',
-    'Embeddings are pending. Click Prepare for Chatbot when ready.',
-  ],
-  prepare: [
-    'Checking chunks...',
-    'Preparing embeddings in batches...',
-    'Ready for chatbot',
+    'Waiting for review and Save Knowledge.',
+    'Creating embeddings automatically after Save Knowledge...',
   ],
 }
 
@@ -339,9 +389,9 @@ function createKnowledgeProgress(
 function knowledgeStatusLabel(source: KnowledgeSourceItem): string {
   if (source.chunkCount === 0) return 'Saved'
   if (source.embeddingStatus === 'ready') return 'Ready for Chatbot'
-  if (source.embeddingStatus === 'failed') return 'Needs attention'
-  if (source.embeddingStatus === 'partial') return 'Partially ready'
-  return 'Chunks ready'
+  if (source.embeddingStatus === 'failed') return 'Embedding failed - check provider settings'
+  if (source.embeddingStatus === 'partial') return 'Creating embeddings automatically'
+  return 'Embedding will be created automatically'
 }
 
 function cleanOperationMessage(message: unknown, fallback: string): string {
@@ -351,6 +401,108 @@ function cleanOperationMessage(message: unknown, fallback: string): string {
     return 'Could not connect to the embedding provider right now. Please try again.'
   }
   return cleaned.slice(0, 240)
+}
+
+function shouldContinueEmbedding(summary: unknown): boolean {
+  if (typeof summary !== 'object' || summary === null) return false
+  const record = summary as Record<string, unknown>
+  return record.status === 'partial' && record.embeddingsReady !== true
+}
+
+function embeddingProgressMessage(summary: unknown, fallback: string): string {
+  if (typeof summary !== 'object' || summary === null) return fallback
+  const record = summary as Record<string, unknown>
+  return cleanOperationMessage(record.userMessage ?? record.message, fallback)
+}
+
+function numberFromRecord(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function buildEmbeddingPreparationProgress(
+  sourceId: string,
+  summary: unknown,
+  statusOverride?: EmbeddingPreparationStatus,
+): EmbeddingPreparationProgress {
+  if (typeof summary !== 'object' || summary === null) {
+    return {
+      sourceId,
+      status: statusOverride ?? 'running',
+      message: 'Getting this knowledge ready for the chatbot...',
+      totalChunks: null,
+      readyChunks: null,
+      processedThisBatch: null,
+      remainingChunks: null,
+      percentComplete: null,
+    }
+  }
+
+  const record = summary as Record<string, unknown>
+  const totalChunks = numberFromRecord(record, 'totalChunks') ?? numberFromRecord(record, 'chunksProcessed')
+  const created = numberFromRecord(record, 'embeddingsCreated') ?? 0
+  const skipped = numberFromRecord(record, 'embeddingsSkipped') ?? 0
+  const failed = numberFromRecord(record, 'embeddingsFailed') ?? 0
+  const readyChunks = numberFromRecord(record, 'readyChunks') ?? (totalChunks === null ? null : Math.min(totalChunks, Math.max(0, created + skipped)))
+  const remainingChunks = numberFromRecord(record, 'remainingChunks') ?? (totalChunks === null || readyChunks === null ? null : Math.max(0, totalChunks - readyChunks))
+  const isReady = record.embeddingsReady === true || record.status === 'ready'
+  const status = statusOverride ?? (isReady ? 'ready' : record.status === 'failed' || failed > 0 ? 'warning' : 'running')
+  const summaryPercent = numberFromRecord(record, 'percentComplete')
+  const percentComplete = summaryPercent ?? (totalChunks && readyChunks !== null
+    ? Math.min(100, Math.max(0, Math.round((readyChunks / totalChunks) * 100)))
+    : status === 'ready'
+      ? 100
+      : null)
+
+  return {
+    sourceId,
+    status,
+    message: status === 'ready'
+      ? 'Knowledge is ready for chatbot answers.'
+      : embeddingProgressMessage(summary, 'Getting this knowledge ready for the chatbot...'),
+    totalChunks,
+    readyChunks,
+    processedThisBatch: numberFromRecord(record, 'processedThisBatch') ?? created + failed,
+    remainingChunks,
+    percentComplete,
+  }
+}
+
+function embeddingNoteStatus(source: KnowledgeSourceItem): 'success' | 'warning' {
+  return source.embeddingStatus === 'ready' && source.readyEmbeddingCount > 0 ? 'success' : 'warning'
+}
+
+function embeddingNoteClassName(source: KnowledgeSourceItem): string {
+  return embeddingNoteStatus(source) === 'success'
+    ? 'text-emerald-100'
+    : 'text-amber-100'
+}
+
+const RAG_EMBEDDINGS_READY_NOTE = 'Embeddings ready. Knowledge is ready for chatbot answers.'
+
+function knowledgeSourceWithProgress(source: KnowledgeSourceItem, progress?: EmbeddingPreparationProgress): KnowledgeSourceItem {
+  if (progress?.status !== 'ready') return source
+
+  return {
+    ...source,
+    embeddingStatus: 'ready',
+    embeddingMessage: RAG_EMBEDDINGS_READY_NOTE,
+    readyEmbeddingCount: progress.totalChunks ?? source.readyEmbeddingCount,
+    failedEmbeddingCount: 0,
+  }
+}
+
+function websiteDraftActionErrorMessage(action: 'update' | 'publish' | 'discard', message: unknown): string {
+  const cleaned = typeof message === 'string' ? message.replace(/\s+/g, ' ').trim() : ''
+  if (/characters or less|too large|payload/i.test(cleaned)) {
+    return `Imported knowledge is too large to save as one item. Please reduce the content or use a draft within the ${RAG_KNOWLEDGE_CHARACTER_LIMIT.toLocaleString()} character limit.`
+  }
+  if (/embedding|provider|api key|quota|billing|rate limit/i.test(cleaned)) {
+    return 'Knowledge saved, but embeddings could not be created. Check AI provider settings.'
+  }
+  if (action === 'publish') return 'Could not save imported knowledge. Please try again.'
+  if (action === 'discard') return 'Could not discard the imported draft. Please try again.'
+  return 'Could not update the imported draft. Please try again.'
 }
 
 export default function RagChatbotPage() {
@@ -364,6 +516,8 @@ export default function RagChatbotPage() {
   const [providerKey, setProviderKey] = useState('')
   const [providerBaseUrl, setProviderBaseUrl] = useState('')
   const [providerModel, setProviderModel] = useState('')
+  const [providerEmbeddingModel, setProviderEmbeddingModel] = useState('')
+  const [providerEmbeddingDimensions, setProviderEmbeddingDimensions] = useState('1536')
   const [firecrawlKey, setFirecrawlKey] = useState('')
   const [providerSaving, setProviderSaving] = useState(false)
   const [firecrawlSaving, setFirecrawlSaving] = useState(false)
@@ -371,6 +525,10 @@ export default function RagChatbotPage() {
   const [firecrawlMessage, setFirecrawlMessage] = useState<string | null>(null)
   const [firecrawlCredits, setFirecrawlCredits] = useState<FirecrawlCreditUsage | null>(null)
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSourceItem[]>([])
+  const [showAllSavedKnowledge, setShowAllSavedKnowledge] = useState(false)
+  const [savedKnowledgeMessage, setSavedKnowledgeMessage] = useState<string | null>(null)
+  const [reEmbeddingSourceId, setReEmbeddingSourceId] = useState<string | null>(null)
+  const [savedKnowledgeEmbeddingProgress, setSavedKnowledgeEmbeddingProgress] = useState<Record<string, EmbeddingPreparationProgress>>({})
   const [knowledgeSourceType, setKnowledgeSourceType] = useState<'manual' | 'faq' | 'note' | 'website'>('manual')
   const [knowledgeTitle, setKnowledgeTitle] = useState('')
   const [knowledgeText, setKnowledgeText] = useState('')
@@ -382,15 +540,17 @@ export default function RagChatbotPage() {
   const [websiteImportMessage, setWebsiteImportMessage] = useState<string | null>(null)
   const [websiteImportStats, setWebsiteImportStats] = useState<WebsiteImportStats | null>(null)
   const [websiteImportProgress, setWebsiteImportProgress] = useState<KnowledgeProgressState | null>(null)
+  const [websiteEmbeddingProgress, setWebsiteEmbeddingProgress] = useState<EmbeddingPreparationProgress | null>(null)
   const [websiteImportJob, setWebsiteImportJob] = useState<WebsiteImportJob | null>(null)
   const [websiteImportPages, setWebsiteImportPages] = useState<WebsiteImportPage[]>([])
   const [websiteDraftTitle, setWebsiteDraftTitle] = useState('')
   const [websiteDraftContent, setWebsiteDraftContent] = useState('')
   const [websiteDraftSaving, setWebsiteDraftSaving] = useState(false)
+  const [showWebsiteReviewModal, setShowWebsiteReviewModal] = useState(false)
+  const [websiteReviewError, setWebsiteReviewError] = useState<string | null>(null)
   const [websiteImporting, setWebsiteImporting] = useState(false)
   const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeSourceItem | null>(null)
   const [editingKnowledgeId, setEditingKnowledgeId] = useState<string | null>(null)
-  const [preparingKnowledgeId, setPreparingKnowledgeId] = useState<string | null>(null)
   const [chatQuestion, setChatQuestion] = useState('')
   const [chatAnswer, setChatAnswer] = useState<RagChatResponse | null>(null)
   const [chatHistory, setChatHistory] = useState<RagChatMemoryMessage[]>([])
@@ -408,6 +568,10 @@ export default function RagChatbotPage() {
   const [chatbotSettingsSaving, setChatbotSettingsSaving] = useState(false)
   const [chatbotSettingsMessage, setChatbotSettingsMessage] = useState<string | null>(null)
   const [importHistory, setImportHistory] = useState<RagImportHistoryItem[]>([])
+  const [importHistoryLoading, setImportHistoryLoading] = useState(false)
+  const [importHistoryError, setImportHistoryError] = useState<string | null>(null)
+  const [showFirecrawlActivityModal, setShowFirecrawlActivityModal] = useState(false)
+  const [selectedFirecrawlActivity, setSelectedFirecrawlActivity] = useState<RagImportHistoryItem | null>(null)
   const [schedules, setSchedules] = useState<RagScrapeSchedule[]>([])
   const [scheduleUrl, setScheduleUrl] = useState('')
   const [scheduleFrequency, setScheduleFrequency] = useState<'daily' | 'weekly' | 'monthly'>('weekly')
@@ -416,6 +580,7 @@ export default function RagChatbotPage() {
   const [scheduleHourUtc, setScheduleHourUtc] = useState(9)
   const [scheduleAutoPublish, setScheduleAutoPublish] = useState(false)
   const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleRefreshing, setScheduleRefreshing] = useState(false)
   const [scheduleMessage, setScheduleMessage] = useState<string | null>(null)
   const [knowledgeGaps, setKnowledgeGaps] = useState<RagKnowledgeGap[]>([])
   const [gapsMessage, setGapsMessage] = useState<string | null>(null)
@@ -423,8 +588,7 @@ export default function RagChatbotPage() {
   const cards = useMemo(() => {
     const providerConfigured = status?.provider.configured === true
     const providerStatus = statusLabel(status?.provider.lastTestStatus ?? null, providerConfigured)
-    const providerName = providerLabels[status?.provider.provider ?? provider]
-    const providerModelName = status?.provider.chatModel || providerModel || 'Model not set'
+    const providerName = AI_PROVIDER_CONFIG[status?.provider.provider ?? provider].label
     const autoReplyOn = autoReply?.enabled === true
     const autoReplyReady = autoReply?.whatsappConnected && autoReply.providerConfigured && autoReply.knowledgeReady
     const readyEmbeddings = status?.knowledge.readyEmbeddings ?? 0
@@ -437,7 +601,7 @@ export default function RagChatbotPage() {
         title: 'AI Provider',
         value: providerStatus,
         eyebrow: providerConfigured ? 'API key configured' : 'API key required',
-        detail: `${providerName} / ${providerModelName}`,
+        detail: providerConfigured ? `${providerName} connected` : `Recommended: ${AI_PROVIDER_CONFIG.openai.label}`,
         icon: KeyRound,
         tone: providerConfigured && status?.provider.lastTestStatus !== 'failed' ? 'good' : status?.provider.lastTestStatus === 'failed' ? 'warn' : 'muted',
       },
@@ -451,14 +615,14 @@ export default function RagChatbotPage() {
       },
       {
         title: 'Knowledge Base',
-        value: knowledgeReady ? 'Ready' : failedEmbeddings > 0 ? 'Issues' : 'Needs Prepare',
+        value: knowledgeReady ? 'Ready' : failedEmbeddings > 0 ? 'Issues' : 'Automatic',
         eyebrow: `${status?.knowledge.sources ?? 0} sources · ${chunks} chunks`,
         detail: `${readyEmbeddings} ready embeddings · ${failedEmbeddings} failed`,
         icon: Database,
         tone: knowledgeReady ? 'good' : failedEmbeddings > 0 ? 'warn' : 'muted',
       },
     ] as const
-  }, [status, autoReply, provider, providerModel])
+  }, [status, autoReply, provider])
 
   const canManageKnowledge = workspace.has('manage_rag_chatbot')
   const canEnableAutoReply = workspace.has('enable_rag_auto_reply')
@@ -470,7 +634,7 @@ export default function RagChatbotPage() {
   const chatUnavailableMessage = !providerReady
     ? 'Add and test your AI provider key first.'
     : !embeddingsReady
-      ? 'Prepare your knowledge for chatbot first.'
+      ? 'Add knowledge first. Embeddings are created automatically after saving.'
       : null
   const activityItems = useMemo(() => {
     const logItems = logs.map((log) => ({
@@ -503,6 +667,24 @@ export default function RagChatbotPage() {
     )
   }, [logs, knowledgeGaps])
   const visibleActivityItems = activityItems.slice(0, activityVisibleCount)
+  const hiddenSavedKnowledgeCount = Math.max(knowledgeSources.length - SAVED_KNOWLEDGE_PREVIEW_LIMIT, 0)
+  const visibleSavedKnowledgeSources = showAllSavedKnowledge
+    ? knowledgeSources
+    : knowledgeSources.slice(0, SAVED_KNOWLEDGE_PREVIEW_LIMIT)
+  const providerConfig = AI_PROVIDER_CONFIG[provider]
+  const effectiveProviderBaseUrl = provider === 'ollama'
+    ? (providerBaseUrl.trim() || providerConfig.defaultBaseUrl)
+    : providerConfig.defaultBaseUrl
+  const providerNeedsApiKey = provider !== 'ollama'
+  const providerUnsupportedNotice =
+    status?.provider.provider && !isSimpleRagProviderType(status.provider.provider)
+      ? 'This provider is no longer shown in the simplified setup. Please choose OpenAI, OpenRouter, Ollama, or Gemini.'
+      : null
+  const providerEmbeddingGuidance = provider === 'openrouter'
+    ? 'Chat provider connected, but chatbot knowledge preparation is not always reliable with OpenRouter. Choose OpenAI or Gemini for the most reliable knowledge preparation.'
+    : provider === 'ollama'
+      ? 'Ollama can answer chats, but local knowledge preparation depends on the installed local embedding model.'
+      : providerConfig.embeddingHelperText
 
   useEffect(() => {
     if (workspace.loading || !canView) {
@@ -521,9 +703,19 @@ export default function RagChatbotPage() {
       .then((payload) => {
         if (cancelled) return
         setStatus(payload)
-        setProvider(payload.provider.provider)
-        setProviderBaseUrl(payload.provider.baseUrl ?? '')
-        setProviderModel(payload.provider.chatModel ?? '')
+        const loadedProvider = payload.provider.provider
+        const loadedBaseUrl = payload.provider.baseUrl ?? ''
+        const loadedModel = payload.provider.chatModel ?? ''
+        const visibleProvider = isSimpleRagProviderType(loadedProvider) ? loadedProvider : 'openai'
+        setProvider(visibleProvider)
+        setProviderBaseUrl(loadedProvider === 'ollama' ? loadedBaseUrl : AI_PROVIDER_CONFIG[visibleProvider].defaultBaseUrl)
+        setProviderModel(loadedModel || AI_PROVIDER_CONFIG[loadedProvider].defaultChatModel)
+        setProviderEmbeddingModel(
+          payload.provider.embeddingModel ?? AI_PROVIDER_CONFIG[loadedProvider].defaultEmbeddingModel,
+        )
+        setProviderEmbeddingDimensions(
+          String(payload.provider.embeddingDimensions ?? AI_PROVIDER_CONFIG[loadedProvider].defaultEmbeddingDimensions),
+        )
         setFirecrawlCredits(payload.firecrawl.creditUsage ?? null)
         setError(null)
       })
@@ -546,6 +738,7 @@ export default function RagChatbotPage() {
     loadAutoReply()
     loadChatbotSettings()
     loadImportHistory()
+    loadPendingWebsiteImport()
     loadSchedules()
     loadKnowledgeGaps()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -556,6 +749,14 @@ export default function RagChatbotPage() {
     loadLogs()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logFilter, workspace.loading, canView])
+
+  useEffect(() => {
+    const config = AI_PROVIDER_CONFIG[provider]
+    setProviderBaseUrl(config.defaultBaseUrl)
+    setProviderModel(config.defaultChatModel)
+    setProviderEmbeddingModel(config.defaultEmbeddingModel)
+    setProviderEmbeddingDimensions(String(config.defaultEmbeddingDimensions))
+  }, [provider])
 
   useEffect(() => {
     if (!websiteImporting) return
@@ -595,6 +796,15 @@ export default function RagChatbotPage() {
     if (response.ok) setStatus(payload as RagStatusPayload)
   }
 
+  function changeProvider(nextProvider: RagProviderType) {
+    const config = AI_PROVIDER_CONFIG[nextProvider]
+    setProvider(nextProvider)
+    setProviderBaseUrl(config.defaultBaseUrl)
+    setProviderModel(config.defaultChatModel)
+    setProviderEmbeddingModel(config.defaultEmbeddingModel)
+    setProviderEmbeddingDimensions(String(config.defaultEmbeddingDimensions))
+  }
+
   async function loadKnowledge() {
     try {
       const response = await fetch('/api/rag/knowledge')
@@ -602,7 +812,7 @@ export default function RagChatbotPage() {
       if (!response.ok) throw new Error(payload.error ?? 'Failed to load knowledge.')
       setKnowledgeSources(payload.sources ?? [])
     } catch (loadError) {
-      setKnowledgeMessage(loadError instanceof Error ? loadError.message : 'Failed to load knowledge.')
+      setSavedKnowledgeMessage(loadError instanceof Error ? loadError.message : 'Failed to load knowledge.')
     }
   }
 
@@ -628,7 +838,7 @@ export default function RagChatbotPage() {
       tone: chatbotSettings?.tone ?? 'professional',
       handoverEnabled: chatbotSettings?.handoverEnabled ?? true,
       fallbackMessage:
-        chatbotSettings?.fallbackMessage ?? 'I do not see that information in the current knowledge base.',
+        chatbotSettings?.fallbackMessage ?? "I don't have that exact detail right now. Would you like me to connect you with a team member?",
       handoverMessage:
         chatbotSettings?.handoverMessage ?? 'I can connect you with a team member if you want.',
       ...(next ?? {}),
@@ -653,6 +863,8 @@ export default function RagChatbotPage() {
   }
 
   async function loadImportHistory() {
+    setImportHistoryLoading(true)
+    setImportHistoryError(null)
     try {
       const response = await fetch('/api/rag/import-history')
       const payload = await response.json().catch(() => ({}))
@@ -660,6 +872,27 @@ export default function RagChatbotPage() {
       setImportHistory(payload.history ?? [])
     } catch {
       setImportHistory([])
+      setImportHistoryError('Could not load Firecrawl activity.')
+    } finally {
+      setImportHistoryLoading(false)
+    }
+  }
+
+  async function loadPendingWebsiteImport() {
+    try {
+      const response = await fetch('/api/rag/website-import')
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) return
+      const pending = payload.pending
+      if (!pending?.job || pending.job.status !== 'draft_ready') return
+      setWebsiteImportJob(pending.job)
+      setWebsiteImportPages(pending.pages ?? [])
+      setWebsiteImportStats(pending.job.stats ?? null)
+      setWebsiteDraftTitle(pending.job.draftTitle ?? 'Website knowledge')
+      setWebsiteDraftContent(pending.job.draftContent ?? '')
+      setWebsiteReviewError(null)
+    } catch {
+      // Pending review recovery is best-effort and must not block the dashboard.
     }
   }
 
@@ -672,6 +905,18 @@ export default function RagChatbotPage() {
       setSchedules(payload.schedules ?? [])
     } catch (loadError) {
       setScheduleMessage(loadError instanceof Error ? loadError.message : 'Schedules will load after the dashboard migration is applied.')
+    }
+  }
+
+  async function refreshScheduleAndImportHistory() {
+    setScheduleRefreshing(true)
+    try {
+      await Promise.all([
+        loadSchedules(),
+        loadImportHistory(),
+      ])
+    } finally {
+      setScheduleRefreshing(false)
     }
   }
 
@@ -743,15 +988,16 @@ export default function RagChatbotPage() {
         body: JSON.stringify({
           provider,
           apiKey: providerKey,
-          baseUrl: providerBaseUrl,
-          chatModel: providerModel,
+          baseUrl: provider === 'ollama' ? effectiveProviderBaseUrl : null,
         }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'Failed to save provider.')
       setStatus((current) => current ? { ...current, provider: payload.provider } : current)
-      setProviderBaseUrl(payload.provider?.baseUrl ?? providerBaseUrl)
+      setProviderBaseUrl(payload.provider?.baseUrl ?? effectiveProviderBaseUrl)
       setProviderModel(payload.provider?.chatModel ?? providerModel)
+      setProviderEmbeddingModel(payload.provider?.embeddingModel ?? providerEmbeddingModel)
+      setProviderEmbeddingDimensions(String(payload.provider?.embeddingDimensions ?? providerEmbeddingDimensions))
       setProviderKey('')
       setProviderMessage('Provider saved. Your key is stored securely.')
     } catch (saveError) {
@@ -910,6 +1156,8 @@ export default function RagChatbotPage() {
       setWebsiteImportPages(payload.pages ?? payload.stats?.pages ?? [])
       setWebsiteDraftTitle(payload.job?.draftTitle ?? 'Website knowledge')
       setWebsiteDraftContent(payload.job?.draftContent ?? '')
+      setWebsiteReviewError(null)
+      setShowWebsiteReviewModal(payload.job?.status === 'draft_ready')
       const message = cleanOperationMessage(
         payload.userMessage ?? payload.embeddingSummary?.userMessage ?? payload.embeddingSummary?.message ?? payload.message,
         'Website draft created. Review before publishing.',
@@ -932,17 +1180,35 @@ export default function RagChatbotPage() {
 
   async function saveWebsiteDraft(action: 'update' | 'publish' | 'discard') {
     if (!websiteImportJob) return
+    if (websiteDraftSaving) return
+    if ((action === 'update' || action === 'publish') && websiteDraftContent.length > RAG_KNOWLEDGE_CHARACTER_LIMIT) {
+      setWebsiteReviewError(
+        `Imported knowledge is too large to save as one item. Please reduce the content or use a draft within the ${RAG_KNOWLEDGE_CHARACTER_LIMIT.toLocaleString()} character limit.`,
+      )
+      return
+    }
     setWebsiteDraftSaving(true)
     setWebsiteImportMessage(null)
+    setWebsiteReviewError(null)
+    setWebsiteEmbeddingProgress(null)
     try {
+      const requestBody: {
+        action: 'update' | 'publish' | 'discard'
+        title?: string
+        content?: string
+      } = { action }
+      if (action !== 'discard') {
+        requestBody.title = websiteDraftTitle
+      }
+      const storedDraftContent = websiteImportJob.draftContent ?? ''
+      const draftContentChanged = websiteDraftContent !== storedDraftContent
+      if (action === 'update' || (action === 'publish' && draftContentChanged)) {
+        requestBody.content = websiteDraftContent
+      }
       const response = await fetch(`/api/rag/website-import/${websiteImportJob.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action,
-          title: websiteDraftTitle,
-          content: websiteDraftContent,
-        }),
+        body: JSON.stringify(requestBody),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'Failed to update website draft.')
@@ -950,24 +1216,113 @@ export default function RagChatbotPage() {
       setWebsiteImportJob(payload.job ?? null)
       setWebsiteImportPages(payload.pages ?? [])
       if (action === 'publish') {
-        setWebsiteImportMessage('Website draft published to the knowledge base. Use Prepare for Chatbot when ready.')
+        let message = cleanOperationMessage(
+          payload.userMessage ?? payload.embeddingSummary?.userMessage ?? payload.embeddingSummary?.message,
+          'Website knowledge saved.',
+        )
+        const shouldPrepareEmbeddings = payload.sourceId && shouldContinueEmbedding(payload.embeddingSummary)
+        if (payload.sourceId) {
+          setWebsiteEmbeddingProgress(buildEmbeddingPreparationProgress(payload.sourceId, payload.embeddingSummary))
+        }
+        if (shouldPrepareEmbeddings) {
+          message = await runKnowledgeEmbeddingBatches(payload.sourceId, {
+            progressKind: 'website',
+            onMessage: setWebsiteImportMessage,
+            onProgress: setWebsiteEmbeddingProgress,
+          })
+        }
+        if (payload.sourceId && !shouldPrepareEmbeddings) {
+          setWebsiteEmbeddingProgress(buildEmbeddingPreparationProgress(payload.sourceId, {
+            ...(typeof payload.embeddingSummary === 'object' && payload.embeddingSummary !== null ? payload.embeddingSummary : {}),
+            status: 'ready',
+            embeddingsReady: true,
+            userMessage: 'Knowledge is ready for chatbot answers.',
+          }, 'ready'))
+        }
+        if (payload.sourceId) {
+          await new Promise((resolve) => window.setTimeout(resolve, 900))
+        }
+        setWebsiteImportMessage(message)
+        setShowWebsiteReviewModal(false)
+        setWebsiteImportJob(null)
+        setWebsiteImportPages([])
+        setWebsiteImportStats(null)
+        setWebsiteImportProgress(null)
+        setWebsiteEmbeddingProgress(null)
         setWebsiteDraftTitle('')
         setWebsiteDraftContent('')
         await loadKnowledge()
         await refreshStatusCounts()
       } else if (action === 'discard') {
-        setWebsiteImportMessage('Website draft discarded.')
+        setWebsiteImportMessage(null)
+        setShowWebsiteReviewModal(false)
+        setWebsiteImportJob(null)
+        setWebsiteImportPages([])
+        setWebsiteImportStats(null)
+        setWebsiteImportProgress(null)
+        setWebsiteEmbeddingProgress(null)
         setWebsiteDraftTitle('')
         setWebsiteDraftContent('')
       } else {
         setWebsiteImportMessage('Website draft saved.')
       }
       await loadImportHistory()
-    } catch (draftError) {
-      setWebsiteImportMessage(draftError instanceof Error ? draftError.message : 'Failed to update website draft.')
+    } catch (saveError) {
+      const message = websiteDraftActionErrorMessage(
+        action,
+        saveError instanceof Error ? saveError.message : null,
+      )
+      setWebsiteReviewError(message)
+      if (action === 'publish') {
+        setWebsiteEmbeddingProgress((current) => current ? {
+          ...current,
+          status: 'warning',
+          message,
+        } : current)
+      }
     } finally {
       setWebsiteDraftSaving(false)
     }
+  }
+
+  async function runKnowledgeEmbeddingBatches(
+    sourceId: string,
+    options: {
+      readonly progressKind?: KnowledgeProgressKind
+      readonly onMessage?: (message: string) => void
+      readonly onProgress?: (progress: EmbeddingPreparationProgress) => void
+    },
+  ): Promise<string> {
+    const maxBatches = 200
+    let finalMessage = 'Creating embeddings automatically...'
+
+    for (let batchNumber = 1; batchNumber <= maxBatches; batchNumber += 1) {
+      const response = await fetch(`/api/rag/knowledge/${sourceId}/embed`, { method: 'POST' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Embedding failed.')
+
+      const summary = payload.summary
+      const preparationProgress = buildEmbeddingPreparationProgress(sourceId, summary)
+      options.onProgress?.(preparationProgress)
+      finalMessage = embeddingProgressMessage(
+        summary,
+        payload.userMessage ?? 'Creating embeddings automatically...',
+      )
+      options.onMessage?.(finalMessage)
+      const progressMessage = `Batch ${batchNumber.toLocaleString()}: ${finalMessage}`
+      if (options.progressKind === 'manual') {
+        setManualKnowledgeProgress(createKnowledgeProgress('manual', 'warning', progressMessage, 3))
+      } else if (options.progressKind === 'website') {
+        setWebsiteImportProgress(createKnowledgeProgress('website', 'warning', progressMessage, 6))
+      }
+
+      if (!shouldContinueEmbedding(summary)) {
+        options.onProgress?.(buildEmbeddingPreparationProgress(sourceId, summary, preparationProgress.status === 'warning' ? 'warning' : 'ready'))
+        return finalMessage
+      }
+    }
+
+    throw new Error('Embedding is taking longer than expected. Please click Re-embed to continue remaining chunks.')
   }
 
   async function saveKnowledge() {
@@ -997,10 +1352,17 @@ export default function RagChatbotPage() {
       setKnowledgeSourceType('manual')
       setEditingKnowledgeId(null)
       setSelectedKnowledge(payload.source ?? null)
-      const message = cleanOperationMessage(
+      let message = cleanOperationMessage(
         payload.userMessage ?? payload.embeddingSummary?.userMessage ?? payload.embeddingSummary?.message,
         editingKnowledgeId ? 'Knowledge updated, cleaned, and chunked.' : 'Knowledge added, cleaned, and chunked.',
       )
+      const sourceId = payload.source?.id ?? editingKnowledgeId
+      if (sourceId && shouldContinueEmbedding(payload.embeddingSummary)) {
+        message = await runKnowledgeEmbeddingBatches(sourceId, {
+          progressKind: 'manual',
+          onMessage: setKnowledgeMessage,
+        })
+      }
       setManualKnowledgeProgress(createKnowledgeProgress('manual', 'done', message))
       setKnowledgeMessage(message)
       await loadKnowledge()
@@ -1018,7 +1380,7 @@ export default function RagChatbotPage() {
   }
 
   async function viewKnowledge(id: string) {
-    setKnowledgeMessage(null)
+    setSavedKnowledgeMessage(null)
     setEditingKnowledgeId(null)
     try {
       const response = await fetch(`/api/rag/knowledge/${id}`)
@@ -1026,7 +1388,7 @@ export default function RagChatbotPage() {
       if (!response.ok) throw new Error(payload.error ?? 'Failed to load knowledge source.')
       setSelectedKnowledge(payload.source)
     } catch (viewError) {
-      setKnowledgeMessage(viewError instanceof Error ? viewError.message : 'Failed to load knowledge source.')
+      setSavedKnowledgeMessage(viewError instanceof Error ? viewError.message : 'Failed to load knowledge source.')
     }
   }
 
@@ -1034,7 +1396,7 @@ export default function RagChatbotPage() {
     const response = await fetch(`/api/rag/knowledge/${id}`)
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) {
-      setKnowledgeMessage(payload.error ?? 'Failed to edit knowledge source.')
+      setSavedKnowledgeMessage(payload.error ?? 'Failed to edit knowledge source.')
       return
     }
     setEditingKnowledgeId(id)
@@ -1046,44 +1408,81 @@ export default function RagChatbotPage() {
 
   async function deleteKnowledge(id: string) {
     if (!window.confirm('Delete this knowledge source permanently? This will remove its content, chunks, and embeddings. This cannot be undone.')) return
-    setKnowledgeMessage(null)
+    setSavedKnowledgeMessage(null)
     try {
       const response = await fetch(`/api/rag/knowledge/${id}`, { method: 'DELETE' })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'Failed to delete knowledge.')
       if (selectedKnowledge?.id === id) setSelectedKnowledge(null)
       setKnowledgeSources((current) => current.filter((source) => source.id !== id))
-      setKnowledgeMessage('Knowledge deleted permanently.')
+      setSavedKnowledgeMessage('Knowledge deleted permanently.')
       await loadKnowledge()
       await refreshStatusCounts()
     } catch (deleteError) {
-      setKnowledgeMessage(deleteError instanceof Error ? deleteError.message : 'Failed to delete knowledge.')
+      setSavedKnowledgeMessage(deleteError instanceof Error ? deleteError.message : 'Failed to delete knowledge.')
     }
   }
 
-  async function prepareKnowledge(id: string) {
-    setPreparingKnowledgeId(id)
-    setKnowledgeMessage(null)
+  async function reEmbedKnowledge(id: string) {
+    if (reEmbeddingSourceId) return
+    setSavedKnowledgeMessage(null)
+    setReEmbeddingSourceId(id)
+    setSavedKnowledgeEmbeddingProgress((current) => ({
+      ...current,
+      [id]: {
+        sourceId: id,
+        status: 'running',
+        message: 'Getting this knowledge ready for the chatbot...',
+        totalChunks: null,
+        readyChunks: null,
+        processedThisBatch: null,
+        remainingChunks: null,
+        percentComplete: null,
+      },
+    }))
     try {
-      const response = await fetch(`/api/rag/knowledge/${id}/embed`, { method: 'POST' })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(payload.error ?? 'Failed to prepare knowledge.')
+      const message = await runKnowledgeEmbeddingBatches(id, {
+        onMessage: setSavedKnowledgeMessage,
+        onProgress: (progress) => {
+          setSavedKnowledgeEmbeddingProgress((current) => ({
+            ...current,
+            [id]: progress,
+          }))
+        },
+      })
+      setSavedKnowledgeMessage(message)
+      setKnowledgeSources((current) => current.map((source) => {
+        if (source.id !== id) return source
 
-      const message = cleanOperationMessage(
-        payload.userMessage ?? payload.summary?.userMessage ?? payload.summary?.message,
-        'Knowledge prepared for chatbot.',
-      )
-      setKnowledgeMessage(message)
+        const completedProgress = savedKnowledgeEmbeddingProgress[id]
+        return {
+          ...source,
+          embeddingStatus: 'ready',
+          embeddingMessage: RAG_EMBEDDINGS_READY_NOTE,
+          readyEmbeddingCount: completedProgress?.totalChunks ?? source.chunkCount,
+          failedEmbeddingCount: 0,
+        }
+      }))
       await loadKnowledge()
       await refreshStatusCounts()
-    } catch (prepareError) {
-      const message = cleanOperationMessage(
-        prepareError instanceof Error ? prepareError.message : null,
-        'Failed to prepare knowledge.',
-      )
-      setKnowledgeMessage(message)
+    } catch (embedError) {
+      const message = embedError instanceof Error ? embedError.message : 'Preparing failed - check AI provider settings.'
+      setSavedKnowledgeMessage(message)
+      setSavedKnowledgeEmbeddingProgress((current) => ({
+        ...current,
+        [id]: {
+          sourceId: id,
+          status: 'warning',
+          message,
+          totalChunks: null,
+          readyChunks: null,
+          processedThisBatch: null,
+          remainingChunks: null,
+          percentComplete: null,
+        },
+      }))
     } finally {
-      setPreparingKnowledgeId(null)
+      setReEmbeddingSourceId(null)
     }
   }
 
@@ -1144,19 +1543,28 @@ export default function RagChatbotPage() {
           <div
             key={card.title}
             className={cn(
-              'group min-h-44 rounded-[2rem] bg-gradient-to-br from-[#07130e] via-[#0a1a13] to-[#10261b] p-6 hover:bg-[#123226]/70 sm:p-7',
-              chatbotCardBorderClass,
+              'group min-h-44 rounded-[2rem] bg-gradient-to-br from-[#07130e] via-[#0a1a13] to-[#10261b] p-6 sm:p-7',
+              card.tone === 'good'
+                ? cn(chatbotCardBorderClass, 'hover:bg-[#123226]/70')
+                : cn(chatbotWarningCardClass, 'from-[#120f07] via-[#151407] to-[#201a08] hover:bg-[#2a220b]/45'),
             )}
           >
             <div className="mb-6 flex items-start justify-between gap-4">
-              <span className="flex size-14 items-center justify-center rounded-3xl border border-emerald-300/25 bg-emerald-300/12 shadow-[0_12px_35px_rgba(61,223,132,0.12)]">
-                <card.icon className="size-6 text-emerald-300" />
+              <span
+                className={cn(
+                  chatbotStatusIconClass,
+                  card.tone === 'good'
+                    ? 'border-emerald-300/25 bg-emerald-300/12'
+                    : 'border-[#ffbd29]/35 bg-[#ffbd29]/10 shadow-[0_12px_35px_rgba(255,189,41,0.12)]',
+                )}
+              >
+                <card.icon className={cn('size-6', card.tone === 'good' ? 'text-emerald-300' : 'text-[#ffbd29]')} />
               </span>
               <span
                 className={cn(
                   'shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-wide',
                   card.tone === 'good'
-                    ? 'border-emerald-300/50 bg-emerald-400/15 text-emerald-100'
+                    ? 'border-[#3ddf84]/70 bg-[#3ddf84] text-[#07130e]'
                     : card.tone === 'warn'
                       ? 'border-amber-300/45 bg-amber-300/15 text-amber-100'
                       : 'border-[#5f5326] bg-[#3a3215] text-amber-100',
@@ -1166,7 +1574,9 @@ export default function RagChatbotPage() {
               </span>
             </div>
             <p className="text-lg font-black tracking-tight text-white">{card.title}</p>
-            <p className="mt-3 text-sm font-bold text-emerald-100">{card.eyebrow}</p>
+            <p className={cn('mt-3 text-sm font-bold', card.tone === 'good' ? 'text-emerald-100' : 'text-[#ffe09a]')}>
+              {card.eyebrow}
+            </p>
             <p className="mt-2 text-sm leading-6 text-[#a9c6bb]">{card.detail}</p>
           </div>
         ))}
@@ -1175,7 +1585,7 @@ export default function RagChatbotPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <SettingsCard
           title="AI Provider Settings"
-          description="Choose your provider and save your API key. Model and base URL are stored server-side; no API key is returned to the browser."
+          description="Choose your AI provider and save your key. The CRM chooses the best default models automatically."
           icon={KeyRound}
           status={statusLabel(status?.provider.lastTestStatus ?? null, status?.provider.configured === true)}
           statusClassName={statusClasses(status?.provider.lastTestStatus ?? null, status?.provider.configured === true)}
@@ -1186,7 +1596,7 @@ export default function RagChatbotPage() {
             <span className="text-sm font-medium text-[#d8fff1]">Provider</span>
             <select
               value={provider}
-              onChange={(event) => setProvider(event.target.value as RagProviderType)}
+              onChange={(event) => changeProvider(event.target.value as RagProviderType)}
               disabled={!canManageProvider}
               className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -1194,44 +1604,53 @@ export default function RagChatbotPage() {
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
+            <span className="block text-xs leading-5 text-[#8bb4a5]">{providerConfig.helperText}</span>
           </label>
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-[#d8fff1]">Model</span>
-            <input
-              value={providerModel}
-              onChange={(event) => setProviderModel(event.target.value)}
-              placeholder="Example: gpt-4o-mini, openai/gpt-4o-mini, gemini-2.0-flash"
-              disabled={!canManageProvider}
-              className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-[#d8fff1]">Base URL</span>
-            <input
-              value={providerBaseUrl}
-              onChange={(event) => setProviderBaseUrl(event.target.value)}
-              placeholder="Optional OpenAI-compatible base URL"
-              disabled={!canManageProvider}
-              className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-[#d8fff1]">API Key</span>
-            <input
-              type="password"
-              value={providerKey}
-              onChange={(event) => setProviderKey(event.target.value)}
-              placeholder="Paste your API key"
-              disabled={!canManageProvider}
-              className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </label>
+          {providerUnsupportedNotice && (
+            <p className="rounded-xl border border-amber-300/35 bg-amber-300/10 px-3 py-2 text-xs leading-5 text-amber-100">
+              {providerUnsupportedNotice}
+            </p>
+          )}
+          {provider === 'ollama' ? (
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">Ollama server URL</span>
+              <input
+                value={providerBaseUrl}
+                onChange={(event) => setProviderBaseUrl(event.target.value)}
+                placeholder="http://localhost:11434/v1"
+                disabled={!canManageProvider}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <span className="block text-xs leading-5 text-[#8bb4a5]">
+                Leave this as the default unless your Ollama server uses another URL. API key is not required for local Ollama.
+              </span>
+            </label>
+          ) : (
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-[#d8fff1]">{providerConfig.label} API Key</span>
+              <input
+                type="password"
+                value={providerKey}
+                onChange={(event) => setProviderKey(event.target.value)}
+                placeholder="Paste your API key"
+                disabled={!canManageProvider}
+                className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+          )}
+          <p className="rounded-xl border border-[#315846] bg-[#0d1b15]/70 px-3 py-2 text-xs leading-5 text-[#8bb4a5]">
+            {providerEmbeddingGuidance}
+          </p>
           <ActionRow
             canManage={canManageProvider}
             busy={providerSaving}
             onSave={saveProvider}
             onTest={testProvider}
-            saveDisabled={!providerKey.trim()}
+            saveDisabled={
+              (providerNeedsApiKey && !providerKey.trim()) ||
+              (provider === 'ollama' && !effectiveProviderBaseUrl.trim())
+            }
+            brandDisabledSave
           />
         </SettingsCard>
 
@@ -1261,8 +1680,17 @@ export default function RagChatbotPage() {
             onSave={saveFirecrawl}
             onTest={testFirecrawl}
             saveDisabled={!firecrawlKey.trim()}
+            brandDisabledSave
           />
           <FirecrawlCreditsPanel credits={firecrawlCredits} lastTestedAt={status?.firecrawl.lastTestedAt ?? null} />
+          <FirecrawlActivityPanel
+            activities={importHistory.slice(0, 2)}
+            totalActivities={importHistory.length}
+            loading={importHistoryLoading}
+            error={importHistoryError}
+            onViewAll={() => setShowFirecrawlActivityModal(true)}
+            onViewDetails={setSelectedFirecrawlActivity}
+          />
         </SettingsCard>
       </div>
 
@@ -1315,13 +1743,13 @@ export default function RagChatbotPage() {
               </select>
             </label>
             <p className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15] p-3 text-xs leading-5 text-[#a9c6bb]">
-              The import creates a review draft and chunks only. Embeddings stay pending until you click Prepare for Chatbot.
+              The import creates a review draft first. Embeddings are created automatically only after you save the reviewed knowledge.
             </p>
             <button
               type="button"
               onClick={importWebsite}
               disabled={!canManageKnowledge || websiteImporting || !websiteUrl.trim()}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+              className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3.5 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-70"
             >
               {websiteImporting ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -1330,6 +1758,9 @@ export default function RagChatbotPage() {
               )}
                 {websiteImporting ? 'Importing...' : 'Import Website Knowledge'}
             </button>
+            <p className="text-xs leading-5 text-[#8bb4a5]">
+              {websiteImportTimeEstimate(websitePageLimit)}
+            </p>
             <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-1">
               <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/70 px-3 py-2 text-[#d8fff1]">
                 Page limit: {websitePageLimit.toLocaleString()} pages
@@ -1349,207 +1780,47 @@ export default function RagChatbotPage() {
             importing={websiteImporting}
             progress={websiteImportProgress}
             url={websiteUrl || websiteImportJob?.websiteUrl || websiteImportStats?.pages?.[0]?.url || ''}
+            pageLimit={websitePageLimit}
             stats={websiteImportStats}
             pages={websiteImportPages}
             message={websiteImportMessage}
           />
         </div>
+        {websiteImportJob?.status === 'draft_ready' && !showWebsiteReviewModal && (
+          <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[#ffbd29]/50 bg-[#ffbd29]/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-black text-amber-100">Pending website import review</p>
+              <p className="mt-1 truncate text-xs text-[#d8c68f]">
+                {websiteImportJob.websiteUrl} — {websiteImportJob.pagesImported.toLocaleString()} pages imported
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setWebsiteReviewError(null)
+                  setShowWebsiteReviewModal(true)
+                }}
+                disabled={websiteDraftSaving}
+                className="h-9 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-xs font-black text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Review
+              </button>
+              <button
+                type="button"
+                onClick={() => saveWebsiteDraft('discard')}
+                disabled={websiteDraftSaving}
+                className="h-9 rounded-xl border border-[#d8c68f]/45 px-3 text-xs font-bold text-amber-100 transition hover:bg-amber-300/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {websiteDraftSaving ? 'Discarding...' : 'Discard'}
+              </button>
+            </div>
+          </div>
+        )}
         {websiteImportMessage && (
           <p className="mt-4 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
             {websiteImportMessage}
           </p>
-        )}
-        {websiteImportStats && (
-          <div className="mt-4 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-bold text-white">Website import summary</h3>
-              <span className={cn(
-                'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
-                websiteImportStats.capped
-                  ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
-                  : 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100',
-              )}>
-                {websiteImportStats.capped ? 'Content limit reached' : 'Imported'}
-              </span>
-            </div>
-            <dl className="grid gap-2 text-xs text-[#a9c6bb] sm:grid-cols-2 lg:grid-cols-4">
-              <div>{websiteImportStats.pagesFound.toLocaleString()} pages found</div>
-              <div>{websiteImportStats.pagesImported.toLocaleString()} pages imported</div>
-              <div>{websiteImportStats.pagesSkipped.toLocaleString()} pages skipped</div>
-              <div>{websiteImportStats.pagesFailed.toLocaleString()} pages failed</div>
-              <div>{websiteImportStats.duplicatePages.toLocaleString()} duplicates</div>
-              <div>{(websiteImportStats.lowValuePagesSkipped ?? 0).toLocaleString()} low-value pages skipped</div>
-              <div>{(websiteImportStats.rawCharacters ?? 0).toLocaleString()} raw characters collected</div>
-              <div>{(websiteImportStats.duplicateJunkCharactersRemoved ?? 0).toLocaleString()} duplicate/junk characters removed</div>
-              <div>{websiteImportStats.savedCharacters.toLocaleString()} characters saved</div>
-              <div>Limit: {websiteImportStats.pageLimit.toLocaleString()} pages</div>
-              <div>{websiteImportStats.capped ? 'Saved content was capped.' : 'Content was not capped.'}</div>
-              <div>AI structuring: {websiteImportStats.aiStructuringUsed ? 'yes' : 'no'}</div>
-              <div>Deterministic fallback: {websiteImportStats.deterministicFallbackUsed ? 'yes' : 'no'}</div>
-              <div className="sm:col-span-2">Firecrawl modes: {(websiteImportStats.firecrawlModesUsed ?? ['crawl']).join(', ')}</div>
-            </dl>
-            {websiteImportStats.structuredRecords && (
-              <p className="mt-3 text-xs leading-5 text-[#8bb4a5]">
-                Structured records:{' '}
-                {Object.entries(websiteImportStats.structuredRecords)
-                  .filter(([, count]) => count > 0)
-                  .map(([name, count]) => `${name.replace(/([A-Z])/g, ' $1').toLowerCase()} (${count})`)
-                  .join(', ') || 'none detected'}
-              </p>
-            )}
-            {websiteImportStats.warnings && websiteImportStats.warnings.length > 0 && (
-              <p className="mt-3 text-xs leading-5 text-amber-100">
-                Warnings: {websiteImportStats.warnings.join(' ')}
-              </p>
-            )}
-            {websiteImportStats.skippedReasons && Object.keys(websiteImportStats.skippedReasons).length > 0 && (
-              <p className="mt-3 text-xs leading-5 text-[#8bb4a5]">
-                Skipped reasons:{' '}
-                {Object.entries(websiteImportStats.skippedReasons)
-                  .map(([reason, count]) => `${reason.replaceAll('_', ' ')} (${count})`)
-                  .join(', ')}
-              </p>
-            )}
-            {websiteImportStats.pages && websiteImportStats.pages.length > 0 && (
-              <div className="mt-4 max-h-72 overflow-y-auto rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/70 p-3">
-                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-emerald-200">Pages checked</p>
-                <div className="space-y-2">
-                  {websiteImportStats.pages.slice(0, 50).map((importPage, index) => (
-                    <div key={`${importPage.status}:${importPage.url}:${index}`} className="rounded-xl border border-[#1b3c2d] bg-[#091811] p-3 text-xs">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <p className="min-w-0 break-words font-semibold text-white">
-                          {importPage.title ?? importPage.canonicalUrl ?? importPage.url}
-                        </p>
-                        <span className={cn(
-                          'shrink-0 rounded-full border px-2 py-0.5 font-bold uppercase',
-                          importPage.status === 'imported'
-                            ? 'border-emerald-300/50 text-emerald-100'
-                            : importPage.status === 'failed'
-                              ? 'border-red-300/50 text-red-100'
-                              : 'border-amber-300/50 text-amber-100',
-                        )}>
-                          {importPage.status}
-                        </span>
-                      </div>
-                      <p className="mt-1 break-all text-[#8bb4a5]">{importPage.canonicalUrl ?? importPage.url}</p>
-                      {importPage.skipReason && (
-                        <p className="mt-1 text-amber-100">Reason: {importPage.skipReason.replaceAll('_', ' ')}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {websiteImportJob && (
-          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-bold text-white">Review draft before publishing</h3>
-                  <p className="text-xs text-[#8bb4a5]">
-                    Draft status: {websiteImportJob.status.replace('_', ' ')} · {websiteImportJob.savedCharacters.toLocaleString()} characters
-                  </p>
-                  <p className="mt-1 text-xs text-amber-100">
-                    Existing published knowledge remains unchanged until you publish this draft.
-                  </p>
-                </div>
-                <span className="rounded-full border border-emerald-300/40 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-bold uppercase text-emerald-100">
-                  Provider: Firecrawl
-                </span>
-              </div>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-[#d8fff1]">Draft title</span>
-                <input
-                  value={websiteDraftTitle}
-                  onChange={(event) => setWebsiteDraftTitle(event.target.value)}
-                  disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready'}
-                  className="h-11 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-              <label className="mt-3 block space-y-2">
-                <span className="text-sm font-medium text-[#d8fff1]">Draft content</span>
-                <textarea
-                  value={websiteDraftContent}
-                  onChange={(event) => setWebsiteDraftContent(event.target.value)}
-                  disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready'}
-                  rows={12}
-                  className="min-h-72 w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-[#8bb4a5]">
-                  {(websiteDraftContent.length || 0).toLocaleString()} / {RAG_KNOWLEDGE_CHARACTER_LIMIT.toLocaleString()} characters
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => saveWebsiteDraft('discard')}
-                    disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready'}
-                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
-                  >
-                    Discard draft
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => saveWebsiteDraft('update')}
-                    disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready'}
-                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
-                  >
-                    Save draft
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => saveWebsiteDraft('publish')}
-                    disabled={websiteDraftSaving || websiteImportJob.status !== 'draft_ready' || !websiteDraftContent.trim()}
-                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
-                  >
-                    Publish to Knowledge Base
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
-              <h3 className="text-sm font-bold text-white">Page review list</h3>
-              <p className="mt-1 text-xs text-[#8bb4a5]">Showing up to 30 checked pages.</p>
-              <div className="mt-3 max-h-[34rem] space-y-2 overflow-y-auto">
-                {websiteImportPages.slice(0, 30).map((importPage, index) => (
-                  <div key={`${importPage.url}:${index}`} className="rounded-xl border border-[#1b3c2d] bg-[#07130e]/80 p-3 text-xs">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="min-w-0 break-words font-semibold text-white">
-                        {importPage.title ?? importPage.canonicalUrl ?? importPage.url}
-                      </p>
-                      <span className={cn(
-                        'shrink-0 rounded-full border px-2 py-0.5 font-bold uppercase',
-                        importPage.status === 'imported'
-                          ? 'border-emerald-300/50 text-emerald-100'
-                          : importPage.status === 'failed'
-                            ? 'border-red-300/50 text-red-100'
-                            : 'border-amber-300/50 text-amber-100',
-                      )}>
-                        {importPage.status}
-                      </span>
-                    </div>
-                    <p className="mt-1 break-all text-[#8bb4a5]">{importPage.canonicalUrl ?? importPage.url}</p>
-                    {typeof importPage.characterCount === 'number' && (
-                      <p className="mt-1 text-[#8bb4a5]">{importPage.characterCount.toLocaleString()} characters</p>
-                    )}
-                    {importPage.skipReason && (
-                      <p className="mt-1 text-amber-100">Reason: {importPage.skipReason.replaceAll('_', ' ')}</p>
-                    )}
-                  </div>
-                ))}
-                {websiteImportPages.length === 0 && (
-                  <p className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/70 px-3 py-6 text-center text-sm text-[#8bb4a5]">
-                    Page review details will appear after an import.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
         )}
       </section>
 
@@ -1562,8 +1833,7 @@ export default function RagChatbotPage() {
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
               Add business knowledge, FAQs, instructions, or reviewed website text. Chunks will be
-              created automatically. Use Prepare for Chatbot when you are ready to create embeddings;
-              this can use provider API cost.
+              created automatically, then embeddings start automatically using the configured AI provider.
             </p>
           </div>
           <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">
@@ -1622,7 +1892,7 @@ export default function RagChatbotPage() {
                       setKnowledgeText('')
                       setKnowledgeSourceType('manual')
                     }}
-                    className="h-10 rounded-xl border border-[#315846] px-4 text-sm font-bold text-[#d8fff1] hover:bg-[#123226]"
+                    className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] transition hover:bg-[#123226]"
                   >
                     Cancel
                   </button>
@@ -1637,7 +1907,7 @@ export default function RagChatbotPage() {
                     !knowledgeTitle.trim() ||
                     !knowledgeText.trim()
                   }
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-70"
                 >
                   {knowledgeSaving ? (
                     <>
@@ -1675,19 +1945,24 @@ export default function RagChatbotPage() {
               <h2 className="text-lg font-bold text-white">Saved Knowledge</h2>
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#a9c6bb]">
-              Review active sources, prepare chunks for chatbot answers, edit content, or permanently delete old knowledge.
+              Review active sources, embedding status, edit content, or permanently delete old knowledge.
             </p>
           </div>
           <span className="rounded-full border border-[#315846] bg-[#0d1b15] px-3 py-1 text-xs font-bold text-[#d8fff1]">
             {knowledgeSources.length.toLocaleString()} sources
           </span>
         </div>
+        {savedKnowledgeMessage && (
+          <p className="mb-4 rounded-xl border border-[#315846] bg-[#0d1b15] px-3 py-2 text-sm text-[#d8fff1]">
+            {savedKnowledgeMessage}
+          </p>
+        )}
 
         <div className="space-y-4">
             <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70">
               <div className="border-b border-[#3ddf84]/35 px-4 py-3">
                 <h3 className="font-bold text-white">Knowledge Preview</h3>
-                <p className="text-xs text-[#8bb4a5]">Knowledge preview, preparation status, and source actions.</p>
+                <p className="text-xs text-[#8bb4a5]">Knowledge preview, automatic embedding status, and source actions.</p>
               </div>
               <div className="divide-y divide-[#3ddf84]/25">
                 {knowledgeSources.length === 0 ? (
@@ -1695,32 +1970,23 @@ export default function RagChatbotPage() {
                     No knowledge added yet.
                   </div>
                 ) : (
-                  knowledgeSources.map((source) => (
-                    <article key={source.id} className="space-y-3 px-4 py-4">
+                  visibleSavedKnowledgeSources.map((source) => {
+                    const preparationProgress = savedKnowledgeEmbeddingProgress[source.id]
+                    const displaySource = knowledgeSourceWithProgress(source, preparationProgress)
+
+                    return (
+                      <article key={displaySource.id} className="space-y-3 px-4 py-4">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <h4 className="font-bold text-white">{source.title}</h4>
+                          <h4 className="font-bold text-white">{displaySource.title}</h4>
                           <p className="mt-1 text-xs uppercase tracking-[0.16em] text-emerald-200">
-                            {sourceTypeLabel(source.sourceType)} · {source.status}
+                            {sourceTypeLabel(displaySource.sourceType)} · {displaySource.status}
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
-                            onClick={() => prepareKnowledge(source.id)}
-                            disabled={!canManageKnowledge || preparingKnowledgeId === source.id}
-                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#3ddf84] bg-[#3ddf84] px-2.5 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
-                          >
-                            {preparingKnowledgeId === source.id ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <Sparkles className="size-3.5" />
-                            )}
-                          {preparingKnowledgeId === source.id ? 'Preparing...' : 'Prepare for Chatbot'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => viewKnowledge(source.id)}
+                            onClick={() => viewKnowledge(displaySource.id)}
                             className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#3ddf84] bg-[#3ddf84] px-2.5 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29]"
                           >
                             <Eye className="size-3.5" />
@@ -1728,16 +1994,31 @@ export default function RagChatbotPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => editKnowledge(source.id)}
+                            onClick={() => editKnowledge(displaySource.id)}
                             disabled={!canManageKnowledge}
                             className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#3ddf84] bg-[#3ddf84] px-2.5 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
                           >
                             <Pencil className="size-3.5" />
                             Edit
                           </button>
+                          {displaySource.chunkCount > 0 && (displaySource.embeddingStatus !== 'ready' || displaySource.readyEmbeddingCount === 0) && (
+                            <button
+                              type="button"
+                              onClick={() => reEmbedKnowledge(displaySource.id)}
+                              disabled={!canManageKnowledge || reEmbeddingSourceId !== null}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#3ddf84] bg-[#3ddf84] px-2.5 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-70"
+                            >
+                              {reEmbeddingSourceId === displaySource.id ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="size-3.5" />
+                              )}
+                              {reEmbeddingSourceId === displaySource.id ? 'Preparing...' : 'Prepare Again'}
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => deleteKnowledge(source.id)}
+                            onClick={() => deleteKnowledge(displaySource.id)}
                             disabled={!canManageKnowledge}
                             className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-400/40 px-2.5 text-xs font-bold text-red-100 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-50"
                           >
@@ -1747,29 +2028,57 @@ export default function RagChatbotPage() {
                         </div>
                       </div>
                       <dl className="grid gap-2 text-xs text-[#a9c6bb] sm:grid-cols-2 xl:grid-cols-3">
-                        <div>Created: {formatDate(source.createdAt)}</div>
-                        <div>Updated: {formatDate(source.updatedAt)}</div>
-                        <div>{source.characterCount.toLocaleString()} characters</div>
-                        <div>{source.chunkCount.toLocaleString()} chunks</div>
-                        <div>Status: {knowledgeStatusLabel(source)}</div>
-                        <div>{source.readyEmbeddingCount.toLocaleString()} ready embeddings</div>
-                        <div>{source.failedEmbeddingCount.toLocaleString()} failed embeddings</div>
-                        {source.sourceUrl && (
-                          <div className="truncate xl:col-span-3">URL: {source.sourceUrl}</div>
+                        <div>Created: {formatDate(displaySource.createdAt)}</div>
+                        <div>Updated: {formatDate(displaySource.updatedAt)}</div>
+                        <div>{displaySource.characterCount.toLocaleString()} characters</div>
+                        <div>{displaySource.chunkCount.toLocaleString()} chunks</div>
+                        <div>Status: {knowledgeStatusLabel(displaySource)}</div>
+                        <div>{displaySource.readyEmbeddingCount.toLocaleString()} ready embeddings</div>
+                        <div>{displaySource.failedEmbeddingCount.toLocaleString()} failed embeddings</div>
+                        {displaySource.embeddingMessage && (
+                          <div className={cn('space-y-1 sm:col-span-2 xl:col-span-3', embeddingNoteClassName(displaySource))}>
+                            Embedding note: {displaySource.embeddingMessage}
+                            {(displaySource.embeddingProvider || displaySource.embeddingModel) && (
+                              <div className={cn('text-[11px]', embeddingNoteStatus(displaySource) === 'success' ? 'text-emerald-200/85' : 'text-[#d8c68f]')}>
+                                {[displaySource.embeddingProvider, displaySource.embeddingModel].filter(Boolean).join(' · ')}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {displaySource.sourceUrl && (
+                          <div className="truncate xl:col-span-3">URL: {displaySource.sourceUrl}</div>
                         )}
                       </dl>
                       <span
                         className={cn(
                           'inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
-                          embeddingStatusClasses(source.embeddingStatus),
+                          embeddingStatusClasses(displaySource.embeddingStatus),
                         )}
                       >
-                        {embeddingStatusLabel(source.embeddingStatus)}
+                        {embeddingStatusLabel(displaySource.embeddingStatus)}
                       </span>
-                    </article>
-                  ))
+                      {preparationProgress && (
+                        <EmbeddingPreparationPanel
+                          progress={preparationProgress}
+                          compact
+                        />
+                      )}
+                      </article>
+                    )
+                  })
                 )}
               </div>
+              {knowledgeSources.length > SAVED_KNOWLEDGE_PREVIEW_LIMIT && (
+                <div className="border-t border-[#3ddf84]/25 px-4 py-3 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllSavedKnowledge((current) => !current)}
+                    className="inline-flex h-9 items-center justify-center rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] transition hover:border-[#3ddf84]/60 hover:bg-[#123226]"
+                  >
+                    {showAllSavedKnowledge ? 'Show Less' : `See More (${hiddenSavedKnowledgeCount.toLocaleString()})`}
+                  </button>
+                </div>
+              )}
             </div>
 
         </div>
@@ -1792,7 +2101,7 @@ export default function RagChatbotPage() {
               'rounded-full border px-3 py-1 text-xs font-bold',
               chatbotSettings?.enabled === false
                 ? 'border-amber-300/40 bg-amber-300/10 text-amber-100'
-                : 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100',
+                : 'border-[#3ddf84] bg-[#3ddf84] text-[#07130e]',
             )}>
               {chatbotSettings?.enabled === false ? 'Paused' : 'Enabled'}
             </span>
@@ -1878,7 +2187,7 @@ export default function RagChatbotPage() {
               <textarea
                 value={chatbotSettings?.fallbackMessage ?? ''}
                 onChange={(event) => setChatbotSettings((current) => current ? { ...current, fallbackMessage: event.target.value } : current)}
-                placeholder="I do not see that information in the current knowledge base."
+                placeholder="I don't have that exact detail right now. Would you like me to connect you with a team member?"
                 rows={3}
                 disabled={chatbotSettingsSaving}
                 className="w-full rounded-xl border border-[#315846] bg-[#07130e] px-3 py-3 text-sm text-white outline-none transition placeholder:text-[#789486] focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1905,7 +2214,7 @@ export default function RagChatbotPage() {
                 type="button"
                 onClick={() => saveChatbotSettings()}
                 disabled={chatbotSettingsSaving || !chatbotSettings}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+                className={chatbotPrimaryActionButtonClass}
               >
                 {chatbotSettingsSaving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                 Save Settings
@@ -1933,7 +2242,7 @@ export default function RagChatbotPage() {
                 Recent browser memory helps follow-up questions keep their recent context.
               </p>
             </div>
-            <span className="rounded-full border border-[#315846] bg-[#0d1b15] px-3 py-1 text-xs font-bold text-[#d8fff1]">
+            <span className="whitespace-nowrap rounded-full border border-[#315846] bg-[#0d1b15] px-2.5 py-1 text-[11px] font-bold text-[#d8fff1] sm:px-3 sm:text-xs">
               Dashboard only
             </span>
           </div>
@@ -1969,7 +2278,7 @@ export default function RagChatbotPage() {
                     type="button"
                     onClick={() => setChatHistory([])}
                     disabled={chatLoading}
-                    className="inline-flex h-10 items-center rounded-xl border border-[#315846] px-3 text-sm font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-9 items-center rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Clear memory
                   </button>
@@ -1978,7 +2287,7 @@ export default function RagChatbotPage() {
                   type="button"
                   onClick={askTestChat}
                   disabled={chatLoading || Boolean(chatUnavailableMessage) || !chatQuestion.trim()}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+                  className={chatbotPrimaryActionButtonClass}
                 >
                   <MessageSquare className="size-4" />
                   {chatLoading ? 'Asking...' : 'Ask Test Question'}
@@ -2032,13 +2341,11 @@ export default function RagChatbotPage() {
             </div>
             <button
               type="button"
-              onClick={() => {
-                loadSchedules()
-                loadImportHistory()
-              }}
-              className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
+              onClick={refreshScheduleAndImportHistory}
+              disabled={scheduleRefreshing}
+              className="h-9 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-70"
             >
-              Refresh
+              {scheduleRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
 
@@ -2119,7 +2426,7 @@ export default function RagChatbotPage() {
               type="button"
               onClick={saveSchedule}
               disabled={!canManageKnowledge || scheduleSaving || !scheduleUrl.trim()}
-              className="inline-flex h-11 items-center justify-center rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3.5 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-70"
             >
               Add Schedule
             </button>
@@ -2254,7 +2561,7 @@ export default function RagChatbotPage() {
                   loadKnowledgeGaps()
                 }}
                 disabled={logsLoading}
-                className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-9 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-70"
               >
                 {logsLoading ? 'Refreshing...' : 'Refresh'}
               </button>
@@ -2381,7 +2688,7 @@ export default function RagChatbotPage() {
               <button
                 type="button"
                 onClick={() => setActivityVisibleCount((count) => count + 10)}
-                className="h-10 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29]"
+                className="h-9 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29]"
               >
                 Load More
               </button>
@@ -2390,6 +2697,38 @@ export default function RagChatbotPage() {
         </div>
 
       </section>
+
+      {showFirecrawlActivityModal && (
+        <FirecrawlActivityModal
+          activities={importHistory}
+          onClose={() => setShowFirecrawlActivityModal(false)}
+          onViewDetails={setSelectedFirecrawlActivity}
+        />
+      )}
+
+      {selectedFirecrawlActivity && (
+        <FirecrawlActivityDetailsModal
+          activity={selectedFirecrawlActivity}
+          onClose={() => setSelectedFirecrawlActivity(null)}
+        />
+      )}
+
+      {showWebsiteReviewModal && websiteImportJob && (
+        <WebsiteKnowledgeReviewModal
+          job={websiteImportJob}
+          stats={websiteImportStats}
+          pages={websiteImportPages}
+          title={websiteDraftTitle}
+          content={websiteDraftContent}
+          saving={websiteDraftSaving}
+          embeddingProgress={websiteEmbeddingProgress}
+          error={websiteReviewError}
+          onTitleChange={setWebsiteDraftTitle}
+          onContentChange={setWebsiteDraftContent}
+          onDiscard={() => saveWebsiteDraft('discard')}
+          onSave={() => saveWebsiteDraft('publish')}
+        />
+      )}
 
       {selectedKnowledge && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -2448,7 +2787,7 @@ export default function RagChatbotPage() {
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Edit knowledge</p>
               <h3 className="mt-1 text-xl font-black text-white">Update Knowledge</h3>
               <p className="mt-1 text-sm text-[#8bb4a5]">
-                Updating regenerates chunks and keeps embeddings pending until Prepare for Chatbot.
+                Updating regenerates chunks and creates embeddings automatically after saving.
               </p>
             </div>
             <div className="max-h-[calc(90vh-8rem)] space-y-4 overflow-y-auto p-5">
@@ -2491,7 +2830,7 @@ export default function RagChatbotPage() {
                     setKnowledgeText('')
                     setKnowledgeSourceType('manual')
                   }}
-                  className="h-10 rounded-xl border border-[#315846] px-4 text-sm font-bold text-[#d8fff1] hover:bg-[#123226]"
+                  className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] transition hover:bg-[#123226]"
                 >
                   Cancel
                 </button>
@@ -2499,7 +2838,7 @@ export default function RagChatbotPage() {
                   type="button"
                   onClick={saveKnowledge}
                   disabled={knowledgeSaving || knowledgeOverLimit || !knowledgeTitle.trim() || !knowledgeText.trim()}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-70"
                 >
                   {knowledgeSaving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                   Update Knowledge
@@ -2519,6 +2858,304 @@ export default function RagChatbotPage() {
   )
 }
 
+function WebsiteKnowledgeReviewModal({
+  job,
+  stats,
+  pages,
+  title,
+  content,
+  saving,
+  embeddingProgress,
+  error,
+  onTitleChange,
+  onContentChange,
+  onDiscard,
+  onSave,
+}: {
+  readonly job: WebsiteImportJob
+  readonly stats: WebsiteImportStats | null
+  readonly pages: ReadonlyArray<WebsiteImportPage>
+  readonly title: string
+  readonly content: string
+  readonly saving: boolean
+  readonly embeddingProgress: EmbeddingPreparationProgress | null
+  readonly error: string | null
+  readonly onTitleChange: (value: string) => void
+  readonly onContentChange: (value: string) => void
+  readonly onDiscard: () => void
+  readonly onSave: () => void
+}) {
+  const hasContent = content.trim().length > 0
+  const creditsUsed = stats?.creditsUsed
+  const warnings = visibleWebsiteImportWarnings(stats?.warnings?.length ? stats.warnings : job.qualityWarnings)
+  const structuredRecords = stats?.structuredRecords
+    ? Object.entries(stats.structuredRecords)
+      .filter(([, count]) => count > 0)
+      .map(([name, count]) => `${name.replace(/([A-Z])/g, ' $1').toLowerCase()} (${count})`)
+      .join(', ')
+    : ''
+  const skippedReasons = stats?.skippedReasons
+    ? Object.entries(stats.skippedReasons)
+      .map(([reason, count]) => `${reason.replaceAll('_', ' ')} (${count})`)
+      .join(', ')
+    : ''
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="website-review-title"
+    >
+      <div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-[#3ddf84]/70 bg-[#07130e] shadow-[0_34px_110px_rgba(0,0,0,0.58)]">
+        <header className="shrink-0 border-b border-[#3ddf84]/35 bg-[#0b1d15] px-4 py-4 sm:px-6 sm:py-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Website import complete</p>
+              <h3 id="website-review-title" className="mt-1 text-xl font-black text-white sm:text-2xl">
+                Review Imported Website Knowledge
+              </h3>
+              <p className="mt-1 max-w-3xl break-all text-sm leading-6 text-[#a9c6bb]">{job.websiteUrl}</p>
+            </div>
+            <span className="w-fit rounded-full border border-emerald-300/45 bg-emerald-300/10 px-3 py-1.5 text-xs font-bold uppercase text-emerald-100">
+              {job.status.replaceAll('_', ' ')}
+            </span>
+          </div>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <ReviewMetric label="Pages found" value={job.pagesFound.toLocaleString()} />
+            <ReviewMetric label="Pages imported" value={job.pagesImported.toLocaleString()} />
+            <ReviewMetric label="Pages skipped / failed" value={`${job.pagesSkipped.toLocaleString()} / ${job.pagesFailed.toLocaleString()}`} />
+            <ReviewMetric
+              label="Credits used"
+              value={typeof creditsUsed === 'number' ? creditsUsed.toLocaleString() : '—'}
+            />
+          </div>
+
+          {stats?.dynamicPricingSuspected && (
+            <div className="hidden">
+              <p className="text-sm font-black text-amber-100">Internal pricing review note</p>
+              <p className="mt-1 text-xs leading-5 text-amber-100/90">
+                Pricing variant analysis is kept internal for this import.
+              </p>
+              {(stats.pricingVariantSignals?.length ?? 0) > 0 && (
+                <ul className="mt-2 space-y-1 text-xs text-[#d8c68f]">
+                  {stats.pricingVariantSignals?.map((signal, index) => <li key={`${signal}:${index}`}>• {signal}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(17rem,0.55fr)]">
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="text-sm font-bold text-[#d8fff1]">Knowledge title</span>
+                <input
+                  value={title}
+                  onChange={(event) => onTitleChange(event.target.value)}
+                  disabled={saving}
+                  className="h-11 w-full rounded-xl border border-[#315846] bg-[#04100b] px-3 text-sm text-white outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-[#d8fff1]">
+                  <span>Imported content</span>
+                  <span className="text-xs font-medium text-[#8bb4a5]">
+                    {content.length.toLocaleString()} / {RAG_KNOWLEDGE_CHARACTER_LIMIT.toLocaleString()} characters
+                  </span>
+                </span>
+                {hasContent ? (
+                  <textarea
+                    value={content}
+                    onChange={(event) => onContentChange(event.target.value)}
+                    disabled={saving}
+                    rows={18}
+                    className="min-h-[24rem] w-full resize-y whitespace-pre-wrap rounded-2xl border border-[#315846] bg-[#04100b] px-4 py-3 font-mono text-sm leading-6 text-[#d8fff1] outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                ) : (
+                  <div className="flex min-h-56 items-center justify-center rounded-2xl border border-amber-300/40 bg-amber-300/10 p-6 text-center text-sm font-bold text-amber-100">
+                    No readable website knowledge was found.
+                  </div>
+                )}
+              </label>
+            </div>
+
+            <aside className="space-y-4">
+              <div className="rounded-2xl border border-[#3ddf84]/45 bg-[#0d1b15]/80 p-4">
+                <h4 className="text-sm font-black text-white">Import summary</h4>
+                <dl className="mt-3 space-y-2 text-xs text-[#a9c6bb]">
+                  <div className="flex items-center justify-between gap-3"><dt>Saved characters</dt><dd className="font-bold text-white">{job.savedCharacters.toLocaleString()}</dd></div>
+                  <div className="flex items-center justify-between gap-3"><dt>Raw characters</dt><dd className="font-bold text-white">{(stats?.rawCharacters ?? 0).toLocaleString()}</dd></div>
+                  <div className="flex items-center justify-between gap-3"><dt>Duplicate/junk removed</dt><dd className="font-bold text-white">{(stats?.duplicateJunkCharactersRemoved ?? 0).toLocaleString()}</dd></div>
+                  <div className="flex items-center justify-between gap-3"><dt>Duplicate pages</dt><dd className="font-bold text-white">{job.duplicatePages.toLocaleString()}</dd></div>
+                  <div className="flex items-center justify-between gap-3"><dt>Low-value pages skipped</dt><dd className="font-bold text-white">{(stats?.lowValuePagesSkipped ?? 0).toLocaleString()}</dd></div>
+                  <div className="flex items-center justify-between gap-3"><dt>Page limit</dt><dd className="font-bold text-white">{job.pageLimit.toLocaleString()}</dd></div>
+                  <div className="flex items-center justify-between gap-3"><dt>Content capped</dt><dd className="font-bold text-white">{job.capped ? 'Yes' : 'No'}</dd></div>
+                  <div className="flex items-center justify-between gap-3"><dt>AI structuring</dt><dd className="font-bold text-white">{stats?.aiStructuringUsed ? 'Used' : 'Not used'}</dd></div>
+                  <div className="flex items-center justify-between gap-3"><dt>Deterministic fallback</dt><dd className="font-bold text-white">{stats?.deterministicFallbackUsed ? 'Used' : 'Not used'}</dd></div>
+                  <div className="flex items-center justify-between gap-3"><dt>Firecrawl modes</dt><dd className="text-right font-bold text-white">{(stats?.firecrawlModesUsed ?? ['crawl']).join(', ')}</dd></div>
+                  <div className="flex items-center justify-between gap-3"><dt>Provider</dt><dd className="font-bold text-white">Firecrawl</dd></div>
+                </dl>
+                {structuredRecords && (
+                  <p className="mt-3 border-t border-[#315846] pt-3 text-xs leading-5 text-[#a9c6bb]">
+                    Structured records: <span className="text-white">{structuredRecords}</span>
+                  </p>
+                )}
+                {skippedReasons && (
+                  <p className="mt-2 text-xs leading-5 text-[#a9c6bb]">
+                    Skipped reasons: <span className="text-white">{skippedReasons}</span>
+                  </p>
+                )}
+                <p className="mt-3 border-t border-[#315846] pt-3 text-xs leading-5 text-amber-100">
+                  Saved Knowledge will not change until you click Save Knowledge.
+                </p>
+              </div>
+
+              {warnings.length > 0 && (
+                <div className="rounded-2xl border border-amber-300/40 bg-amber-300/10 p-4">
+                  <h4 className="text-sm font-black text-amber-100">Quality notes</h4>
+                  <ul className="mt-2 space-y-1.5 text-xs leading-5 text-amber-100/90">
+                    {warnings.map((warning, index) => <li key={`${warning}:${index}`}>• {warning}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              <div className="rounded-2xl border border-[#3ddf84]/45 bg-[#0d1b15]/80 p-4">
+                <h4 className="text-sm font-black text-white">Imported pages</h4>
+                <p className="mt-1 text-xs text-[#8bb4a5]">Showing up to 20 checked pages.</p>
+                <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+                  {pages.slice(0, 20).map((page, index) => (
+                    <div key={`${page.url}:${index}`} className="rounded-xl border border-[#315846] bg-[#04100b] p-3 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 break-words font-bold text-white">{page.title ?? page.canonicalUrl ?? page.url}</p>
+                        <span className="shrink-0 text-[10px] font-bold uppercase text-emerald-200">{page.status}</span>
+                      </div>
+                      <p className="mt-1 break-all text-[#8bb4a5]">{page.canonicalUrl ?? page.url}</p>
+                    </div>
+                  ))}
+                  {pages.length === 0 && <p className="text-xs text-[#8bb4a5]">No page details were returned.</p>}
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          {error && (
+            <p className="mt-4 rounded-xl border border-red-300/40 bg-red-400/10 px-4 py-3 text-sm font-medium text-red-100" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <footer className="shrink-0 border-t border-[#3ddf84]/35 bg-[#0b1d15] px-4 py-4 sm:px-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            {embeddingProgress ? (
+              <div className="min-w-0 flex-1 lg:max-w-2xl">
+                <EmbeddingPreparationPanel progress={embeddingProgress} compact />
+              </div>
+            ) : (
+              <div className="hidden min-w-0 flex-1 lg:block" aria-hidden="true" />
+            )}
+            <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+              <button
+                type="button"
+                onClick={onDiscard}
+                disabled={saving}
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-[#486b5a] px-4 text-sm font-bold text-[#d8fff1] transition hover:border-amber-300/60 hover:bg-amber-300/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={saving || !hasContent || !title.trim()}
+                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-black text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-70"
+              >
+                {saving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                {saving && embeddingProgress?.status === 'running' ? 'Preparing...' : saving ? 'Saving...' : 'Save Knowledge'}
+              </button>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+function ReviewMetric({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <div className="rounded-2xl border border-[#3ddf84]/45 bg-[#0d1b15]/80 p-4">
+      <p className="text-xs uppercase tracking-[0.14em] text-[#8bb4a5]">{label}</p>
+      <p className="mt-1 text-lg font-black text-white">{value}</p>
+    </div>
+  )
+}
+
+function EmbeddingPreparationPanel({
+  progress,
+  compact = false,
+}: {
+  readonly progress: EmbeddingPreparationProgress
+  readonly compact?: boolean
+}) {
+  const isReady = progress.status === 'ready'
+  const isWarning = progress.status === 'warning'
+  const percent = progress.percentComplete
+  const progressWidth = `${percent ?? 35}%`
+  const preparedText = progress.readyChunks !== null && progress.totalChunks !== null
+    ? `${progress.readyChunks.toLocaleString()} of ${progress.totalChunks.toLocaleString()} chunks prepared`
+    : null
+
+  return (
+    <div className={cn(
+      'rounded-2xl border p-4',
+      isWarning
+        ? 'border-amber-300/45 bg-amber-300/10'
+        : isReady
+          ? 'border-emerald-300/45 bg-emerald-400/10'
+          : 'border-[#3ddf84]/45 bg-[#0d1b15]/90',
+      compact && 'p-3',
+    )}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className={cn('font-black text-white', compact ? 'text-sm' : 'text-base')}>
+            {isReady ? 'Knowledge is ready for chatbot answers.' : 'Getting your knowledge ready for the chatbot'}
+          </p>
+          <p className={cn('mt-1 leading-5', compact ? 'text-xs' : 'text-sm', isWarning ? 'text-amber-100/90' : 'text-[#a9c6bb]')}>
+            {isWarning ? progress.message : 'We are preparing the saved content in safe batches.'}
+          </p>
+        </div>
+        {isReady ? (
+          <CheckCircle2 className="size-5 shrink-0 text-emerald-200" />
+        ) : isWarning ? (
+          <XCircle className="size-5 shrink-0 text-amber-200" />
+        ) : (
+          <Loader2 className="size-5 shrink-0 animate-spin text-emerald-200" />
+        )}
+      </div>
+      <div className="mt-3 overflow-hidden rounded-full border border-[#315846] bg-[#04100b]">
+        <div
+          className={cn(
+            'h-2 rounded-full transition-all duration-300',
+            isWarning ? 'bg-amber-300' : 'bg-[#3ddf84]',
+            percent === null && !isReady && 'animate-pulse',
+          )}
+          style={{ width: isReady ? '100%' : progressWidth }}
+        />
+      </div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className={isWarning ? 'text-amber-100' : 'text-emerald-100'}>
+          {percent !== null ? `${percent}% complete` : 'Preparing...'}
+        </span>
+        {preparedText && (
+          <span className="text-[#a9c6bb]">{preparedText}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function KnowledgeProgressPanel({
   progress,
 }: {
@@ -2532,9 +3169,7 @@ function KnowledgeProgressPanel({
   const currentMessage = progress.message || steps[safeStep] || 'Working...'
   const label = progress.kind === 'website'
     ? 'Website import progress'
-    : progress.kind === 'manual'
-      ? 'Manual knowledge progress'
-      : 'Knowledge preparation progress'
+    : 'Manual knowledge progress'
 
   return (
     <div className={cn(
@@ -2552,10 +3187,10 @@ function KnowledgeProgressPanel({
           <p className="text-sm font-bold text-white">{label}</p>
           <p className="text-xs text-[#a9c6bb]">
             {isDone
-              ? 'Finished. Review the result and prepare embeddings when you are ready.'
+              ? 'Finished. Embeddings are handled automatically after saving.'
               : isFailed
                 ? 'Something stopped the process. Review the message below and try again.'
-                : 'The CRM is working through this safely without preparing embeddings yet.'}
+                : 'The CRM is working through this safely and will create embeddings automatically.'}
           </p>
         </div>
         {progress.status === 'running' ? (
@@ -2589,6 +3224,237 @@ function KnowledgeProgressPanel({
   )
 }
 
+function firecrawlActivityEndpoint(history: RagImportHistoryItem): string {
+  if (history.triggerType === 'scheduled' || history.pagesFound > 1 || history.pagesImported > 1) return '/crawl'
+  if (history.url) return '/scrape'
+  return 'Website import'
+}
+
+function firecrawlActivityStatus(status: string): string {
+  if (status === 'published' || status === 'draft_ready' || status === 'completed') return 'Completed'
+  if (status === 'running' || status === 'processing') return 'Processing'
+  if (status === 'failed') return 'Failed'
+  if (status === 'pending') return 'Pending'
+  if (status === 'discarded') return 'Discarded'
+  return status ? status.replace(/_/g, ' ') : '—'
+}
+
+function firecrawlActivityCredits(history: RagImportHistoryItem): string {
+  if (typeof history.creditsUsed === 'number') return history.creditsUsed.toLocaleString()
+  const pages = history.pagesImported || history.pagesFound
+  if (pages > 0) return `${pages.toLocaleString()} pages`
+  return '—'
+}
+
+function FirecrawlActivityPanel({
+  activities,
+  totalActivities,
+  loading,
+  error,
+  onViewAll,
+  onViewDetails,
+}: {
+  readonly activities: ReadonlyArray<RagImportHistoryItem>
+  readonly totalActivities: number
+  readonly loading: boolean
+  readonly error: string | null
+  readonly onViewAll: () => void
+  readonly onViewDetails: (activity: RagImportHistoryItem) => void
+}) {
+  const hasMoreActivities = totalActivities > activities.length
+  return (
+    <div className="rounded-2xl border border-[#3ddf84]/60 bg-[#0d1b15]/80 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.16)] transition hover:border-[#3ddf84]/80">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-white">Activity</p>
+          <p className="mt-1 text-xs leading-5 text-[#8bb4a5]">Recent Firecrawl website imports for this workspace.</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="rounded-full border border-[#ffbd29]/40 bg-[#ffbd29]/10 px-2.5 py-1 text-[11px] font-bold uppercase text-[#ffbd29]">
+            Latest 2
+          </span>
+          {hasMoreActivities && !loading && !error && (
+            <button
+              type="button"
+              onClick={onViewAll}
+              className="rounded-full border border-[#3ddf84]/60 bg-[#3ddf84] px-2.5 py-1 text-[11px] font-black uppercase text-[#07130e] transition hover:bg-[#ffbd29]"
+            >
+              View All
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="rounded-xl border border-[#315846] bg-[#07130e]/80 px-3 py-4 text-sm text-[#d8fff1]">
+          Loading recent activity...
+        </p>
+      ) : error ? (
+        <p className="rounded-xl border border-amber-300/40 bg-amber-300/10 px-3 py-4 text-sm text-amber-100">
+          Could not load Firecrawl activity.
+        </p>
+      ) : activities.length === 0 ? (
+        <div className="rounded-xl border border-[#315846] bg-[#07130e]/80 px-3 py-4">
+          <p className="text-sm font-bold text-white">No Firecrawl activity yet</p>
+          <p className="mt-1 text-xs leading-5 text-[#8bb4a5]">
+            Your recent website imports will appear here after you run a crawl or scrape.
+          </p>
+        </div>
+      ) : (
+        <FirecrawlActivityTable activities={activities} onViewDetails={onViewDetails} />
+      )}
+    </div>
+  )
+}
+
+function FirecrawlActivityTable({
+  activities,
+  onViewDetails,
+}: {
+  readonly activities: ReadonlyArray<RagImportHistoryItem>
+  readonly onViewDetails: (activity: RagImportHistoryItem) => void
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#315846]">
+      <div className="hidden grid-cols-[0.7fr_1.3fr_0.85fr_0.8fr_1fr_0.65fr] gap-2 border-b border-[#315846] bg-[#07130e] px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-[#8bb4a5] sm:grid">
+        <span>Endpoint</span>
+        <span>URL</span>
+        <span>Status</span>
+        <span># credits</span>
+        <span>Time</span>
+        <span>Actions</span>
+      </div>
+      <div className="divide-y divide-[#315846]">
+        {activities.map((activity) => (
+          <div
+            key={activity.id}
+            className="grid gap-2 px-3 py-3 text-xs text-[#d8fff1] sm:grid-cols-[0.7fr_1.3fr_0.85fr_0.8fr_1fr_0.65fr]"
+          >
+            <span className="font-bold text-emerald-100">{firecrawlActivityEndpoint(activity)}</span>
+            <span className="min-w-0 truncate" title={activity.url ?? 'Website import'}>
+              {activity.url ?? 'Website import'}
+            </span>
+            <span className="capitalize">{firecrawlActivityStatus(activity.status)}</span>
+            <span>{firecrawlActivityCredits(activity)}</span>
+            <span className="text-[#a9c6bb]">{formatDateTime(activity.createdAt)}</span>
+            <button
+              type="button"
+              onClick={() => onViewDetails(activity)}
+              className="w-fit rounded-lg border border-[#3ddf84]/60 bg-[#3ddf84]/20 px-2 py-1 text-xs font-bold text-[#d8fff1] transition hover:bg-[#3ddf84] hover:text-[#07130e]"
+            >
+              Details
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function FirecrawlActivityModal({
+  activities,
+  onClose,
+  onViewDetails,
+}: {
+  readonly activities: ReadonlyArray<RagImportHistoryItem>
+  readonly onClose: () => void
+  readonly onViewDetails: (activity: RagImportHistoryItem) => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-3xl border border-[#3ddf84]/60 bg-[#07130e] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start justify-between gap-4 border-b border-[#3ddf84]/35 p-5">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Firecrawl</p>
+            <h3 className="mt-1 text-xl font-black text-white">Firecrawl Activity</h3>
+            <p className="mt-1 text-sm text-[#8bb4a5]">All recent website import activity loaded for this workspace.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-[#315846] px-3 py-2 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
+          >
+            Close
+          </button>
+        </div>
+        <div className="max-h-[calc(90vh-7rem)] overflow-y-auto p-5">
+          {activities.length === 0 ? (
+            <div className="rounded-xl border border-[#315846] bg-[#0d1b15]/80 px-3 py-4">
+              <p className="text-sm font-bold text-white">No Firecrawl activity yet</p>
+              <p className="mt-1 text-xs leading-5 text-[#8bb4a5]">
+                Your recent website imports will appear here after you run a crawl or scrape.
+              </p>
+            </div>
+          ) : (
+            <FirecrawlActivityTable activities={activities} onViewDetails={onViewDetails} />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FirecrawlActivityDetailsModal({
+  activity,
+  onClose,
+}: {
+  readonly activity: RagImportHistoryItem
+  readonly onClose: () => void
+}) {
+  const details: ReadonlyArray<readonly [string, string]> = [
+    ['Endpoint', firecrawlActivityEndpoint(activity)],
+    ['URL', activity.url ?? '—'],
+    ['Status', firecrawlActivityStatus(activity.status)],
+    ['Credit used', typeof activity.creditsUsed === 'number' ? activity.creditsUsed.toLocaleString() : '—'],
+    ['Page count', activity.pagesFound > 0 ? `${activity.pagesFound.toLocaleString()} found` : '—'],
+    ['Pages imported', activity.pagesImported > 0 ? activity.pagesImported.toLocaleString() : '—'],
+    ['Pages skipped', activity.pagesSkipped > 0 ? activity.pagesSkipped.toLocaleString() : '—'],
+    ['Pages failed', activity.pagesFailed > 0 ? activity.pagesFailed.toLocaleString() : '—'],
+    ['Created time', formatDateTime(activity.createdAt)],
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-3xl border border-[#3ddf84]/60 bg-[#07130e] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start justify-between gap-4 border-b border-[#3ddf84]/35 p-5">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Firecrawl</p>
+            <h3 className="mt-1 text-xl font-black text-white">Activity Details</h3>
+            <p className="mt-1 break-all text-sm text-[#8bb4a5]">{activity.url ?? 'Website import'}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-[#315846] px-3 py-2 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
+          >
+            Close
+          </button>
+        </div>
+        <div className="max-h-[calc(90vh-7rem)] space-y-4 overflow-y-auto p-5">
+          <dl className="grid gap-3 sm:grid-cols-2">
+            {details.map(([label, value]) => (
+              <div key={label} className="rounded-2xl border border-[#3ddf84]/40 bg-[#0d1b15]/70 p-4">
+                <dt className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">{label}</dt>
+                <dd className="mt-1 break-words text-sm font-bold text-white">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {(activity.errorMessage || activity.changeSummary) && (
+            <div className="rounded-2xl border border-[#ffbd29]/40 bg-[#ffbd29]/10 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#ffbd29]">
+                {activity.errorMessage ? 'Safe error message' : 'Summary'}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-amber-100">
+                {activity.errorMessage ?? activity.changeSummary}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function FirecrawlCreditsPanel({
   credits,
   lastTestedAt,
@@ -2599,25 +3465,25 @@ function FirecrawlCreditsPanel({
   const remaining = credits?.remainingCredits
   const total = credits?.totalCredits ?? credits?.limit
   const updatedAt = credits?.lastUpdatedAt ?? lastTestedAt
-  const creditLine = typeof remaining === 'number'
+  const creditValue = typeof remaining === 'number'
     ? total
-      ? `Credits left: ${remaining.toLocaleString()} / ${total.toLocaleString()}`
-      : `Credits left: ${remaining.toLocaleString()}`
-    : 'Credits left: run Test Connection'
+      ? `${remaining.toLocaleString()} / ${total.toLocaleString()} Credits`
+      : `${remaining.toLocaleString()} Credits`
+    : 'Run Test Connection'
 
   return (
     <div className="rounded-2xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#0d1b15]/80 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.16)]">
-      <div className="flex items-center justify-between gap-3">
+      <div className="space-y-2">
         <div>
           <p className="text-sm font-black text-white">Firecrawl credits</p>
-          <p className="mt-1 text-base font-bold text-emerald-100">{creditLine}</p>
-          <p className="mt-1 text-xs text-[#8bb4a5]">
-            Last updated: {updatedAt ? formatDateTime(updatedAt) : 'Not tested yet'}
-          </p>
         </div>
-        <span className="shrink-0 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1 text-[11px] font-bold text-emerald-100">
-          Credits
-        </span>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-[#315846] bg-[#07130e]/70 px-3 py-2">
+          <span className="text-sm font-bold text-[#a9c6bb]">Credits left:</span>
+          <span className="text-right text-sm font-black text-emerald-100">{creditValue}</span>
+        </div>
+        <p className="text-xs text-[#8bb4a5]">
+          Last updated: {updatedAt ? formatDateTime(updatedAt) : 'Not tested yet'}
+        </p>
       </div>
     </div>
   )
@@ -2627,6 +3493,7 @@ function WebsiteImportLiveScreen({
   importing,
   progress,
   url,
+  pageLimit,
   stats,
   pages,
   message,
@@ -2634,10 +3501,13 @@ function WebsiteImportLiveScreen({
   readonly importing: boolean
   readonly progress: KnowledgeProgressState | null
   readonly url: string
+  readonly pageLimit: number
   readonly stats: WebsiteImportStats | null
   readonly pages: ReadonlyArray<WebsiteImportPage>
   readonly message: string | null
 }) {
+  const warnings = visibleWebsiteImportWarnings(stats?.warnings)
+
   if (!importing && !stats) {
     return (
       <div className={cn('min-h-[18rem] bg-[#04100b] p-5', chatbotPanelBorderClass)}>
@@ -2657,7 +3527,7 @@ function WebsiteImportLiveScreen({
             'Website pages will be checked',
             'Useful content will be cleaned',
             'Knowledge chunks will be created',
-            'Embeddings stay pending until Prepare for Chatbot',
+            'Embeddings start automatically after Save Knowledge',
           ].map((item) => (
             <div key={item} className="flex items-center gap-2 rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/80 px-3 py-2 text-[#d8fff1]">
               <span className="size-2 rounded-full bg-[#3ddf84]" />
@@ -2665,6 +3535,9 @@ function WebsiteImportLiveScreen({
             </div>
           ))}
         </div>
+        <p className="mt-3 rounded-xl border border-[#315846] bg-[#07130e]/70 px-3 py-2 text-xs leading-5 text-[#8bb4a5]">
+          {embeddingTimeEstimate()}
+        </p>
       </div>
     )
   }
@@ -2682,6 +3555,9 @@ function WebsiteImportLiveScreen({
           </span>
         </div>
         <KnowledgeProgressPanel progress={progress ?? createKnowledgeProgress('website')} />
+        <p className="mt-3 rounded-xl border border-[#315846] bg-[#07130e]/70 px-3 py-2 text-xs leading-5 text-[#8bb4a5]">
+          {websiteImportTimeEstimate(pageLimit)}
+        </p>
       </div>
     )
   }
@@ -2704,12 +3580,15 @@ function WebsiteImportLiveScreen({
           <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Pages failed: {stats.pagesFailed}</div>
           <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Duplicate pages: {stats.duplicatePages}</div>
           <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Chunks ready</div>
-          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Next step: Prepare for Chatbot</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e] p-3">Embeddings automatic after Save Knowledge</div>
         </dl>
       )}
-      {stats?.warnings && stats.warnings.length > 0 && (
+      <p className="mt-3 rounded-xl border border-[#315846] bg-[#07130e]/70 px-3 py-2 text-xs leading-5 text-[#8bb4a5]">
+        {embeddingTimeEstimate()}
+      </p>
+      {warnings.length > 0 && (
         <p className="mt-3 rounded-xl border border-[#ffbd29]/40 bg-[#ffbd29]/10 px-3 py-2 text-xs text-amber-100">
-          Quality warnings: {stats.warnings.join(' ')}
+          Quality warnings: {warnings.join(' ')}
         </p>
       )}
       {pages.length > 0 && (
@@ -2758,7 +3637,7 @@ function ManualKnowledgeStatusScreen({
           {[
             'Content will be saved',
             'Chunks will be created automatically',
-            'Embeddings will stay pending until Prepare for Chatbot',
+            'Embeddings will be created automatically',
           ].map((item) => (
             <div key={item} className="flex items-center gap-2 rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#07130e]/80 px-3 py-2 text-[#d8fff1]">
               <span className="size-2 rounded-full bg-[#3ddf84]" />
@@ -2778,11 +3657,11 @@ function ManualKnowledgeStatusScreen({
             {progress.status === 'done' ? 'Manual knowledge result' : 'Manual save progress'}
           </p>
           <p className="text-xs leading-5 text-[#8bb4a5]">
-            Your knowledge is saved and chunked first. Embeddings stay pending until you click Prepare for Chatbot.
+            Your knowledge is saved, chunked, and embedded automatically using your configured AI provider.
           </p>
         </div>
         <span className={cn(
-          'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide',
+          'shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide sm:text-[11px]',
           saving
             ? 'border-emerald-300/50 bg-emerald-300/10 text-emerald-100'
             : 'border-[#ffbd29]/70 bg-[#ffbd29] text-[#07130e]',
@@ -2795,11 +3674,11 @@ function ManualKnowledgeStatusScreen({
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">Result</p>
         <dl className="mt-2 grid gap-2 text-sm leading-6 text-[#d8fff1] sm:grid-cols-3">
           <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#04100b]/70 px-3 py-2">Knowledge saved</div>
-          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#04100b]/70 px-3 py-2">Chunks ready</div>
-          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#04100b]/70 px-3 py-2">Embeddings pending</div>
+          <div className="whitespace-nowrap rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#04100b]/70 px-3 py-2 text-xs sm:text-sm">Chunks ready</div>
+          <div className="rounded-xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#04100b]/70 px-3 py-2">Embeddings automatic</div>
         </dl>
         <p className="mt-2 text-sm leading-6 text-[#d8fff1]">
-          Next step: Prepare for Chatbot when you are ready.
+          {embeddingTimeEstimate()}
         </p>
       </div>
     </div>
@@ -2861,12 +3740,14 @@ function ActionRow({
   saveDisabled,
   onSave,
   onTest,
+  brandDisabledSave = false,
 }: {
   readonly canManage: boolean
   readonly busy: boolean
   readonly saveDisabled: boolean
   readonly onSave: () => void
   readonly onTest: () => void
+  readonly brandDisabledSave?: boolean
 }) {
   return (
     <div className="flex flex-wrap gap-2 pt-1">
@@ -2874,7 +3755,12 @@ function ActionRow({
         type="button"
         onClick={onSave}
         disabled={!canManage || busy || saveDisabled}
-        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-4 text-sm font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]"
+        className={cn(
+          'inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#3ddf84] bg-[#3ddf84] px-3 text-xs font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed',
+          brandDisabledSave
+            ? 'disabled:border-[#3ddf84] disabled:bg-[#3ddf84] disabled:text-[#07130e] disabled:opacity-70'
+            : 'disabled:border-[#3ddf84]/30 disabled:bg-[#3ddf84]/30 disabled:text-[#d8fff1]',
+        )}
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
         {busy ? 'Saving...' : 'Save Settings'}
@@ -2883,7 +3769,7 @@ function ActionRow({
         type="button"
         onClick={onTest}
         disabled={!canManage || busy}
-        className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#315846] px-4 text-sm font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
         {busy ? 'Testing...' : 'Test Connection'}

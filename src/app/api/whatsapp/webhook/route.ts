@@ -603,16 +603,20 @@ async function processMessage(
   // listens to only one trigger runs only when that trigger matches.
   if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
   if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
-  for (const triggerType of automationTriggers) {
-    runAutomationsForTrigger({
-      userId,
-      triggerType,
-      contactId: contactRecord.id,
-      context: {
-        message_text: inboundText,
-        conversation_id: conversation.id,
-      },
-    }).catch((err) => console.error('[automations] dispatch failed:', err))
+  if (workspaceId) {
+    for (const triggerType of automationTriggers) {
+      runAutomationsForTrigger({
+        userId,
+        workspaceId,
+        triggerType,
+        contactId: contactRecord.id,
+        context: {
+          workspace_id: workspaceId,
+          message_text: inboundText,
+          conversation_id: conversation.id,
+        },
+      }).catch((err) => console.error('[automations] dispatch failed:', err))
+    }
   }
 
   if (message.type === 'text') {
@@ -676,6 +680,10 @@ async function maybeHandleRagAutoReply(args: {
       conversationId: args.conversationId,
       messageId: args.inboundMessageId,
     })
+
+    if (result.fallbackReason === 'ai_paused_for_human') {
+      return
+    }
 
     if (result.status === 'answered') {
       answerText = result.answer

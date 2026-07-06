@@ -16,7 +16,10 @@ import {
   GitBranch,
   Radio,
   Zap,
+  Workflow,
   Bot,
+  CreditCard,
+  Calculator,
   Settings,
   LogOut,
   User,
@@ -40,7 +43,8 @@ const navItems: Array<{
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
-  permission: WorkspacePermission;
+  permission?: WorkspacePermission;
+  anyPermissions?: WorkspacePermission[];
 }> = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view_dashboard" },
   { href: "/inbox", label: "Inbox", icon: MessageSquare, permission: "view_inbox" },
@@ -48,7 +52,15 @@ const navItems: Array<{
   { href: "/pipelines", label: "Pipelines", icon: GitBranch, permission: "view_pipeline" },
   { href: "/broadcasts", label: "Broadcasts", icon: Radio, permission: "view_broadcasts" },
   { href: "/automations", label: "Automations", icon: Zap, permission: "view_automations" },
+  { href: "/flows", label: "Flows", icon: Workflow, permission: "view_flows" },
   { href: "/ai-chatbot", label: "AI Chatbot", icon: Bot, permission: "view_rag_chatbot" },
+  { href: "/billing", label: "Billing", icon: CreditCard },
+  {
+    href: "/whatsapp-api-pricing",
+    label: "WhatsApp API Pricing",
+    icon: Calculator,
+    anyPermissions: ["view_pricing", "use_cost_calculator"],
+  },
   { href: "/team", label: "Team", icon: UserCheck, permission: "view_team" },
 ];
 
@@ -72,7 +84,10 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     if (item.href === "/team") {
       return workspace.has("view_team") || workspace.has("manage_team_members");
     }
-    return workspace.has(item.permission);
+    if (item.anyPermissions?.length) {
+      return item.anyPermissions.some((permission) => workspace.has(permission));
+    }
+    return item.permission ? workspace.has(item.permission) : true;
   });
   const settingsVisible = workspace.has("view_settings");
   const visibleBottomNavItems = settingsVisible ? bottomNavItems : [];

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Poppins } from "next/font/google";
 import { Toaster } from "sonner";
 import { TawkToWidget } from "@/components/marketing/tawk-to-widget";
+import { getSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -11,7 +12,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://vpscoaster.live"),
+  metadataBase: new URL(getSiteUrl()),
   title: {
     default: "WhatsApp CRM for Teams, Broadcasts, Contacts and AI Automation",
     template: "%s - Talk Wagon",

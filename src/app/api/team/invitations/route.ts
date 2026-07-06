@@ -5,7 +5,13 @@ import {
   createWorkspaceInvitation,
   listWorkspaceInvitations,
 } from '@/lib/team/invitations'
-import { canManageTeamWithPermissions, defaultPermissionsForRole } from '@/lib/team/permissions'
+import {
+  canDelegatePermissions,
+  canManageTeamWithPermissions,
+  canManageWorkspaceRole,
+  defaultPermissionsForRole,
+  hasWorkspacePermission,
+} from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 
 export async function GET() {
@@ -41,16 +47,37 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const role = typeof body.role === 'string' ? body.role : 'agent'
-  const permissions =
-    body.permissions && typeof body.permissions === 'object'
-      ? body.permissions
-      : defaultPermissionsForRole(role)
+  const permissions = body.permissions ?? defaultPermissionsForRole(role)
 
   if (!email || !email.includes('@')) {
     return NextResponse.json({ error: 'A valid email is required' }, { status: 400 })
   }
   if (!['admin', 'manager', 'agent'].includes(role)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+  }
+  const actor = {
+    role: workspaceResult.workspace.role,
+    permissions: workspaceResult.workspace.permissions,
+    can_connect_own_whatsapp: workspaceResult.workspace.canConnectOwnWhatsApp,
+  }
+  if (!canManageWorkspaceRole(actor.role, role)) {
+    return NextResponse.json({ error: 'You cannot assign this role' }, { status: 403 })
+  }
+  if (!canDelegatePermissions(actor, permissions)) {
+    return NextResponse.json(
+      { error: 'You cannot grant permissions that you do not have' },
+      { status: 403 },
+    )
+  }
+  if (
+    Boolean(body.can_connect_own_whatsapp) &&
+    !hasWorkspacePermission(actor, 'connect_own_whatsapp_config') &&
+    actor.role !== 'owner'
+  ) {
+    return NextResponse.json(
+      { error: 'You cannot grant personal WhatsApp connection access' },
+      { status: 403 },
+    )
   }
 
   const created = await createWorkspaceInvitation({

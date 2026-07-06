@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { getTemplate } from '@/lib/automations/templates'
 import { insertSteps, type BuilderStepInput } from '@/lib/automations/steps-tree'
@@ -8,28 +7,28 @@ import {
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
 import { normalizeKeywordConfig } from '@/lib/automations/template-variables'
+import { requireWorkspacePermission } from '@/lib/team/server'
 
 export async function GET() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const workspaceResult = await requireWorkspacePermission('view_automations')
+  if (!workspaceResult.ok) {
+    return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
+  }
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin()
     .from('automations')
     .select('*')
+    .eq('workspace_id', workspaceResult.workspace.workspaceId)
     .order('created_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ automations: data ?? [] })
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const workspaceResult = await requireWorkspacePermission('create_automations')
+  if (!workspaceResult.ok) {
+    return NextResponse.json({ error: workspaceResult.error }, { status: workspaceResult.status })
+  }
 
   const body = await request.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
@@ -87,7 +86,8 @@ export async function POST(request: Request) {
   const { data: automation, error: insertErr } = await admin
     .from('automations')
     .insert({
-      user_id: user.id,
+      user_id: workspaceResult.workspace.userId,
+      workspace_id: workspaceResult.workspace.workspaceId,
       name: effectiveName,
       description: effectiveDescription ?? null,
       trigger_type: effectiveTriggerType,

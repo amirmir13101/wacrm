@@ -6,7 +6,10 @@ import {
   publishRagWebsiteImportJob,
   updateRagWebsiteImportDraft,
 } from '@/lib/rag/dashboard-store'
-import { createSkippedRagEmbeddingSummary } from '@/lib/rag/embedding-store'
+import {
+  embedRagManualKnowledgeSource,
+  recordFailedRagEmbeddingSummary,
+} from '@/lib/rag/embedding-store'
 import { requireRagPermission, safeErrorMessage } from '../../_helpers'
 
 interface RouteContext {
@@ -39,8 +42,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     const { id } = await context.params
     const body = await request.json().catch(() => ({}))
     const action = typeof body.action === 'string' ? body.action : 'update'
-    const title = typeof body.title === 'string' ? body.title : ''
-    const content = typeof body.content === 'string' ? body.content : ''
+    const title = typeof body.title === 'string' ? body.title : undefined
+    const content = typeof body.content === 'string' ? body.content : undefined
 
     if (action === 'publish') {
       const result = await publishRagWebsiteImportJob({
@@ -50,12 +53,37 @@ export async function PATCH(request: Request, context: RouteContext) {
         title,
         content,
       })
-      const embeddingSummary = createSkippedRagEmbeddingSummary(0)
+      let embeddingSummary
+      let embeddingWarning = false
+      try {
+        embeddingSummary = await embedRagManualKnowledgeSource({
+          workspaceId: auth.workspace.workspaceId,
+          sourceId: result.sourceId,
+        })
+      } catch (embeddingError) {
+        embeddingWarning = true
+        embeddingSummary = await recordFailedRagEmbeddingSummary({
+          workspaceId: auth.workspace.workspaceId,
+          sourceId: result.sourceId,
+          error: embeddingError,
+        })
+        console.warn('rag_website_import_embedding_after_publish_failed', {
+          category: embeddingSummary.embeddingErrorCategory,
+          chunksProcessed: embeddingSummary.chunksProcessed,
+          jobId: id,
+          sourceId: result.sourceId,
+          workspaceId: auth.workspace.workspaceId,
+        })
+      }
       return NextResponse.json({
         ...result,
         published: true,
+        saved: true,
+        embeddingWarning,
         embeddingSummary,
-        userMessage: 'Website draft published. Chunks were created; click Prepare for Chatbot when you want embeddings.',
+        embeddingsReady: embeddingSummary.embeddingsReady,
+        embeddingErrorCategory: embeddingSummary.embeddingErrorCategory,
+        userMessage: embeddingSummary.userMessage,
       })
     }
 
@@ -70,8 +98,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     const result = await updateRagWebsiteImportDraft({
       workspaceId: auth.workspace.workspaceId,
       jobId: id,
-      title,
-      content,
+      title: title ?? '',
+      content: content ?? '',
     })
     return NextResponse.json({ ...result, saved: true })
   } catch (error) {

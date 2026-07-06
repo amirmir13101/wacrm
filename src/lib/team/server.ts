@@ -42,7 +42,7 @@ export async function requireCurrentWorkspace(): Promise<
   const admin = supabaseAdmin()
   const { data: profile } = await admin
     .from('profiles')
-    .select('active_workspace_id')
+    .select('active_workspace_id, account_type')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -54,6 +54,9 @@ export async function requireCurrentWorkspace(): Promise<
 
   if (profile?.active_workspace_id) {
     memberQuery = memberQuery.eq('workspace_id', profile.active_workspace_id)
+  }
+  if (profile?.account_type === 'team_member') {
+    memberQuery = memberQuery.neq('role', 'owner')
   }
 
   let { data: member, error } = await memberQuery
@@ -70,16 +73,26 @@ export async function requireCurrentWorkspace(): Promise<
   }
 
   if (!member && profile?.active_workspace_id) {
-    const fallback = await admin
+    let fallbackQuery = admin
       .from('workspace_members')
       .select('workspace_id, role, status, permissions, can_connect_own_whatsapp, contact_visibility, conversation_visibility, deal_visibility, workspace:workspaces(name, archived_at)')
       .eq('user_id', user.id)
       .eq('status', 'active')
+    if (profile.account_type === 'team_member') {
+      fallbackQuery = fallbackQuery.neq('role', 'owner')
+    }
+    const fallback = await fallbackQuery
       .order('joined_at', { ascending: true })
     member = (fallback.data ?? []).find((row) => !workspaceIsArchived(row.workspace)) ?? null
     error = fallback.error
     if (error) {
       return { ok: false, status: 500, error: `Workspace lookup failed: ${error.message}` }
+    }
+    if (member?.workspace_id) {
+      await admin
+        .from('profiles')
+        .update({ active_workspace_id: member.workspace_id })
+        .eq('user_id', user.id)
     }
   }
 
@@ -89,6 +102,13 @@ export async function requireCurrentWorkspace(): Promise<
 
   if (!member) {
     return { ok: false, status: 403, error: 'Active workspace membership required' }
+  }
+
+  if (member.workspace_id !== profile?.active_workspace_id) {
+    await admin
+      .from('profiles')
+      .update({ active_workspace_id: member.workspace_id })
+      .eq('user_id', user.id)
   }
 
   return {
@@ -111,7 +131,7 @@ export async function listCurrentUserWorkspaces(userId: string): Promise<Workspa
   const admin = supabaseAdmin()
   const { data: profile } = await admin
     .from('profiles')
-    .select('active_workspace_id')
+    .select('active_workspace_id, account_type')
     .eq('user_id', userId)
     .maybeSingle()
 
@@ -131,6 +151,7 @@ export async function listCurrentUserWorkspaces(userId: string): Promise<Workspa
     workspace?: { name?: string | null; archived_at?: string | null } | Array<{ name?: string | null; archived_at?: string | null }> | null
   }>)
     .filter((row) => !workspaceIsArchived(row.workspace))
+    .filter((row) => profile?.account_type !== 'team_member' || row.role !== 'owner')
     .map((row) => ({
       workspace_id: row.workspace_id,
       workspace_name: readWorkspaceName(row.workspace),
@@ -396,9 +417,11 @@ async function repairAcceptedInvitationMembership(userId: string) {
 
   await admin
     .from('profiles')
-    .update({ active_workspace_id: invitation.workspace_id })
+    .update({
+      account_type: 'team_member',
+      active_workspace_id: invitation.workspace_id,
+    })
     .eq('user_id', userId)
-    .is('active_workspace_id', null)
 
   return {
     workspace_id: invitation.workspace_id,

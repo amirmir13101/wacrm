@@ -6,6 +6,7 @@ const footerGroups = [
     heading: "Product",
     links: [
       ["Features", "/features"],
+      ["Flows", "/features/flows"],
       ["Team Inbox", "/features/team-inbox"],
       ["Contacts", "/features#contact-management"],
       ["Broadcasts", "/features/broadcasts"],
@@ -16,17 +17,19 @@ const footerGroups = [
   {
     heading: "Company",
     links: [
-      ["About", "/about"],
+      ["About Us", "/about"],
       ["Pricing", "/pricing"],
       ["FAQ", "/features#faq"],
-      ["Contact", "/contact"],
+      ["Contact Us", "/contact"],
     ],
   },
   {
     heading: "Resources",
     links: [
       ["WhatsApp CRM", "/"],
+      ["WhatsApp Flows", "/features/flows"],
       ["WhatsApp Automation", "/features/automation"],
+      ["Meta Template Approval", "/features/flows#meta-template-submission"],
       ["AI CRM Automation", "/features/automation"],
       ["Sales CRM", "/features#sales-pipeline"],
       ["WhatsApp Broadcast CRM", "/features/broadcasts"],
@@ -45,7 +48,7 @@ const footerGroups = [
       ["Privacy Policy", "/privacy-policy"],
       ["Terms of Service", "/terms-and-conditions"],
       ["Refund Policy", "/refund-policy"],
-      ["Security", "/features#permissions"],
+      ["Security", "/security"],
     ],
   },
 ] as const;

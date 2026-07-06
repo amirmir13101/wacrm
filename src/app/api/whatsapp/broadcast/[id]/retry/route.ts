@@ -20,6 +20,8 @@ import {
   type BroadcastFailureType,
 } from '@/lib/broadcast-retry'
 import type { Broadcast, BroadcastRecipient, Contact, VariableMapping } from '@/types'
+import { requireWorkspacePermission } from '@/lib/team/server'
+import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 
 const RETRY_BATCH_SIZE = 10
 const RETRY_BATCH_DELAY_MS = 1000
@@ -102,16 +104,19 @@ export async function POST(_request: Request, context: RouteContext) {
     const { id: broadcastId } = await context.params
     const supabase = await createClient()
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const workspaceResult = await requireWorkspacePermission('queue_broadcasts')
+    if (!workspaceResult.ok) {
+      return NextResponse.json(
+        { error: workspaceResult.error },
+        { status: workspaceResult.status },
+      )
     }
+    const workspaceId = workspaceResult.workspace.workspaceId
 
-    const limit = checkRateLimit(`broadcast-retry:${user.id}`, RATE_LIMITS.broadcast)
+    const limit = checkRateLimit(
+      `broadcast-retry:${workspaceId}:${workspaceResult.workspace.userId}`,
+      RATE_LIMITS.broadcast,
+    )
     if (!limit.success) {
       return rateLimitResponse(limit)
     }
@@ -120,7 +125,7 @@ export async function POST(_request: Request, context: RouteContext) {
       .from('broadcasts')
       .select('*')
       .eq('id', broadcastId)
-      .eq('user_id', user.id)
+      .eq('workspace_id', workspaceId)
       .single()
 
     if (broadcastError || !broadcast) {
@@ -139,7 +144,7 @@ export async function POST(_request: Request, context: RouteContext) {
     const { data: approvedTemplate, error: templateError } = await supabase
       .from('message_templates')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('workspace_id', workspaceId)
       .eq('name', typedBroadcast.template_name)
       .eq('language', language)
       .eq('status', 'Approved')
@@ -159,11 +164,14 @@ export async function POST(_request: Request, context: RouteContext) {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('user_id', user.id)
-      .single()
+    const { config, error: configError } = await findWorkspaceWhatsAppConfig<{
+      phone_number_id: string
+      access_token: string
+      status: string
+    }>({
+      workspaceId,
+      columns: 'phone_number_id, access_token, status',
+    })
 
     if (configError || !config || config.status !== 'connected') {
       return NextResponse.json(
@@ -283,7 +291,7 @@ export async function POST(_request: Request, context: RouteContext) {
           status: remainingFailed && remainingFailed > 0 ? 'failed' : 'sent',
         })
         .eq('id', broadcastId)
-        .eq('user_id', user.id)
+        .eq('workspace_id', workspaceId)
     }
 
     return NextResponse.json({

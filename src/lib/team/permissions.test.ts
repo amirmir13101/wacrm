@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  canDelegatePermissions,
+  canManageWorkspaceRole,
   canAccessDashboardPath,
   effectivePermissions,
   hasWorkspacePermission,
@@ -54,5 +56,33 @@ describe('workspace permissions', () => {
     expect(hasWorkspacePermission({ role: 'agent' }, 'view_pricing')).toBe(true)
     expect(hasWorkspacePermission({ role: 'agent' }, 'use_cost_calculator')).toBe(true)
     expect(hasWorkspacePermission({ role: 'agent' }, 'manage_pricing_rates')).toBe(false)
+    expect(canAccessDashboardPath({ role: 'agent' }, '/whatsapp-api-pricing')).toBe(true)
+    expect(canAccessDashboardPath({ role: 'agent', permissions: { view_pricing: false, use_cost_calculator: false } }, '/whatsapp-api-pricing')).toBe(false)
+  })
+
+  it('allows logged-in workspace members to view billing', () => {
+    expect(canAccessDashboardPath({ role: 'agent' }, '/billing')).toBe(true)
+    expect(canAccessDashboardPath({ role: 'agent', permissions: { view_dashboard: false } }, '/billing')).toBe(true)
+  })
+
+  it('prevents managers from granting admin or manager roles', () => {
+    expect(canManageWorkspaceRole('manager', 'admin')).toBe(false)
+    expect(canManageWorkspaceRole('manager', 'manager')).toBe(false)
+    expect(canManageWorkspaceRole('manager', 'agent')).toBe(true)
+  })
+
+  it('lets owners manage lower workspace roles and admins manage lower roles only', () => {
+    expect(canManageWorkspaceRole('owner', 'admin')).toBe(true)
+    expect(canManageWorkspaceRole('owner', 'owner')).toBe(false)
+    expect(canManageWorkspaceRole('admin', 'manager')).toBe(true)
+    expect(canManageWorkspaceRole('admin', 'admin')).toBe(false)
+  })
+
+  it('only delegates known permissions already held by the actor', () => {
+    const manager = { role: 'manager' as const }
+    expect(canDelegatePermissions(manager, { view_inbox: true })).toBe(true)
+    expect(canDelegatePermissions(manager, { manage_whatsapp_config: true })).toBe(false)
+    expect(canDelegatePermissions(manager, { unknown_permission: true })).toBe(false)
+    expect(canDelegatePermissions(manager, { view_inbox: 'yes' })).toBe(false)
   })
 })

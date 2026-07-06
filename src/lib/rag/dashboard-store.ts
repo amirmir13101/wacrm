@@ -123,6 +123,10 @@ interface RagImportHistoryRow {
   readonly pages_failed: number
   readonly duplicate_pages: number
   readonly credits_used: number | null
+  readonly rag_website_import_jobs?: {
+    readonly credits_used?: number | null
+    readonly stats?: unknown
+  } | null
   readonly change_summary: string | null
   readonly error_message: string | null
   readonly created_at: string
@@ -193,7 +197,7 @@ function toChatbotSettings(row: RagChatbotSettingsRow | null): RagChatbotSetting
     tone: toTone(row?.tone),
     handoverEnabled: row?.handover_enabled !== false,
     fallbackMessage:
-      row?.fallback_message || 'I do not see that information in the current knowledge base.',
+      row?.fallback_message || "I don't have that exact detail right now. Would you like me to connect you with a team member?",
     handoverMessage: row?.handover_message || 'I can connect you with a team member if you want.',
   }
 }
@@ -260,11 +264,36 @@ function toHistoryItem(row: RagImportHistoryRow): RagImportHistoryItem {
     pagesSkipped: row.pages_skipped,
     pagesFailed: row.pages_failed,
     duplicatePages: row.duplicate_pages,
-    creditsUsed: row.credits_used,
+    creditsUsed: readHistoryCreditsUsed(row),
     changeSummary: row.change_summary,
     errorMessage: row.error_message,
     createdAt: row.created_at,
   }
+}
+
+function readNumberField(source: unknown, names: ReadonlyArray<string>): number | null {
+  if (typeof source !== 'object' || source === null) return null
+  const record = source as Record<string, unknown>
+  for (const name of names) {
+    const value = record[name]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) return Number(value)
+  }
+  return null
+}
+
+function readHistoryCreditsUsed(row: RagImportHistoryRow): number | null {
+  if (typeof row.credits_used === 'number') return row.credits_used
+  const linkedJob = row.rag_website_import_jobs
+  if (typeof linkedJob?.credits_used === 'number') return linkedJob.credits_used
+  return readNumberField(linkedJob?.stats, [
+    'creditsUsed',
+    'credits_used',
+    'firecrawlCreditsUsed',
+    'firecrawl_credits_used',
+    'usedCredits',
+    'used_credits',
+  ])
 }
 
 function toSchedule(row: RagScrapeScheduleRow): RagScrapeScheduleView {
@@ -325,7 +354,7 @@ export async function saveRagChatbotSettings(args: {
         enabled: args.enabled,
         tone: args.tone,
         handover_enabled: args.handoverEnabled,
-        fallback_message: args.fallbackMessage.trim() || 'I do not see that information in the current knowledge base.',
+        fallback_message: args.fallbackMessage.trim() || "I don't have that exact detail right now. Would you like me to connect you with a team member?",
         handover_message: args.handoverMessage.trim() || 'I can connect you with a team member if you want.',
       },
       { onConflict: 'workspace_id' },
@@ -359,6 +388,7 @@ export async function createRagWebsiteImportJob(args: {
       saved_characters: stats.savedCharacters,
       capped: stats.capped,
       crawl_provider: 'firecrawl',
+      credits_used: stats.creditsUsed ?? null,
       draft_title: args.draft.title,
       draft_content: args.draft.content,
       quality_warnings: stats.warnings,
@@ -404,6 +434,7 @@ export async function createRagWebsiteImportJob(args: {
     pages_skipped: stats.pagesSkipped,
     pages_failed: stats.pagesFailed,
     duplicate_pages: stats.duplicatePages,
+    credits_used: stats.creditsUsed ?? null,
     change_summary: args.draft.message,
   })
 
@@ -438,6 +469,27 @@ export async function getRagWebsiteImportJob(args: {
     job: toImportJob(jobResult.data as RagWebsiteImportJobRow),
     pages: ((pagesResult.data ?? []) as RagWebsiteImportPageRow[]).map(toImportPage),
   }
+}
+
+export async function getLatestPendingRagWebsiteImportJob(
+  workspaceId: string,
+): Promise<{
+  readonly job: RagWebsiteImportJobView
+  readonly pages: ReadonlyArray<RagWebsiteImportPageView>
+} | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('rag_website_import_jobs')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'draft_ready')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(error.message)
+  const jobId = typeof data?.id === 'string' ? data.id : null
+  if (!jobId) return null
+  return getRagWebsiteImportJob({ workspaceId, jobId })
 }
 
 export async function publishRagWebsiteImportJob(args: {
@@ -547,7 +599,7 @@ export async function updateRagWebsiteImportDraft(args: {
 export async function listRagImportHistory(workspaceId: string): Promise<ReadonlyArray<RagImportHistoryItem>> {
   const { data, error } = await supabaseAdmin()
     .from('rag_import_history')
-    .select('id, url, trigger_type, status, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, credits_used, change_summary, error_message, created_at')
+    .select('id, url, trigger_type, status, pages_found, pages_imported, pages_skipped, pages_failed, duplicate_pages, credits_used, change_summary, error_message, created_at, rag_website_import_jobs(credits_used, stats)')
     .eq('workspace_id', workspaceId)
     .order('created_at', { ascending: false })
     .limit(25)

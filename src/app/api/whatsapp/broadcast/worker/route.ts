@@ -12,6 +12,7 @@ import {
   shouldFinalizeBroadcast,
 } from '@/lib/broadcast-queue'
 import type { Broadcast, BroadcastRecipient, Contact } from '@/types'
+import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -119,6 +120,24 @@ async function releaseRecipientToPending(admin: AdminClient, recipientId: string
     .from('broadcast_recipients')
     .update({ status: 'pending', locked_at: null, locked_by: null })
     .eq('id', recipientId)
+}
+
+async function markRecipientFailed(
+  admin: AdminClient,
+  recipient: Pick<BroadcastRecipient, 'id'>,
+  message: string,
+) {
+  await admin
+    .from('broadcast_recipients')
+    .update({
+      status: 'failed',
+      error_message: message,
+      last_error_message: message,
+      failure_type: 'permanent',
+      locked_at: null,
+      locked_by: null,
+    })
+    .eq('id', recipient.id)
 }
 
 async function cancelUnsentRecipients(admin: AdminClient, broadcastId: string): Promise<number> {
@@ -259,13 +278,19 @@ async function processQueue(request: Request) {
     rows.map((row) => row.contact?.id).filter((id): id is string => Boolean(id)),
   )
 
-  const configByUser = new Map<string, { phone_number_id: string; access_token: string; status: string }>()
+  const configByWorkspace = new Map<string, { phone_number_id: string; access_token: string; status: string }>()
   const approvedTemplateCache = new Map<string, boolean>()
   const touchedBroadcasts = new Set<string>()
 
   for (const row of rows) {
     touchedBroadcasts.add(row.broadcast_id)
     processed++
+    const workspaceId = row.broadcast.workspace_id
+    if (!workspaceId) {
+      await markRecipientFailed(admin, row, 'Broadcast workspace is missing.')
+      failed++
+      continue
+    }
 
     const freshBroadcast = await fetchFreshBroadcast(admin, row.broadcast_id)
     const currentStatus = freshBroadcast?.status ?? row.broadcast.status
@@ -304,12 +329,12 @@ async function processQueue(request: Request) {
       continue
     }
 
-    const templateKey = `${row.broadcast.user_id}:${row.broadcast.template_name}:${row.broadcast.template_language}`
+    const templateKey = `${workspaceId}:${row.broadcast.template_name}:${row.broadcast.template_language}`
     if (!approvedTemplateCache.has(templateKey)) {
       const { data: approved } = await admin
         .from('message_templates')
         .select('id')
-        .eq('user_id', row.broadcast.user_id)
+        .eq('workspace_id', workspaceId)
         .eq('name', row.broadcast.template_name)
         .eq('language', row.broadcast.template_language || 'en_US')
         .eq('status', 'Approved')
@@ -333,16 +358,19 @@ async function processQueue(request: Request) {
       continue
     }
 
-    let config = configByUser.get(row.broadcast.user_id)
+    let config = configByWorkspace.get(workspaceId)
     if (!config) {
-      const { data } = await admin
-        .from('whatsapp_config')
-        .select('phone_number_id, access_token, status')
-        .eq('user_id', row.broadcast.user_id)
-        .single()
-      if (data) {
-        config = data
-        configByUser.set(row.broadcast.user_id, data)
+      const { config: workspaceConfig } = await findWorkspaceWhatsAppConfig<{
+        phone_number_id: string
+        access_token: string
+        status: string
+      }>({
+        workspaceId,
+        columns: 'phone_number_id, access_token, status',
+      })
+      if (workspaceConfig) {
+        config = workspaceConfig
+        configByWorkspace.set(workspaceId, workspaceConfig)
       }
     }
 

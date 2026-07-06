@@ -24,6 +24,13 @@ export async function POST(
       embeddingsReady: summary.embeddingsReady,
       embeddingErrorCategory: summary.embeddingErrorCategory,
       userMessage: summary.userMessage,
+      totalChunks: summary.totalChunks,
+      readyChunks: summary.readyChunks,
+      processedThisBatch: summary.processedThisBatch,
+      remainingChunks: summary.remainingChunks,
+      percentComplete: summary.percentComplete,
+      batchChunkCount: summary.batchChunkCount,
+      batchTotalCharacters: summary.batchTotalCharacters,
     })
   } catch (error) {
     return NextResponse.json({ error: safeErrorMessage(error) }, { status: 400 })

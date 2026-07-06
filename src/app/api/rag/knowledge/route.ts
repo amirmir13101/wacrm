@@ -5,7 +5,8 @@ import {
   listRagKnowledgeSources,
 } from '@/lib/rag/knowledge-store'
 import {
-  createSkippedRagEmbeddingSummary,
+  embedRagManualKnowledgeSource,
+  recordFailedRagEmbeddingSummary,
 } from '@/lib/rag/embedding-store'
 import { RAG_KNOWLEDGE_CHARACTER_LIMIT } from '@/lib/rag/knowledge'
 import { requireRagPermission, safeErrorMessage } from '../_helpers'
@@ -47,12 +48,33 @@ export async function POST(request: Request) {
       content,
       sourceType,
     })
-    const embeddingSummary = createSkippedRagEmbeddingSummary(source.chunkCount)
+    let embeddingSummary
+    let embeddingWarning = false
+    try {
+      embeddingSummary = await embedRagManualKnowledgeSource({
+        workspaceId: auth.workspace.workspaceId,
+        sourceId: source.id,
+      })
+    } catch (embeddingError) {
+      embeddingWarning = true
+      embeddingSummary = await recordFailedRagEmbeddingSummary({
+        workspaceId: auth.workspace.workspaceId,
+        sourceId: source.id,
+        error: embeddingError,
+      })
+      console.warn('rag_manual_knowledge_embedding_after_save_failed', {
+        category: embeddingSummary.embeddingErrorCategory,
+        chunksProcessed: embeddingSummary.chunksProcessed,
+        sourceId: source.id,
+        workspaceId: auth.workspace.workspaceId,
+      })
+    }
 
     return NextResponse.json({
       source,
       embeddingSummary,
       saved: true,
+      embeddingWarning,
       chunksCreated: source.chunkCount > 0,
       embeddingsReady: embeddingSummary.embeddingsReady,
       embeddingErrorCategory: embeddingSummary.embeddingErrorCategory,

@@ -192,7 +192,7 @@ export function buildBroadcastPreflightSummary(args: {
     category,
   })
 
-  const templateApproved = args.template.status === 'Approved'
+  const templateApproved = args.template.status === 'Approved' || args.template.status === 'APPROVED'
   const blockers: string[] = []
   if (!args.whatsappConnected) blockers.push('WhatsApp is not connected. Please configure WhatsApp in Settings.')
   if (!templateApproved) blockers.push('Template is not approved. Please sync/select an approved Meta template.')

@@ -5,44 +5,46 @@ import type {
   RagProviderType,
   RagResolvedProviderConfig,
 } from './types'
+import { AI_PROVIDER_DEFAULTS } from './provider-config'
+import { getSiteUrl } from '@/lib/site-url'
 
 export const DEFAULT_RAG_PROVIDER_CONFIG = {
   openai: {
-    baseUrl: 'https://api.openai.com/v1',
-    chatModel: 'gpt-4o-mini',
-    embeddingModel: 'text-embedding-3-small',
-    embeddingDimensions: 1536,
+    baseUrl: AI_PROVIDER_DEFAULTS.openai.baseUrl,
+    chatModel: AI_PROVIDER_DEFAULTS.openai.chatModel,
+    embeddingModel: AI_PROVIDER_DEFAULTS.openai.embeddingModel,
+    embeddingDimensions: AI_PROVIDER_DEFAULTS.openai.embeddingDimensions,
   },
   openrouter: {
-    baseUrl: 'https://openrouter.ai/api/v1',
-    chatModel: 'openai/gpt-4o-mini',
-    embeddingModel: 'openai/text-embedding-3-small',
-    embeddingDimensions: 1536,
+    baseUrl: AI_PROVIDER_DEFAULTS.openrouter.baseUrl,
+    chatModel: AI_PROVIDER_DEFAULTS.openrouter.chatModel,
+    embeddingModel: AI_PROVIDER_DEFAULTS.openrouter.embeddingModel,
+    embeddingDimensions: AI_PROVIDER_DEFAULTS.openrouter.embeddingDimensions,
   },
   groq: {
-    baseUrl: 'https://api.groq.com/openai/v1',
-    chatModel: 'llama-3.1-8b-instant',
-    embeddingModel: 'text-embedding-3-small',
-    embeddingDimensions: 1536,
+    baseUrl: AI_PROVIDER_DEFAULTS.groq.baseUrl,
+    chatModel: AI_PROVIDER_DEFAULTS.groq.chatModel,
+    embeddingModel: AI_PROVIDER_DEFAULTS.groq.embeddingModel,
+    embeddingDimensions: AI_PROVIDER_DEFAULTS.groq.embeddingDimensions,
   },
   ollama: {
-    baseUrl: process.env.RAG_OLLAMA_BASE_URL ?? 'http://127.0.0.1:11434/v1',
-    chatModel: process.env.RAG_OLLAMA_CHAT_MODEL ?? 'llama3.1',
-    embeddingModel: process.env.RAG_OLLAMA_EMBEDDING_MODEL ?? 'nomic-embed-text',
-    embeddingDimensions: Number(process.env.RAG_OLLAMA_EMBEDDING_DIMENSIONS ?? 1536),
+    baseUrl: process.env.RAG_OLLAMA_BASE_URL ?? AI_PROVIDER_DEFAULTS.ollama.baseUrl,
+    chatModel: process.env.RAG_OLLAMA_CHAT_MODEL ?? AI_PROVIDER_DEFAULTS.ollama.chatModel,
+    embeddingModel: process.env.RAG_OLLAMA_EMBEDDING_MODEL ?? AI_PROVIDER_DEFAULTS.ollama.embeddingModel,
+    embeddingDimensions: Number(process.env.RAG_OLLAMA_EMBEDDING_DIMENSIONS ?? AI_PROVIDER_DEFAULTS.ollama.embeddingDimensions),
   },
   custom_openai_compatible: {
-    baseUrl: process.env.RAG_CUSTOM_OPENAI_BASE_URL ?? '',
-    chatModel: process.env.RAG_CUSTOM_OPENAI_CHAT_MODEL ?? 'gpt-4o-mini',
+    baseUrl: process.env.RAG_CUSTOM_OPENAI_BASE_URL ?? AI_PROVIDER_DEFAULTS.custom_openai_compatible.baseUrl,
+    chatModel: process.env.RAG_CUSTOM_OPENAI_CHAT_MODEL ?? AI_PROVIDER_DEFAULTS.custom_openai_compatible.chatModel,
     embeddingModel:
-      process.env.RAG_CUSTOM_OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
-    embeddingDimensions: Number(process.env.RAG_CUSTOM_OPENAI_EMBEDDING_DIMENSIONS ?? 1536),
+      process.env.RAG_CUSTOM_OPENAI_EMBEDDING_MODEL ?? AI_PROVIDER_DEFAULTS.custom_openai_compatible.embeddingModel,
+    embeddingDimensions: Number(process.env.RAG_CUSTOM_OPENAI_EMBEDDING_DIMENSIONS ?? AI_PROVIDER_DEFAULTS.custom_openai_compatible.embeddingDimensions),
   },
   gemini: {
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    chatModel: 'gemini-2.0-flash',
-    embeddingModel: 'text-embedding-3-small',
-    embeddingDimensions: 1536,
+    baseUrl: AI_PROVIDER_DEFAULTS.gemini.baseUrl,
+    chatModel: AI_PROVIDER_DEFAULTS.gemini.chatModel,
+    embeddingModel: AI_PROVIDER_DEFAULTS.gemini.embeddingModel,
+    embeddingDimensions: AI_PROVIDER_DEFAULTS.gemini.embeddingDimensions,
   },
 } as const satisfies Record<
   RagProviderType,
@@ -53,7 +55,6 @@ export const DEFAULT_RAG_PROVIDER_CONFIG = {
     readonly embeddingDimensions: number
   }
 >
-
 export function resolveRagProviderConfig(
   input: CustomerFacingRagProviderInput,
 ): RagResolvedProviderConfig {
@@ -68,11 +69,14 @@ export function resolveRagProviderConfig(
     ? Number(input.embeddingDimensions)
     : defaults.embeddingDimensions
 
-  if (input.provider === 'ollama' && !process.env.RAG_OLLAMA_BASE_URL) {
-    throw new Error('Ollama is not configured on the server.')
-  }
   if (input.provider === 'custom_openai_compatible' && !baseUrl) {
     throw new Error('Custom provider is not configured on the server.')
+  }
+  if (!chatModel) {
+    throw new Error('Chat model is required.')
+  }
+  if (!embeddingModel) {
+    throw new Error('Embedding model is not configured. Please select an embedding model.')
   }
 
   return {
@@ -85,7 +89,7 @@ export function resolveRagProviderConfig(
     headers:
       input.provider === 'openrouter'
         ? {
-            'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL ?? 'https://vpscoaster.live',
+            'HTTP-Referer': getSiteUrl(),
             'X-OpenRouter-Title': 'Talk Wagon RAG Chatbot',
           }
         : undefined,

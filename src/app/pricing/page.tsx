@@ -90,7 +90,7 @@ const plans = [
       "Your trial includes 1,000 broadcast messages from the CRM side. WhatsApp/Meta API charges may still apply separately depending on your own official API account.",
     features: [
       "14-day free trial",
-      "1,000 trial broadcast messages",
+      "1,000 broadcast messages included during trial",
       "Access all CRM features during trial",
       "Use your official WhatsApp API key",
       "WhatsApp team inbox",
@@ -107,19 +107,16 @@ const plans = [
     price: "$1",
     regularPrice: "$5",
     offerLabel: "Limited-time offer",
-    billing: "Unlimited CRM usage",
+    billing: "Monthly Pro plan",
     description:
-      "For growing teams that want all Talk Wagon CRM features, unlimited CRM usage, team workflows, broadcasts, automations, and pipeline tools.",
+      "For growing teams that want all Talk Wagon CRM features, team workflows, broadcasts, automations, and pipeline tools with a clear monthly broadcast allowance.",
     cta: "Upgrade to Pro",
     href: "/checkout/pro",
-    yearlyCta: "Choose Yearly",
-    yearlyHref: "/checkout/pro-yearly",
-    yearlyPrice: "$12/year",
     note:
-      "Choose monthly or yearly manual Pro activation. Use your own official WhatsApp API key; WhatsApp/Meta charges are separate.",
+      "Choose monthly manual Pro activation. Use your own official WhatsApp API key; WhatsApp/Meta charges are separate.",
     featured: true,
     features: [
-      "Unlimited messages inside Talk Wagon CRM",
+      "250,000 broadcast messages per month",
       "All CRM features included",
       "WhatsApp team inbox",
       "Contact import and management",
@@ -178,12 +175,12 @@ const faqs = [
   {
     question: "Does the 14-day free trial include WhatsApp API charges?",
     answer:
-      "The free trial gives you Talk Wagon CRM access for 14 days and includes 1,000 trial broadcast messages from the CRM side. WhatsApp/Meta or provider charges may apply separately depending on your account.",
+      "The free trial gives you Talk Wagon CRM access for 14 days and includes 1,000 broadcast messages from the CRM side during the trial. WhatsApp/Meta or provider charges may apply separately depending on your account.",
   },
   {
-    question: "What does unlimited messages mean in Pro?",
+    question: "What broadcast limit is included in Pro?",
     answer:
-      "Pro gives you unlimited CRM usage inside Talk Wagon. It does not remove any separate WhatsApp/Meta API or conversation charges from your official provider.",
+      "Pro includes 250,000 broadcast messages per month from the CRM side. It does not remove any separate WhatsApp/Meta API or conversation charges from your official provider.",
   },
   {
     question: "Can I use my own WhatsApp API key?",
@@ -381,14 +378,6 @@ export default function PricingPage() {
                 >
                   {plan.cta}
                 </Link>
-                {plan.name === "Pro" && "yearlyHref" in plan ? (
-                  <Link
-                    href={plan.yearlyHref}
-                    className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-full border border-[#3ddf84]/70 text-sm font-bold text-white transition-colors hover:bg-[#ffbd29] hover:text-[#07130e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                  >
-                    {plan.yearlyCta} - {plan.yearlyPrice}
-                  </Link>
-                ) : null}
                 <p className={`mt-5 text-xs leading-6 ${plan.featured ? "text-[#b8cfc7]" : "text-[#5b7169]"}`}>
                   {plan.note}
                 </p>

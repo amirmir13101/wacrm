@@ -30,6 +30,7 @@ const TAWK_PUBLIC_PATHS = new Set([
   '/privacy-policy',
   '/terms-and-conditions',
   '/refund-policy',
+  '/security',
 ]);
 
 export function TawkToWidget() {

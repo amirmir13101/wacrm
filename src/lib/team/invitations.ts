@@ -234,6 +234,7 @@ export async function acceptInvitation(args: {
     .update({
       approval_status: 'approved',
       approved_at: new Date().toISOString(),
+      account_type: 'team_member',
     })
     .eq('user_id', args.userId)
     .neq('approval_status', 'approved')
@@ -278,7 +279,10 @@ export async function acceptInvitation(args: {
 
   await admin
     .from('profiles')
-    .update({ active_workspace_id: invitation.workspace_id })
+    .update({
+      account_type: 'team_member',
+      active_workspace_id: invitation.workspace_id,
+    })
     .eq('user_id', args.userId)
 
   return { ok: true, workspaceId: invitation.workspace_id }

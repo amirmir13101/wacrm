@@ -84,7 +84,7 @@ export function TemplatePicker({
         .from("message_templates")
         .select("*")
         .eq("user_id", user.id)
-        .eq("status", "Approved")
+        .in("status", ["Approved", "APPROVED"])
         .order("created_at", { ascending: false });
 
       if (cancelled) return;

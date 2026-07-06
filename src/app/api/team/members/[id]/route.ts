@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { canManageTeamWithPermissions, defaultPermissionsForRole } from '@/lib/team/permissions'
+import {
+  canDelegatePermissions,
+  canManageTeamWithPermissions,
+  canManageWorkspaceRole,
+  defaultPermissionsForRole,
+  hasWorkspacePermission,
+} from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 
 export async function PATCH(
@@ -24,6 +30,22 @@ export async function PATCH(
 
   const { id } = await params
   const body = await request.json().catch(() => ({}))
+  const actor = {
+    role: workspaceResult.workspace.role,
+    permissions: workspaceResult.workspace.permissions,
+    can_connect_own_whatsapp: workspaceResult.workspace.canConnectOwnWhatsApp,
+  }
+  const { data: existing } = await supabaseAdmin()
+    .from('workspace_members')
+    .select('role, user_id')
+    .eq('id', id)
+    .eq('workspace_id', workspaceResult.workspace.workspaceId)
+    .maybeSingle()
+
+  if (!existing) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+  if (!canManageWorkspaceRole(actor.role, existing.role)) {
+    return NextResponse.json({ error: 'You cannot manage this member' }, { status: 403 })
+  }
   const update: Record<string, unknown> = {}
 
   if (typeof body.role === 'string') {
@@ -32,6 +54,9 @@ export async function PATCH(
     }
     if (body.role === 'owner') {
       return NextResponse.json({ error: 'Owner role cannot be assigned here' }, { status: 400 })
+    }
+    if (!canManageWorkspaceRole(actor.role, body.role)) {
+      return NextResponse.json({ error: 'You cannot assign this role' }, { status: 403 })
     }
     update.role = body.role
     if (!body.permissions) update.permissions = defaultPermissionsForRole(body.role)
@@ -45,10 +70,26 @@ export async function PATCH(
   }
 
   if (body.permissions && typeof body.permissions === 'object') {
+    if (!canDelegatePermissions(actor, body.permissions)) {
+      return NextResponse.json(
+        { error: 'You cannot grant permissions that you do not have' },
+        { status: 403 },
+      )
+    }
     update.permissions = body.permissions
   }
 
   if (typeof body.can_connect_own_whatsapp === 'boolean') {
+    if (
+      body.can_connect_own_whatsapp &&
+      !hasWorkspacePermission(actor, 'connect_own_whatsapp_config') &&
+      actor.role !== 'owner'
+    ) {
+      return NextResponse.json(
+        { error: 'You cannot grant personal WhatsApp connection access' },
+        { status: 403 },
+      )
+    }
     update.can_connect_own_whatsapp = body.can_connect_own_whatsapp
   }
 
@@ -58,18 +99,6 @@ export async function PATCH(
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
-  }
-
-  const { data: existing } = await supabaseAdmin()
-    .from('workspace_members')
-    .select('role, user_id')
-    .eq('id', id)
-    .eq('workspace_id', workspaceResult.workspace.workspaceId)
-    .maybeSingle()
-
-  if (!existing) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
-  if (existing.role === 'owner') {
-    return NextResponse.json({ error: 'Workspace owner cannot be changed here' }, { status: 400 })
   }
 
   const { error } = await supabaseAdmin()
@@ -113,6 +142,9 @@ export async function DELETE(
   if (!existing) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
   if (existing.role === 'owner') {
     return NextResponse.json({ error: 'Workspace owner cannot be deleted here' }, { status: 400 })
+  }
+  if (!canManageWorkspaceRole(workspaceResult.workspace.role, existing.role)) {
+    return NextResponse.json({ error: 'You cannot delete this member' }, { status: 403 })
   }
   if (existing.user_id === workspaceResult.workspace.userId) {
     return NextResponse.json({ error: 'You cannot delete your own account from Team' }, { status: 400 })

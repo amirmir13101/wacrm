@@ -41,11 +41,13 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.74",
     "@base-ui/react": "^1.4.1",
+    "@dagrejs/dagre": "^3.0.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.0",
+    "@xyflow/react": "^12.11.1",
     "ai": "^6.0.209",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
@@ -82,6 +84,6 @@
     "postcss": "^8.5.10",
     "ip-address": "^10.1.1",
     "fast-uri": "^3.1.2",
-    "hono": "^4.12.18"
+    "hono": "^4.12.28"
   }
 }

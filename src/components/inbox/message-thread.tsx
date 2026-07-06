@@ -21,6 +21,9 @@ import {
   Check,
   Clock,
   ArrowLeft,
+  Bot,
+  PauseCircle,
+  XCircle,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +53,13 @@ interface AssignmentHistoryRow {
   assigned_by_user_id: string | null;
   reason: string | null;
   created_at: string;
+}
+
+interface RagConversationControlView {
+  readonly humanRequestStatus: "none" | "requested" | "accepted" | "rejected";
+  readonly waitingForHumanConfirmation: boolean;
+  readonly aiPaused: boolean;
+  readonly lastReason: string | null;
 }
 
 function renderTemplateBody(body: string, params: string[]): string {
@@ -110,6 +120,88 @@ const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string 
   { label: "Closed", value: "closed", color: "text-slate-400" },
 ];
 
+function RagConversationControlBanner({
+  control,
+  saving,
+  onAction,
+}: {
+  readonly control: RagConversationControlView | null;
+  readonly saving: boolean;
+  readonly onAction: (action: "accept_human" | "reject_human" | "ai_active" | "ai_pause") => void;
+}) {
+  const requested = control?.humanRequestStatus === "requested";
+  const accepted = control?.humanRequestStatus === "accepted" || control?.aiPaused === true;
+
+  if (!requested && !accepted) {
+    return (
+      <div className="flex items-center justify-end border-b border-slate-800 bg-slate-900/70 px-4 py-2">
+        <button
+          type="button"
+          onClick={() => onAction("ai_pause")}
+          disabled={saving}
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-700 px-2 text-[11px] font-medium text-slate-300 transition hover:border-amber-400/60 hover:bg-amber-400/10 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <PauseCircle className="h-3 w-3" />
+          AI Pause
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-b border-amber-400/30 bg-amber-400/10 px-4 py-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-sm font-semibold text-amber-100">
+            {accepted ? <Bot className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
+            {accepted ? "Human handoff accepted" : "Human support requested"}
+          </p>
+          <p className="mt-1 text-xs text-amber-100/75">
+            {accepted
+              ? "AI replies are paused for this conversation until you click AI Active."
+              : "AI will keep answering safely until a workspace user clicks Accept Human."}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {requested && (
+            <>
+              <button
+                type="button"
+                onClick={() => onAction("accept_human")}
+                disabled={saving}
+                className="inline-flex h-8 items-center gap-1 rounded-lg bg-emerald-400 px-3 text-xs font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Check className="h-3.5 w-3.5" />
+                Accept Human
+              </button>
+              <button
+                type="button"
+                onClick={() => onAction("reject_human")}
+                disabled={saving}
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-amber-300/50 px-3 text-xs font-bold text-amber-100 transition hover:bg-amber-300/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                Reject Human
+              </button>
+            </>
+          )}
+          {accepted && (
+            <button
+              type="button"
+              onClick={() => onAction("ai_active")}
+              disabled={saving}
+              className="inline-flex h-8 items-center gap-1 rounded-lg bg-emerald-400 px-3 text-xs font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Bot className="h-3.5 w-3.5" />
+              AI Active
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MessageThread({
   conversation,
   contact,
@@ -130,6 +222,8 @@ export function MessageThread({
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistoryRow[]>([]);
+  const [ragControl, setRagControl] = useState<RagConversationControlView | null>(null);
+  const [ragControlSaving, setRagControlSaving] = useState(false);
   const conversationId = conversation?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
 
@@ -241,6 +335,29 @@ export function MessageThread({
       .limit(3)
       .then(({ data }) => {
         if (!cancelled) setAssignmentHistory((data as AssignmentHistoryRow[]) ?? []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) {
+      setRagControl(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/rag/conversation-controls/${conversationId}`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? "Failed to load AI controls");
+        return payload.control as RagConversationControlView | null;
+      })
+      .then((control) => {
+        if (!cancelled) setRagControl(control);
+      })
+      .catch(() => {
+        if (!cancelled) setRagControl(null);
       });
     return () => {
       cancelled = true;
@@ -444,6 +561,32 @@ export function MessageThread({
       onStatusChange(conversation.id, status);
     },
     [conversation, onStatusChange]
+  );
+
+  const handleRagControlAction = useCallback(
+    async (action: "accept_human" | "reject_human" | "ai_active" | "ai_pause") => {
+      if (!conversation) return;
+      setRagControlSaving(true);
+      try {
+        const response = await fetch(`/api/rag/conversation-controls/${conversation.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? "Failed to update AI control");
+        setRagControl(payload.control ?? null);
+        if (action === "accept_human") toast.success("Human handoff accepted. AI is paused.");
+        if (action === "reject_human") toast.success("Human request rejected. AI remains active.");
+        if (action === "ai_active") toast.success("AI chatbot reactivated.");
+        if (action === "ai_pause") toast.success("AI chatbot paused for this conversation.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to update AI control");
+      } finally {
+        setRagControlSaving(false);
+      }
+    },
+    [conversation],
   );
 
   const handleOpenTemplates = useCallback(() => {
@@ -673,6 +816,7 @@ export function MessageThread({
   const canAssignConversation = workspace.has("assign_conversations");
   const canCloseConversation = workspace.has("close_conversations");
   const canReply = workspace.has("reply_to_conversations");
+  const canManageRagControl = canReply || canCloseConversation;
   const activeMembers = members.filter((member) => member.status === "active");
   const currentAssignee = activeMembers.find((p) => p.user_id === assignedAgentId);
   const assignLabel = assignedAgentId
@@ -680,7 +824,7 @@ export function MessageThread({
     : "Assign";
 
   return (
-    <div className="flex flex-1 flex-col bg-slate-950">
+    <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-slate-950">
       {/* Header */}
       <div className="flex items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-3 py-3 sm:px-4">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
@@ -800,6 +944,14 @@ export function MessageThread({
         </div>
       </div>
 
+      {canManageRagControl && (
+        <RagConversationControlBanner
+          control={ragControl}
+          saving={ragControlSaving}
+          onAction={handleRagControlAction}
+        />
+      )}
+
       {assignmentHistory.length > 0 && (
         <div className="border-b border-slate-800 bg-slate-900/70 px-4 py-2 text-[11px] text-slate-400">
           Last assignment: {format(new Date(assignmentHistory[0].created_at), "MMM d, h:mm a")}
@@ -808,7 +960,10 @@ export function MessageThread({
       )}
 
       {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={scrollRef}
+        className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4"
+      >
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
@@ -821,7 +976,7 @@ export function MessageThread({
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             {messageGroups.map((group) => (
               <div key={group.date}>
                 {/* Date separator */}
@@ -831,7 +986,7 @@ export function MessageThread({
                   </span>
                 </div>
                 {/* Messages */}
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   {group.messages.map((msg) => {
                     const parent = msg.reply_to_message_id
                       ? messagesById.get(msg.reply_to_message_id)

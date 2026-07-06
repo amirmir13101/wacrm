@@ -20,6 +20,9 @@ export interface RagKnowledgeListItem {
   readonly readyEmbeddingCount: number
   readonly failedEmbeddingCount: number
   readonly embeddingStatus: 'not_embedded' | 'ready' | 'failed' | 'partial'
+  readonly embeddingMessage: string | null
+  readonly embeddingProvider: string | null
+  readonly embeddingModel: string | null
 }
 
 export interface RagKnowledgeDetail extends RagKnowledgeListItem {
@@ -81,6 +84,45 @@ function normalizeSourceType(sourceType: string): RagKnowledgeListItem['sourceTy
   return 'manual'
 }
 
+function readEmbeddingSummary(metadata: Record<string, unknown> | null | undefined): {
+  readonly status: string | null
+  readonly userMessage: string | null
+  readonly provider: string | null
+  readonly embeddingModel: string | null
+} {
+  const summary = metadata?.embedding_summary
+  if (typeof summary !== 'object' || summary === null) {
+    const status = typeof metadata?.embedding_status === 'string' ? metadata.embedding_status : null
+    return { status, userMessage: null, provider: null, embeddingModel: null }
+  }
+
+  const record = summary as Record<string, unknown>
+  return {
+    status: typeof metadata?.embedding_status === 'string'
+      ? metadata.embedding_status
+      : typeof record.status === 'string'
+        ? record.status
+        : null,
+    userMessage: typeof record.userMessage === 'string'
+      ? record.userMessage
+      : typeof record.message === 'string'
+        ? record.message
+        : null,
+    provider: typeof record.provider === 'string' ? record.provider : null,
+    embeddingModel: typeof record.embeddingModel === 'string' ? record.embeddingModel : null,
+  }
+}
+
+function statusFromEmbeddingMetadata(
+  metadataStatus: string | null,
+): RagKnowledgeListItem['embeddingStatus'] | null {
+  if (metadataStatus === 'ready') return 'ready'
+  if (metadataStatus === 'partial') return 'partial'
+  if (metadataStatus === 'failed' || metadataStatus === 'not_configured') return 'failed'
+  if (metadataStatus === 'skipped') return 'not_embedded'
+  return null
+}
+
 function toListItem(
   row: RagKnowledgeSourceRow,
   chunkCounts: ReadonlyMap<string, number>,
@@ -101,6 +143,12 @@ function toListItem(
         : sourceEmbeddings.ready === 0 && sourceEmbeddings.failed > 0
           ? 'failed'
           : 'partial'
+  const metadataEmbedding = readEmbeddingSummary(row.metadata)
+  const metadataStatus = statusFromEmbeddingMetadata(metadataEmbedding.status)
+  const finalEmbeddingStatus =
+    embeddedCount === 0 && metadataStatus
+      ? metadataStatus
+      : embeddingStatus
 
   return {
     id: row.id,
@@ -114,7 +162,10 @@ function toListItem(
     chunkCount,
     readyEmbeddingCount: sourceEmbeddings.ready,
     failedEmbeddingCount: sourceEmbeddings.failed,
-    embeddingStatus,
+    embeddingStatus: finalEmbeddingStatus,
+    embeddingMessage: metadataEmbedding.userMessage,
+    embeddingProvider: metadataEmbedding.provider,
+    embeddingModel: metadataEmbedding.embeddingModel,
   }
 }
 

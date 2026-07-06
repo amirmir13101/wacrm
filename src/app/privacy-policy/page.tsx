@@ -6,7 +6,7 @@ import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection }
 const canonicalUrl = "https://vpscoaster.live/privacy-policy";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Talk Wagon WhatsApp CRM",
+  title: "Privacy Policy | Talk Wagon CRM",
   description:
     "Read the Talk Wagon privacy policy for customer contact ownership, CRM data processing, WhatsApp opt-in responsibility, workspace security, and service data practices.",
   alternates: {
@@ -32,7 +32,7 @@ export default function PrivacyPolicyPage() {
       <InfoHero
         eyebrow="Privacy Policy"
         title="How Talk Wagon Handles Privacy and CRM Data"
-        description="This policy explains how Talk Wagon processes account, workspace, contact, and conversation information for the WhatsApp CRM features customers choose to use."
+        description="This policy explains how Talk Wagon CRM, a Berankify LTD project, processes account, workspace, contact, conversation, AI chatbot, website import, and support information for the CRM features customers choose to use."
         badges={["Client-owned contacts", "No contact data selling", "CRM service processing", "WhatsApp policy responsibility"]}
       />
 
@@ -72,6 +72,18 @@ export default function PrivacyPolicyPage() {
             WhatsApp-style message records, assignments, automation events, broadcast status, pipeline activity, and
             operational logs needed for CRM functionality.
           </InfoCard>
+          <InfoCard title="AI chatbot and knowledge base data">
+            Business knowledge, chatbot instructions, imported website content, embeddings, test questions, and chatbot
+            logs may be processed when you enable AI chatbot features.
+          </InfoCard>
+          <InfoCard title="Website import and Firecrawl data">
+            Website URLs, crawl results, page content, import drafts, structured facts, and provider status may be
+            processed when you choose website import features.
+          </InfoCard>
+          <InfoCard title="Payment and support data">
+            Plan requests, manual payment proof references, support messages, contact form details, and onboarding notes
+            may be processed to help operate the service and respond to your requests.
+          </InfoCard>
         </InfoCardGrid>
       </InfoSection>
 
@@ -88,6 +100,10 @@ export default function PrivacyPolicyPage() {
           <InfoCard title="To support chosen integrations">
             If you connect WhatsApp API or related tools, required information may be processed to send messages,
             receive webhooks, and operate selected workflow features.
+          </InfoCard>
+          <InfoCard title="To operate AI and website import features">
+            If enabled by your workspace, Talk Wagon may process business knowledge, website import drafts, provider
+            settings, and chatbot activity so the CRM can answer from approved business information.
           </InfoCard>
           <InfoCard title="To improve product reliability">
             We may review aggregated or operational product signals to improve performance, stability, and user
@@ -132,6 +148,22 @@ export default function PrivacyPolicyPage() {
             audit needs, and data controlled by the customer workspace.
           </InfoCard>
         </InfoCardGrid>
+      </InfoSection>
+
+      <InfoSection
+        eyebrow="Cookies and chat widgets"
+        title="Cookies, Analytics and Support Tools"
+        description="Public pages may use basic cookies, browser storage, embedded support chat, or analytics-style signals when enabled for product support and website reliability."
+        tint="green"
+      >
+        <div className="rounded-[24px] border border-[#dce9e2] bg-white p-6 text-sm leading-7 text-[#48675b]">
+          <p>
+            Talk Wagon does not use cookies to sell your customer contact data. If support chat, analytics, or embedded
+            third-party tools are active on public pages, those providers may process technical information according to
+            their own policies. Avoid sending passwords, API keys, WhatsApp access tokens, or private credentials through
+            public support forms or chat.
+          </p>
+        </div>
       </InfoSection>
 
       <InfoSection

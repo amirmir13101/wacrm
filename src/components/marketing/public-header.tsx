@@ -10,11 +10,11 @@ import { Button } from "@/components/ui/button";
 const navItems = [
   { label: "Home", href: "/" },
   { label: "Features", href: "/features" },
+  { label: "Flows", href: "/features/flows" },
   { label: "Team Inbox", href: "/features/team-inbox" },
   { label: "Automation", href: "/features/automation" },
   { label: "Broadcasts", href: "/features/broadcasts" },
   { label: "Pricing", href: "/pricing" },
-  { label: "FAQ", href: "/features#faq" },
 ] as const;
 
 const mobileNavItems = [
@@ -23,10 +23,17 @@ const mobileNavItems = [
   { label: "Contact", href: "/contact" },
 ] as const;
 
-const trustItems = ["Team Inbox", "Automation", "Broadcasts", "Secure Workspaces"];
+const trustItems = ["Team Inbox", "Flows", "Automation", "Broadcasts", "Secure Workspaces"];
 
 interface PublicHeaderProps {
-  readonly active?: "home" | "features" | "team-inbox" | "automation" | "broadcasts" | "pricing";
+  readonly active?:
+    | "home"
+    | "features"
+    | "flows"
+    | "team-inbox"
+    | "automation"
+    | "broadcasts"
+    | "pricing";
 }
 
 export function PublicHeader({ active }: PublicHeaderProps) {
@@ -100,6 +107,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
                   const isActive =
                     (active === "home" && item.href === "/") ||
                     (active === "features" && item.href === "/features") ||
+                    (active === "flows" && item.href === "/features/flows") ||
                     (active === "team-inbox" && item.href === "/features/team-inbox") ||
                     (active === "automation" && item.href === "/features/automation") ||
                     (active === "broadcasts" && item.href === "/features/broadcasts") ||

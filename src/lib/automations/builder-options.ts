@@ -35,7 +35,9 @@ export interface AutomationMemberOption {
 export function approvedTemplateOptions<T extends AutomationTemplateOption>(
   templates: T[],
 ): T[] {
-  return templates.filter((template) => template.status === 'Approved')
+  return templates.filter(
+    (template) => template.status === 'Approved' || template.status === 'APPROVED',
+  )
 }
 
 export function stagesForPipeline<T extends AutomationStageOption>(

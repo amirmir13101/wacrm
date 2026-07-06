@@ -1,123 +1,121 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { decrypt } from '@/lib/whatsapp/encryption'
+
+import type { TemplateButton, TemplateSampleValues } from '@/types'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireWorkspacePermission } from '@/lib/team/server'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
-
-/**
- * Sync message templates from Meta → local message_templates table.
- *
- * Why this exists:
- *   The Settings → Message Templates UI only writes to Supabase. It does
- *   NOT submit templates for approval to Meta. Users would create a
- *   template locally, try to broadcast with it, and hit Meta's error
- *   #132001 "Template name does not exist in the translation" — because
- *   Meta had never seen the template, or had it approved under a
- *   different language code than what we stored locally.
- *
- *   This route pulls the source of truth (Meta's approved templates)
- *   and upserts them into the local catalog by (user_id, name, language).
- *   After a sync, every local template row is guaranteed to match
- *   something Meta will actually accept on send.
- *
- * Scope:
- *   - Read-only against Meta. We never push local → Meta (template
- *     submission happens in Meta's WhatsApp Manager and requires human
- *     review).
- *   - Only approved templates are surfaced by default. We return
- *     everything Meta returns and let the UI filter — so the user can
- *     see their Pending / Rejected templates and understand why.
- *   - Locally-created templates (no Meta counterpart) are NOT deleted —
- *     they remain visible so the user can notice drift and clean up
- *     manually.
- */
+import { decrypt } from '@/lib/whatsapp/encryption'
+import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 
 const META_API_VERSION = 'v21.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
+
+interface MetaButton {
+  type: string
+  text: string
+  url?: string
+  phone_number?: string
+  example?: string[] | string
+}
 
 interface MetaTemplateComponent {
   type: string
   text?: string
   format?: string
+  buttons?: MetaButton[]
+  example?: {
+    header_text?: string[]
+    header_handle?: string[]
+    body_text?: string[][]
+  }
 }
 
 interface MetaTemplate {
   id: string
   name: string
   language: string
-  status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED'
+  status: string
   category: string
   components?: MetaTemplateComponent[]
+  quality_score?: { score?: string } | string
 }
 
-/**
- * Meta's template categories are upper-snake (MARKETING / UTILITY /
- * AUTHENTICATION); our DB CHECK constraint is TitleCase. Normalize.
- */
-function normalizeCategory(
-  meta: string,
-): 'Marketing' | 'Utility' | 'Authentication' {
+function normalizeCategory(meta: string): 'Marketing' | 'Utility' | 'Authentication' {
   const upper = meta.toUpperCase()
   if (upper === 'UTILITY') return 'Utility'
   if (upper === 'AUTHENTICATION') return 'Authentication'
   return 'Marketing'
 }
 
-/**
- * Meta's template status is UPPERCASE; our DB uses TitleCase.
- */
-function normalizeStatus(
-  meta: string,
-): 'Draft' | 'Pending' | 'Approved' | 'Rejected' {
-  switch (meta.toUpperCase()) {
-    case 'APPROVED':
-      return 'Approved'
-    case 'PENDING':
-    case 'IN_APPEAL':
-    case 'PENDING_DELETION':
-      return 'Pending'
-    case 'REJECTED':
-    case 'DISABLED':
-    case 'PAUSED':
-      return 'Rejected'
-    default:
-      return 'Draft'
+function normalizeQualityScore(raw: MetaTemplate['quality_score']): 'GREEN' | 'YELLOW' | 'RED' | null {
+  const score = typeof raw === 'string' ? raw : raw?.score ? String(raw.score) : null
+  if (!score) return null
+  const upper = score.toUpperCase()
+  return upper === 'GREEN' || upper === 'YELLOW' || upper === 'RED'
+    ? (upper as 'GREEN' | 'YELLOW' | 'RED')
+    : null
+}
+
+function parseButtons(metaButtons: MetaButton[] | undefined): TemplateButton[] {
+  if (!metaButtons?.length) return []
+  const out: TemplateButton[] = []
+  for (const button of metaButtons) {
+    switch (button.type?.toUpperCase()) {
+      case 'QUICK_REPLY':
+        out.push({ type: 'QUICK_REPLY', text: button.text })
+        break
+      case 'URL':
+        out.push({
+          type: 'URL',
+          text: button.text,
+          url: button.url ?? '',
+          example: Array.isArray(button.example) ? button.example[0] : button.example,
+        })
+        break
+      case 'PHONE_NUMBER':
+        out.push({
+          type: 'PHONE_NUMBER',
+          text: button.text,
+          phone_number: button.phone_number ?? '',
+        })
+        break
+      case 'COPY_CODE':
+        out.push({
+          type: 'COPY_CODE',
+          text: button.text,
+          example: Array.isArray(button.example)
+            ? button.example[0] ?? ''
+            : button.example ?? '',
+        })
+        break
+    }
   }
+  return out
+}
+
+function extractSampleValues(
+  body: MetaTemplateComponent | undefined,
+  header: MetaTemplateComponent | undefined,
+): TemplateSampleValues | null {
+  const bodySample = body?.example?.body_text?.[0]
+  const headerSample = header?.example?.header_text
+  if (!bodySample?.length && !headerSample?.length) return null
+  const sampleValues: TemplateSampleValues = {}
+  if (bodySample?.length) sampleValues.body = bodySample
+  if (headerSample?.length) sampleValues.header = headerSample
+  return sampleValues
 }
 
 export async function POST() {
   try {
-    const supabase = await createClient()
+    const guard = await requireWorkspacePermission('sync_templates')
+    if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const workspaceResult = await requireWorkspacePermission('sync_templates')
-    if (!workspaceResult.ok) {
-      return NextResponse.json(
-        { error: workspaceResult.error },
-        { status: workspaceResult.status },
-      )
-    }
-    const workspace = workspaceResult.workspace
-    const admin = supabaseAdmin()
-
-    // whatsapp_config holds waba_id + encrypted access_token.
-    const {
-      config,
-      error: configError,
-    } = await findWorkspaceWhatsAppConfig<{
+    const { config, error: configError } = await findWorkspaceWhatsAppConfig<{
       waba_id?: string | null
       access_token: string
     }>({
-      workspaceId: workspace.workspaceId,
+      workspaceId: guard.workspace.workspaceId,
       columns: '*',
     })
 
@@ -130,7 +128,6 @@ export async function POST() {
         { status: 400 },
       )
     }
-
     if (!config.waba_id) {
       return NextResponse.json(
         {
@@ -142,111 +139,106 @@ export async function POST() {
     }
 
     const accessToken = decrypt(config.access_token)
-
-    // Paginate through every template Meta has for this WABA. Meta
-    // returns at most 100 per page; `paging.next` is a full URL. Cap
-    // at 20 pages (2k templates) as a safety against infinite loops
-    // from a misbehaving upstream.
     const metaTemplates: MetaTemplate[] = []
-    let nextUrl:
-      | string
-      | null = `${META_API_BASE}/${config.waba_id}/message_templates?limit=100&fields=id,name,language,status,category,components`
+    let nextUrl: string | null =
+      `${META_API_BASE}/${config.waba_id}/message_templates?limit=100&fields=id,name,language,status,category,components,quality_score`
     const PAGE_CAP = 20
     let pageCount = 0
 
     while (nextUrl && pageCount < PAGE_CAP) {
-      pageCount++
-      const metaRes: Response = await fetch(nextUrl, {
+      pageCount += 1
+      const metaResponse: Response = await fetch(nextUrl, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
-
-      if (!metaRes.ok) {
-        let metaErr = `Meta API error: ${metaRes.status}`
+      if (!metaResponse.ok) {
+        let metaError = `Meta API error: ${metaResponse.status}`
         try {
-          const body = await metaRes.json()
-          if (body?.error?.message) metaErr = body.error.message
+          const body = await metaResponse.json()
+          if (body?.error?.message) metaError = body.error.message
         } catch {
-          // response wasn't JSON — keep the fallback
+          // Keep fallback.
         }
-        return NextResponse.json({ error: metaErr }, { status: 502 })
+        return NextResponse.json({ error: metaError }, { status: 502 })
       }
 
-      const metaBody: {
+      const metaBody = (await metaResponse.json()) as {
         data?: MetaTemplate[]
         paging?: { next?: string }
-      } = await metaRes.json()
+      }
       if (metaBody.data) metaTemplates.push(...metaBody.data)
       nextUrl = metaBody.paging?.next ?? null
     }
 
-    // For each Meta template: upsert by (user_id, name, language).
-    // No UNIQUE constraint on that triple, so we match manually.
+    const admin = supabaseAdmin()
     let inserted = 0
     let updated = 0
     const errors: { name: string; language: string; message: string }[] = []
 
-    for (const t of metaTemplates) {
-      const body = (t.components ?? []).find((c) => c.type === 'BODY')
-      const header = (t.components ?? []).find((c) => c.type === 'HEADER')
-      const footer = (t.components ?? []).find((c) => c.type === 'FOOTER')
+    for (const template of metaTemplates) {
+      const body = (template.components ?? []).find((component) => component.type === 'BODY')
+      const header = (template.components ?? []).find((component) => component.type === 'HEADER')
+      const footer = (template.components ?? []).find((component) => component.type === 'FOOTER')
+      const buttons = (template.components ?? []).find((component) => component.type === 'BUTTONS')
+      const parsedButtons = parseButtons(buttons?.buttons)
+      const sampleValues = extractSampleValues(body, header)
+      const headerFormat = header?.format?.toUpperCase()
+      const headerType =
+        headerFormat === 'TEXT' ||
+        headerFormat === 'IMAGE' ||
+        headerFormat === 'VIDEO' ||
+        headerFormat === 'DOCUMENT'
+          ? headerFormat.toLowerCase()
+          : null
 
       const row = {
-        user_id: user.id,
-        workspace_id: workspace.workspaceId,
-        name: t.name,
-        category: normalizeCategory(t.category),
-        language: t.language,
-        header_type: header?.format?.toLowerCase() ?? null,
+        workspace_id: guard.workspace.workspaceId,
+        user_id: guard.workspace.userId,
+        name: template.name,
+        category: normalizeCategory(template.category),
+        language: template.language,
+        header_type: headerType,
         header_content: header?.text ?? null,
+        header_handle: header?.example?.header_handle?.[0] ?? null,
         body_text: body?.text ?? '',
         footer_text: footer?.text ?? null,
-        status: normalizeStatus(t.status),
+        buttons: parsedButtons.length ? parsedButtons : null,
+        sample_values: sampleValues,
+        status: normalizeStatus(template.status),
+        meta_template_id: template.id,
+        quality_score: normalizeQualityScore(template.quality_score),
         updated_at: new Date().toISOString(),
       }
 
-      const { data: existing, error: lookupErr } = await admin
+      const { data: existing, error: lookupError } = await admin
         .from('message_templates')
         .select('id')
-        .eq('workspace_id', workspace.workspaceId)
-        .eq('name', t.name)
-        .eq('language', t.language)
+        .eq('workspace_id', guard.workspace.workspaceId)
+        .eq('name', template.name)
+        .eq('language', template.language)
         .maybeSingle()
 
-      if (lookupErr) {
-        errors.push({
-          name: t.name,
-          language: t.language,
-          message: lookupErr.message,
-        })
+      if (lookupError) {
+        errors.push({ name: template.name, language: template.language, message: lookupError.message })
         continue
       }
 
       if (existing?.id) {
-        const { error: updErr } = await admin
+        const { error: updateError } = await admin
           .from('message_templates')
           .update(row)
           .eq('id', existing.id)
-        if (updErr) {
-          errors.push({
-            name: t.name,
-            language: t.language,
-            message: updErr.message,
-          })
+          .eq('workspace_id', guard.workspace.workspaceId)
+        if (updateError) {
+          errors.push({ name: template.name, language: template.language, message: updateError.message })
         } else {
-          updated++
+          updated += 1
         }
       } else {
-        const { error: insErr } = await admin
-          .from('message_templates')
-          .insert(row)
-        if (insErr) {
-          errors.push({
-            name: t.name,
-            language: t.language,
-            message: insErr.message,
-          })
+        const { error: insertError } = await admin.from('message_templates').insert(row)
+        if (insertError) {
+          errors.push({ name: template.name, language: template.language, message: insertError.message })
         } else {
-          inserted++
+          inserted += 1
         }
       }
     }
@@ -262,10 +254,7 @@ export async function POST() {
   } catch (error) {
     console.error('Error syncing WhatsApp templates:', error)
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : 'Failed to sync templates',
-      },
+      { error: error instanceof Error ? error.message : 'Failed to sync templates' },
       { status: 500 },
     )
   }

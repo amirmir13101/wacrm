@@ -1,11 +1,26 @@
 import { NextResponse } from 'next/server'
 
-import { createRagWebsiteImportJob } from '@/lib/rag/dashboard-store'
+import {
+  createRagWebsiteImportJob,
+  getLatestPendingRagWebsiteImportJob,
+} from '@/lib/rag/dashboard-store'
 import { createRagWebsiteImportDraft } from '@/lib/rag/website-import'
 import {
   createSkippedRagEmbeddingSummary,
 } from '@/lib/rag/embedding-store'
 import { requireRagPermission, safeErrorMessage } from '../_helpers'
+
+export async function GET() {
+  const auth = await requireRagPermission('view_rag_chatbot')
+  if (!auth.ok) return auth.response
+
+  try {
+    const pending = await getLatestPendingRagWebsiteImportJob(auth.workspace.workspaceId)
+    return NextResponse.json({ pending })
+  } catch (error) {
+    return NextResponse.json({ error: safeErrorMessage(error) }, { status: 400 })
+  }
+}
 
 export async function POST(request: Request) {
   const auth = await requireRagPermission('manage_rag_chatbot')

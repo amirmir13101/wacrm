@@ -120,6 +120,7 @@ async function dispatchTagAddedAutomations({
     tagIds.map((tagId) =>
       runAutomationsForTrigger({
         userId,
+        workspaceId,
         triggerType: 'tag_added',
         contactId,
         context: {
@@ -131,4 +132,3 @@ async function dispatchTagAddedAutomations({
     ),
   )
 }
-

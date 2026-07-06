@@ -29,6 +29,18 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+.next-dev-*.log
+.next-dev-*.err.log
+.next-dev-*.pid
+.next-start-*.log
+.next-start-*.err.log
+.next-start-*.pid
+
+# local Codex/agent artifacts and private backups
+/.agents/
+/.backups/
+/scripts/tmp-*.mjs
+/skills-lock.json
 
 # env files (can opt-in for committing if needed)
 .env*

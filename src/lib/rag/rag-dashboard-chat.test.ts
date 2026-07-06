@@ -23,7 +23,7 @@ describe('RAG dashboard test chat', () => {
   it('adds a dashboard-only Test Chat UI with clean user-facing states', () => {
     expect(page).toContain('Test Chat')
     expect(page).toContain('Ask a question from your saved knowledge...')
-    expect(page).toContain('Prepare your knowledge for chatbot first.')
+    expect(page).toContain('Add knowledge first. Embeddings are created automatically after saving.')
     expect(page).toContain('Add and test your AI provider key first.')
     expect(page).toContain('This customer-style tester only shows the final chatbot answer.')
     expect(page).toContain('Retrieval/debug')

@@ -8,6 +8,7 @@ import type { WorkspaceTrialStatus } from '@/lib/billing/trial'
 
 interface TrialUsageCardProps {
   compact?: boolean
+  onStatus?: (trial: WorkspaceTrialStatus) => void
 }
 
 function planLabel(planType?: string | null) {
@@ -25,7 +26,7 @@ function formatPlanDate(value?: string | null) {
   }).format(new Date(value))
 }
 
-export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
+export function TrialUsageCard({ compact = false, onStatus }: TrialUsageCardProps) {
   const [trial, setTrial] = useState<WorkspaceTrialStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,7 +40,10 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
         return payload.trial as WorkspaceTrialStatus
       })
       .then((nextTrial) => {
-        if (!cancelled) setTrial(nextTrial)
+        if (!cancelled) {
+          setTrial(nextTrial)
+          onStatus?.(nextTrial)
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load trial usage')
@@ -51,11 +55,16 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [onStatus])
 
   const usagePercent = useMemo(() => {
     if (!trial || trial.trialBroadcastLimit <= 0) return 0
     return Math.min(100, Math.round((trial.trialBroadcastUsed / trial.trialBroadcastLimit) * 100))
+  }, [trial])
+
+  const proUsagePercent = useMemo(() => {
+    if (!trial || trial.proBroadcastLimit <= 0) return 0
+    return Math.min(100, Math.round((trial.proBroadcastUsed / trial.proBroadcastLimit) * 100))
   }, [trial])
 
   if (loading) {
@@ -84,11 +93,12 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
   const isProExpired = trial.isProExpired
   const isLifetimeSetup = trial.isLifetimeSetup
   const remaining = trial.trialBroadcastRemaining ?? 0
+  const proRemaining = trial.proBroadcastRemaining ?? 0
   const expiryDate = formatPlanDate(trial.subscriptionEndsAt)
   const proPeriodLabel = trial.billingPeriod === 'yearly' ? 'yearly' : 'monthly'
   const planMessage = isPro
     ? [
-        'You are now a Pro user. You can use Talk Wagon CRM with unlimited Pro access.',
+        `${trial.proBroadcastUsed.toLocaleString()} / ${trial.proBroadcastLimit.toLocaleString()} broadcast messages used this month. ${proRemaining.toLocaleString()} remaining.`,
         expiryDate ? `Your Pro ${proPeriodLabel} plan is active until ${expiryDate}.` : null,
       ]
         .filter(Boolean)
@@ -155,6 +165,21 @@ export function TrialUsageCard({ compact = false }: TrialUsageCardProps) {
                 : 'You have used all trial broadcast messages. Upgrade to Pro to continue sending broadcasts.'}
             </p>
           )}
+        </div>
+      ) : null}
+
+      {isPro ? (
+        <div className={compact ? 'mt-3' : 'mt-4'}>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-[#d8fff1]">
+            <span>Broadcast messages: {trial.proBroadcastUsed.toLocaleString()} / {trial.proBroadcastLimit.toLocaleString()} used</span>
+            <span>{proRemaining.toLocaleString()} remaining this month</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-emerald-950">
+            <div
+              className="h-full rounded-full bg-[#3ddf84]"
+              style={{ width: `${proUsagePercent}%` }}
+            />
+          </div>
         </div>
       ) : null}
     </section>
