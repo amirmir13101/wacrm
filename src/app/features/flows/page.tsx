@@ -22,9 +22,10 @@ import { HeroBadgeRow } from "@/components/marketing/hero-badge-row";
 import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
+import { getCanonicalUrl, getSiteUrl } from "@/lib/site-url";
 
-const siteUrl = "https://vpscoaster.live";
-const canonicalUrl = `${siteUrl}/features/flows`;
+const siteUrl = getSiteUrl();
+const canonicalUrl = getCanonicalUrl("/features/flows");
 const flowImages = {
   hero: "/hostiko-crm/generated/flows/talk-wagon-flows-hero-overview.webp",
   builder: "/hostiko-crm/generated/flows/talk-wagon-flows-builder-nodes.webp",

@@ -25,10 +25,10 @@ import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
 import { authenticatedRedirectPath } from "@/lib/auth/approval";
+import { getCanonicalUrl } from "@/lib/site-url";
 import { createClient } from "@/lib/supabase/server";
 
-const siteUrl = "https://vpscoaster.live";
-const canonicalUrl = `${siteUrl}/`;
+const canonicalUrl = getCanonicalUrl("/");
 const homeImages = {
   hero: "/hostiko-crm/generated/talk-wagon-home-hero-dashboard.webp",
   teamInbox: "/hostiko-crm/generated/talk-wagon-home-team-inbox.webp",

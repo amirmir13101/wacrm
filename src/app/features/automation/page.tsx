@@ -23,9 +23,9 @@ import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 import { HeroBadgeRow } from "@/components/marketing/hero-badge-row";
 import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
+import { getCanonicalUrl } from "@/lib/site-url";
 
-const siteUrl = "https://vpscoaster.live";
-const canonicalUrl = `${siteUrl}/features/automation`;
+const canonicalUrl = getCanonicalUrl("/features/automation");
 const automationImages = {
   hero: "/hostiko-crm/generated/automation/talk-wagon-automation-hero-overview.webp",
   triggerBuilder: "/hostiko-crm/generated/automation/talk-wagon-automation-trigger-action-builder.webp",

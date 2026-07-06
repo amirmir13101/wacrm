@@ -26,12 +26,13 @@ describe('platform admin routing separation', () => {
 
   it('redirects approved platform admins away from workspace routes', () => {
     expect(middleware).toContain("url.pathname = authenticatedRedirectPath(profile)")
-    expect(middleware).toContain("isAdmin(profile) && !request.nextUrl.pathname.startsWith('/admin')")
-    expect(middleware).toContain("url.pathname = '/admin'")
+    expect(middleware).toContain("request.nextUrl.pathname.startsWith('/admintops')")
+    expect(middleware).toContain("if (isAdmin(profile) && !isAdminPagePath)")
+    expect(middleware).toContain("url.pathname = '/admintops'")
   })
 
   it('blocks non-admins from admin routes', () => {
-    expect(middleware).toContain("request.nextUrl.pathname.startsWith('/admin') && !isAdmin(profile)")
+    expect(middleware).toContain("if (isAdminPagePath && !isAdmin(profile))")
     expect(middleware).toContain("url.pathname = '/dashboard'")
   })
 

@@ -1,12 +1,17 @@
 import type { MetadataRoute } from "next";
+import { getSiteUrl } from "@/lib/site-url";
 
 export default function robots(): MetadataRoute.Robots {
+  const siteUrl = getSiteUrl();
+
   return {
     rules: [
       {
         userAgent: "*",
         allow: ["/"],
         disallow: [
+          "/admintops",
+          "/admintops/",
           "/admin",
           "/admin/",
           "/api",
@@ -32,7 +37,7 @@ export default function robots(): MetadataRoute.Robots {
         ],
       },
     ],
-    sitemap: "https://vpscoaster.live/sitemap.xml",
-    host: "https://vpscoaster.live",
+    sitemap: `${siteUrl}/sitemap.xml`,
+    host: siteUrl,
   };
 }

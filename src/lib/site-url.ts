@@ -1,13 +1,19 @@
-const LOCAL_SITE_URL = 'http://localhost:3000'
+export const DEFAULT_SITE_URL = 'https://talkwagon.chat'
 
 export function getSiteUrl(): string {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim()
-  if (!configured) return LOCAL_SITE_URL
+  if (!configured) return DEFAULT_SITE_URL
 
   try {
     const parsed = new URL(configured)
     return parsed.toString().replace(/\/$/, '')
   } catch {
-    return LOCAL_SITE_URL
+    return DEFAULT_SITE_URL
   }
+}
+
+export function getCanonicalUrl(path = '/'): string {
+  const siteUrl = getSiteUrl()
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return normalizedPath === '/' ? `${siteUrl}/` : `${siteUrl}${normalizedPath}`
 }

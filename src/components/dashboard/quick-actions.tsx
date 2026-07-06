@@ -38,7 +38,7 @@ export function QuickActions() {
           <Link
             key={a.href}
             href={a.href}
-            className="group flex items-center gap-3 rounded-2xl border border-[#17402f] bg-[#0d1b15]/95 px-4 py-3 shadow-[0_18px_55px_rgba(0,0,0,0.18)] transition-colors hover:border-[#3ddf84] hover:bg-[#123226]"
+            className="group flex items-center gap-3 rounded-2xl border border-[#3ddf84]/60 bg-[#0d1b15]/95 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition-colors hover:border-[#3ddf84]/80 hover:bg-[#123226]"
           >
             <div className={`flex h-9 w-9 items-center justify-center rounded-xl bg-[#123226] ${a.tint}`}>
               <Icon className="h-4 w-4" />

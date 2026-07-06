@@ -19,9 +19,11 @@ describe('pricing page copy', () => {
   })
 
   it('keeps the Pro promotional price as an old/current price display', () => {
-    expect(source).toContain('regularPrice: "$5"')
+    expect(source).toContain('regularPrice: "$9.99"')
     expect(source).toContain('price: "$1"')
+    expect(source).toContain('offerLabel: "90% OFF"')
     expect(source).toContain('line-through')
+    expect(source).not.toContain('regularPrice: "$5"')
     expect(source).not.toContain('Now $1/month, regular $5/month')
   })
 

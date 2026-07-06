@@ -11,6 +11,8 @@ export interface ManualCheckoutPlan {
   readonly amount: number
   readonly currency: 'USD'
   readonly priceLabel: string
+  readonly originalPriceLabel?: string
+  readonly offerLabel?: string
   readonly billingLabel: string
   readonly description: string
   readonly activationNote: string
@@ -35,26 +37,13 @@ export const MANUAL_CHECKOUT_PLANS = {
     amount: 1,
     currency: 'USD',
     priceLabel: '$1/month',
+    originalPriceLabel: '$9.99/month',
+    offerLabel: '90% OFF',
     billingLabel: 'Manual monthly activation',
     description:
       'Unlock full Talk Wagon CRM features, unlimited CRM usage, team inbox, broadcasts, automations, and pipeline tools.',
     activationNote:
       'Your Pro workspace is activated by the platform admin after payment proof is confirmed.',
-  },
-  pro_yearly: {
-    planType: 'pro',
-    checkoutSlug: 'pro-yearly',
-    billingPeriod: 'yearly',
-    title: 'Talk Wagon Pro Yearly',
-    shortTitle: 'Pro Yearly',
-    amount: 12,
-    currency: 'USD',
-    priceLabel: '$12/year',
-    billingLabel: 'Manual yearly activation',
-    description:
-      'Unlock full Talk Wagon CRM features for one year with team inbox, broadcasts, automations, and pipeline tools.',
-    activationNote:
-      'Your yearly Pro workspace is activated by the platform admin after payment proof is confirmed.',
   },
   lifetime: {
     planType: 'lifetime',
@@ -98,7 +87,6 @@ export const MANUAL_PAYMENT_METHODS: Record<ManualPaymentMethod, ManualPaymentMe
 
 export function getManualCheckoutPlan(plan: string): ManualCheckoutPlan | null {
   if (plan === 'pro') return MANUAL_CHECKOUT_PLANS.pro
-  if (plan === 'pro-yearly' || plan === 'pro_yearly') return MANUAL_CHECKOUT_PLANS.pro_yearly
   if (plan === 'lifetime') return MANUAL_CHECKOUT_PLANS.lifetime
   return null
 }

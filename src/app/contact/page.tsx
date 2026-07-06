@@ -3,8 +3,9 @@ import { Building2, CreditCard, Headphones, Handshake } from "lucide-react";
 
 import { ContactMessageForm } from "@/components/marketing/contact-message-form";
 import { InfoCard, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
+import { getCanonicalUrl } from "@/lib/site-url";
 
-const canonicalUrl = "https://vpscoaster.live/contact";
+const canonicalUrl = getCanonicalUrl("/contact");
 
 export const metadata: Metadata = {
   title: "Contact Us | Talk Wagon CRM",

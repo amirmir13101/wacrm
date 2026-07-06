@@ -141,7 +141,8 @@ export function parseCsvConsent(row: CsvConsentRow, now = new Date().toISOString
   }
 
   const optInRaw = row.whatsapp_opt_in ?? row.opt_in ?? row.subscribed ?? row.consent
-  const optedIn = parseConsentBoolean(optInRaw) === true
+  const parsedOptIn = parseConsentBoolean(optInRaw)
+  const optedIn = parsedOptIn !== false
 
   return {
     whatsapp_opt_in: optedIn,
@@ -151,7 +152,7 @@ export function parseCsvConsent(row: CsvConsentRow, now = new Date().toISOString
     opted_in_at: optedIn ? now : null,
     opted_out_at: null,
     opt_out_reason: null,
-    last_consent_updated_at: optedIn ? now : null,
+    last_consent_updated_at: now,
   }
 }
 

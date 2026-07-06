@@ -28,10 +28,7 @@ export async function POST(request: Request) {
 
   const requestedPlanType = readString(body.plan_type)
   const requestedBillingPeriod = readString(body.billing_period)
-  const planSlug =
-    requestedPlanType === 'pro' && requestedBillingPeriod === 'yearly'
-      ? 'pro-yearly'
-      : requestedPlanType
+  const planSlug = requestedPlanType
   const plan = getManualCheckoutPlan(planSlug)
   if (!plan) {
     return NextResponse.json({ error: 'Choose a valid checkout plan.' }, { status: 400 })

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { getSiteUrl } from '@/lib/site-url'
 import { listWorkspaceInvitations } from '@/lib/team/invitations'
 import {
   listCurrentUserWorkspaces,
@@ -223,7 +224,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
-    login_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/login`,
+    login_url: `${getSiteUrl()}/login`,
     email,
     temporary_password: temporaryPassword,
   })

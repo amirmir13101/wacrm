@@ -19,9 +19,9 @@ import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 import { HeroBadgeRow } from "@/components/marketing/hero-badge-row";
 import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
+import { getCanonicalUrl } from "@/lib/site-url";
 
-const siteUrl = "https://vpscoaster.live";
-const canonicalUrl = `${siteUrl}/pricing`;
+const canonicalUrl = getCanonicalUrl("/pricing");
 const pricingImages = {
   hero: "/hostiko-crm/generated/pricing/talk-wagon-pricing-hero-overview-usd.webp",
   planComparison: "/hostiko-crm/generated/pricing/talk-wagon-pricing-plan-comparison-usd.webp",
@@ -105,8 +105,8 @@ const plans = [
   {
     name: "Pro",
     price: "$1",
-    regularPrice: "$5",
-    offerLabel: "Limited-time offer",
+    regularPrice: "$9.99",
+    offerLabel: "90% OFF",
     billing: "Monthly Pro plan",
     description:
       "For growing teams that want all Talk Wagon CRM features, team workflows, broadcasts, automations, and pipeline tools with a clear monthly broadcast allowance.",

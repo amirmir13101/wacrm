@@ -24,9 +24,9 @@ import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 import { HeroBadgeRow } from "@/components/marketing/hero-badge-row";
 import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
+import { getCanonicalUrl } from "@/lib/site-url";
 
-const siteUrl = "https://vpscoaster.live";
-const canonicalUrl = `${siteUrl}/features/team-inbox`;
+const canonicalUrl = getCanonicalUrl("/features/team-inbox");
 const teamInboxImages = {
   hero: "/hostiko-crm/generated/team-inbox/talk-wagon-team-inbox-hero-overview.webp",
   sharedWorkflow: "/hostiko-crm/generated/team-inbox/talk-wagon-team-inbox-shared-workflow.webp",

@@ -66,6 +66,12 @@ npm run dev
 Open <http://localhost:3000>. You'll be redirected to `/login` (or
 `/dashboard` if already signed in).
 
+For Talk Wagon production deployments, set:
+
+```bash
+NEXT_PUBLIC_SITE_URL=https://talkwagon.chat
+```
+
 ## Documentation
 
 Full self-host documentation — Supabase migrations, WhatsApp Business

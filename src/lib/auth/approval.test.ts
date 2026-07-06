@@ -29,7 +29,7 @@ describe('approval access rules', () => {
   });
 
   it('routes platform admins to the separate admin dashboard after login', () => {
-    expect(authenticatedRedirectPath(profile('approved', 'admin'))).toBe('/admin');
+    expect(authenticatedRedirectPath(profile('approved', 'admin'))).toBe('/admintops');
   });
 
   it('routes normal approved users to the CRM dashboard after login', () => {

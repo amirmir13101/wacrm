@@ -184,7 +184,21 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
           <p className="mt-4 text-sm leading-7 text-[#d5e9e2]">{plan.description}</p>
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/8 p-5">
             <p className="text-sm text-[#d5e9e2]">{plan.billingLabel}</p>
-            <p className="mt-2 text-5xl font-extrabold text-[#ffbd29]">{plan.priceLabel}</p>
+            {plan.originalPriceLabel ? (
+              <div className="mt-2 flex flex-wrap items-end gap-3">
+                <span className="pb-1 text-xl font-bold text-[#d5e9e2]/60 line-through decoration-2">
+                  {plan.originalPriceLabel}
+                </span>
+                <span className="text-5xl font-extrabold text-[#ffbd29]">{plan.priceLabel}</span>
+              </div>
+            ) : (
+              <p className="mt-2 text-5xl font-extrabold text-[#ffbd29]">{plan.priceLabel}</p>
+            )}
+            {plan.offerLabel ? (
+              <span className="mt-3 inline-flex rounded-full bg-[#3ddf84] px-3 py-1 text-xs font-extrabold uppercase text-[#07130e]">
+                {plan.offerLabel}
+              </span>
+            ) : null}
           </div>
           <p className="mt-5 flex gap-2 text-sm leading-6 text-[#d8fff1]">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[#3ddf84]" />

@@ -74,7 +74,7 @@ describe('manual payment flow wiring', () => {
     expect(checkoutRoute).toContain('getManualPaymentMethod')
     expect(checkoutRoute).toContain('manual_payment_requests')
     expect(checkoutRoute).toContain('requestedBillingPeriod')
-    expect(checkoutRoute).toContain("requestedBillingPeriod === 'yearly'")
+    expect(checkoutRoute).not.toContain("requestedBillingPeriod === 'yearly'")
     expect(checkoutRoute).toContain('billing_period: plan.billingPeriod')
     expect(checkoutRoute).toContain('admin.auth.admin.createUser')
     expect(checkoutRoute).toContain('ensureCheckoutWorkspace')
@@ -176,6 +176,8 @@ describe('manual payment flow wiring', () => {
     expect(checkoutForm).toContain('flex justify-center')
     expect(checkoutForm).toContain('text-red-700')
     expect(checkoutForm).toContain('Pay with Easypaisa or bank transfer')
+    expect(checkoutForm).toContain('plan.originalPriceLabel')
+    expect(checkoutForm).toContain('plan.offerLabel')
   })
 
   it('hides the public header on checkout pages only', () => {

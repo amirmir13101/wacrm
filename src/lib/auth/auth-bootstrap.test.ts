@@ -51,6 +51,7 @@ describe('auth bootstrap after forced password change', () => {
     expect(middleware).toContain("profile?.must_change_password")
     expect(middleware).toContain("url.pathname = '/change-password'")
     expect(middleware).toContain("request.nextUrl.pathname === '/change-password'")
-    expect(middleware).toContain("request.nextUrl.pathname.startsWith('/admin') && !isAdmin(profile)")
+    expect(middleware).toContain("request.nextUrl.pathname.startsWith('/admintops')")
+    expect(middleware).toContain("if (isAdminPagePath && !isAdmin(profile))")
   })
 })

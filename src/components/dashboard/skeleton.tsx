@@ -13,7 +13,7 @@ export function SkeletonCard({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'rounded-2xl border border-[#17402f] bg-[#0d1b15]/95 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)]',
+        'rounded-2xl border border-[#3ddf84]/60 bg-[#0d1b15]/95 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition-colors hover:border-[#3ddf84]/80',
         className,
       )}
     >

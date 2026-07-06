@@ -13,6 +13,12 @@ const adminShell = readFileSync(
   'utf8',
 )
 const adminPage = readFileSync(join(process.cwd(), 'src/app/admin/page.tsx'), 'utf8')
+const adminTopsPage = readFileSync(join(process.cwd(), 'src/app/admintops/page.tsx'), 'utf8')
+const adminTopsLayout = readFileSync(join(process.cwd(), 'src/app/admintops/layout.tsx'), 'utf8')
+const adminDashboardComponent = readFileSync(
+  join(process.cwd(), 'src/components/admin/platform-admin-dashboard.tsx'),
+  'utf8',
+)
 const adminProfilePage = readFileSync(join(process.cwd(), 'src/app/admin/profile/page.tsx'), 'utf8')
 const adminPasswordForm = readFileSync(
   join(process.cwd(), 'src/components/admin/admin-password-form.tsx'),
@@ -44,6 +50,8 @@ const importModal = readFileSync(join(process.cwd(), 'src/components/contacts/im
 describe('separate platform admin dashboard', () => {
   it('uses a dedicated admin shell with only platform admin navigation', () => {
     expect(adminLayout).toContain('PlatformAdminShell')
+    expect(adminTopsLayout).toContain('PlatformAdminShell')
+    expect(adminShell).toContain('/admintops')
     expect(adminShell).toContain('/admin/users')
     expect(adminShell).toContain('/admin/contacts')
     expect(adminShell).toContain('/admin/profile')
@@ -55,10 +63,12 @@ describe('separate platform admin dashboard', () => {
   })
 
   it('adds an admin overview page with platform metrics', () => {
-    expect(adminPage).toContain('/api/admin/summary')
-    expect(adminPage).toContain('Pending users')
-    expect(adminPage).toContain('Uploaded Contact Lists')
-    expect(adminPage).toContain('uploaded_contacts')
+    expect(adminPage).toContain('redirect("/admintops")')
+    expect(adminTopsPage).toContain('PlatformAdminDashboard')
+    expect(adminDashboardComponent).toContain('/api/admin/summary')
+    expect(adminDashboardComponent).toContain('Pending users')
+    expect(adminDashboardComponent).toContain('Uploaded Contact Lists')
+    expect(adminDashboardComponent).toContain('uploaded_contacts')
   })
 
   it('creates admin contact import tables with platform-admin-only select policies', () => {

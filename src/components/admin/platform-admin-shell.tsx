@@ -29,7 +29,7 @@ export function PlatformAdminShell({ children }: { children: React.ReactNode }) 
     <div className="dashboard-theme min-h-screen bg-slate-950 text-slate-100">
       <div className="flex min-h-screen">
         <aside className="hidden w-72 border-r border-slate-800 bg-slate-950/95 p-5 md:block">
-          <Link href="/admin" className="flex items-center gap-3">
+          <Link href="/admintops" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-600 text-white">
               <ShieldCheck className="h-5 w-5" />
             </div>
@@ -75,7 +75,7 @@ export function PlatformAdminShell({ children }: { children: React.ReactNode }) 
         <main className="flex-1">
           <div className="border-b border-slate-800 bg-slate-950/95 p-4 md:hidden">
             <div className="flex items-center justify-between">
-              <Link href="/admin" className="font-semibold text-white">
+              <Link href="/admintops" className="font-semibold text-white">
                 Platform Admin
               </Link>
               <Button

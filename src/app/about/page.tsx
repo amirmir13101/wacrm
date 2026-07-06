@@ -3,8 +3,9 @@ import Link from "next/link";
 import { Bot, MessageSquareText, ShieldCheck, Users } from "lucide-react";
 
 import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
+import { getCanonicalUrl } from "@/lib/site-url";
 
-const canonicalUrl = "https://vpscoaster.live/about";
+const canonicalUrl = getCanonicalUrl("/about");
 
 export const metadata: Metadata = {
   title: "About Us | Talk Wagon CRM",

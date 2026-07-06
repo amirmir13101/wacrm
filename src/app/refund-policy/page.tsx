@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
+import { getCanonicalUrl } from "@/lib/site-url";
 
-const canonicalUrl = "https://vpscoaster.live/refund-policy";
+const canonicalUrl = getCanonicalUrl("/refund-policy");
 
 export const metadata: Metadata = {
   title: "Refund Policy | Talk Wagon CRM",

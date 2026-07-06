@@ -35,7 +35,7 @@ export function authenticatedRedirectPath(
   const approvalPath = approvalRedirectPath(profile);
   if (approvalPath) return approvalPath;
   if (profile?.must_change_password) return '/change-password';
-  return isAdmin(profile) ? '/admin' : '/dashboard';
+  return isAdmin(profile) ? '/admintops' : '/dashboard';
 }
 
 export function approvalMessage(status: string | null | undefined) {

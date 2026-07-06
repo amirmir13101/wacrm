@@ -36,11 +36,39 @@ describe('contact consent helpers', () => {
       whatsapp_opt_in: true,
       opt_in_source: 'Website form',
       opted_in_at: 'now',
+      last_consent_updated_at: 'now',
     })
     expect(parseCsvConsent({ unsubscribed: 'true', opt_out_reason: 'STOP' }, 'now')).toMatchObject({
       whatsapp_opt_in: false,
       opted_out_at: 'now',
       opt_out_reason: 'STOP',
+    })
+  })
+
+  it('defaults newly imported CSV contacts to opted in', () => {
+    expect(parseCsvConsent({}, 'now')).toEqual({
+      whatsapp_opt_in: true,
+      opt_in_source: 'CSV import',
+      opted_in_at: 'now',
+      opted_out_at: null,
+      opt_out_reason: null,
+      last_consent_updated_at: 'now',
+    })
+  })
+
+  it('respects explicit CSV opt-out and explicit no-consent values', () => {
+    expect(parseCsvConsent({ opted_out: 'yes' }, 'now')).toMatchObject({
+      whatsapp_opt_in: false,
+      opted_out_at: 'now',
+      opt_out_reason: 'CSV import',
+    })
+    expect(parseCsvConsent({ whatsapp_opt_in: 'no' }, 'now')).toEqual({
+      whatsapp_opt_in: false,
+      opt_in_source: null,
+      opted_in_at: null,
+      opted_out_at: null,
+      opt_out_reason: null,
+      last_consent_updated_at: 'now',
     })
   })
 
@@ -64,4 +92,3 @@ describe('contact consent helpers', () => {
     })
   })
 })
-

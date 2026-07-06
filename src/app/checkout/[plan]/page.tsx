@@ -4,8 +4,7 @@ import { notFound } from 'next/navigation'
 import { ManualCheckoutForm } from '@/components/checkout/manual-checkout-form'
 import { PublicFooter } from '@/components/marketing/public-footer'
 import { getManualCheckoutPlan } from '@/lib/payments/manual-payment-config'
-
-const siteUrl = 'https://vpscoaster.live'
+import { getCanonicalUrl } from '@/lib/site-url'
 
 interface CheckoutPageProps {
   params: Promise<{ plan: string }>
@@ -26,7 +25,7 @@ export async function generateMetadata({ params }: CheckoutPageProps): Promise<M
     title: `${plan.shortTitle} Manual Checkout | Talk Wagon`,
     description: `Submit a manual payment request for ${plan.title}. Send payment proof by WhatsApp or live chat for admin approval.`,
     alternates: {
-      canonical: `${siteUrl}/checkout/${plan.checkoutSlug}`,
+      canonical: getCanonicalUrl(`/checkout/${plan.checkoutSlug}`),
     },
     robots: {
       index: false,

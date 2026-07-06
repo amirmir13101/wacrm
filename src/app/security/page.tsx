@@ -3,8 +3,9 @@ import Link from "next/link";
 import { KeyRound, LockKeyhole, MessageSquareLock, ShieldCheck, UserCog, Workflow } from "lucide-react";
 
 import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
+import { getCanonicalUrl } from "@/lib/site-url";
 
-const canonicalUrl = "https://vpscoaster.live/security";
+const canonicalUrl = getCanonicalUrl("/security");
 
 export const metadata: Metadata = {
   title: "Security | Talk Wagon CRM",

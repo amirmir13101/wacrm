@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { getSiteUrl } from '@/lib/site-url'
 import { defaultPermissionsForRole, type VisibilityMode, type WorkspacePermissions } from './permissions'
 import type { WorkspaceRole } from './assignment'
 import { INVITE_COOKIE_MAX_AGE_SECONDS, INVITE_TOKEN_COOKIE } from './invite-constants'
@@ -45,8 +46,7 @@ export function hashInviteToken(token: string): string {
 }
 
 export function inviteUrl(token: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
-  return `${baseUrl.replace(/\/$/, '')}/invite/accept?token=${encodeURIComponent(token)}`
+  return `${getSiteUrl()}/invite/accept?token=${encodeURIComponent(token)}`
 }
 
 export function inviteAcceptPath(token?: string): string {
