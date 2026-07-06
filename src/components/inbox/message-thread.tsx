@@ -62,6 +62,25 @@ interface RagConversationControlView {
   readonly lastReason: string | null;
 }
 
+interface RagConversationControlRow {
+  readonly human_request_status?: "none" | "requested" | "accepted" | "rejected";
+  readonly waiting_for_human_confirmation?: boolean;
+  readonly ai_paused?: boolean;
+  readonly last_reason?: string | null;
+}
+
+function mapRagConversationControlRow(
+  row: RagConversationControlRow | null | undefined,
+): RagConversationControlView | null {
+  if (!row) return null;
+  return {
+    humanRequestStatus: row.human_request_status ?? "none",
+    waitingForHumanConfirmation: row.waiting_for_human_confirmation ?? false,
+    aiPaused: row.ai_paused ?? false,
+    lastReason: row.last_reason ?? null,
+  };
+}
+
 function renderTemplateBody(body: string, params: string[]): string {
   return body.replace(/\{\{(\d+)\}\}/g, (_, raw) => {
     const idx = Number(raw) - 1;
@@ -227,6 +246,22 @@ export function MessageThread({
   const conversationId = conversation?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
 
+  const fetchRagControl = useCallback(async () => {
+    if (!conversationId) {
+      setRagControl(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/rag/conversation-controls/${conversationId}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Failed to load AI controls");
+      setRagControl((payload.control as RagConversationControlView | null) ?? null);
+    } catch {
+      setRagControl(null);
+    }
+  }, [conversationId]);
+
   useEffect(() => {
     let cancelled = false;
     fetch("/api/team/members")
@@ -342,27 +377,50 @@ export function MessageThread({
   }, [conversationId]);
 
   useEffect(() => {
-    if (!conversationId) {
-      setRagControl(null);
-      return;
-    }
-    let cancelled = false;
-    fetch(`/api/rag/conversation-controls/${conversationId}`)
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error ?? "Failed to load AI controls");
-        return payload.control as RagConversationControlView | null;
-      })
-      .then((control) => {
-        if (!cancelled) setRagControl(control);
-      })
-      .catch(() => {
-        if (!cancelled) setRagControl(null);
-      });
+    void fetchRagControl();
+  }, [fetchRagControl]);
+
+  // If a customer asks for a human while the thread is already open, the
+  // webhook inserts/updates rag_conversation_controls outside the normal
+  // message fetch path. Subscribe directly so the handoff banner appears
+  // immediately instead of waiting for a manual refresh.
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`rag-conversation-control:${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "rag_conversation_controls",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            setRagControl(null);
+            return;
+          }
+          setRagControl(
+            mapRagConversationControlRow(
+              payload.new as RagConversationControlRow | null | undefined,
+            ),
+          );
+        },
+      )
+      .subscribe();
+
     return () => {
-      cancelled = true;
+      supabase.removeChannel(channel);
     };
   }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId || messages.length === 0) return;
+    void fetchRagControl();
+  }, [conversationId, fetchRagControl, messages.length]);
 
   // Reactions: fetch + realtime per conversation. Subscribing here (not at
   // the page level) keeps the channel scoped to the visible conversation,

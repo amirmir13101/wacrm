@@ -164,6 +164,14 @@ describe('RAG conversation routing and human handoff', () => {
     expect(inboxThread).toContain('AI will keep answering safely until a workspace user clicks Accept Human.')
   })
 
+  it('refreshes the Inbox handoff banner when conversation controls change in realtime', () => {
+    expect(inboxThread).toContain("table: \"rag_conversation_controls\"")
+    expect(inboxThread).toContain('filter: `conversation_id=eq.${conversationId}`')
+    expect(inboxThread).toContain('mapRagConversationControlRow')
+    expect(inboxThread).toContain('payload.eventType === "DELETE"')
+    expect(inboxThread).toContain('void fetchRagControl()')
+  })
+
   it('prevents auto replies after accepted human handoff but not while pending', () => {
     expect(webhookRoute).toContain("result.fallbackReason === 'ai_paused_for_human'")
     expect(chatService).toContain("fallbackReason: 'human_request_pending_owner_acceptance'")

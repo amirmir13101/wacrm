@@ -100,6 +100,10 @@ Bulk broadcasts are queued in Supabase and sent by a server-side worker.
 This is required for production because sending must continue even if the
 browser closes.
 
+On the VPS, the `wacrm-scheduler` PM2 process runs the CRM background endpoints
+locally. It loads `.env.local`, uses `AUTOMATION_CRON_SECRET`, and logs only
+safe status/count summaries.
+
 Required environment variable:
 
 ```bash
@@ -120,7 +124,7 @@ curl -X POST http://localhost:3000/api/whatsapp/broadcast/worker \
   -H "x-cron-secret: <AUTOMATION_CRON_SECRET>"
 ```
 
-VPS cron example, every minute:
+Optional external VPS cron example, every minute:
 
 ```cron
 * * * * * curl -fsS -X POST https://crm.example.com/api/whatsapp/broadcast/worker -H "x-cron-secret: <AUTOMATION_CRON_SECRET>" >/dev/null 2>&1
@@ -133,6 +137,8 @@ Use your real domain on the VPS. Never commit the real secret to Git.
 Automation wait/delay steps are resumed by a separate cron endpoint. If this
 cron is missing, automations can still start from WhatsApp events, but any
 step after a Wait block will remain pending.
+
+The PM2 `wacrm-scheduler` process calls this endpoint every minute.
 
 Endpoint:
 
@@ -148,7 +154,7 @@ curl -X GET http://localhost:3000/api/automations/cron \
   -H "x-cron-secret: <AUTOMATION_CRON_SECRET>"
 ```
 
-VPS cron example, every minute:
+Optional external VPS cron example, every minute:
 
 ```cron
 * * * * * curl -fsS -X GET https://crm.example.com/api/automations/cron -H "x-cron-secret: <AUTOMATION_CRON_SECRET>" >/dev/null 2>&1
@@ -172,6 +178,8 @@ Flows use a separate timeout sweep so abandoned active runs do not block a
 contact from entering a later flow. Call it every five minutes (or every minute
 if you prefer one schedule for all CRM jobs).
 
+The PM2 `wacrm-scheduler` process calls this endpoint every five minutes.
+
 ```text
 GET /api/flows/cron
 x-cron-secret: <AUTOMATION_CRON_SECRET>
@@ -183,8 +191,9 @@ VPS cron example:
 */5 * * * * curl -fsS -X GET https://crm.example.com/api/flows/cron -H "x-cron-secret: ${AUTOMATION_CRON_SECRET}" >/dev/null 2>&1
 ```
 
-Recommended VPS crontab (replace the example domain and load the secret from a
-root-readable environment file; do not paste a real secret into the repository):
+Optional fallback VPS crontab (replace the example domain and load the secret
+from a root-readable environment file; do not paste a real secret into the
+repository):
 
 ```cron
 * * * * * curl -fsS -X POST https://crm.example.com/api/whatsapp/broadcast/worker -H "x-cron-secret: ${AUTOMATION_CRON_SECRET}" >/dev/null 2>&1
@@ -192,8 +201,8 @@ root-readable environment file; do not paste a real secret into the repository):
 */5 * * * * curl -fsS -X GET https://crm.example.com/api/flows/cron -H "x-cron-secret: ${AUTOMATION_CRON_SECRET}" >/dev/null 2>&1
 ```
 
-The existing `wacrm-scheduler` PM2 process remains an idle compatibility
-placeholder. These HTTP cron calls are the production job runners.
+The built-in PM2 scheduler is the preferred production runner. External cron is
+only needed as a fallback if you intentionally do not run `wacrm-scheduler`.
 
 ## Contributing
 
