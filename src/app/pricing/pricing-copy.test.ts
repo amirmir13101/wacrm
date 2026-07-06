@@ -35,4 +35,10 @@ describe('pricing page copy', () => {
     expect(source).not.toContain('$12/year')
     expect(source).not.toContain('Choose monthly or yearly')
   })
+
+  it('keeps the featured Pro CTA taller without changing the full-width card button layout', () => {
+    expect(source).toContain('inline-flex w-full items-center justify-center rounded-full')
+    expect(source).toContain('? "h-14 bg-[#3ddf84] text-[#07130e]')
+    expect(source).toContain(': "h-12 bg-[#181818] text-white')
+  })
 })

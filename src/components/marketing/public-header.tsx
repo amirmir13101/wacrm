@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CheckCircle2, Menu, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { appHrefForHost, marketingHrefForHost } from "@/lib/domain-routing";
 
 const navItems = [
   { label: "Home", href: "/" },
@@ -38,7 +39,12 @@ interface PublicHeaderProps {
 
 export function PublicHeader({ active }: PublicHeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [currentHost, setCurrentHost] = useState("");
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCurrentHost(window.location.hostname);
+  }, []);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -86,7 +92,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
         <div ref={mobileMenuRef} className="mx-auto max-w-[1600px] px-5 sm:px-8 lg:px-8 xl:px-10">
           <div className="flex min-h-[72px] items-center justify-between gap-4 py-3 lg:min-h-[76px] lg:gap-6 lg:py-0">
             <Link
-              href="/"
+              href={marketingHrefForHost("/", currentHost)}
               onClick={() => setMobileMenuOpen(false)}
               className="flex shrink-0 items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#08bba4] sm:mr-4 lg:translate-x-12 lg:mr-8 xl:mr-10"
               aria-label="Talk Wagon home"
@@ -116,7 +122,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
                   return (
                     <Link
                       key={item.label}
-                      href={item.href}
+                      href={marketingHrefForHost(item.href, currentHost)}
                       className={`inline-flex h-10 items-center rounded-full px-3 text-sm font-bold transition-colors hover:bg-white hover:text-[#08bba4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4] xl:px-4 ${
                         isActive ? "bg-white text-[#08bba4] shadow-sm" : "text-[#07130e]"
                       }`}
@@ -130,12 +136,12 @@ export function PublicHeader({ active }: PublicHeaderProps) {
 
             <div className="hidden shrink-0 items-center justify-center gap-2 lg:flex xl:gap-3">
               <Link
-                href="/login"
+                href={appHrefForHost("/login", currentHost)}
                 className="inline-flex h-11 items-center rounded-full px-3 text-sm font-bold text-[#07130e] hover:bg-[#f4fff9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4] sm:px-4"
               >
                 Login
               </Link>
-              <Link href="/signup">
+              <Link href={appHrefForHost("/signup", currentHost)}>
                 <Button className="h-11 rounded-full bg-[#181818] px-4 text-sm font-bold text-white hover:bg-[#ffbd29] hover:text-[#07130e] sm:px-6">
                   Start Free Trial
                 </Button>
@@ -163,7 +169,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
                 {mobileNavItems.map((item) => (
                   <Link
                     key={item.label}
-                    href={item.href}
+                    href={marketingHrefForHost(item.href, currentHost)}
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex min-h-11 items-center justify-between rounded-2xl px-4 text-sm font-extrabold text-[#07130e] transition-colors hover:bg-white hover:text-[#08bba4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
                   >
@@ -173,14 +179,14 @@ export function PublicHeader({ active }: PublicHeaderProps) {
                 ))}
                 <div className="mt-2 grid gap-2 border-t border-[#dce9e2] pt-3">
                   <Link
-                    href="/login"
+                    href={appHrefForHost("/login", currentHost)}
                     onClick={() => setMobileMenuOpen(false)}
                     className="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-[#07130e] bg-white px-4 text-sm font-extrabold text-[#07130e] hover:bg-[#07130e] hover:text-white"
                   >
                     Login
                   </Link>
                   <Link
-                    href="/signup"
+                    href={appHrefForHost("/signup", currentHost)}
                     onClick={() => setMobileMenuOpen(false)}
                     className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#07130e] px-4 text-sm font-extrabold text-white hover:bg-[#ffbd29] hover:text-[#07130e]"
                   >

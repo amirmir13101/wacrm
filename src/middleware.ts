@@ -17,30 +17,14 @@ import {
   isBillingLockAllowedPath,
   type WorkspaceBillingAccessRow,
 } from '@/lib/billing/access'
-
-const ROOT_DOMAIN = 'talkwagon.chat'
-const APP_DOMAIN = 'app.talkwagon.chat'
-
-const APP_DOMAIN_PATHS = [
-  '/login',
-  '/signup',
-  '/forgot-password',
-  '/change-password',
-  '/pending-approval',
-  '/invite',
-  '/dashboard',
-  '/inbox',
-  '/contacts',
-  '/pipelines',
-  '/broadcasts',
-  '/automations',
-  '/flows',
-  '/ai-chatbot',
-  '/billing',
-  '/whatsapp-api-pricing',
-  '/settings',
-  '/team',
-]
+import {
+  APP_DOMAIN,
+  APP_DOMAIN_PATHS,
+  PUBLIC_ROOT_DOMAIN_PATHS,
+  ROOT_DOMAIN,
+  isAppDomain,
+  matchesDomainPath,
+} from '@/lib/domain-routing'
 
 export async function middleware(request: NextRequest) {
   const domainRedirect = routeProductionDomains(request)
@@ -370,7 +354,7 @@ function routeProductionDomains(request: NextRequest): NextResponse | null {
 
   if (
     hostname === ROOT_DOMAIN &&
-    APP_DOMAIN_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))
+    matchesDomainPath(pathname, APP_DOMAIN_PATHS)
   ) {
     const url = request.nextUrl.clone()
     url.protocol = 'https:'
@@ -378,7 +362,14 @@ function routeProductionDomains(request: NextRequest): NextResponse | null {
     return NextResponse.redirect(url)
   }
 
-  if (hostname === APP_DOMAIN && (pathname === '/admin' || pathname.startsWith('/admintops'))) {
+  if (isAppDomain(hostname) && matchesDomainPath(pathname, PUBLIC_ROOT_DOMAIN_PATHS)) {
+    const url = request.nextUrl.clone()
+    url.protocol = 'https:'
+    url.hostname = ROOT_DOMAIN
+    return NextResponse.redirect(url)
+  }
+
+  if (isAppDomain(hostname) && (pathname === '/admin' || pathname.startsWith('/admintops'))) {
     const url = request.nextUrl.clone()
     url.protocol = 'https:'
     url.hostname = ROOT_DOMAIN

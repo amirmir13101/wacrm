@@ -1,5 +1,10 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+
+import { appHrefForHost, marketingHrefForHost } from "@/lib/domain-routing";
 
 const footerGroups = [
   {
@@ -54,12 +59,24 @@ const footerGroups = [
 ] as const;
 
 export function PublicFooter() {
+  const [currentHost, setCurrentHost] = useState("");
+
+  useEffect(() => {
+    setCurrentHost(window.location.hostname);
+  }, []);
+
+  function footerHref(href: string): string {
+    return href === "/login" || href === "/signup"
+      ? appHrefForHost(href, currentHost)
+      : marketingHrefForHost(href, currentHost);
+  }
+
   return (
     <footer id="footer" className="bg-[#0d1b15] px-5 py-16 text-white sm:px-8 lg:px-10">
       <div className="mx-auto grid max-w-7xl gap-x-10 gap-y-10 text-center md:grid-cols-2 lg:grid-cols-[minmax(320px,1.35fr)_repeat(5,minmax(0,1fr))] lg:text-left">
         <div className="md:col-span-2 lg:col-span-1">
           <Link
-            href="/"
+            href={marketingHrefForHost("/", currentHost)}
             className="mx-auto inline-flex max-w-full rounded-[18px] border border-[#3ddf84]/35 bg-[#f4fff9] px-3 py-2 shadow-[0_18px_54px_rgba(0,0,0,0.22)] ring-1 ring-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#3ddf84] lg:mx-0"
             aria-label="Talk Wagon home"
           >
@@ -83,7 +100,7 @@ export function PublicFooter() {
               {group.links.map(([label, href]) => (
                 <li key={label}>
                   {href ? (
-                    <Link href={href} className="inline-flex min-h-9 items-center justify-center hover:text-[#3ddf84] lg:min-h-0 lg:justify-start">
+                    <Link href={footerHref(href)} className="inline-flex min-h-9 items-center justify-center hover:text-[#3ddf84] lg:min-h-0 lg:justify-start">
                       {label}
                     </Link>
                   ) : (

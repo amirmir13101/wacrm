@@ -32,13 +32,24 @@ describe('platform admin routing separation', () => {
   })
 
   it('keeps CRM routes on the app subdomain while admin stays on the root domain', () => {
-    expect(middleware).toContain("const ROOT_DOMAIN = 'talkwagon.chat'")
-    expect(middleware).toContain("const APP_DOMAIN = 'app.talkwagon.chat'")
+    expect(middleware).toContain("from '@/lib/domain-routing'")
     expect(middleware).toContain('routeProductionDomains(request)')
     expect(middleware).toContain("hostname === ROOT_DOMAIN")
+    expect(middleware).toContain('matchesDomainPath(pathname, APP_DOMAIN_PATHS)')
     expect(middleware).toContain("url.hostname = APP_DOMAIN")
-    expect(middleware).toContain("hostname === APP_DOMAIN && (pathname === '/admin' || pathname.startsWith('/admintops'))")
+    expect(middleware).toContain('isAppDomain(hostname) && (pathname === \'/admin\' || pathname.startsWith(\'/admintops\'))')
     expect(middleware).toContain("url.hostname = ROOT_DOMAIN")
+  })
+
+  it('redirects public marketing pages away from the app subdomain', () => {
+    const domainRouting = readFileSync(join(process.cwd(), 'src/lib/domain-routing.ts'), 'utf8')
+
+    expect(domainRouting).toContain("export const PUBLIC_ROOT_DOMAIN_PATHS")
+    expect(domainRouting).toContain("'/features'")
+    expect(domainRouting).toContain("'/pricing'")
+    expect(domainRouting).toContain("'/checkout'")
+    expect(middleware).toContain('matchesDomainPath(pathname, PUBLIC_ROOT_DOMAIN_PATHS)')
+    expect(middleware).toContain('url.hostname = ROOT_DOMAIN')
   })
 
   it('blocks non-admins from admin routes', () => {

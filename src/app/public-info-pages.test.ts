@@ -12,6 +12,7 @@ function readSource(path: string) {
 describe("public legal and information pages", () => {
   const headerSource = readSource("src/components/marketing/public-header.tsx");
   const footerSource = readSource("src/components/marketing/public-footer.tsx");
+  const domainRoutingSource = readSource("src/lib/domain-routing.ts");
   const sitemapSource = readSource("src/app/sitemap.ts");
 
   it("creates all required public legal and information pages", () => {
@@ -58,6 +59,18 @@ describe("public legal and information pages", () => {
   it("removes FAQ from the top header navigation", () => {
     expect(headerSource).not.toContain('label: "FAQ"');
     expect(headerSource).not.toContain("/features#faq");
+  });
+
+  it("keeps public marketing links on the root domain after logout from the app subdomain", () => {
+    expect(domainRoutingSource).toContain("export const ROOT_DOMAIN = 'talkwagon.chat'");
+    expect(domainRoutingSource).toContain("export const APP_DOMAIN = 'app.talkwagon.chat'");
+    expect(domainRoutingSource).toContain("marketingHrefForHost");
+    expect(domainRoutingSource).toContain("appHrefForHost");
+    expect(headerSource).toContain("marketingHrefForHost(item.href, currentHost)");
+    expect(headerSource).toContain('appHrefForHost("/login", currentHost)');
+    expect(footerSource).toContain("footerHref(href)");
+    expect(footerSource).toContain("marketingHrefForHost(href, currentHost)");
+    expect(footerSource).toContain("appHrefForHost(href, currentHost)");
   });
 
   it("keeps required legal links in the footer", () => {
