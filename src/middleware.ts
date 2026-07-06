@@ -369,13 +369,6 @@ function routeProductionDomains(request: NextRequest): NextResponse | null {
     return NextResponse.redirect(url)
   }
 
-  if (isAppDomain(hostname) && (pathname === '/admin' || pathname.startsWith('/admintops'))) {
-    const url = request.nextUrl.clone()
-    url.protocol = 'https:'
-    url.hostname = ROOT_DOMAIN
-    return NextResponse.redirect(url)
-  }
-
   return null
 }
 

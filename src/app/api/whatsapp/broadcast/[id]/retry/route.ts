@@ -22,6 +22,7 @@ import {
 import type { Broadcast, BroadcastRecipient, Contact, VariableMapping } from '@/types'
 import { requireWorkspacePermission } from '@/lib/team/server'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
+import { APPROVED_TEMPLATE_STATUSES } from '@/lib/whatsapp/template-status-normalize'
 
 const RETRY_BATCH_SIZE = 10
 const RETRY_BATCH_DELAY_MS = 1000
@@ -147,7 +148,7 @@ export async function POST(_request: Request, context: RouteContext) {
       .eq('workspace_id', workspaceId)
       .eq('name', typedBroadcast.template_name)
       .eq('language', language)
-      .eq('status', 'Approved')
+      .in('status', [...APPROVED_TEMPLATE_STATUSES])
       .maybeSingle()
 
     if (templateError) {

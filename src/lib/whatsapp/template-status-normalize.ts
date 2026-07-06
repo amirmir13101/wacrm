@@ -11,6 +11,12 @@ const ALLOWED: ReadonlyArray<MessageTemplateStatus> = [
   'PENDING_DELETION',
 ]
 
+export const APPROVED_TEMPLATE_STATUSES = ['Approved', 'APPROVED', 'approved'] as const
+
+export function isApprovedTemplateStatus(status: string | null | undefined): boolean {
+  return String(status ?? '').toUpperCase() === 'APPROVED'
+}
+
 /**
  * Normalize an upstream status string (from the sync poll, submit
  * response, or webhook) into our `MessageTemplateStatus` enum.

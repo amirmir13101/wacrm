@@ -21,6 +21,8 @@ export const APP_DOMAIN_PATHS = [
   '/whatsapp-api-pricing',
   '/settings',
   '/team',
+  '/admin',
+  '/admintops',
 ] as const
 
 export const PUBLIC_ROOT_DOMAIN_PATHS = [

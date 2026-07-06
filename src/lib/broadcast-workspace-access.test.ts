@@ -35,4 +35,11 @@ describe('broadcast workspace control access', () => {
     expect(worker).toContain('configByWorkspace')
     expect(worker).toContain('findWorkspaceWhatsAppConfig')
   })
+
+  it('accepts normalized approved template statuses during worker send and retry', () => {
+    expect(worker).toContain('APPROVED_TEMPLATE_STATUSES')
+    expect(worker).toContain(".in('status', [...APPROVED_TEMPLATE_STATUSES])")
+    expect(retry).toContain('APPROVED_TEMPLATE_STATUSES')
+    expect(retry).toContain(".in('status', [...APPROVED_TEMPLATE_STATUSES])")
+  })
 })

@@ -13,6 +13,7 @@ import {
 } from '@/lib/broadcast-queue'
 import type { Broadcast, BroadcastRecipient, Contact } from '@/types'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
+import { APPROVED_TEMPLATE_STATUSES } from '@/lib/whatsapp/template-status-normalize'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -337,7 +338,7 @@ async function processQueue(request: Request) {
         .eq('workspace_id', workspaceId)
         .eq('name', row.broadcast.template_name)
         .eq('language', row.broadcast.template_language || 'en_US')
-        .eq('status', 'Approved')
+        .in('status', [...APPROVED_TEMPLATE_STATUSES])
         .maybeSingle()
       approvedTemplateCache.set(templateKey, Boolean(approved))
     }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   appHrefForHost,
+  APP_DOMAIN_PATHS,
   marketingHrefForHost,
   matchesDomainPath,
   PUBLIC_ROOT_DOMAIN_PATHS,
@@ -26,6 +27,14 @@ describe('production domain routing helpers', () => {
       'https://app.talkwagon.chat/signup',
     )
     expect(appHrefForHost('/login', 'localhost')).toBe('/login')
+  })
+
+  it('treats admin dashboard routes as app-domain routes so auth cookies stay consistent', () => {
+    expect(appHrefForHost('/admintops', 'talkwagon.chat')).toBe(
+      'https://app.talkwagon.chat/admintops',
+    )
+    expect(matchesDomainPath('/admintops', APP_DOMAIN_PATHS)).toBe(true)
+    expect(matchesDomainPath('/admin/users', APP_DOMAIN_PATHS)).toBe(true)
   })
 
   it('matches nested public routes that should leave the app subdomain', () => {

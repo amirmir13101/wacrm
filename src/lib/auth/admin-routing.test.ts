@@ -31,14 +31,17 @@ describe('platform admin routing separation', () => {
     expect(middleware).toContain("url.pathname = '/admintops'")
   })
 
-  it('keeps CRM routes on the app subdomain while admin stays on the root domain', () => {
+  it('keeps CRM and platform admin routes on the app subdomain', () => {
     expect(middleware).toContain("from '@/lib/domain-routing'")
     expect(middleware).toContain('routeProductionDomains(request)')
     expect(middleware).toContain("hostname === ROOT_DOMAIN")
     expect(middleware).toContain('matchesDomainPath(pathname, APP_DOMAIN_PATHS)')
     expect(middleware).toContain("url.hostname = APP_DOMAIN")
-    expect(middleware).toContain('isAppDomain(hostname) && (pathname === \'/admin\' || pathname.startsWith(\'/admintops\'))')
-    expect(middleware).toContain("url.hostname = ROOT_DOMAIN")
+    expect(middleware).not.toContain('isAppDomain(hostname) && (pathname === \'/admin\' || pathname.startsWith(\'/admintops\'))')
+
+    const domainRouting = readFileSync(join(process.cwd(), 'src/lib/domain-routing.ts'), 'utf8')
+    expect(domainRouting).toContain("'/admin'")
+    expect(domainRouting).toContain("'/admintops'")
   })
 
   it('redirects public marketing pages away from the app subdomain', () => {
