@@ -372,7 +372,7 @@ export default function PricingPage() {
                   href={plan.href}
                   className={`mt-7 inline-flex w-full items-center justify-center rounded-full text-sm font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
                     plan.featured
-                      ? "h-14 bg-[#3ddf84] text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline-white"
+                      ? "min-h-[60px] py-4 bg-[#3ddf84] text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline-white"
                       : "h-12 bg-[#181818] text-white hover:bg-[#ffbd29] hover:text-[#07130e] focus-visible:outline-[#08bba4]"
                   }`}
                 >
