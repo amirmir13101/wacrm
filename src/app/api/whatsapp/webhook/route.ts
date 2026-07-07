@@ -5,6 +5,7 @@ import { getMediaUrl, downloadMedia, sendTextMessage } from '@/lib/whatsapp/meta
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { inboundConsentUpdate } from '@/lib/contacts/consent'
 import { getRagAutoReplyRuntimeSettings } from '@/lib/rag/auto-reply'
 import { answerRagWhatsAppQuestion } from '@/lib/rag/chat'
@@ -35,6 +36,11 @@ interface WhatsAppMessage {
   sticker?: { id: string; mime_type: string }
   location?: { latitude: number; longitude: number; name?: string; address?: string }
   reaction?: { message_id: string; emoji: string }
+  interactive?: {
+    type: 'button_reply' | 'list_reply'
+    button_reply?: { id: string; title: string }
+    list_reply?: { id: string; title: string; description?: string }
+  }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
 }
@@ -479,6 +485,10 @@ async function processMessage(
     message,
     accessToken
   )
+  const interactiveReplyId =
+    message.type === 'interactive'
+      ? (message.interactive?.button_reply ?? message.interactive?.list_reply)?.id ?? null
+      : null
 
   // Resolve swipe-reply context if present. A missing parent is fine —
   // we just store NULL and the UI renders the message without a quote.
@@ -505,12 +515,12 @@ async function processMessage(
   // parseMessageContent. Silence the unused-var warning:
   void mediaType
 
-  // The messages.content_type CHECK constraint only allows:
-  //   text, image, document, audio, video, location, template
+  // The messages.content_type CHECK constraint allows:
+  //   text, image, document, audio, video, location, template, interactive
   // Map incoming WhatsApp types that aren't in that list to the closest
   // allowed value so the INSERT doesn't fail with a constraint error.
   const ALLOWED_CONTENT_TYPES = new Set([
-    'text', 'image', 'document', 'audio', 'video', 'location', 'template',
+    'text', 'image', 'document', 'audio', 'video', 'location', 'template', 'interactive',
   ])
   const contentType = ALLOWED_CONTENT_TYPES.has(message.type)
     ? message.type
@@ -541,6 +551,7 @@ async function processMessage(
       status: 'delivered',
       created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
       reply_to_message_id: replyToInternalId,
+      interactive_reply_id: interactiveReplyId,
     })
     .select('id')
     .single()
@@ -570,12 +581,36 @@ async function processMessage(
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(userId, contactRecord.id)
 
+  const inboundText = contentText ?? message.text?.body ?? ''
+  let flowConsumed = false
+  if (workspaceId) {
+    const flowResult = await dispatchInboundToFlows({
+      workspaceId,
+      userId,
+      contactId: contactRecord.id,
+      conversationId: conversation.id,
+      message: interactiveReplyId
+        ? {
+            kind: 'interactive_reply',
+            reply_id: interactiveReplyId,
+            reply_title: contentText ?? '',
+            meta_message_id: message.id,
+          }
+        : {
+            kind: 'text',
+            text: inboundText,
+            meta_message_id: message.id,
+          },
+      isFirstInboundMessage,
+    })
+    flowConsumed = flowResult.consumed
+  }
+
   // Fire any automations that react to this webhook event. All dispatches
   // run here (not earlier) so the contact, conversation, and inbound
   // message all exist before any step — including send_message — runs.
   // Fire-and-forget: a slow or failing automation must not block the
   // webhook's 200 OK response to Meta.
-  const inboundText = contentText ?? message.text?.body ?? ''
   const consentUpdate = inboundConsentUpdate(inboundText)
   if (consentUpdate) {
     const { error: consentError } = await supabaseAdmin()
@@ -594,7 +629,10 @@ async function processMessage(
     | 'first_inbound_message'
     | 'new_message_received'
     | 'keyword_match'
-  )[] = ['new_message_received', 'keyword_match']
+  )[] = []
+  if (!flowConsumed) {
+    automationTriggers.push('new_message_received', 'keyword_match')
+  }
   // new_contact_created fires only when the webhook just auto-created the
   // contact row. first_inbound_message fires whenever this is the contact's
   // first-ever customer-sent message — a superset that also catches
@@ -619,7 +657,7 @@ async function processMessage(
     }
   }
 
-  if (message.type === 'text') {
+  if (!flowConsumed && message.type === 'text') {
     await maybeHandleRagAutoReply({
       workspaceId,
       userId,
@@ -843,6 +881,15 @@ async function parseMessageContent(
         mediaType: null,
       }
 
+    case 'interactive': {
+      const reply = message.interactive?.button_reply ?? message.interactive?.list_reply
+      return {
+        contentText: reply?.title || reply?.id || '[Interactive reply]',
+        mediaUrl: null,
+        mediaType: null,
+      }
+    }
+
     default:
       return {
         contentText: `[Unsupported message type: ${message.type}]`,
@@ -868,11 +915,15 @@ async function findOrCreateContact(
   name: string,
   workspaceId: string | null = null,
 ): Promise<ContactOutcome | null> {
-  // Look up existing contacts for this user
-  const { data: contacts, error: contactsError } = await supabaseAdmin()
+  // Look up existing contacts for this workspace when available. Falling
+  // back to user_id preserves legacy rows that predate workspace tenancy.
+  let contactsQuery = supabaseAdmin()
     .from('contacts')
     .select('*')
     .eq('user_id', userId)
+  if (workspaceId) contactsQuery = contactsQuery.eq('workspace_id', workspaceId)
+
+  const { data: contacts, error: contactsError } = await contactsQuery
 
   if (contactsError) {
     console.error('Error fetching contacts:', contactsError)
@@ -916,12 +967,14 @@ async function findOrCreateContact(
 
 async function findOrCreateConversation(userId: string, contactId: string, workspaceId: string | null = null) {
   // Look for existing conversation
-  const { data: existing, error: findError } = await supabaseAdmin()
+  let conversationQuery = supabaseAdmin()
     .from('conversations')
     .select('*')
     .eq('user_id', userId)
     .eq('contact_id', contactId)
-    .single()
+  if (workspaceId) conversationQuery = conversationQuery.eq('workspace_id', workspaceId)
+
+  const { data: existing, error: findError } = await conversationQuery.single()
 
   if (!findError && existing) {
     return existing
