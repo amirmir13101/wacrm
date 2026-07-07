@@ -56,6 +56,7 @@ export interface DispatchInput {
   triggerType: AutomationTriggerType
   contactId?: string | null
   context?: AutomationContext
+  suppressCustomerReplies?: boolean
 }
 
 /**
@@ -132,6 +133,7 @@ export async function resumePendingExecution(pending: {
       automation: automation as Automation,
       contactId: pending.contact_id,
       context: pending.context ?? {},
+      suppressCustomerReplies: false,
       parentStepId: pending.parent_step_id,
       branch: pending.branch,
       startPosition: pending.next_step_position,
@@ -174,6 +176,7 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
     automation,
     contactId: input.contactId ?? null,
     context: input.context ?? {},
+    suppressCustomerReplies: input.suppressCustomerReplies ?? false,
     parentStepId: null,
     branch: null,
     startPosition: 0,
@@ -197,6 +200,7 @@ interface ExecuteArgs {
   automation: Automation
   contactId: string | null
   context: AutomationContext
+  suppressCustomerReplies: boolean
   parentStepId: string | null
   branch: 'yes' | 'no' | null
   startPosition: number
@@ -333,6 +337,9 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
   switch (step.step_type) {
     case 'send_message': {
       const cfg = step.step_config as SendMessageStepConfig
+      if (args.suppressCustomerReplies) {
+        return 'customer reply suppressed by inbound orchestrator'
+      }
       if (!args.contactId) throw new Error('send_message needs a contact')
       const text = interpolate(cfg.text, args)
       if (!text.trim()) throw new Error('send_message has empty text')
@@ -349,6 +356,9 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 
     case 'send_template': {
       const cfg = step.step_config as SendTemplateStepConfig
+      if (args.suppressCustomerReplies) {
+        return 'template reply suppressed by inbound orchestrator'
+      }
       if (!args.contactId) throw new Error('send_template needs a contact')
       if (!cfg.template_name) throw new Error('send_template needs template_name')
       const conversationId = await resolveConversationId(args)

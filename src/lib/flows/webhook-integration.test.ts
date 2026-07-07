@@ -7,6 +7,11 @@ const webhookRoute = readFileSync(
   'utf8',
 )
 
+const automationEngine = readFileSync(
+  join(process.cwd(), 'src/lib/automations/engine.ts'),
+  'utf8',
+)
+
 const flowMigration = readFileSync(
   join(process.cwd(), 'supabase/migrations/053_flows_and_meta_templates.sql'),
   'utf8',
@@ -31,12 +36,35 @@ describe('WhatsApp webhook flow integration', () => {
     expect(webhookRoute).toContain("'interactive',")
   })
 
-  it('prevents automations and RAG auto-reply from double-answering flow-consumed messages', () => {
+  it('orders inbound responders as Flow first, AI second, then automations with reply suppression', () => {
     expect(webhookRoute).toContain('let flowConsumed = false')
     expect(webhookRoute).toContain('flowConsumed = flowResult.consumed')
-    expect(webhookRoute).toContain('if (!flowConsumed) {')
-    expect(webhookRoute).toContain("automationTriggers.push('new_message_received', 'keyword_match')")
+    expect(webhookRoute).toContain('let aiReplied = false')
     expect(webhookRoute).toContain("if (!flowConsumed && message.type === 'text')")
+    expect(webhookRoute).toContain('aiReplied = await maybeHandleRagAutoReply({')
+    expect(webhookRoute).toContain("automationTriggers.push('new_message_received', 'keyword_match')")
+    expect(webhookRoute).toContain('suppressCustomerReplies: flowConsumed || aiReplied')
+    expect(webhookRoute.indexOf('const flowResult = await dispatchInboundToFlows({')).toBeLessThan(
+      webhookRoute.indexOf('aiReplied = await maybeHandleRagAutoReply({'),
+    )
+    expect(webhookRoute.indexOf('aiReplied = await maybeHandleRagAutoReply({')).toBeLessThan(
+      webhookRoute.indexOf('runAutomationsForTrigger({'),
+    )
+  })
+
+  it('lets automations run side effects while suppressing duplicate customer-facing reply steps', () => {
+    expect(automationEngine).toContain('suppressCustomerReplies?: boolean')
+    expect(automationEngine).toContain('suppressCustomerReplies: input.suppressCustomerReplies ?? false')
+    expect(automationEngine).toContain('if (args.suppressCustomerReplies) {')
+    expect(automationEngine).toContain('customer reply suppressed by inbound orchestrator')
+    expect(automationEngine).toContain('template reply suppressed by inbound orchestrator')
+  })
+
+  it('returns whether RAG auto-reply actually sent a customer-facing message', () => {
+    expect(webhookRoute).toContain('}): Promise<boolean> {')
+    expect(webhookRoute).toContain('if (!args.workspaceId) return false')
+    expect(webhookRoute).toContain('if (!answerText || !args.phoneNumberId) return false')
+    expect(webhookRoute).toContain('return true')
   })
 
   it('scopes inbound contact and conversation lookup to the WhatsApp workspace when available', () => {

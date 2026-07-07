@@ -176,23 +176,23 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
-      <aside className="order-2 space-y-5 lg:order-1">
-        <div className="rounded-[30px] bg-[#07130e] p-7 text-white shadow-[0_24px_70px_rgba(7,19,14,0.20)]">
-          <p className="text-sm font-bold uppercase text-[#3ddf84]">Manual checkout</p>
-          <h1 className="mt-3 text-3xl font-extrabold sm:text-4xl">{plan.title}</h1>
-          <p className="mt-4 text-sm leading-7 text-[#d5e9e2]">{plan.description}</p>
-          <div className="mt-6 rounded-2xl border border-white/10 bg-white/8 p-5">
+    <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr] lg:gap-8">
+      <aside className="contents lg:order-1 lg:block lg:space-y-5">
+        <div className="order-1 rounded-[24px] bg-[#07130e] p-5 text-white shadow-[0_24px_70px_rgba(7,19,14,0.20)] sm:rounded-[30px] sm:p-7">
+          <p className="text-xs font-bold uppercase text-[#3ddf84] sm:text-sm">Manual checkout</p>
+          <h1 className="mt-2 text-2xl font-extrabold sm:mt-3 sm:text-4xl">{plan.title}</h1>
+          <p className="mt-3 text-sm leading-6 text-[#d5e9e2] sm:mt-4 sm:leading-7">{plan.description}</p>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/8 p-4 sm:mt-6 sm:p-5">
             <p className="text-sm text-[#d5e9e2]">{plan.billingLabel}</p>
             {plan.originalPriceLabel ? (
               <div className="mt-2 flex flex-wrap items-end gap-3">
                 <span className="pb-1 text-xl font-bold text-[#d5e9e2]/60 line-through decoration-2">
                   {plan.originalPriceLabel}
                 </span>
-                <span className="text-5xl font-extrabold text-[#ffbd29]">{plan.priceLabel}</span>
+                <span className="text-4xl font-extrabold text-[#ffbd29] sm:text-5xl">{plan.priceLabel}</span>
               </div>
             ) : (
-              <p className="mt-2 text-5xl font-extrabold text-[#ffbd29]">{plan.priceLabel}</p>
+              <p className="mt-2 text-4xl font-extrabold text-[#ffbd29] sm:text-5xl">{plan.priceLabel}</p>
             )}
             {plan.offerLabel ? (
               <span className="mt-3 inline-flex rounded-full bg-[#3ddf84] px-3 py-1 text-xs font-extrabold uppercase text-[#07130e]">
@@ -200,13 +200,13 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
               </span>
             ) : null}
           </div>
-          <p className="mt-5 flex gap-2 text-sm leading-6 text-[#d8fff1]">
+          <p className="mt-4 flex gap-2 text-sm leading-6 text-[#d8fff1] sm:mt-5">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[#3ddf84]" />
             {plan.activationNote}
           </p>
         </div>
 
-        <div className="rounded-[28px] border border-[#dbe9e2] bg-white p-6">
+        <div className="order-3 rounded-[28px] border border-[#dbe9e2] bg-white p-6">
           <h2 className="text-lg font-extrabold text-[#07130e]">Payment details</h2>
           <p className="mt-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700">
             Pay with Easypaisa or bank transfer, submit this form, then send payment proof to our team.
@@ -253,7 +253,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
         </div>
       </aside>
 
-      <section className="order-1 rounded-[30px] border border-[#dbe9e2] bg-white p-6 shadow-[0_18px_55px_rgba(7,19,14,0.08)] sm:p-8 lg:order-2">
+      <section className="order-2 rounded-[30px] border border-[#dbe9e2] bg-white p-6 shadow-[0_18px_55px_rgba(7,19,14,0.08)] sm:p-8 lg:order-2">
         <div className="mt-6">
           <div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">

@@ -624,15 +624,27 @@ async function processMessage(
     }
   }
 
+  let aiReplied = false
+  if (!flowConsumed && message.type === 'text') {
+    aiReplied = await maybeHandleRagAutoReply({
+      workspaceId,
+      userId,
+      conversationId: conversation.id,
+      inboundMessageId: insertedMessage?.id ?? null,
+      customerPhone: senderPhone,
+      inboundText,
+      accessToken,
+      phoneNumberId: await findPhoneNumberIdForWorkspace(workspaceId, userId),
+    })
+  }
+
   const automationTriggers: (
     | 'new_contact_created'
     | 'first_inbound_message'
     | 'new_message_received'
     | 'keyword_match'
   )[] = []
-  if (!flowConsumed) {
-    automationTriggers.push('new_message_received', 'keyword_match')
-  }
+  automationTriggers.push('new_message_received', 'keyword_match')
   // new_contact_created fires only when the webhook just auto-created the
   // contact row. first_inbound_message fires whenever this is the contact's
   // first-ever customer-sent message — a superset that also catches
@@ -653,21 +665,9 @@ async function processMessage(
           message_text: inboundText,
           conversation_id: conversation.id,
         },
+        suppressCustomerReplies: flowConsumed || aiReplied,
       }).catch((err) => console.error('[automations] dispatch failed:', err))
     }
-  }
-
-  if (!flowConsumed && message.type === 'text') {
-    await maybeHandleRagAutoReply({
-      workspaceId,
-      userId,
-      conversationId: conversation.id,
-      inboundMessageId: insertedMessage?.id ?? null,
-      customerPhone: senderPhone,
-      inboundText,
-      accessToken,
-      phoneNumberId: await findPhoneNumberIdForWorkspace(workspaceId, userId),
-    })
   }
 }
 
@@ -702,13 +702,13 @@ async function maybeHandleRagAutoReply(args: {
   readonly inboundText: string
   readonly accessToken: string
   readonly phoneNumberId: string | null
-}) {
-  if (!args.workspaceId) return
+}): Promise<boolean> {
+  if (!args.workspaceId) return false
   const question = args.inboundText.trim()
-  if (!question) return
+  if (!question) return false
 
   const settings = await getRagAutoReplyRuntimeSettings(args.workspaceId)
-  if (!settings?.enabled) return
+  if (!settings?.enabled) return false
 
   let answerText: string | null = null
   try {
@@ -720,7 +720,7 @@ async function maybeHandleRagAutoReply(args: {
     })
 
     if (result.fallbackReason === 'ai_paused_for_human') {
-      return
+      return false
     }
 
     if (result.status === 'answered') {
@@ -733,10 +733,10 @@ async function maybeHandleRagAutoReply(args: {
       '[rag-auto-reply] answer generation failed:',
       error instanceof Error ? error.message : error,
     )
-    return
+    return false
   }
 
-  if (!answerText || !args.phoneNumberId) return
+  if (!answerText || !args.phoneNumberId) return false
 
   try {
     const result = await sendTextMessage({
@@ -766,8 +766,10 @@ async function maybeHandleRagAutoReply(args: {
         updated_at: new Date().toISOString(),
       })
       .eq('id', args.conversationId)
+    return true
   } catch (error) {
     console.error('[rag-auto-reply] send failed:', error instanceof Error ? error.message : error)
+    return false
   }
 }
 
