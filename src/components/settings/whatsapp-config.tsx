@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Eye,
@@ -13,6 +13,8 @@ import {
   Zap,
   AlertTriangle,
   RotateCcw,
+  MessageCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useWorkspacePermissions } from '@/hooks/use-workspace-permissions';
@@ -33,6 +35,46 @@ const MASKED_TOKEN = '••••••••••••••••';
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'unknown';
 type ResetReason = 'token_corrupted' | 'meta_api_error' | null;
+type SetupMode = 'connect' | 'manual';
+
+type EmbeddedSignupConfig = {
+  configured: boolean;
+  appId?: string;
+  configId?: string;
+  graphApiVersion: string;
+  missing?: string[];
+  message?: string;
+};
+
+type EmbeddedSignupMessage = {
+  type?: string;
+  event?: string;
+  data?: {
+    phone_number_id?: string;
+    waba_id?: string;
+  };
+};
+
+declare global {
+  interface Window {
+    FB?: {
+      init: (options: {
+        appId: string;
+        autoLogAppEvents?: boolean;
+        xfbml?: boolean;
+        version: string;
+      }) => void;
+      login: (
+        callback: (response: {
+          authResponse?: { code?: string | null } | null;
+          status?: string;
+        }) => void,
+        options: Record<string, unknown>,
+      ) => void;
+    };
+    fbAsyncInit?: () => void;
+  }
+}
 
 export function WhatsAppConfig() {
   const { user, loading: authLoading } = useAuth();
@@ -49,6 +91,19 @@ export function WhatsAppConfig() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('unknown');
   const [resetReason, setResetReason] = useState<ResetReason>(null);
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [setupMode, setSetupMode] = useState<SetupMode>('connect');
+  const [embeddedSignupConfig, setEmbeddedSignupConfig] =
+    useState<EmbeddedSignupConfig | null>(null);
+  const [connectingWithMeta, setConnectingWithMeta] = useState(false);
+  const [embeddedSignupError, setEmbeddedSignupError] = useState('');
+  const [embeddedSignupIds, setEmbeddedSignupIds] = useState<{
+    phone_number_id?: string;
+    waba_id?: string;
+  }>({});
+  const embeddedSignupIdsRef = useRef<{
+    phone_number_id?: string;
+    waba_id?: string;
+  }>({});
 
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [wabaId, setWabaId] = useState('');
@@ -60,6 +115,99 @@ export function WhatsAppConfig() {
     typeof window !== 'undefined'
       ? `${window.location.origin}/api/whatsapp/webhook`
       : '';
+
+  const loadEmbeddedSignupConfig = useCallback(async () => {
+    try {
+      const res = await fetch('/api/whatsapp/embedded-signup/config', { method: 'GET' });
+      const payload = (await res.json().catch(() => ({}))) as EmbeddedSignupConfig & {
+        error?: string;
+      };
+      if (!res.ok) {
+        setEmbeddedSignupConfig(null);
+        setEmbeddedSignupError(payload.error || 'Unable to load Embedded Signup settings.');
+        return null;
+      }
+      setEmbeddedSignupConfig(payload);
+      setEmbeddedSignupError(payload.configured ? '' : payload.message || '');
+      return payload;
+    } catch (err) {
+      console.error('Embedded Signup config error:', err);
+      setEmbeddedSignupConfig(null);
+      setEmbeddedSignupError('Unable to load Embedded Signup settings.');
+      return null;
+    }
+  }, []);
+
+  const loadFacebookSdk = useCallback((appId: string, graphApiVersion: string) => {
+    return new Promise<void>((resolve, reject) => {
+      if (typeof window === 'undefined') {
+        reject(new Error('Embedded Signup must be started in a browser.'));
+        return;
+      }
+
+      if (window.FB) {
+        window.FB.init({
+          appId,
+          autoLogAppEvents: true,
+          xfbml: true,
+          version: graphApiVersion,
+        });
+        resolve();
+        return;
+      }
+
+      window.fbAsyncInit = () => {
+        window.FB?.init({
+          appId,
+          autoLogAppEvents: true,
+          xfbml: true,
+          version: graphApiVersion,
+        });
+        resolve();
+      };
+
+      const existingScript = document.getElementById('facebook-jssdk');
+      if (existingScript) {
+        const timeout = window.setTimeout(() => {
+          if (window.FB) {
+            window.FB.init({
+              appId,
+              autoLogAppEvents: true,
+              xfbml: true,
+              version: graphApiVersion,
+            });
+            resolve();
+          } else {
+            reject(new Error('Meta SDK did not finish loading.'));
+          }
+        }, 8000);
+        existingScript.addEventListener(
+          'load',
+          () => {
+            window.clearTimeout(timeout);
+            window.FB?.init({
+              appId,
+              autoLogAppEvents: true,
+              xfbml: true,
+              version: graphApiVersion,
+            });
+            resolve();
+          },
+          { once: true },
+        );
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.id = 'facebook-jssdk';
+      script.src = 'https://connect.facebook.net/en_US/sdk.js';
+      script.async = true;
+      script.defer = true;
+      script.crossOrigin = 'anonymous';
+      script.onerror = () => reject(new Error('Failed to load the Meta SDK.'));
+      document.body.appendChild(script);
+    });
+  }, []);
 
   const fetchConfig = useCallback(async () => {
     setLoading(true);
@@ -117,7 +265,38 @@ export function WhatsAppConfig() {
       return;
     }
     fetchConfig();
-  }, [authLoading, workspace.loading, user, fetchConfig]);
+    loadEmbeddedSignupConfig();
+  }, [authLoading, workspace.loading, user, fetchConfig, loadEmbeddedSignupConfig]);
+
+  useEffect(() => {
+    function handleEmbeddedSignupMessage(event: MessageEvent) {
+      if (!event.origin.endsWith('facebook.com')) return;
+
+      let payload: EmbeddedSignupMessage | null = null;
+      if (typeof event.data === 'string') {
+        try {
+          payload = JSON.parse(event.data) as EmbeddedSignupMessage;
+        } catch {
+          return;
+        }
+      } else if (typeof event.data === 'object' && event.data !== null) {
+        payload = event.data as EmbeddedSignupMessage;
+      }
+
+      if (payload?.type !== 'WA_EMBEDDED_SIGNUP') return;
+      if (payload.event === 'FINISH' || payload.event === 'FINISH_ONLY_WABA') {
+        const ids = {
+          phone_number_id: payload.data?.phone_number_id,
+          waba_id: payload.data?.waba_id,
+        };
+        embeddedSignupIdsRef.current = ids;
+        setEmbeddedSignupIds(ids);
+      }
+    }
+
+    window.addEventListener('message', handleEmbeddedSignupMessage);
+    return () => window.removeEventListener('message', handleEmbeddedSignupMessage);
+  }, []);
 
   async function handleSave() {
     if (!phoneNumberId.trim()) {
@@ -251,6 +430,100 @@ export function WhatsAppConfig() {
     toast.success('Webhook URL copied to clipboard');
   }
 
+  async function handleConnectWithWhatsApp() {
+    setEmbeddedSignupError('');
+    setConnectingWithMeta(true);
+
+    try {
+      const metaConfig = embeddedSignupConfig ?? (await loadEmbeddedSignupConfig());
+      if (!metaConfig?.configured || !metaConfig.appId || !metaConfig.configId) {
+        const missing = metaConfig?.missing?.length
+          ? ` Missing server settings: ${metaConfig.missing.join(', ')}.`
+          : '';
+        const message =
+          `Meta Embedded Signup is not configured for this CRM installation.${missing}`;
+        setEmbeddedSignupError(message);
+        toast.error('Meta Embedded Signup is not configured');
+        setConnectingWithMeta(false);
+        return;
+      }
+
+      await loadFacebookSdk(metaConfig.appId, metaConfig.graphApiVersion);
+
+      if (!window.FB) {
+        throw new Error('Meta SDK was not available after loading.');
+      }
+
+      window.FB.login(
+        async (response) => {
+          try {
+            const code = response.authResponse?.code;
+            const phoneNumberId = embeddedSignupIdsRef.current.phone_number_id;
+            const embeddedWabaId = embeddedSignupIdsRef.current.waba_id;
+
+            if (!code) {
+              setEmbeddedSignupError('Meta signup did not return an authorization code.');
+              toast.error('WhatsApp connection was not completed');
+              return;
+            }
+
+            if (!phoneNumberId) {
+              setEmbeddedSignupError(
+                'Meta signup did not return a phone number ID. Please complete all WhatsApp setup steps and try again.',
+              );
+              toast.error('WhatsApp phone number was not returned by Meta');
+              return;
+            }
+
+            const res = await fetch('/api/whatsapp/embedded-signup/callback', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                code,
+                phone_number_id: phoneNumberId,
+                waba_id: embeddedWabaId,
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+              setEmbeddedSignupError(data.error || 'Failed to save WhatsApp connection.');
+              toast.error(data.error || 'Failed to save WhatsApp connection');
+              return;
+            }
+
+            toast.success(
+              data.phone_info?.verified_name
+                ? `Connected to ${data.phone_info.verified_name}`
+                : 'WhatsApp connected successfully',
+            );
+            await fetchConfig();
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : 'Failed to finish WhatsApp connection.';
+            setEmbeddedSignupError(message);
+            toast.error(message);
+          } finally {
+            setConnectingWithMeta(false);
+          }
+        },
+        {
+          config_id: metaConfig.configId,
+          response_type: 'code',
+          override_default_response_type: true,
+          extras: {
+            setup: {},
+          },
+        },
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to start WhatsApp connection.';
+      setEmbeddedSignupError(message);
+      toast.error(message);
+      setConnectingWithMeta(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -345,6 +618,137 @@ export function WhatsAppConfig() {
           </AlertDescription>
         </Alert>
 
+        {/* Setup Mode */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setSetupMode('connect')}
+            className={`rounded-2xl border p-4 text-left transition ${
+              setupMode === 'connect'
+                ? 'border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_0_1px_rgba(52,211,153,0.25)]'
+                : 'border-slate-700 bg-slate-900 hover:border-emerald-400/40'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300">
+                <MessageCircle className="size-5" />
+              </span>
+              <div>
+                <p className="font-semibold text-white">Connect WhatsApp</p>
+                <p className="text-sm text-slate-400">Official Meta Embedded Signup flow.</p>
+              </div>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSetupMode('manual')}
+            className={`rounded-2xl border p-4 text-left transition ${
+              setupMode === 'manual'
+                ? 'border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_0_1px_rgba(52,211,153,0.25)]'
+                : 'border-slate-700 bg-slate-900 hover:border-emerald-400/40'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-slate-800 text-slate-300">
+                <ShieldCheck className="size-5" />
+              </span>
+              <div>
+                <p className="font-semibold text-white">Manual Setup</p>
+                <p className="text-sm text-slate-400">Paste your existing Meta API credentials.</p>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        {setupMode === 'connect' ? (
+          <Card className="bg-slate-900 border-slate-700 ring-0 ring-transparent">
+            <CardHeader>
+              <CardTitle className="text-white">Connect with Meta Embedded Signup</CardTitle>
+              <CardDescription className="text-slate-400">
+                Use Meta&apos;s official Facebook Login for Business flow to connect a WhatsApp
+                Business Account and phone number without manually pasting API credentials.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/5 p-4">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-300" />
+                  <div>
+                    <p className="font-semibold text-white">Secure official setup</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-300">
+                      Talk Wagon starts Meta&apos;s official Embedded Signup popup. The temporary
+                      authorization code is exchanged on the server, and tokens are encrypted before
+                      storage. App secrets and access tokens are never exposed in the browser.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {!embeddedSignupConfig?.configured && embeddedSignupConfig?.missing?.length ? (
+                <Alert className="border-amber-600/40 bg-amber-950/40">
+                  <AlertTriangle className="size-4 text-amber-400" />
+                  <AlertTitle className="text-amber-200">
+                    Embedded Signup is not configured
+                  </AlertTitle>
+                  <AlertDescription className="text-amber-100/80">
+                    Ask the server admin to set{' '}
+                    <span className="font-mono">META_APP_ID</span>,{' '}
+                    <span className="font-mono">META_EMBEDDED_SIGNUP_CONFIG_ID</span>, and{' '}
+                    <span className="font-mono">META_APP_SECRET</span>. You can still use Manual
+                    Setup below.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {embeddedSignupError ? (
+                <Alert className="border-red-900/50 bg-red-950/30">
+                  <XCircle className="size-4 text-red-400" />
+                  <AlertTitle className="text-red-200">Connection not completed</AlertTitle>
+                  <AlertDescription className="text-red-100/80">
+                    {embeddedSignupError}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {embeddedSignupIds.phone_number_id || embeddedSignupIds.waba_id ? (
+                <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-300">
+                  Meta returned setup details. Saving completes after the authorization code is
+                  exchanged server-side.
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  onClick={handleConnectWithWhatsApp}
+                  disabled={connectingWithMeta}
+                  className="bg-emerald-400 text-slate-950 hover:bg-emerald-300"
+                >
+                  {connectingWithMeta ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="size-4" />
+                      Connect with WhatsApp
+                    </>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSetupMode('manual')}
+                  className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+                >
+                  Use Manual Setup
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
         {/* API Credentials */}
         <Card className="bg-slate-900 border-slate-700 ring-0 ring-transparent">
           <CardHeader>
@@ -508,6 +912,8 @@ export function WhatsAppConfig() {
             </Button>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* Setup Instructions Sidebar */}
