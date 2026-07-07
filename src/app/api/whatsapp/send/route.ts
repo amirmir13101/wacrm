@@ -18,6 +18,15 @@ import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { canSeeConversation } from '@/lib/team/assignment'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
+import { APPROVED_TEMPLATE_STATUSES } from '@/lib/whatsapp/template-status-normalize'
+
+function extractTemplateVariableCount(body: string | null | undefined) {
+  const ids = new Set<number>()
+  for (const match of (body ?? '').matchAll(/\{\{(\d+)\}\}/g)) {
+    ids.add(Number(match[1]))
+  }
+  return ids.size
+}
 
 export async function POST(request: Request) {
   try {
@@ -65,6 +74,7 @@ export async function POST(request: Request) {
       content_text,
       media_url,
       template_name,
+      template_language,
       template_params,
       reply_to_message_id,
     } = body
@@ -185,6 +195,67 @@ export async function POST(request: Request) {
         })
     }
 
+    let resolvedTemplateName = typeof template_name === 'string' ? template_name : ''
+    let resolvedTemplateLanguage =
+      typeof template_language === 'string' && template_language.trim()
+        ? template_language.trim()
+        : ''
+
+    if (message_type === 'template') {
+      let templateQuery = admin
+        .from('message_templates')
+        .select('id, name, language, status, body_text')
+        .eq('workspace_id', workspace.workspaceId)
+        .eq('name', resolvedTemplateName)
+        .in('status', [...APPROVED_TEMPLATE_STATUSES])
+        .limit(2)
+
+      if (resolvedTemplateLanguage) {
+        templateQuery = templateQuery.eq('language', resolvedTemplateLanguage)
+      }
+
+      const { data: templateRows, error: templateLookupError } = await templateQuery
+      if (templateLookupError) {
+        return NextResponse.json({ error: templateLookupError.message }, { status: 500 })
+      }
+
+      if (!templateRows?.length) {
+        return NextResponse.json(
+          {
+            error: `Template "${resolvedTemplateName}"${
+              resolvedTemplateLanguage ? ` (${resolvedTemplateLanguage})` : ''
+            } is not approved or not synced for this workspace.`,
+          },
+          { status: 400 },
+        )
+      }
+
+      if (!resolvedTemplateLanguage && templateRows.length > 1) {
+        return NextResponse.json(
+          { error: `Choose the exact language for template "${resolvedTemplateName}" before sending.` },
+          { status: 400 },
+        )
+      }
+
+      const templateRow = templateRows[0]
+      resolvedTemplateName = templateRow.name
+      resolvedTemplateLanguage = templateRow.language || 'en_US'
+
+      const variableCount = extractTemplateVariableCount(templateRow.body_text)
+      const providedParams = Array.isArray(template_params) ? template_params : []
+      if (
+        providedParams.length < variableCount ||
+        providedParams.some((param) => !String(param).trim())
+      ) {
+        return NextResponse.json(
+          {
+            error: `Template "${resolvedTemplateName}" (${resolvedTemplateLanguage}) requires ${variableCount} filled variable${variableCount === 1 ? '' : 's'}.`,
+          },
+          { status: 400 },
+        )
+      }
+    }
+
     // Resolve the reply target (if any) to its Meta message_id, which is
     // what `context.message_id` on the outgoing Meta payload needs. The
     // parent must belong to this same conversation — otherwise a caller
@@ -230,7 +301,8 @@ export async function POST(request: Request) {
           phoneNumberId: config.phone_number_id,
           accessToken,
           to: phone,
-          templateName: template_name,
+          templateName: resolvedTemplateName,
+          language: resolvedTemplateLanguage,
           params: template_params || [],
           contextMessageId,
         })
@@ -274,7 +346,12 @@ export async function POST(request: Request) {
       const message = err instanceof Error ? err.message : 'Unknown Meta API error'
       console.error('Meta API send failed for all variants:', message)
       return NextResponse.json(
-        { error: `Meta API error: ${message}` },
+        {
+          error:
+            message_type === 'template'
+              ? `Meta API error while sending template "${resolvedTemplateName}" (${resolvedTemplateLanguage}): ${message}`
+              : `Meta API error: ${message}`,
+        },
         { status: 502 }
       )
     }
@@ -304,7 +381,7 @@ export async function POST(request: Request) {
         content_type: message_type,
         content_text: content_text || null,
         media_url: media_url || null,
-        template_name: template_name || null,
+        template_name: resolvedTemplateName || null,
         message_id: waMessageId,
         status: 'sent',
         reply_to_message_id: reply_to_message_id || null,

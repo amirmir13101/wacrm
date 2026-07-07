@@ -18,10 +18,6 @@ import { dedupeSharedPricingRates } from '@/lib/whatsapp/pricing-rates'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
-import {
-  releaseWorkspaceBroadcastUsage,
-  reserveWorkspaceBroadcastUsage,
-} from '@/lib/billing/trial'
 import type { Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
 
 interface IncomingRecipient {
@@ -391,21 +387,6 @@ export async function POST(request: Request) {
 
     const recipientResult = evaluateBroadcastRecipients(contacts)
     const eligibleContacts = recipientResult.eligible.map((recipient) => recipient.contact)
-    const usageReservation = await reserveWorkspaceBroadcastUsage({
-      workspaceId: workspace.workspaceId,
-      count: eligibleContacts.length,
-    })
-
-    if (!usageReservation.allowed) {
-      return NextResponse.json(
-        {
-          error: usageReservation.message,
-          preflight,
-          trial: usageReservation.result,
-        },
-        { status: 402 },
-      )
-    }
 
     let broadcast: { id: string } | null = null
     try {
@@ -471,10 +452,6 @@ export async function POST(request: Request) {
         }
       }
     } catch (error) {
-      await releaseWorkspaceBroadcastUsage({
-        workspaceId: workspace.workspaceId,
-        count: usageReservation.reserved,
-      })
       throw error
     }
 

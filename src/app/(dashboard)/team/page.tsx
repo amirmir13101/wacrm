@@ -43,6 +43,13 @@ interface TeamResponse {
   can_manage_team: boolean;
   members: WorkspaceMemberOption[];
   invitations?: WorkspaceInvitation[];
+  team_limit?: {
+    limit: number;
+    used: number;
+    remaining: number;
+    canInviteMore: boolean;
+    message: string;
+  } | null;
   workspaces?: Array<{
     workspace_id: string;
     workspace_name: string | null;
@@ -302,6 +309,8 @@ export default function TeamPage() {
     () => data?.invitations?.filter((invite) => invite.status !== "pending") ?? [],
     [data?.invitations],
   );
+  const teamLimit = data?.team_limit ?? null;
+  const teamLimitReached = Boolean(teamLimit && !teamLimit.canInviteMore);
 
   return (
     <div className="space-y-6">
@@ -336,13 +345,23 @@ export default function TeamPage() {
         <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div className="flex items-start gap-2">
             <KeyRound className="mt-0.5 size-4 text-violet-300" />
-            <div>
+            <div className="min-w-0 flex-1">
               <h2 className="text-sm font-semibold text-white">Add Team Member</h2>
               <p className="mt-1 text-xs text-slate-500">
                 Create an agent login for this workspace. The agent must change the temporary password on first login.
               </p>
             </div>
+            {teamLimit && (
+              <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-100">
+                {teamLimit.used}/{teamLimit.limit} team seats
+              </span>
+            )}
           </div>
+          {teamLimitReached && (
+            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+              {teamLimit?.message}
+            </div>
+          )}
           <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_180px_180px_160px_auto]">
             <Input
               value={email}
@@ -378,7 +397,13 @@ export default function TeamPage() {
             </select>
             <Button
               onClick={createTeamMember}
-              disabled={creatingMember || !email.trim() || !temporaryPassword || !confirmTemporaryPassword}
+              disabled={
+                teamLimitReached ||
+                creatingMember ||
+                !email.trim() ||
+                !temporaryPassword ||
+                !confirmTemporaryPassword
+              }
               className="bg-violet-600 text-white hover:bg-violet-700"
             >
               {creatingMember ? "Creating..." : "Create Team Member"}

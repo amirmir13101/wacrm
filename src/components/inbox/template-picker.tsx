@@ -83,7 +83,6 @@ export function TemplatePicker({
       const { data, error } = await supabase
         .from("message_templates")
         .select("*")
-        .eq("user_id", user.id)
         .in("status", ["Approved", "APPROVED"])
         .order("created_at", { ascending: false });
 

@@ -9,12 +9,14 @@ describe('pricing page copy', () => {
     expect(source).toContain('14-Day Free Trial')
     expect(source).toContain('$0 for 14 days')
     expect(source).toContain('1,000 broadcast messages included during trial')
+    expect(source).toContain('1 team member seat included')
     expect(source).not.toContain('1,000 trial broadcast messages')
     expect(source).toContain('Access all CRM features during trial')
   })
 
-  it('describes the Pro monthly broadcast message limit', () => {
+  it('describes the Pro monthly broadcast and team member limits', () => {
     expect(source).toContain('250,000 broadcast messages per month')
+    expect(source).toContain('Up to 10 team members')
     expect(source).not.toContain('Unlimited messages inside Talk Wagon CRM')
   })
 

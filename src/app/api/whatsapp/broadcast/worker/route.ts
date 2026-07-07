@@ -14,6 +14,10 @@ import {
 import type { Broadcast, BroadcastRecipient, Contact } from '@/types'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 import { APPROVED_TEMPLATE_STATUSES } from '@/lib/whatsapp/template-status-normalize'
+import {
+  releaseWorkspaceBroadcastUsage,
+  reserveWorkspaceBroadcastUsage,
+} from '@/lib/billing/trial'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -391,6 +395,27 @@ async function processQueue(request: Request) {
       continue
     }
 
+    const usageReservation = await reserveWorkspaceBroadcastUsage({
+      workspaceId,
+      count: 1,
+    })
+
+    if (!usageReservation.allowed) {
+      await admin
+        .from('broadcast_recipients')
+        .update({
+          status: 'failed',
+          error_message: usageReservation.message ?? 'Broadcast message limit reached.',
+          last_error_message: usageReservation.message ?? 'Broadcast message limit reached.',
+          failure_type: 'permanent',
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', row.id)
+      failed++
+      continue
+    }
+
     const now = new Date().toISOString()
     const result = await (async () => {
       try {
@@ -429,6 +454,10 @@ async function processQueue(request: Request) {
         .eq('id', row.id)
       sent++
     } else {
+      await releaseWorkspaceBroadcastUsage({
+        workspaceId,
+        count: usageReservation.reserved,
+      })
       await admin
         .from('broadcast_recipients')
         .update({

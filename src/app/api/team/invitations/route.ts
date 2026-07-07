@@ -13,6 +13,7 @@ import {
   hasWorkspacePermission,
 } from '@/lib/team/permissions'
 import { requireCurrentWorkspace } from '@/lib/team/server'
+import { getWorkspaceTeamLimitStatus } from '@/lib/team/limits'
 
 export async function GET() {
   const workspaceResult = await requireCurrentWorkspace()
@@ -78,6 +79,11 @@ export async function POST(request: Request) {
       { error: 'You cannot grant personal WhatsApp connection access' },
       { status: 403 },
     )
+  }
+
+  const teamLimit = await getWorkspaceTeamLimitStatus(workspaceResult.workspace.workspaceId)
+  if (!teamLimit.canInviteMore) {
+    return NextResponse.json({ error: teamLimit.message, team_limit: teamLimit }, { status: 402 })
   }
 
   const created = await createWorkspaceInvitation({

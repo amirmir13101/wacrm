@@ -15,6 +15,7 @@ import {
   defaultPermissionsForRole,
   hasWorkspacePermission,
 } from '@/lib/team/permissions'
+import { getWorkspaceTeamLimitStatus } from '@/lib/team/limits'
 
 function passwordValidationError(password: string) {
   if (password.length < 8) return 'Temporary password must be at least 8 characters.'
@@ -33,15 +34,19 @@ export async function GET() {
     )
   }
 
-  const [members, workspaces, invitations] = await Promise.all([
+  const canManageTeam = canManageTeamWithPermissions({
+    role: workspaceResult.workspace.role,
+    permissions: workspaceResult.workspace.permissions,
+  })
+  const [members, workspaces, invitations, teamLimit] = await Promise.all([
     listWorkspaceMembers(workspaceResult.workspace.workspaceId),
     listCurrentUserWorkspaces(workspaceResult.workspace.userId),
-    canManageTeamWithPermissions({
-      role: workspaceResult.workspace.role,
-      permissions: workspaceResult.workspace.permissions,
-    })
+    canManageTeam
       ? listWorkspaceInvitations(workspaceResult.workspace.workspaceId)
       : Promise.resolve([]),
+    canManageTeam
+      ? getWorkspaceTeamLimitStatus(workspaceResult.workspace.workspaceId)
+      : Promise.resolve(null),
   ])
   return NextResponse.json({
     workspace_id: workspaceResult.workspace.workspaceId,
@@ -53,10 +58,8 @@ export async function GET() {
     current_contact_visibility: workspaceResult.workspace.contactVisibility,
     current_conversation_visibility: workspaceResult.workspace.conversationVisibility,
     current_deal_visibility: workspaceResult.workspace.dealVisibility,
-    can_manage_team: canManageTeamWithPermissions({
-      role: workspaceResult.workspace.role,
-      permissions: workspaceResult.workspace.permissions,
-    }),
+    can_manage_team: canManageTeam,
+    team_limit: teamLimit,
     members,
     invitations,
     workspaces,
@@ -132,6 +135,11 @@ export async function POST(request: Request) {
       { error: 'You cannot grant personal WhatsApp connection access' },
       { status: 403 },
     )
+  }
+
+  const teamLimit = await getWorkspaceTeamLimitStatus(workspaceResult.workspace.workspaceId)
+  if (!teamLimit.canInviteMore) {
+    return NextResponse.json({ error: teamLimit.message, team_limit: teamLimit }, { status: 402 })
   }
 
   const admin = supabaseAdmin()

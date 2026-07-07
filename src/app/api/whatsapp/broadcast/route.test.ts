@@ -23,13 +23,30 @@ describe('/api/whatsapp/broadcast compatibility route', () => {
     expect(source).toContain('evaluateBroadcastRecipients')
   })
 
-  it('reserves workspace broadcast usage only when a broadcast is queued', () => {
+  it('does not consume monthly broadcast quota while messages are only queued', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
 
-    expect(source).toContain('reserveWorkspaceBroadcastUsage')
-    expect(source).toContain('releaseWorkspaceBroadcastUsage')
-    expect(source).toContain('count: eligibleContacts.length')
-    expect(source).toContain('status: 402')
+    expect(source).not.toContain('reserveWorkspaceBroadcastUsage')
+    expect(source).not.toContain('releaseWorkspaceBroadcastUsage')
+    expect(source).not.toContain('count: eligibleContacts.length')
+    expect(source).toContain("status: 'queued'")
+  })
+
+  it('reserves monthly broadcast quota from the worker one sent message at a time', () => {
+    const workerSource = readFileSync(
+      join(process.cwd(), 'src/app/api/whatsapp/broadcast/worker/route.ts'),
+      'utf8',
+    )
+
+    expect(workerSource).toContain('reserveWorkspaceBroadcastUsage')
+    expect(workerSource).toContain('releaseWorkspaceBroadcastUsage')
+    expect(workerSource).toContain('count: 1')
+    expect(workerSource.indexOf('const usageReservation = await reserveWorkspaceBroadcastUsage')).toBeLessThan(
+      workerSource.indexOf('return await sendQueuedTemplateRecipient'),
+    )
+    expect(workerSource.indexOf('await releaseWorkspaceBroadcastUsage')).toBeLessThan(
+      workerSource.indexOf('error_message: result.error'),
+    )
   })
 
   it('loads shared admin-managed pricing rates for preflight estimates', () => {

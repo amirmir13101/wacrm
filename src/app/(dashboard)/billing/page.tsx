@@ -106,6 +106,8 @@ export default function BillingPage() {
         </div>
         <Link
           href="/pricing"
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-flex h-11 items-center justify-center rounded-full bg-[#3ddf84] px-5 text-sm font-extrabold text-[#07130e] transition hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3ddf84]"
         >
           View plans

@@ -91,7 +91,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
                 onClick={() => onSelect(template)}
                 className={`flex flex-col gap-3 rounded-xl border p-4 text-left transition-all ${
                   isSelected
-                    ? 'border-violet-500 bg-violet-500/5 ring-1 ring-violet-500/30'
+                    ? 'border-[#3ddf84] bg-[#0f3b2b] shadow-[0_0_0_1px_rgba(61,223,132,0.24)] ring-1 ring-[#3ddf84]/35'
                     : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900'
                 }`}
               >
@@ -103,8 +103,10 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
                     {template.category}
                   </span>
                 </div>
-                <p className="line-clamp-3 text-xs text-slate-400">{template.body_text}</p>
-                <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                <p className={`line-clamp-3 text-xs ${isSelected ? 'text-[#d8fff1]' : 'text-slate-400'}`}>
+                  {template.body_text}
+                </p>
+                <div className={`flex items-center gap-2 text-[10px] ${isSelected ? 'text-[#a8f5d5]' : 'text-slate-500'}`}>
                   <span>{template.language ?? 'en_US'}</span>
                   {template.status && (
                     <>

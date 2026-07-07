@@ -177,7 +177,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
 
   return (
     <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
-      <aside className="space-y-5">
+      <aside className="order-2 space-y-5 lg:order-1">
         <div className="rounded-[30px] bg-[#07130e] p-7 text-white shadow-[0_24px_70px_rgba(7,19,14,0.20)]">
           <p className="text-sm font-bold uppercase text-[#3ddf84]">Manual checkout</p>
           <h1 className="mt-3 text-3xl font-extrabold sm:text-4xl">{plan.title}</h1>
@@ -253,7 +253,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
         </div>
       </aside>
 
-      <section className="rounded-[30px] border border-[#dbe9e2] bg-white p-6 shadow-[0_18px_55px_rgba(7,19,14,0.08)] sm:p-8">
+      <section className="order-1 rounded-[30px] border border-[#dbe9e2] bg-white p-6 shadow-[0_18px_55px_rgba(7,19,14,0.08)] sm:p-8 lg:order-2">
         <div className="mt-6">
           <div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">

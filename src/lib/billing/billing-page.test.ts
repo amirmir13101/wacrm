@@ -30,6 +30,12 @@ describe('Billing dashboard page', () => {
     expect(billingPage).toContain('Payment method')
   })
 
+  it('opens the public pricing page in a safe new tab', () => {
+    expect(billingPage).toContain('href="/pricing"')
+    expect(billingPage).toContain('target="_blank"')
+    expect(billingPage).toContain('rel="noopener noreferrer"')
+  })
+
   it('does not hard-code fake billing values or manual payment values', () => {
     expect(billingPage).toContain('Not available yet')
     expect(billingPage).toContain('titleCase(trial.manualPaymentStatus)')
