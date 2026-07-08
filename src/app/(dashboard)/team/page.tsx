@@ -482,9 +482,10 @@ export default function TeamPage() {
           <div className="p-6 text-sm text-slate-400">Loading team...</div>
         ) : (
           <div className="divide-y divide-slate-800">
-            {data?.members.map((member) => (
+            {data?.members.map((member, index) => (
               <MemberCard
                 key={member.id}
+                memberNumber={index + 1}
                 member={member}
                 currentUserId={data.current_user_id}
                 canManageTeam={data.can_manage_team}
@@ -687,6 +688,7 @@ function InvitationRow({
 }
 
 function MemberCard({
+  memberNumber,
   member,
   currentUserId,
   canManageTeam,
@@ -694,6 +696,7 @@ function MemberCard({
   onDelete,
   isDeleting,
 }: {
+  memberNumber: number;
   member: WorkspaceMemberOption;
   currentUserId: string;
   canManageTeam: boolean;
@@ -797,6 +800,13 @@ function MemberCard({
         <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-start">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-[#3ddf84]/70 bg-[#3ddf84]/15 text-xs font-extrabold text-[#3ddf84]"
+                aria-label={`Team member number ${memberNumber}`}
+                title={`Team member ${memberNumber}`}
+              >
+                {memberNumber}
+              </span>
               <h3 className="truncate text-sm font-semibold text-white">
                 {member.full_name || member.email || member.user_id}
                 {member.user_id === currentUserId ? " (you)" : ""}

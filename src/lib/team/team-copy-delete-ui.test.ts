@@ -40,4 +40,12 @@ describe('team login details copy and delete UI', () => {
     expect(teamPage).toContain('router.refresh()')
     expect(teamPage).toContain('{deleting || isDeleting ? "Deleting..." : "Delete member"}')
   })
+
+  it('shows clear sequential numbering on each team member card', () => {
+    expect(teamPage).toContain('data?.members.map((member, index)')
+    expect(teamPage).toContain('memberNumber={index + 1}')
+    expect(teamPage).toContain('memberNumber: number')
+    expect(teamPage).toContain('aria-label={`Team member number ${memberNumber}`}')
+    expect(teamPage).toContain('{memberNumber}')
+  })
 })
