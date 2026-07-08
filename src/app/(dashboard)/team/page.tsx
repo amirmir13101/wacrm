@@ -801,7 +801,7 @@ function MemberCard({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-amber-700/80 bg-[#3ddf84]/15 text-xs font-extrabold text-[#3ddf84]"
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-[#ffbd29]/80 bg-[#3ddf84]/15 text-xs font-extrabold text-[#3ddf84]"
                 aria-label={`Team member number ${memberNumber}`}
                 title={`Team member ${memberNumber}`}
               >

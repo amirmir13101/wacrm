@@ -46,7 +46,7 @@ describe('team login details copy and delete UI', () => {
     expect(teamPage).toContain('memberNumber={index + 1}')
     expect(teamPage).toContain('memberNumber: number')
     expect(teamPage).toContain('aria-label={`Team member number ${memberNumber}`}')
-    expect(teamPage).toContain('border-amber-700/80')
+    expect(teamPage).toContain('border-[#ffbd29]/80')
     expect(teamPage).toContain('{memberNumber}')
   })
 })
