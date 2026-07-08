@@ -70,6 +70,9 @@ interface WorkspaceInvitation {
   invite_url?: string;
 }
 
+const teamMemberCardClass =
+  "m-3 overflow-hidden rounded-xl border border-[#3ddf84]/60 bg-slate-950/50 shadow-sm shadow-black/20 transition-colors hover:border-[#3ddf84]/80";
+
 export default function TeamPage() {
   const router = useRouter();
   const deletedMemberIdsRef = useRef(new Set<string>());
@@ -789,7 +792,7 @@ function MemberCard({
   }
 
   return (
-    <section className="m-3 overflow-hidden rounded-xl border border-[#3ddf84]/60 bg-slate-950/50 shadow-sm shadow-black/20 transition-colors hover:border-[#3ddf84]/80">
+    <section className={teamMemberCardClass} data-testid="team-member-card">
       <div className="border-b border-slate-800 bg-slate-900/80 px-4 py-4">
         <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-start">
           <div className="min-w-0">
@@ -1401,4 +1404,3 @@ function MetricCard({
     </div>
   );
 }
-

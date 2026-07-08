@@ -48,4 +48,14 @@ describe('CRM dashboard card border consistency', () => {
       expect(file).toContain(hoverBorder)
     }
   })
+
+  it('keeps every Team member card on the same visible CRM border style', () => {
+    const teamPage = source('src/app/(dashboard)/team/page.tsx')
+
+    expect(teamPage).toContain('const teamMemberCardClass')
+    expect(teamPage).toContain(normalBorder)
+    expect(teamPage).toContain(hoverBorder)
+    expect(teamPage).toContain('data-testid="team-member-card"')
+    expect(teamPage).toContain('className={teamMemberCardClass}')
+  })
 })
