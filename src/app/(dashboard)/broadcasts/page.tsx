@@ -194,7 +194,7 @@ export default function BroadcastsPage() {
       <TrialUsageCard compact />
 
       {broadcasts.length === 0 ? (
-        <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900">
+        <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80">
           <Radio className="mb-3 h-10 w-10 text-slate-600" />
           <p className="text-sm font-medium text-white">No broadcasts yet</p>
           <p className="mt-1 text-xs text-slate-400">
@@ -209,7 +209,7 @@ export default function BroadcastsPage() {
           </Button>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900">
+        <div className="overflow-x-auto rounded-xl border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80">
           <Table>
             <TableHeader>
               <TableRow className="border-slate-800 hover:bg-transparent">

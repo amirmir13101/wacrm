@@ -121,7 +121,7 @@ export default function AutomationLogsPage({
             return (
               <li
                 key={log.id}
-                className="rounded-xl border border-slate-800 bg-slate-900"
+                className="rounded-xl border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80"
               >
                 <button
                   type="button"

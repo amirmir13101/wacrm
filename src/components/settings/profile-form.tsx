@@ -309,7 +309,7 @@ export function ProfileForm() {
           </div>
 
           {/* Read-only block */}
-          <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+          <div className="rounded-lg border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80/60 p-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
               Account details
             </p>

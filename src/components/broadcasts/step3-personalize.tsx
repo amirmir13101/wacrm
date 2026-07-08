@@ -194,7 +194,7 @@ export function Step3Personalize({
       </div>
 
       {placeholders.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center">
+        <div className="rounded-xl border border-[#3ddf84]/60 bg-slate-900/50 p-6 transition-colors hover:border-[#3ddf84]/80 text-center">
           <p className="text-sm text-slate-400">
             This template has no variables to personalize.
           </p>
@@ -208,7 +208,7 @@ export function Step3Personalize({
             return (
               <div
                 key={placeholder}
-                className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"
+                className="rounded-xl border border-[#3ddf84]/60 bg-slate-900/50 p-4 transition-colors hover:border-[#3ddf84]/80"
               >
                 <div className="mb-3 flex items-center gap-2">
                   <span className="inline-flex items-center rounded-md bg-violet-500/10 px-2 py-0.5 text-xs font-mono font-medium text-violet-400">
@@ -311,7 +311,7 @@ export function Step3Personalize({
 
       {/* Live Preview — rendered as a WhatsApp-style bubble so the user
           sees approximately what the recipient will see. */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+      <div className="rounded-xl border border-[#3ddf84]/60 bg-slate-900/50 p-4 transition-colors hover:border-[#3ddf84]/80">
         <div className="mb-3 flex items-center gap-2">
           <Eye className="h-4 w-4 text-violet-400" />
           <p className="text-sm font-medium text-white">Live Preview</p>

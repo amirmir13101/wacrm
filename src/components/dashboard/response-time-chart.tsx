@@ -25,7 +25,7 @@ export function ResponseTimeChart({
   const hasData = data?.buckets.some((b) => b.avgMinutes != null) ?? false
 
   return (
-    <section className="rounded-2xl border border-[#17402f] bg-[#0d1b15]/95 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
+    <section className="rounded-2xl border border-[#3ddf84]/60 bg-[#0d1b15]/95 shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition-colors hover:border-[#3ddf84]/80">
       <header className="flex items-center justify-between border-b border-[#17402f] px-5 py-4">
         <div>
           <h2 className="text-sm font-semibold text-white">

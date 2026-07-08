@@ -69,7 +69,7 @@ export function TrialUsageCard({ compact = false, onStatus }: TrialUsageCardProp
 
   if (loading) {
     return (
-      <section className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-4">
+      <section className="rounded-2xl border border-[#3ddf84]/60 bg-emerald-950/40 p-4 transition-colors hover:border-[#3ddf84]/80">
         <div className="flex items-center gap-2 text-sm text-[#b8cfc7]">
           <Loader2 className="size-4 animate-spin" />
           Loading plan usage...
@@ -110,7 +110,7 @@ export function TrialUsageCard({ compact = false, onStatus }: TrialUsageCardProp
         : `${trial.trialBroadcastUsed.toLocaleString()} / ${trial.trialBroadcastLimit.toLocaleString()} trial broadcast messages used. ${remaining.toLocaleString()} remaining.`
 
   return (
-    <section className="rounded-2xl border border-emerald-900/70 bg-emerald-950/40 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.12)]">
+    <section className="rounded-2xl border border-[#3ddf84]/60 bg-emerald-950/40 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition-colors hover:border-[#3ddf84]/80">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

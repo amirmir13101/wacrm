@@ -72,7 +72,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
       </div>
 
       {templates.length === 0 ? (
-        <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900/50">
+        <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80/50">
           <FileText className="mb-2 h-8 w-8 text-slate-600" />
           <p className="text-sm text-slate-400">No approved templates available.</p>
           <p className="mt-1 text-xs text-slate-500">
@@ -92,7 +92,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
                 className={`flex flex-col gap-3 rounded-xl border p-4 text-left transition-all ${
                   isSelected
                     ? 'border-[#3ddf84] bg-[#0f3b2b] shadow-[0_0_0_1px_rgba(61,223,132,0.24)] ring-1 ring-[#3ddf84]/35'
-                    : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900'
+                    : 'border-[#3ddf84]/60 bg-slate-900/50 hover:border-[#3ddf84]/80 hover:bg-slate-900'
                 }`}
               >
                 <div className="flex items-start justify-between">

@@ -115,7 +115,7 @@ export default function BillingPage() {
       </div>
 
       {loading ? (
-        <section className="rounded-2xl border border-[#17402f] bg-[#082019]/70 p-6 text-[#b8cfc7]">
+        <section className="rounded-2xl border border-[#3ddf84]/60 bg-[#082019]/70 p-6 transition-colors hover:border-[#3ddf84]/80 text-[#b8cfc7]">
           <span className="inline-flex items-center gap-2">
             <Loader2 className="size-4 animate-spin" />
             Loading billing details...
@@ -154,7 +154,7 @@ export default function BillingPage() {
           </section>
 
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-            <div className="rounded-2xl border border-[#17402f] bg-[#082019]/70 p-5">
+            <div className="rounded-2xl border border-[#3ddf84]/60 bg-[#082019]/70 p-5 transition-colors hover:border-[#3ddf84]/80">
               <div className="flex items-center gap-2">
                 <Radio className="size-5 text-[#3ddf84]" />
                 <h2 className="text-lg font-bold text-white">Broadcast usage</h2>
@@ -185,7 +185,7 @@ export default function BillingPage() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-[#17402f] bg-[#082019]/70 p-5">
+            <div className="rounded-2xl border border-[#3ddf84]/60 bg-[#082019]/70 p-5 transition-colors hover:border-[#3ddf84]/80">
               <h2 className="text-lg font-bold text-white">Billing details</h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <Detail label="Subscription start date" value={formatDate(trial.subscriptionStartedAt)} />
@@ -235,7 +235,7 @@ function SummaryCard({
   helper: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[#17402f] bg-[#082019]/70 p-5">
+    <div className="rounded-2xl border border-[#3ddf84]/60 bg-[#082019]/70 p-5 transition-colors hover:border-[#3ddf84]/80">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-[#b8cfc7]">{title}</p>
@@ -252,7 +252,7 @@ function SummaryCard({
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl border border-[#17402f] bg-[#07130e]/70 px-3 py-2.5">
+    <div className="flex items-center justify-between gap-4 rounded-xl border border-[#3ddf84]/60 bg-[#07130e]/70 px-3 py-2.5 transition-colors hover:border-[#3ddf84]/80">
       <dt className="text-[#8bb4a5]">{label}</dt>
       <dd className="text-right font-semibold text-white">{value}</dd>
     </div>

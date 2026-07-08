@@ -215,7 +215,7 @@ export function WhatsAppPricingManager() {
                 </Field>
               </div>
 
-              <div className="rounded-xl border border-[#17402f] bg-[#07130e]/80 p-4 text-sm">
+              <div className="rounded-xl border border-[#3ddf84]/60 bg-[#07130e]/80 p-4 text-sm transition-colors hover:border-[#3ddf84]/80">
                 <p className="text-[#b8cfc7]">Rate per delivered message</p>
                 <p className="mt-1 text-xl font-extrabold text-white">{estimate.rateDisplay}</p>
                 <p className="mt-5 text-[#b8cfc7]">Estimated total</p>
@@ -286,7 +286,7 @@ export function WhatsAppPricingManager() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-[#17402f]">
+          <div className="overflow-hidden rounded-xl border border-[#3ddf84]/60 transition-colors hover:border-[#3ddf84]/80">
             <table className="w-full text-sm">
               <thead className="bg-[#07130e] text-[#b8cfc7]">
                 <tr>

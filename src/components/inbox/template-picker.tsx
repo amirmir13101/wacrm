@@ -153,7 +153,7 @@ export function TemplatePicker({
                 <Loader2 className="h-5 w-5 animate-spin text-violet-400" />
               </div>
             ) : templates.length === 0 ? (
-              <div className="rounded-md border border-slate-800 bg-slate-950/50 p-6 text-center">
+              <div className="rounded-md border border-[#3ddf84]/60 bg-slate-950/50 p-6 text-center transition-colors hover:border-[#3ddf84]/80">
                 <p className="text-sm text-slate-300">No approved templates</p>
                 <p className="mt-1 text-xs text-slate-500">
                   Approve a template in Meta WhatsApp Manager, then sync it
@@ -166,7 +166,7 @@ export function TemplatePicker({
                   key={t.id}
                   type="button"
                   onClick={() => pickTemplate(t)}
-                  className="w-full rounded-md border border-slate-800 bg-slate-950/50 p-3 text-left transition-colors hover:border-violet-500/40 hover:bg-slate-900"
+                  className="w-full rounded-md border border-[#3ddf84]/60 bg-slate-950/50 p-3 text-left transition-colors hover:border-[#3ddf84]/80 hover:bg-slate-900"
                 >
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
@@ -195,7 +195,7 @@ export function TemplatePicker({
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-md border border-slate-800 bg-slate-950/50 p-3">
+            <div className="rounded-md border border-[#3ddf84]/60 bg-slate-950/50 p-3 transition-colors hover:border-[#3ddf84]/80">
               <p className="mb-1 text-xs text-slate-400">Preview</p>
               <p className="whitespace-pre-wrap text-sm text-slate-200">
                 {renderBodyPreview(selected.body_text, params)}

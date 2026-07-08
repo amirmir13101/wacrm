@@ -530,7 +530,7 @@ export function ContactDetailView({
                       className="bg-slate-800 border-slate-700 text-white h-8 text-sm"
                     />
                   </div>
-                  <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="space-y-3 rounded-lg border border-[#3ddf84]/60 bg-slate-950/40 p-3 transition-colors hover:border-[#3ddf84]/80">
                     <div className="flex items-start gap-2">
                       <input
                         id="detail-whatsapp-opt-in"
@@ -700,7 +700,7 @@ export function ContactDetailView({
                     notes.map((note) => (
                       <div
                         key={note.id}
-                        className="rounded-lg bg-slate-800/50 border border-slate-700/50 p-3 group"
+                        className="rounded-lg border border-[#3ddf84]/60 bg-slate-800/50 p-3 transition-colors hover:border-[#3ddf84]/80 group"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm text-slate-300 whitespace-pre-wrap flex-1">
@@ -788,7 +788,7 @@ export function ContactDetailView({
                     {deals.map((deal) => (
                       <div
                         key={deal.id}
-                        className="rounded-lg border border-slate-700 bg-slate-800/50 p-3"
+                        className="rounded-lg border border-[#3ddf84]/60 bg-slate-800/50 p-3 transition-colors hover:border-[#3ddf84]/80"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm font-medium text-white">

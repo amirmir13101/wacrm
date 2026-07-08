@@ -342,7 +342,7 @@ export default function TeamPage() {
       </div>
 
       {data?.can_manage_team && (
-        <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="rounded-lg border border-[#3ddf84]/60 bg-slate-900 p-4 transition-colors hover:border-[#3ddf84]/80">
           <div className="flex items-start gap-2">
             <KeyRound className="mt-0.5 size-4 text-violet-300" />
             <div className="min-w-0 flex-1">
@@ -456,7 +456,7 @@ export default function TeamPage() {
               </Button>
             </div>
           )}
-          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+          <div className="mt-4 rounded-lg border border-[#3ddf84]/60 bg-slate-950/40 p-3 transition-colors hover:border-[#3ddf84]/80">
             <PermissionEditor
               permissions={newMemberPermissions}
               disabled={false}
@@ -471,7 +471,7 @@ export default function TeamPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+      <div className="overflow-hidden rounded-lg border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80">
         <div className="border-b border-slate-800 px-4 py-3">
           <h2 className="text-sm font-semibold text-white">Members and workload</h2>
         </div>
@@ -495,7 +495,7 @@ export default function TeamPage() {
       </div>
 
       {data?.can_manage_team && (
-        <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+        <div className="overflow-hidden rounded-lg border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80">
           <div className="border-b border-slate-800 px-4 py-3">
             <h2 className="text-sm font-semibold text-white">Legacy pending invitations</h2>
             <p className="mt-1 text-xs text-slate-500">
@@ -521,7 +521,7 @@ export default function TeamPage() {
       )}
 
       {data?.can_manage_team && pastInvites.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+        <div className="overflow-hidden rounded-lg border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80">
           <div className="border-b border-slate-800 px-4 py-3">
             <h2 className="text-sm font-semibold text-white">Past invitations</h2>
             <p className="mt-1 text-xs text-slate-500">
@@ -789,7 +789,7 @@ function MemberCard({
   }
 
   return (
-    <section className="m-3 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/50 shadow-sm shadow-black/20">
+    <section className="m-3 overflow-hidden rounded-xl border border-[#3ddf84]/60 bg-slate-950/50 shadow-sm shadow-black/20 transition-colors hover:border-[#3ddf84]/80">
       <div className="border-b border-slate-800 bg-slate-900/80 px-4 py-4">
         <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-start">
           <div className="min-w-0">
@@ -870,7 +870,7 @@ function MemberCard({
         </div>
 
         {canManageTeam && member.role !== "owner" && (
-          <div className="rounded-lg border border-slate-800 bg-slate-900">
+          <div className="rounded-lg border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80">
             <button
               type="button"
               onClick={() => setPermissionsOpen((value) => !value)}
@@ -1007,7 +1007,7 @@ function PermissionEditor({
 
   return (
     <div className="space-y-4" data-testid="permission-editor">
-      <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+      <div className="rounded-lg border border-[#3ddf84]/60 bg-slate-950/40 p-4 transition-colors hover:border-[#3ddf84]/80">
         <div className="flex items-start gap-2">
           <Sparkles className="mt-0.5 size-4 text-violet-300" />
           <div>
@@ -1029,7 +1029,7 @@ function PermissionEditor({
                 className={`min-h-24 rounded-lg border p-3 text-left transition ${
                   active
                     ? "border-[#3ddf84] bg-[#3ddf84] text-[#07130e] shadow-[0_14px_32px_rgba(61,223,132,0.18)]"
-                    : "border-slate-800 bg-slate-900 hover:border-slate-600"
+                    : "border-[#3ddf84]/60 bg-slate-900 hover:border-[#3ddf84]/80"
                 } disabled:cursor-not-allowed disabled:opacity-60`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -1056,7 +1056,7 @@ function PermissionEditor({
         )}
       </div>
 
-      <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+      <div className="rounded-lg border border-[#3ddf84]/60 bg-slate-900 p-4 transition-colors hover:border-[#3ddf84]/80">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-white">Step 3: Review access summary</p>
@@ -1077,7 +1077,7 @@ function PermissionEditor({
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-800 bg-slate-900">
+      <div className="rounded-lg border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80">
         <button
           type="button"
           onClick={() => setAdvancedOpen((value) => !value)}
@@ -1294,7 +1294,7 @@ function SummaryTile({
   wide?: boolean;
 }) {
   return (
-    <div className={`rounded-md border border-slate-800 bg-slate-950/50 p-3 ${wide ? "md:col-span-2 xl:col-span-4" : ""}`}>
+    <div className={`rounded-md border border-[#3ddf84]/60 bg-slate-950/50 p-3 transition-colors hover:border-[#3ddf84]/80 ${wide ? "md:col-span-2 xl:col-span-4" : ""}`}>
       <p className="text-[11px] font-medium uppercase text-slate-500">{label}</p>
       <p className="mt-1 text-sm text-white">{value}</p>
     </div>
@@ -1321,7 +1321,7 @@ function PermissionSection({
   const enabled = items.filter((item) => permissions[item.key] === true).length;
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+    <div className="rounded-lg border border-[#3ddf84]/60 bg-slate-950/40 p-3 transition-colors hover:border-[#3ddf84]/80">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1392,7 +1392,7 @@ function MetricCard({
   value: number;
 }) {
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+    <div className="rounded-lg border border-[#3ddf84]/60 bg-slate-900 p-4 transition-colors hover:border-[#3ddf84]/80">
       <div className="flex items-center gap-2 text-xs text-slate-400">
         <Icon className="h-4 w-4 text-violet-400" />
         {label}
@@ -1401,6 +1401,4 @@ function MetricCard({
     </div>
   );
 }
-
-
 

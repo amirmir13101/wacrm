@@ -268,7 +268,7 @@ export default function FlowsPage() {
                       type="button"
                       onClick={() => handleUseTemplate(t.slug)}
                       disabled={creating}
-                      className="flex flex-col gap-2.5 rounded-lg border border-border bg-background p-4 text-left transition-colors hover:border-primary/40 hover:bg-muted disabled:opacity-50"
+                      className="flex flex-col gap-2.5 rounded-lg border border-[#3ddf84]/60 bg-background p-4 text-left transition-colors hover:border-[#3ddf84]/80 hover:bg-muted disabled:opacity-50"
                     >
                       <Icon className="h-5 w-5 text-primary" />
                       <span className="text-sm font-semibold text-popover-foreground">
@@ -329,7 +329,7 @@ function EmptyState({
   canCreate: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-card/50 px-6 py-16 text-center">
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#3ddf84]/60 bg-card/50 px-6 py-16 transition-colors hover:border-[#3ddf84]/80 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
         <Workflow className="h-6 w-6 text-muted-foreground" />
       </div>
@@ -370,7 +370,7 @@ function FlowCard({
         ? Archive
         : PauseCircle;
   return (
-    <div className="flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-border">
+    <div className="flex flex-col rounded-lg border border-[#3ddf84]/60 bg-card p-4 transition-colors hover:border-[#3ddf84]/80">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <Workflow className="h-4 w-4 shrink-0 text-primary" />

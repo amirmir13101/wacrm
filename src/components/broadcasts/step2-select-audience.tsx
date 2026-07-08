@@ -282,7 +282,7 @@ export function Step2SelectAudience({
                 'flex items-start gap-3 rounded-xl border p-4 text-left transition-all',
                 isSelected
                   ? 'border-[#3ddf84] bg-[#3ddf84] shadow-[0_0_0_1px_rgba(61,223,132,0.28),0_18px_45px_rgba(8,43,27,0.32)]'
-                  : 'border-[#0f5f43] bg-[#051b13]/80 hover:border-[#3ddf84]/70 hover:bg-[#082419]',
+                  : 'border-[#3ddf84]/60 bg-[#051b13]/80 hover:border-[#3ddf84]/80 hover:bg-[#082419]',
               )}
             >
               <div
@@ -319,7 +319,7 @@ export function Step2SelectAudience({
       </div>
 
       {audience.type === 'tags' && (
-        <div className="rounded-xl border border-[#0f5f43] bg-[#051b13]/80 p-4">
+        <div className="rounded-xl border border-[#3ddf84]/60 bg-[#051b13]/80 p-4 transition-colors hover:border-[#3ddf84]/80">
           <p className="mb-3 text-sm font-medium text-white">Select Tags</p>
           {loadingTags ? (
             <Loader2 className="h-5 w-5 animate-spin text-[#3ddf84]" />
@@ -355,7 +355,7 @@ export function Step2SelectAudience({
       )}
 
       {audience.type === 'custom_field' && (
-        <div className="space-y-3 rounded-xl border border-[#0f5f43] bg-[#051b13]/80 p-4">
+        <div className="space-y-3 rounded-xl border border-[#3ddf84]/60 bg-[#051b13]/80 p-4 transition-colors hover:border-[#3ddf84]/80">
           <p className="text-sm font-medium text-white">Custom Field Filter</p>
           {loadingFields ? (
             <Loader2 className="h-5 w-5 animate-spin text-[#3ddf84]" />
@@ -405,7 +405,7 @@ export function Step2SelectAudience({
       )}
 
       {/* Exclude list — applies regardless of audience type */}
-      <div className="rounded-xl border border-[#0f5f43] bg-[#051b13]/80 p-4">
+      <div className="rounded-xl border border-[#3ddf84]/60 bg-[#051b13]/80 p-4 transition-colors hover:border-[#3ddf84]/80">
         <div className="mb-3 flex items-center gap-2">
           <X className="h-4 w-4 text-red-400" />
           <p className="text-sm font-medium text-white">
@@ -442,7 +442,7 @@ export function Step2SelectAudience({
       </div>
 
       {/* Audience Summary */}
-      <div className="rounded-xl border border-[#0f5f43] bg-[#051b13]/80 p-4">
+      <div className="rounded-xl border border-[#3ddf84]/60 bg-[#051b13]/80 p-4 transition-colors hover:border-[#3ddf84]/80">
         <p className="mb-2 text-sm font-medium text-white">Audience Summary</p>
         {loadingCount ? (
           <div className="flex items-center gap-2">

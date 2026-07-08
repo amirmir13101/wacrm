@@ -182,7 +182,7 @@ export default function AutomationsPage() {
                 <button
                   key={slug}
                   onClick={() => startFromTemplate(slug)}
-                  className="group flex flex-col items-start rounded-xl border border-slate-800 bg-slate-900 p-4 text-left transition-colors hover:border-violet-500/50 hover:bg-slate-900/80"
+                  className="group flex flex-col items-start rounded-xl border border-[#3ddf84]/60 bg-slate-900 p-4 text-left transition-colors hover:border-[#3ddf84]/80 hover:bg-slate-900/80"
                 >
                   <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/10 text-violet-400 group-hover:bg-violet-500/15">
                     <Icon className="h-5 w-5" />
@@ -272,7 +272,7 @@ function AutomationCard({
 }) {
   const meta = triggerMeta(automation.trigger_type)
   return (
-    <li className="rounded-xl border border-slate-800 bg-slate-900 transition-colors hover:border-slate-700">
+    <li className="rounded-xl border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80">
       <div className="flex items-center gap-4 p-4">
         <div
           className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-violet-500/10"

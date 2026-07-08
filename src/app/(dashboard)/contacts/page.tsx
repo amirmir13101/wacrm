@@ -381,7 +381,7 @@ export default function ContactsPage() {
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-800">
+      <div className="overflow-hidden rounded-lg border border-[#3ddf84]/60 transition-colors hover:border-[#3ddf84]/80">
         <Table>
           <TableHeader>
             <TableRow className="border-slate-800 hover:bg-transparent">

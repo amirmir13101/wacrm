@@ -307,7 +307,7 @@ export function ContactForm({
             )}
           </div>
 
-          <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+          <div className="space-y-3 rounded-lg border border-[#3ddf84]/60 bg-slate-950/40 p-3 transition-colors hover:border-[#3ddf84]/80">
             <div className="flex items-start gap-2">
               <input
                 id="cf-whatsapp-opt-in"

@@ -266,7 +266,7 @@ function TriggerPanel({
   triggerIssues: ValidationIssue[];
 }) {
   return (
-    <section className="border-border bg-card rounded-lg border p-4">
+    <section className="rounded-lg border border-[#3ddf84]/60 bg-card p-4 transition-colors hover:border-[#3ddf84]/80">
       <h2 className="text-foreground mb-3 text-sm font-semibold">Trigger</h2>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
@@ -345,7 +345,7 @@ function EntryPicker({
 }) {
   if (state.nodes.length === 0) return null;
   return (
-    <section className="border-border bg-card flex items-center gap-3 rounded-lg border p-3">
+    <section className="flex items-center gap-3 rounded-lg border border-[#3ddf84]/60 bg-card p-3 transition-colors hover:border-[#3ddf84]/80">
       <CornerDownRight className="text-primary h-4 w-4 shrink-0" />
       <span className="text-muted-foreground text-xs">Entry node:</span>
       <NodeKeySelect

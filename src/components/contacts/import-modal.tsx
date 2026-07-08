@@ -375,7 +375,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
           {/* Upload area */}
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-700 p-6 cursor-pointer hover:border-violet-500/50 transition-colors"
+            className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#3ddf84]/60 p-6 cursor-pointer transition-colors hover:border-[#3ddf84]/80"
           >
             {file ? (
               <>
@@ -412,7 +412,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
               <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
                 Preview (first {preview.length} rows)
               </p>
-              <div className="rounded-lg border border-slate-700 overflow-hidden">
+              <div className="overflow-hidden rounded-lg border border-[#3ddf84]/60 transition-colors hover:border-[#3ddf84]/80">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-slate-800">
@@ -444,7 +444,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
 
           {/* Results */}
           {result && (
-            <div className="rounded-lg border border-slate-700 p-4 space-y-2">
+            <div className="space-y-2 rounded-lg border border-[#3ddf84]/60 p-4 transition-colors hover:border-[#3ddf84]/80">
               <p className="text-sm font-medium text-white">Import Complete</p>
               <div className="flex items-center gap-4">
                 {result.imported > 0 && (

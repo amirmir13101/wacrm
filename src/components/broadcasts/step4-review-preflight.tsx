@@ -158,7 +158,7 @@ export function Step4ReviewPreflight({
         </PreflightCard>
       </section>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+      <section className="rounded-xl border border-[#3ddf84]/60 bg-slate-900/50 p-4 transition-colors hover:border-[#3ddf84]/80">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-medium text-white">Recipients</h3>
           <StatusBadge state={summary.finalQueueCount > 0 ? 'passed' : 'blocked'} />
@@ -174,7 +174,7 @@ export function Step4ReviewPreflight({
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+      <section className="rounded-xl border border-[#3ddf84]/60 bg-slate-900/50 p-4 transition-colors hover:border-[#3ddf84]/80">
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-sm font-medium text-white">Pricing</h3>
@@ -185,7 +185,7 @@ export function Step4ReviewPreflight({
         {summary.pricingBreakdown.length === 0 ? (
           <p className="text-sm text-slate-400">No pricing estimate available.</p>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-slate-800">
+          <div className="overflow-hidden rounded-lg border border-[#3ddf84]/60 transition-colors hover:border-[#3ddf84]/80">
             <table className="w-full text-sm">
               <thead className="bg-slate-950/50 text-slate-400">
                 <tr>
@@ -215,7 +215,7 @@ export function Step4ReviewPreflight({
           </div>
         )}
         {summary.currencyTotals.length > 0 && (
-          <div className="mt-3 space-y-3 rounded-lg border border-slate-800 bg-slate-950/30 p-3">
+          <div className="mt-3 space-y-3 rounded-lg border border-[#3ddf84]/60 bg-slate-950/30 p-3 transition-colors hover:border-[#3ddf84]/80">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-medium text-slate-300">Original currency totals</p>
@@ -266,7 +266,7 @@ export function Step4ReviewPreflight({
         )}
       </section>
 
-      <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+      <div className="space-y-3 rounded-xl border border-[#3ddf84]/60 bg-slate-900/50 p-4 transition-colors hover:border-[#3ddf84]/80">
         <label className="flex items-start gap-2 text-sm text-slate-200">
           <input
             type="checkbox"
@@ -317,7 +317,7 @@ function PreflightCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-400">
+    <div className="rounded-xl border border-[#3ddf84]/60 bg-slate-900/50 p-4 transition-colors hover:border-[#3ddf84]/80 text-sm text-slate-400">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="font-medium text-white">{title}</h3>
         {badge}

@@ -187,7 +187,7 @@ export default function FlowRunsPage() {
       </p>
 
       {runs.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-dashed border-border bg-card/50 px-6 py-12 text-center text-sm text-muted-foreground">
+        <div className="mt-6 rounded-lg border border-dashed border-[#3ddf84]/60 bg-card/50 px-6 py-12 transition-colors hover:border-[#3ddf84]/80 text-center text-sm text-muted-foreground">
           No runs yet. Trigger the flow from a personal WhatsApp number to see
           it appear here.
         </div>
@@ -229,7 +229,7 @@ function RunCard({
       })
     : null;
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div className="rounded-lg border border-[#3ddf84]/60 bg-card transition-colors hover:border-[#3ddf84]/80">
       <button
         type="button"
         onClick={onToggle}

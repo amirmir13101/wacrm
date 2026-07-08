@@ -55,7 +55,7 @@ interface StatCardProps {
 function StatCard({ label, value, total, icon, color }: StatCardProps) {
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <div className="rounded-xl border border-[#3ddf84]/60 bg-slate-900 p-4 transition-colors hover:border-[#3ddf84]/80">
       <div className="flex items-center justify-between">
         <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${color}`}>
           {icon}
@@ -82,7 +82,7 @@ interface FunnelStep {
 function FunnelChart({ steps }: { steps: FunnelStep[] }) {
   const max = Math.max(...steps.map((s) => s.value), 1);
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <div className="rounded-xl border border-[#3ddf84]/60 bg-slate-900 p-4 transition-colors hover:border-[#3ddf84]/80">
       <h3 className="mb-4 text-sm font-medium text-white">Funnel</h3>
       <div className="space-y-2">
         {steps.map((step) => {
@@ -453,7 +453,7 @@ export default function BroadcastDetailPage() {
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-400">
+            <div className="flex items-center gap-2 rounded-md border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80 px-3 py-1.5 text-xs text-slate-400">
               <span
                 className={`h-2 w-2 rounded-full ${
                   liveUpdatesOn ? 'bg-emerald-400' : 'bg-slate-500'
@@ -637,7 +637,7 @@ export default function BroadcastDetailPage() {
       <FunnelChart steps={funnelSteps} />
 
       {/* Recipients Table */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900">
+      <div className="rounded-xl border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-4 py-3">
           <h2 className="text-sm font-medium text-white">
             Recipients ({filteredRecipients.length}
