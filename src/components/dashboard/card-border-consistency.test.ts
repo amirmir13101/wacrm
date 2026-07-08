@@ -53,8 +53,10 @@ describe('CRM dashboard card border consistency', () => {
     const teamPage = source('src/app/(dashboard)/team/page.tsx')
 
     expect(teamPage).toContain('const teamMemberCardClass')
-    expect(teamPage).toContain(normalBorder)
-    expect(teamPage).toContain(hoverBorder)
+    expect(teamPage).toContain('border-[#3ddf84]/80')
+    expect(teamPage).toContain('ring-[#3ddf84]/25')
+    expect(teamPage).toContain('hover:border-[#3ddf84]')
+    expect(teamPage).toContain('hover:ring-[#3ddf84]/40')
     expect(teamPage).toContain('data-testid="team-member-card"')
     expect(teamPage).toContain('className={teamMemberCardClass}')
   })

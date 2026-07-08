@@ -71,7 +71,7 @@ interface WorkspaceInvitation {
 }
 
 const teamMemberCardClass =
-  "m-3 overflow-hidden rounded-xl border border-[#3ddf84]/60 bg-slate-950/50 shadow-sm shadow-black/20 transition-colors hover:border-[#3ddf84]/80";
+  "m-3 overflow-hidden rounded-xl border border-[#3ddf84]/80 bg-slate-950/50 shadow-sm shadow-black/20 ring-1 ring-[#3ddf84]/25 transition-colors hover:border-[#3ddf84] hover:ring-[#3ddf84]/40";
 
 export default function TeamPage() {
   const router = useRouter();
