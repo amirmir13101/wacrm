@@ -80,6 +80,9 @@ describe("public legal and information pages", () => {
     expect(footerSource).toContain("/terms-and-conditions");
     expect(footerSource).toContain("Refund Policy");
     expect(footerSource).toContain("/refund-policy");
+    expect(footerSource).toContain("Data Deletion");
+    expect(footerSource).toContain("/data-deletion");
+    expect(footerSource).not.toContain("/api/meta/data-deletion");
     expect(footerSource).toContain("Security");
     expect(footerSource).toContain("/security");
     expect(footerSource).toContain("About Us");

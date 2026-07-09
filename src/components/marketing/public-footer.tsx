@@ -53,6 +53,7 @@ const footerGroups = [
       ["Privacy Policy", "/privacy-policy"],
       ["Terms of Service", "/terms-and-conditions"],
       ["Refund Policy", "/refund-policy"],
+      ["Data Deletion", "/data-deletion"],
       ["Security", "/security"],
     ],
   },
