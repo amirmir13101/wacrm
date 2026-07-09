@@ -34,14 +34,15 @@ describe('platform admin routing separation', () => {
   it('keeps CRM and platform admin routes on the app subdomain', () => {
     expect(middleware).toContain("from '@/lib/domain-routing'")
     expect(middleware).toContain('routeProductionDomains(request)')
-    expect(middleware).toContain("hostname === ROOT_DOMAIN")
-    expect(middleware).toContain('matchesDomainPath(pathname, APP_DOMAIN_PATHS)')
-    expect(middleware).toContain("url.hostname = APP_DOMAIN")
+    expect(middleware).toContain('productionDomainRedirectUrl(')
+    expect(middleware).toContain("request.headers.get('x-forwarded-host')")
     expect(middleware).not.toContain('isAppDomain(hostname) && (pathname === \'/admin\' || pathname.startsWith(\'/admintops\'))')
 
     const domainRouting = readFileSync(join(process.cwd(), 'src/lib/domain-routing.ts'), 'utf8')
     expect(domainRouting).toContain("'/admin'")
     expect(domainRouting).toContain("'/admintops'")
+    expect(domainRouting).toContain('matchesDomainPath(pathname, APP_DOMAIN_PATHS)')
+    expect(domainRouting).toContain('https://${APP_DOMAIN}${pathname}${search}')
   })
 
   it('redirects public marketing pages away from the app subdomain', () => {
@@ -51,8 +52,9 @@ describe('platform admin routing separation', () => {
     expect(domainRouting).toContain("'/features'")
     expect(domainRouting).toContain("'/pricing'")
     expect(domainRouting).toContain("'/checkout'")
-    expect(middleware).toContain('matchesDomainPath(pathname, PUBLIC_ROOT_DOMAIN_PATHS)')
-    expect(middleware).toContain('url.hostname = ROOT_DOMAIN')
+    expect(domainRouting).toContain('matchesDomainPath(pathname, PUBLIC_ROOT_DOMAIN_PATHS)')
+    expect(domainRouting).toContain('https://${ROOT_DOMAIN}${pathname}${search}')
+    expect(middleware).toContain('productionDomainRedirectUrl(')
   })
 
   it('blocks non-admins from admin routes', () => {

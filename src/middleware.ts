@@ -18,12 +18,7 @@ import {
   type WorkspaceBillingAccessRow,
 } from '@/lib/billing/access'
 import {
-  APP_DOMAIN,
-  APP_DOMAIN_PATHS,
-  PUBLIC_ROOT_DOMAIN_PATHS,
-  ROOT_DOMAIN,
-  isAppDomain,
-  matchesDomainPath,
+  productionDomainRedirectUrl,
 } from '@/lib/domain-routing'
 
 export async function middleware(request: NextRequest) {
@@ -349,27 +344,17 @@ export async function middleware(request: NextRequest) {
 }
 
 function routeProductionDomains(request: NextRequest): NextResponse | null {
-  const hostname = request.nextUrl.hostname.toLowerCase()
-  const pathname = request.nextUrl.pathname
+  const hostname =
+    request.headers.get('x-forwarded-host') ??
+    request.headers.get('host') ??
+    request.nextUrl.hostname
+  const redirectUrl = productionDomainRedirectUrl(
+    request.nextUrl.pathname,
+    hostname,
+    request.nextUrl.search,
+  )
 
-  if (
-    hostname === ROOT_DOMAIN &&
-    matchesDomainPath(pathname, APP_DOMAIN_PATHS)
-  ) {
-    const url = request.nextUrl.clone()
-    url.protocol = 'https:'
-    url.hostname = APP_DOMAIN
-    return NextResponse.redirect(url)
-  }
-
-  if (isAppDomain(hostname) && matchesDomainPath(pathname, PUBLIC_ROOT_DOMAIN_PATHS)) {
-    const url = request.nextUrl.clone()
-    url.protocol = 'https:'
-    url.hostname = ROOT_DOMAIN
-    return NextResponse.redirect(url)
-  }
-
-  return null
+  return redirectUrl ? NextResponse.redirect(redirectUrl) : null
 }
 
 function workspaceIsArchived(

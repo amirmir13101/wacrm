@@ -5,6 +5,7 @@ import {
   APP_DOMAIN_PATHS,
   marketingHrefForHost,
   matchesDomainPath,
+  productionDomainRedirectUrl,
   PUBLIC_ROOT_DOMAIN_PATHS,
 } from './domain-routing'
 
@@ -42,5 +43,47 @@ describe('production domain routing helpers', () => {
     expect(matchesDomainPath('/features/flows', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
     expect(matchesDomainPath('/checkout/pro', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
     expect(matchesDomainPath('/dashboard', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(false)
+  })
+
+  it('redirects marketing routes from the app subdomain to the root domain', () => {
+    expect(productionDomainRedirectUrl('/pricing', 'app.talkwagon.chat')).toBe(
+      'https://talkwagon.chat/pricing',
+    )
+    expect(productionDomainRedirectUrl('/features', 'app.talkwagon.chat')).toBe(
+      'https://talkwagon.chat/features',
+    )
+    expect(productionDomainRedirectUrl('/checkout/pro', 'app.talkwagon.chat')).toBe(
+      'https://talkwagon.chat/checkout/pro',
+    )
+  })
+
+  it('keeps app routes on the app subdomain so auth and protected redirects still work', () => {
+    expect(productionDomainRedirectUrl('/login', 'app.talkwagon.chat')).toBeNull()
+    expect(productionDomainRedirectUrl('/dashboard', 'app.talkwagon.chat')).toBeNull()
+    expect(productionDomainRedirectUrl('/settings', 'app.talkwagon.chat')).toBeNull()
+  })
+
+  it('keeps marketing routes on the root domain to avoid redirect loops', () => {
+    expect(productionDomainRedirectUrl('/pricing', 'talkwagon.chat')).toBeNull()
+    expect(productionDomainRedirectUrl('/features', 'talkwagon.chat')).toBeNull()
+    expect(productionDomainRedirectUrl('/checkout/pro', 'talkwagon.chat')).toBeNull()
+  })
+
+  it('moves root-domain app routes to the app subdomain', () => {
+    expect(productionDomainRedirectUrl('/login', 'talkwagon.chat')).toBe(
+      'https://app.talkwagon.chat/login',
+    )
+    expect(productionDomainRedirectUrl('/dashboard', 'talkwagon.chat', '?upgrade=required')).toBe(
+      'https://app.talkwagon.chat/dashboard?upgrade=required',
+    )
+  })
+
+  it('handles proxied host headers with ports or comma-separated forwarded hosts', () => {
+    expect(productionDomainRedirectUrl('/pricing', 'app.talkwagon.chat:443')).toBe(
+      'https://talkwagon.chat/pricing',
+    )
+    expect(
+      productionDomainRedirectUrl('/features', 'app.talkwagon.chat, localhost:3000'),
+    ).toBe('https://talkwagon.chat/features')
   })
 })

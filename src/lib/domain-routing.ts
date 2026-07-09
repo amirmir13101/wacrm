@@ -39,12 +39,23 @@ export const PUBLIC_ROOT_DOMAIN_PATHS = [
   '/terms-and-conditions',
 ] as const
 
+export function normalizeDomainHost(hostname: string | null | undefined): string {
+  const firstHost = (hostname ?? '').split(',')[0]?.trim().toLowerCase() ?? ''
+  if (!firstHost) return ''
+
+  if (firstHost.startsWith('[')) {
+    return firstHost.slice(0, firstHost.indexOf(']') + 1)
+  }
+
+  return firstHost.split(':')[0] ?? ''
+}
+
 export function isAppDomain(hostname: string): boolean {
-  return hostname.toLowerCase() === APP_DOMAIN
+  return normalizeDomainHost(hostname) === APP_DOMAIN
 }
 
 export function isRootDomain(hostname: string): boolean {
-  const normalized = hostname.toLowerCase()
+  const normalized = normalizeDomainHost(hostname)
   return normalized === ROOT_DOMAIN || normalized === WWW_ROOT_DOMAIN
 }
 
@@ -60,4 +71,22 @@ export function marketingHrefForHost(href: string, hostname: string): string {
 export function appHrefForHost(href: string, hostname: string): string {
   if (!href.startsWith('/')) return href
   return isRootDomain(hostname) ? `https://${APP_DOMAIN}${href}` : href
+}
+
+export function productionDomainRedirectUrl(
+  pathname: string,
+  hostname: string,
+  search = '',
+): string | null {
+  const normalizedHost = normalizeDomainHost(hostname)
+
+  if (normalizedHost === ROOT_DOMAIN && matchesDomainPath(pathname, APP_DOMAIN_PATHS)) {
+    return `https://${APP_DOMAIN}${pathname}${search}`
+  }
+
+  if (normalizedHost === APP_DOMAIN && matchesDomainPath(pathname, PUBLIC_ROOT_DOMAIN_PATHS)) {
+    return `https://${ROOT_DOMAIN}${pathname}${search}`
+  }
+
+  return null
 }
