@@ -39,6 +39,20 @@ describe('WhatsApp Embedded Signup settings UI', () => {
     expect(whatsappConfigUi).toContain('META_EMBEDDED_SIGNUP_CONFIG_ID')
     expect(whatsappConfigUi).toContain('META_APP_SECRET')
   })
+
+  it('does not pass async functions directly to the Meta SDK callbacks', () => {
+    expect(whatsappConfigUi).toContain('window.fbAsyncInit = () =>')
+    expect(whatsappConfigUi).not.toMatch(/window\.fbAsyncInit\s*=\s*async/)
+    expect(whatsappConfigUi).not.toMatch(/window\.FB\.login\(\s*async/)
+    expect(whatsappConfigUi).toContain('function handleFacebookLoginCallback(response)')
+    expect(whatsappConfigUi).toContain('void handleEmbeddedSignupLoginResponse(response)')
+  })
+
+  it('shows clean Embedded Signup cancellation and Meta error messages', () => {
+    expect(whatsappConfigUi).toContain('Connection cancelled.')
+    expect(whatsappConfigUi).toContain('response.error?.message')
+    expect(whatsappConfigUi).toContain('response.error_message')
+  })
 })
 
 describe('WhatsApp Embedded Signup API security', () => {

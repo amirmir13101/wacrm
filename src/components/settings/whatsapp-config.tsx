@@ -55,6 +55,13 @@ type EmbeddedSignupMessage = {
   };
 };
 
+type FacebookLoginResponse = {
+  authResponse?: { code?: string | null } | null;
+  status?: string;
+  error?: { message?: string } | string;
+  error_message?: string;
+};
+
 declare global {
   interface Window {
     FB?: {
@@ -65,10 +72,7 @@ declare global {
         version: string;
       }) => void;
       login: (
-        callback: (response: {
-          authResponse?: { code?: string | null } | null;
-          status?: string;
-        }) => void,
+        callback: (response: FacebookLoginResponse) => void,
         options: Record<string, unknown>,
       ) => void;
     };
@@ -430,6 +434,72 @@ export function WhatsAppConfig() {
     toast.success('Webhook URL copied to clipboard');
   }
 
+  async function handleEmbeddedSignupLoginResponse(response: FacebookLoginResponse) {
+    try {
+      const metaError =
+        typeof response.error === 'string'
+          ? response.error
+          : response.error?.message || response.error_message || '';
+      if (metaError) {
+        setEmbeddedSignupError(metaError);
+        toast.error(metaError);
+        return;
+      }
+
+      const code = response.authResponse?.code;
+      const phoneNumberId = embeddedSignupIdsRef.current.phone_number_id;
+      const embeddedWabaId = embeddedSignupIdsRef.current.waba_id;
+
+      if (!code) {
+        const cancelled = response.status && response.status !== 'connected';
+        const message = cancelled
+          ? 'Connection cancelled.'
+          : 'Meta signup did not return an authorization code.';
+        setEmbeddedSignupError(message);
+        toast.error(message);
+        return;
+      }
+
+      if (!phoneNumberId) {
+        setEmbeddedSignupError(
+          'Meta signup did not return a phone number ID. Please complete all WhatsApp setup steps and try again.',
+        );
+        toast.error('WhatsApp phone number was not returned by Meta');
+        return;
+      }
+
+      const res = await fetch('/api/whatsapp/embedded-signup/callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          phone_number_id: phoneNumberId,
+          waba_id: embeddedWabaId,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setEmbeddedSignupError(data.error || 'Failed to save WhatsApp connection.');
+        toast.error(data.error || 'Failed to save WhatsApp connection');
+        return;
+      }
+
+      toast.success(
+        data.phone_info?.verified_name
+          ? `Connected to ${data.phone_info.verified_name}`
+          : 'WhatsApp connected successfully',
+      );
+      await fetchConfig();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to finish WhatsApp connection.';
+      setEmbeddedSignupError(message);
+      toast.error(message);
+    } finally {
+      setConnectingWithMeta(false);
+    }
+  }
+
   async function handleConnectWithWhatsApp() {
     setEmbeddedSignupError('');
     setConnectingWithMeta(true);
@@ -455,57 +525,8 @@ export function WhatsAppConfig() {
       }
 
       window.FB.login(
-        async (response) => {
-          try {
-            const code = response.authResponse?.code;
-            const phoneNumberId = embeddedSignupIdsRef.current.phone_number_id;
-            const embeddedWabaId = embeddedSignupIdsRef.current.waba_id;
-
-            if (!code) {
-              setEmbeddedSignupError('Meta signup did not return an authorization code.');
-              toast.error('WhatsApp connection was not completed');
-              return;
-            }
-
-            if (!phoneNumberId) {
-              setEmbeddedSignupError(
-                'Meta signup did not return a phone number ID. Please complete all WhatsApp setup steps and try again.',
-              );
-              toast.error('WhatsApp phone number was not returned by Meta');
-              return;
-            }
-
-            const res = await fetch('/api/whatsapp/embedded-signup/callback', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                code,
-                phone_number_id: phoneNumberId,
-                waba_id: embeddedWabaId,
-              }),
-            });
-            const data = await res.json().catch(() => ({}));
-
-            if (!res.ok) {
-              setEmbeddedSignupError(data.error || 'Failed to save WhatsApp connection.');
-              toast.error(data.error || 'Failed to save WhatsApp connection');
-              return;
-            }
-
-            toast.success(
-              data.phone_info?.verified_name
-                ? `Connected to ${data.phone_info.verified_name}`
-                : 'WhatsApp connected successfully',
-            );
-            await fetchConfig();
-          } catch (err) {
-            const message =
-              err instanceof Error ? err.message : 'Failed to finish WhatsApp connection.';
-            setEmbeddedSignupError(message);
-            toast.error(message);
-          } finally {
-            setConnectingWithMeta(false);
-          }
+        function handleFacebookLoginCallback(response) {
+          void handleEmbeddedSignupLoginResponse(response);
         },
         {
           config_id: metaConfig.configId,
