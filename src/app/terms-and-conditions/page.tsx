@@ -10,7 +10,7 @@ const pageDescription =
   "Review Talk Wagon terms for WhatsApp CRM account use, workspace access, responsible messaging, contact consent, subscriptions, and acceptable use.";
 
 export const metadata: Metadata = {
-  title: "Terms of Service | Talk Wagon CRM",
+  title: "Terms of Service",
   description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Terms of Service | Talk Wagon CRM",
+    title: "Terms of Service",
     description: pageDescription,
   },
   robots: {

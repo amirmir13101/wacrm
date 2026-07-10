@@ -33,7 +33,7 @@ const pricingImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "Talk Wagon Pricing | WhatsApp CRM Plans for Teams",
+  title: "WhatsApp CRM Pricing and Plans for Teams",
   description:
     "Compare Talk Wagon WhatsApp CRM plans for team inbox, contacts, approved broadcasts, automation, follow-ups, analytics, and self-hosted CRM setup.",
   alternates: {

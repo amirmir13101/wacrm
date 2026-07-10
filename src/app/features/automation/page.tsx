@@ -36,7 +36,7 @@ const automationImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp Automation for Follow-Ups and CRM Workflows | Talk Wagon",
+  title: "WhatsApp Automation for Follow-Ups and CRM Workflows",
   description:
     "Automate WhatsApp follow-ups, contact updates, agent assignment, tags, deal creation, webhooks, wait steps, and customer communication workflows in Talk Wagon CRM.",
   alternates: {

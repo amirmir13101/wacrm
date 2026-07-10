@@ -10,7 +10,7 @@ const pageDescription =
   "Read the Talk Wagon privacy policy for customer contact ownership, CRM data processing, WhatsApp opt-in responsibility, workspace security, and service data practices.";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Talk Wagon CRM",
+  title: "Privacy Policy",
   description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Privacy Policy | Talk Wagon CRM",
+    title: "Privacy Policy",
     description: pageDescription,
   },
   robots: {

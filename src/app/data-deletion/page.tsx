@@ -18,7 +18,7 @@ const pageDescription =
   'Instructions for requesting deletion of Meta, Facebook, WhatsApp Business, and Embedded Signup connection data connected to Talk Wagon CRM.'
 
 export const metadata: Metadata = {
-  title: 'Meta Data Deletion Instructions | Talk Wagon',
+  title: 'Meta Data Deletion Instructions',
   description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary',
-    title: 'Meta Data Deletion Instructions | Talk Wagon',
+    title: 'Meta Data Deletion Instructions',
     description: pageDescription,
   },
   robots: {

@@ -38,7 +38,7 @@ const teamInboxImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp Team Inbox for Sales, Support and Follow-Ups | Talk Wagon",
+  title: "WhatsApp Team Inbox for Sales and Support",
   description:
     "Manage WhatsApp customer conversations in a shared team inbox with agents, assignments, contact history, role-based permissions, and follow-up workflows.",
   alternates: {

@@ -37,7 +37,7 @@ const broadcastImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp Broadcast Campaigns With CRM Tracking | Talk Wagon",
+  title: "WhatsApp Broadcast Campaigns With CRM Tracking",
   description:
     "Create opt-in WhatsApp broadcast campaigns with selected contacts, approved templates, preflight checks, team permissions, delivery tracking, and CRM follow-up workflows.",
   alternates: {

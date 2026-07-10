@@ -34,7 +34,7 @@ const flowImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp Automation Flows & Visual Builder | Talk Wagon",
+  title: "WhatsApp Automation Flows and Visual Builder",
   description:
     "Build visual WhatsApp automation flows for follow-ups, routing, approved templates, reminders, and customer journeys with Talk Wagon CRM.",
   keywords: [

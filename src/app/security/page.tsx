@@ -11,7 +11,7 @@ const pageDescription =
   "Learn how Talk Wagon CRM approaches workspace security, role-based permissions, protected API routes, WhatsApp configuration, AI provider keys, and Firecrawl key handling.";
 
 export const metadata: Metadata = {
-  title: "Security | Talk Wagon CRM",
+  title: "Security",
   description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Security | Talk Wagon CRM",
+    title: "Security",
     description: pageDescription,
   },
   robots: {

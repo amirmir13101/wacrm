@@ -26,7 +26,7 @@ describe("public Flows feature page", () => {
 
   it("creates a public /features/flows page with matching SaaS feature sections", () => {
     expect(flowsPage).toContain(
-      'title: "WhatsApp Automation Flows & Visual Builder | Talk Wagon"',
+      'title: "WhatsApp Automation Flows and Visual Builder"',
     );
     expect(flowsPage).toContain(
       "Visual WhatsApp Automation Flows for Follow-Ups, Routing and Customer Journeys",

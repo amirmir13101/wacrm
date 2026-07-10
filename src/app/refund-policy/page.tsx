@@ -10,7 +10,7 @@ const pageDescription =
   "Review the Talk Wagon refund policy for the 14-day free trial, monthly Pro plan, manual payment handling, third-party costs, and fair exception cases.";
 
 export const metadata: Metadata = {
-  title: "Refund Policy | Talk Wagon CRM",
+  title: "Refund Policy",
   description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Refund Policy | Talk Wagon CRM",
+    title: "Refund Policy",
     description: pageDescription,
   },
   robots: {
