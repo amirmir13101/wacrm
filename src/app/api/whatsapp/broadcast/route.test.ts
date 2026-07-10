@@ -34,6 +34,16 @@ describe('/api/whatsapp/broadcast compatibility route', () => {
     expect(source).not.toContain("let templateLanguage = (body.template_language as string | undefined) ?? 'en_US'")
   })
 
+  it('verifies the exact selected template pair against the connected Meta WABA before queueing', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
+
+    expect(source).toContain('verifyTemplateExistsInConnectedMeta')
+    expect(source).toContain('message_templates?limit=100&fields=id,name,language,status')
+    expect(source).toContain('template.name === args.templateName')
+    expect(source).toContain('template.language === args.language')
+    expect(source).toContain('This template/language is not available in Meta anymore')
+  })
+
   it('worker validates the exact queued template name and language before sending', () => {
     const workerSource = readFileSync(
       join(process.cwd(), 'src/app/api/whatsapp/broadcast/worker/route.ts'),

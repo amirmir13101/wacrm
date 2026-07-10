@@ -20,6 +20,9 @@ import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 import type { Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
 import { isApprovedTemplateStatus } from '@/lib/whatsapp/template-status-normalize'
+import { decrypt } from '@/lib/whatsapp/encryption'
+
+const META_API_BASE = `https://graph.facebook.com/${process.env.META_GRAPH_API_VERSION || 'v21.0'}`
 
 interface IncomingRecipient {
   phone: string
@@ -102,6 +105,71 @@ async function fetchWhatsAppConnected(args: {
   })
   if (error) throw new Error(`Failed to check WhatsApp connection: ${error}`)
   return data?.status === 'connected'
+}
+
+async function verifyTemplateExistsInConnectedMeta(args: {
+  workspaceId: string
+  templateName: string
+  language: string
+}) {
+  const { config, error } = await findWorkspaceWhatsAppConfig<{
+    waba_id?: string | null
+    access_token: string
+    status: string
+  }>({
+    workspaceId: args.workspaceId,
+    columns: 'phone_number_id, waba_id, access_token, status',
+  })
+
+  if (error || !config || config.status !== 'connected') {
+    return {
+      ok: false,
+      error: 'WhatsApp is not connected. Please configure WhatsApp in Settings.',
+    }
+  }
+
+  if (!config.waba_id) {
+    return {
+      ok: false,
+      error: 'WABA (WhatsApp Business Account) ID missing. Re-connect WhatsApp in Settings.',
+    }
+  }
+
+  const response = await fetch(
+    `${META_API_BASE}/${config.waba_id}/message_templates?limit=100&fields=id,name,language,status`,
+    {
+      headers: { Authorization: `Bearer ${decrypt(config.access_token)}` },
+      cache: 'no-store',
+    },
+  )
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: 'Could not verify templates with Meta. Please sync templates and try again.',
+    }
+  }
+
+  const body = (await response.json()) as {
+    data?: Array<{ name?: string; language?: string; status?: string }>
+  }
+
+  const exact = (body.data ?? []).find(
+    (template) =>
+      template.name === args.templateName &&
+      template.language === args.language &&
+      isApprovedTemplateStatus(template.status),
+  )
+
+  if (!exact) {
+    return {
+      ok: false,
+      error:
+        'This template/language is not available in Meta anymore. Please sync templates and select an approved template again.',
+    }
+  }
+
+  return { ok: true, error: null }
 }
 
 async function fetchPricingRates() {
@@ -358,6 +426,15 @@ export async function POST(request: Request) {
     }
     templateName = template.name
     templateLanguage = template.language
+
+    const metaTemplateCheck = await verifyTemplateExistsInConnectedMeta({
+      workspaceId: workspace.workspaceId,
+      templateName,
+      language: templateLanguage,
+    })
+    if (!metaTemplateCheck.ok) {
+      return NextResponse.json({ error: metaTemplateCheck.error }, { status: 400 })
+    }
 
     const [whatsappConnected, rates, contacts] = await Promise.all([
       fetchWhatsAppConnected({ workspaceId: workspace.workspaceId }),

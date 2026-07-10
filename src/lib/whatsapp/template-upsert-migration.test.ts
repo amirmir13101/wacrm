@@ -44,4 +44,12 @@ describe('WhatsApp template upsert conflict migration', () => {
     expect(syncRoute).toContain(".eq('name', template.name)")
     expect(syncRoute).toContain(".eq('language', template.language)")
   })
+
+  it('marks locally approved Meta templates unavailable when the connected WABA no longer returns them', () => {
+    expect(syncRoute).toContain('currentMetaPairs')
+    expect(syncRoute).toContain('local-template-cleanup')
+    expect(syncRoute).toContain("status: 'PENDING_DELETION'")
+    expect(syncRoute).toContain('marked_unavailable')
+    expect(syncRoute).toContain('not returned by the connected Meta WABA')
+  })
 })

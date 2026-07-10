@@ -172,7 +172,11 @@ export async function POST() {
     const admin = supabaseAdmin()
     let inserted = 0
     let updated = 0
+    let markedUnavailable = 0
     const errors: { name: string; language: string; message: string }[] = []
+    const currentMetaPairs = new Set(
+      metaTemplates.map((template) => `${template.name}\u0000${template.language}`),
+    )
 
     for (const template of metaTemplates) {
       const body = (template.components ?? []).find((component) => component.type === 'BODY')
@@ -243,11 +247,53 @@ export async function POST() {
       }
     }
 
+    const { data: localMetaTemplates, error: localLookupError } = await admin
+      .from('message_templates')
+      .select('id, name, language')
+      .eq('workspace_id', guard.workspace.workspaceId)
+      .not('meta_template_id', 'is', null)
+
+    if (localLookupError) {
+      errors.push({
+        name: 'local-template-cleanup',
+        language: '',
+        message: localLookupError.message,
+      })
+    } else {
+      const missingTemplateIds = (localMetaTemplates ?? [])
+        .filter((template) => !currentMetaPairs.has(`${template.name}\u0000${template.language}`))
+        .map((template) => template.id)
+
+      if (missingTemplateIds.length > 0) {
+        const { data: unavailableRows, error: unavailableError } = await admin
+          .from('message_templates')
+          .update({
+            status: 'PENDING_DELETION',
+            submission_error:
+              'This template/language was not returned by the connected Meta WABA during the latest sync.',
+            updated_at: new Date().toISOString(),
+          })
+          .in('id', missingTemplateIds)
+          .select('id')
+
+        if (unavailableError) {
+          errors.push({
+            name: 'local-template-cleanup',
+            language: '',
+            message: unavailableError.message,
+          })
+        } else {
+          markedUnavailable = unavailableRows?.length ?? 0
+        }
+      }
+    }
+
     return NextResponse.json({
       success: errors.length === 0,
       total: metaTemplates.length,
       inserted,
       updated,
+      marked_unavailable: markedUnavailable,
       errors,
       truncated: pageCount >= PAGE_CAP && nextUrl !== null,
     })
