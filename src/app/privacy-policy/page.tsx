@@ -2,14 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/marketing/seo-json-ld";
 import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/privacy-policy");
+const pageDescription =
+  "Read the Talk Wagon privacy policy for customer contact ownership, CRM data processing, WhatsApp opt-in responsibility, workspace security, and service data practices.";
 
 export const metadata: Metadata = {
   title: "Privacy Policy | Talk Wagon CRM",
-  description:
-    "Read the Talk Wagon privacy policy for customer contact ownership, CRM data processing, WhatsApp opt-in responsibility, workspace security, and service data practices.",
+  description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
   },
@@ -21,6 +23,11 @@ export const metadata: Metadata = {
     siteName: "Talk Wagon",
     type: "website",
   },
+  twitter: {
+    card: "summary",
+    title: "Privacy Policy | Talk Wagon CRM",
+    description: pageDescription,
+  },
   robots: {
     index: true,
     follow: true,
@@ -29,12 +36,24 @@ export const metadata: Metadata = {
 
 export default function PrivacyPolicyPage() {
   return (
-    <InfoPageShell>
+    <>
+      <WebPageJsonLd path="/privacy-policy" name="Talk Wagon Privacy Policy" description={pageDescription} />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Privacy Policy", url: "/privacy-policy" },
+        ]}
+      />
+      <InfoPageShell>
       <InfoHero
         eyebrow="Privacy Policy"
         title="How Talk Wagon Handles Privacy and CRM Data"
         description="This policy explains how Talk Wagon CRM, a Berankify LTD project, processes account, workspace, contact, conversation, AI chatbot, website import, and support information for the CRM features customers choose to use."
         badges={["Client-owned contacts", "No contact data selling", "CRM service processing", "WhatsApp policy responsibility"]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Privacy Policy", href: "/privacy-policy" },
+        ]}
       />
 
       <InfoSection
@@ -195,6 +214,7 @@ export default function PrivacyPolicyPage() {
       </InfoSection>
 
       <InfoCta />
-    </InfoPageShell>
+      </InfoPageShell>
+    </>
   );
 }

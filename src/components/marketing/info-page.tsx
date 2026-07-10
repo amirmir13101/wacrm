@@ -14,6 +14,10 @@ interface InfoHeroProps {
   readonly title: string;
   readonly description: string;
   readonly badges?: readonly string[];
+  readonly breadcrumbs?: readonly {
+    readonly label: string;
+    readonly href: string;
+  }[];
 }
 
 interface InfoSectionProps {
@@ -31,20 +35,34 @@ interface InfoCardProps {
 
 export function InfoPageShell({ children }: InfoPageShellProps) {
   return (
-    <main className="min-h-screen bg-[#f6fbf8] text-[#07130e]">
+    <>
       <PublicHeader />
-      {children}
+      <main className="min-h-screen bg-[#f6fbf8] text-[#07130e]">{children}</main>
       <PublicFooter />
-    </main>
+    </>
   );
 }
 
-export function InfoHero({ eyebrow, title, description, badges = [] }: InfoHeroProps) {
+export function InfoHero({ eyebrow, title, description, badges = [], breadcrumbs = [] }: InfoHeroProps) {
   return (
     <section className="relative isolate overflow-hidden bg-[#0d1b15] px-5 pb-16 pt-9 text-white sm:px-8 sm:pb-16 sm:pt-12 lg:px-10 lg:py-20">
       <div className="absolute inset-0 -z-10 opacity-25 [background-image:linear-gradient(rgba(61,223,132,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(61,223,132,0.16)_1px,transparent_1px)] [background-size:72px_72px]" />
       <div className="absolute left-1/2 top-10 -z-10 h-72 w-72 -translate-x-1/2 rounded-full bg-[#3ddf84]/20 blur-3xl" />
       <div className="mx-auto max-w-4xl text-center">
+        {breadcrumbs.length ? (
+          <nav aria-label="Breadcrumb" className="mb-6 flex justify-center">
+            <ol className="flex flex-wrap items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#b9f8df]">
+              {breadcrumbs.map((item, index) => (
+                <li key={item.href} className="flex items-center gap-2">
+                  {index > 0 ? <span aria-hidden="true">/</span> : null}
+                  <Link className="hover:text-white" href={item.href}>
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          </nav>
+        ) : null}
         <p className="text-sm font-extrabold uppercase tracking-[0.28em] text-[#ffbd29]">{eyebrow}</p>
         <h1 className="mt-5 text-4xl font-extrabold leading-tight tracking-normal sm:text-5xl lg:text-6xl">
           {title}

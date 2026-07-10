@@ -2,14 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/marketing/seo-json-ld";
 import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/terms-and-conditions");
+const pageDescription =
+  "Review Talk Wagon terms for WhatsApp CRM account use, workspace access, responsible messaging, contact consent, subscriptions, and acceptable use.";
 
 export const metadata: Metadata = {
   title: "Terms of Service | Talk Wagon CRM",
-  description:
-    "Review Talk Wagon terms for WhatsApp CRM account use, workspace access, responsible messaging, contact consent, subscriptions, and acceptable use.",
+  description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
   },
@@ -21,6 +23,11 @@ export const metadata: Metadata = {
     siteName: "Talk Wagon",
     type: "website",
   },
+  twitter: {
+    card: "summary",
+    title: "Terms of Service | Talk Wagon CRM",
+    description: pageDescription,
+  },
   robots: {
     index: true,
     follow: true,
@@ -29,12 +36,24 @@ export const metadata: Metadata = {
 
 export default function TermsAndConditionsPage() {
   return (
-    <InfoPageShell>
+    <>
+      <WebPageJsonLd path="/terms-and-conditions" name="Talk Wagon Terms of Service" description={pageDescription} />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Terms of Service", url: "/terms-and-conditions" },
+        ]}
+      />
+      <InfoPageShell>
       <InfoHero
         eyebrow="Terms and Conditions"
         title="Terms for Using Talk Wagon WhatsApp CRM"
         description="These terms describe the basic rules for using Talk Wagon CRM, a Berankify LTD project, managing a workspace, connecting WhatsApp workflows, and keeping customer communication responsible."
         badges={["Workspace accounts", "Responsible messaging", "Client-owned data", "Fair platform use"]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Terms", href: "/terms-and-conditions" },
+        ]}
       />
 
       <InfoSection
@@ -133,6 +152,7 @@ export default function TermsAndConditionsPage() {
       </InfoSection>
 
       <InfoCta />
-    </InfoPageShell>
+      </InfoPageShell>
+    </>
   );
 }

@@ -9,15 +9,17 @@ import {
   InfoPageShell,
   InfoSection,
 } from '@/components/marketing/info-page'
+import { BreadcrumbJsonLd, WebPageJsonLd } from '@/components/marketing/seo-json-ld'
 import { getCanonicalUrl } from '@/lib/site-url'
 
 const SUPPORT_EMAIL = 'support@talkwagon.chat'
 const canonicalUrl = getCanonicalUrl('/data-deletion')
+const pageDescription =
+  'Instructions for requesting deletion of Meta, Facebook, WhatsApp Business, and Embedded Signup connection data connected to Talk Wagon CRM.'
 
 export const metadata: Metadata = {
   title: 'Meta Data Deletion Instructions | Talk Wagon',
-  description:
-    'Instructions for requesting deletion of Meta, Facebook, WhatsApp Business, and Embedded Signup connection data connected to Talk Wagon CRM.',
+  description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
   },
@@ -29,6 +31,11 @@ export const metadata: Metadata = {
     siteName: 'Talk Wagon',
     type: 'website',
   },
+  twitter: {
+    card: 'summary',
+    title: 'Meta Data Deletion Instructions | Talk Wagon',
+    description: pageDescription,
+  },
   robots: {
     index: true,
     follow: true,
@@ -37,12 +44,24 @@ export const metadata: Metadata = {
 
 export default function DataDeletionPage() {
   return (
-    <InfoPageShell>
+    <>
+      <WebPageJsonLd path="/data-deletion" name="Talk Wagon Meta Data Deletion Instructions" description={pageDescription} />
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'Home', url: '/' },
+          { name: 'Data Deletion', url: '/data-deletion' },
+        ]}
+      />
+      <InfoPageShell>
       <InfoHero
         eyebrow="Meta Data Deletion"
         title="Request Deletion of Meta and WhatsApp Connection Data"
         description="This page explains how Talk Wagon clients can request deletion of Meta, Facebook, and WhatsApp Business connection data created through Meta Embedded Signup or related WhatsApp API setup."
         badges={['Meta app review ready', 'Workspace ownership check', 'Secure token handling']}
+        breadcrumbs={[
+          { label: 'Home', href: '/' },
+          { label: 'Data Deletion', href: '/data-deletion' },
+        ]}
       />
 
       <InfoSection
@@ -125,6 +144,7 @@ export default function DataDeletionPage() {
       </InfoSection>
 
       <InfoCta />
-    </InfoPageShell>
+      </InfoPageShell>
+    </>
   )
 }

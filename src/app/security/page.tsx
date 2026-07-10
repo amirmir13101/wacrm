@@ -3,14 +3,16 @@ import Link from "next/link";
 import { KeyRound, LockKeyhole, MessageSquareLock, ShieldCheck, UserCog, Workflow } from "lucide-react";
 
 import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/marketing/seo-json-ld";
 import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/security");
+const pageDescription =
+  "Learn how Talk Wagon CRM approaches workspace security, role-based permissions, protected API routes, WhatsApp configuration, AI provider keys, and Firecrawl key handling.";
 
 export const metadata: Metadata = {
   title: "Security | Talk Wagon CRM",
-  description:
-    "Learn how Talk Wagon CRM approaches workspace security, role-based permissions, protected API routes, WhatsApp configuration, AI provider keys, and Firecrawl key handling.",
+  description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
   },
@@ -21,6 +23,11 @@ export const metadata: Metadata = {
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Security | Talk Wagon CRM",
+    description: pageDescription,
   },
   robots: {
     index: true,
@@ -63,12 +70,24 @@ const securityAreas = [
 
 export default function SecurityPage() {
   return (
-    <InfoPageShell>
+    <>
+      <WebPageJsonLd path="/security" name="Talk Wagon CRM Security" description={pageDescription} />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Security", url: "/security" },
+        ]}
+      />
+      <InfoPageShell>
       <InfoHero
         eyebrow="Security"
         title="How Talk Wagon Approaches CRM Security"
         description="Talk Wagon CRM is built around workspace separation, role-based permissions, protected routes, masked configuration, and practical customer data safeguards for WhatsApp CRM teams."
         badges={["Workspace access", "Role permissions", "Protected APIs", "Masked keys"]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Security", href: "/security" },
+        ]}
       />
 
       <InfoSection
@@ -132,6 +151,7 @@ export default function SecurityPage() {
       </InfoSection>
 
       <InfoCta />
-    </InfoPageShell>
+      </InfoPageShell>
+    </>
   );
 }

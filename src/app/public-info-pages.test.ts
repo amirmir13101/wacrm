@@ -40,6 +40,46 @@ describe("public legal and information pages", () => {
       expect(source).toContain("metadata");
       expect(source).toContain("canonical");
       expect(source).toContain("openGraph");
+      expect(source).toContain("twitter");
+      expect(source).toContain("WebPageJsonLd");
+      expect(source).toContain("BreadcrumbJsonLd");
+    }
+  });
+
+  it("keeps public feature detail pages optimized with breadcrumbs and schema", () => {
+    for (const route of ["team-inbox", "automation", "broadcasts", "flows"]) {
+      const source = readFileSync(join(appDir, `features/${route}/page.tsx`), "utf8");
+
+      expect(source).toContain("openGraph");
+      expect(source).toContain("twitter");
+      expect(source).toContain('"@type": "SoftwareApplication"');
+      expect(source).toContain('"@type": "FAQPage"');
+      expect(source).toContain('"@type": "BreadcrumbList"');
+      expect(source).toContain('aria-label="Breadcrumb"');
+      expect(source).toContain('href="/features"');
+    }
+  });
+
+  it("keeps referenced marketing social images present on disk", () => {
+    const publicDir = join(process.cwd(), "public");
+    const sources = [
+      readSource("src/app/layout.tsx"),
+      readSource("src/app/page.tsx"),
+      readSource("src/app/features/page.tsx"),
+      readSource("src/app/features/team-inbox/page.tsx"),
+      readSource("src/app/features/automation/page.tsx"),
+      readSource("src/app/features/broadcasts/page.tsx"),
+      readSource("src/app/features/flows/page.tsx"),
+      readSource("src/app/pricing/page.tsx"),
+    ].join("\n");
+    const imagePaths = Array.from(
+      sources.matchAll(/\/hostiko-crm\/generated\/[^"')\]]+\.(?:webp|png|jpg|jpeg)/g),
+      (match) => match[0],
+    );
+
+    expect(imagePaths.length).toBeGreaterThan(0);
+    for (const imagePath of new Set(imagePaths)) {
+      expect(existsSync(join(publicDir, imagePath.replace(/^\//, "")))).toBe(true);
     }
   });
 

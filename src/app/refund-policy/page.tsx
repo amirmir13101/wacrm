@@ -2,14 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/marketing/seo-json-ld";
 import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/refund-policy");
+const pageDescription =
+  "Review the Talk Wagon refund policy for the 14-day free trial, monthly Pro plan, manual payment handling, third-party costs, and fair exception cases.";
 
 export const metadata: Metadata = {
   title: "Refund Policy | Talk Wagon CRM",
-  description:
-    "Review the Talk Wagon refund policy for the 14-day free trial, monthly Pro plan, manual payment handling, third-party costs, and fair exception cases.",
+  description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
   },
@@ -21,6 +23,11 @@ export const metadata: Metadata = {
     siteName: "Talk Wagon",
     type: "website",
   },
+  twitter: {
+    card: "summary",
+    title: "Refund Policy | Talk Wagon CRM",
+    description: pageDescription,
+  },
   robots: {
     index: true,
     follow: true,
@@ -29,12 +36,24 @@ export const metadata: Metadata = {
 
 export default function RefundPolicyPage() {
   return (
-    <InfoPageShell>
+    <>
+      <WebPageJsonLd path="/refund-policy" name="Talk Wagon Refund Policy" description={pageDescription} />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Refund Policy", url: "/refund-policy" },
+        ]}
+      />
+      <InfoPageShell>
       <InfoHero
         eyebrow="Refund Policy"
         title="Refund Rules for Talk Wagon CRM Plans and Setup"
         description="This policy explains how refunds are handled for Talk Wagon trials, the monthly Pro plan, manual payment review, setup requests, and related CRM service usage."
         badges={["14-day free trial", "Monthly Pro plan", "Fair exceptions", "WhatsApp costs separate"]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Refund Policy", href: "/refund-policy" },
+        ]}
       />
 
       <InfoSection
@@ -119,6 +138,7 @@ export default function RefundPolicyPage() {
       </InfoSection>
 
       <InfoCta />
-    </InfoPageShell>
+      </InfoPageShell>
+    </>
   );
 }

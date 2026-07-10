@@ -3,14 +3,16 @@ import Link from "next/link";
 import { Bot, MessageSquareText, ShieldCheck, Users } from "lucide-react";
 
 import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/marketing/seo-json-ld";
 import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/about");
+const pageDescription =
+  "Learn about Talk Wagon CRM, a Berankify LTD project for WhatsApp CRM, chatbot automation, broadcasts, team inboxes, contacts, and customer communication.";
 
 export const metadata: Metadata = {
   title: "About Us | Talk Wagon CRM",
-  description:
-    "Learn about Talk Wagon CRM, a Berankify LTD project for WhatsApp CRM, chatbot automation, broadcasts, team inboxes, contacts, and customer communication.",
+  description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
   },
@@ -21,6 +23,11 @@ export const metadata: Metadata = {
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "About Talk Wagon CRM",
+    description: pageDescription,
   },
   robots: {
     index: true,
@@ -53,12 +60,24 @@ const values = [
 
 export default function AboutPage() {
   return (
-    <InfoPageShell>
+    <>
+      <WebPageJsonLd path="/about" name="About Talk Wagon CRM" description={pageDescription} />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", url: "/" },
+          { name: "About", url: "/about" },
+        ]}
+      />
+      <InfoPageShell>
       <InfoHero
         eyebrow="About Talk Wagon"
         title="A WhatsApp CRM Built for Customer Communication Teams"
         description="Talk Wagon CRM is a Berankify LTD project built to help businesses manage WhatsApp conversations, automate replies, send broadcasts, organize contacts, and manage customer journeys from one workspace."
         badges={["Berankify LTD project", "Team Inbox", "Chatbot", "Broadcasts", "Automation"]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "About", href: "/about" },
+        ]}
       />
 
       <InfoSection
@@ -141,6 +160,7 @@ export default function AboutPage() {
       </InfoSection>
 
       <InfoCta />
-    </InfoPageShell>
+      </InfoPageShell>
+    </>
   );
 }

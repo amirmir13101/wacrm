@@ -3,14 +3,16 @@ import { Building2, CreditCard, Headphones, Handshake } from "lucide-react";
 
 import { ContactMessageForm } from "@/components/marketing/contact-message-form";
 import { InfoCard, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
+import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/marketing/seo-json-ld";
 import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/contact");
+const pageDescription =
+  "Contact Talk Wagon for WhatsApp CRM sales questions, technical support, billing help, setup, partnership, automation, broadcasts, or team inbox questions.";
 
 export const metadata: Metadata = {
   title: "Contact Us | Talk Wagon CRM",
-  description:
-    "Contact Talk Wagon for WhatsApp CRM sales questions, technical support, billing help, setup, partnership, automation, broadcasts, or team inbox questions.",
+  description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
   },
@@ -21,6 +23,11 @@ export const metadata: Metadata = {
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Contact Talk Wagon CRM",
+    description: pageDescription,
   },
   robots: {
     index: true,
@@ -53,12 +60,24 @@ const topics = [
 
 export default function ContactPage() {
   return (
-    <InfoPageShell>
+    <>
+      <WebPageJsonLd path="/contact" name="Contact Talk Wagon CRM" description={pageDescription} />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Contact", url: "/contact" },
+        ]}
+      />
+      <InfoPageShell>
       <InfoHero
         eyebrow="Contact Talk Wagon"
         title="Contact Talk Wagon for WhatsApp CRM Help"
         description="Use the contact form for sales, support, billing, setup, automation, broadcasts, team inbox, or partnership questions. Live chat can be connected later without adding a fake widget."
         badges={["Sales", "Support", "Billing", "Setup", "Partnerships"]}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Contact", href: "/contact" },
+        ]}
       />
 
       <InfoSection
@@ -101,6 +120,7 @@ export default function ContactPage() {
           </aside>
         </div>
       </InfoSection>
-    </InfoPageShell>
+      </InfoPageShell>
+    </>
   );
 }

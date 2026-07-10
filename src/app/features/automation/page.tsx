@@ -285,6 +285,31 @@ const softwareSchema = {
   },
 };
 
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    {
+      "@type": "ListItem",
+      position: 1,
+      name: "Home",
+      item: getCanonicalUrl("/"),
+    },
+    {
+      "@type": "ListItem",
+      position: 2,
+      name: "Features",
+      item: getCanonicalUrl("/features"),
+    },
+    {
+      "@type": "ListItem",
+      position: 3,
+      name: "WhatsApp Automation",
+      item: canonicalUrl,
+    },
+  ],
+};
+
 const faqSchema = {
   "@context": "https://schema.org",
   "@type": "FAQPage",
@@ -309,6 +334,10 @@ export default function AutomationFeaturePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+      />
 
       <PublicHeader active="automation" />
 
@@ -322,6 +351,27 @@ export default function AutomationFeaturePage() {
         </div>
         <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-5 pb-16 pt-9 sm:px-8 sm:pb-16 sm:pt-12 lg:min-h-[670px] lg:grid-cols-[0.94fr_1.06fr] lg:px-10 lg:py-20">
           <div className="text-center lg:text-left">
+            <nav aria-label="Breadcrumb" className="mb-5">
+              <ol className="flex flex-wrap items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#b9f8df] lg:justify-start">
+                <li>
+                  <Link className="hover:text-white" href="/">
+                    Home
+                  </Link>
+                </li>
+                <li aria-hidden="true">/</li>
+                <li>
+                  <Link className="hover:text-white" href="/features">
+                    Features
+                  </Link>
+                </li>
+                <li aria-hidden="true">/</li>
+                <li>
+                  <Link className="text-white" href="/features/automation">
+                    Automation
+                  </Link>
+                </li>
+              </ol>
+            </nav>
             <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-[#d8fff1]">
               <Bot className="h-4 w-4 text-[#3ddf84]" aria-hidden="true" />
               WhatsApp automation for sales and support workflows
