@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Poppins } from "next/font/google";
 import { Toaster } from "sonner";
 import { TawkToWidget } from "@/components/marketing/tawk-to-widget";
+import { YandexMetrica } from "@/components/marketing/yandex-metrica";
 import { getSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
@@ -54,6 +55,7 @@ export default function RootLayout({
     <html lang="en" className={`${poppins.variable} h-full antialiased`}>
       <body className="min-h-full bg-[#07130e] font-sans text-white">
         {children}
+        <YandexMetrica />
         <TawkToWidget />
         <Toaster
           theme="dark"

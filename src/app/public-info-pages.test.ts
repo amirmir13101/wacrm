@@ -14,6 +14,9 @@ describe("public legal and information pages", () => {
   const footerSource = readSource("src/components/marketing/public-footer.tsx");
   const domainRoutingSource = readSource("src/lib/domain-routing.ts");
   const sitemapSource = readSource("src/app/sitemap.ts");
+  const rootLayoutSource = readSource("src/app/layout.tsx");
+  const yandexMetricaSource = readSource("src/components/marketing/yandex-metrica.tsx");
+  const privacySource = readSource("src/app/privacy-policy/page.tsx");
 
   it("creates all required public legal and information pages", () => {
     expect(existsSync(join(appDir, "privacy-policy/page.tsx"))).toBe(true);
@@ -97,5 +100,16 @@ describe("public legal and information pages", () => {
     expect(sitemapSource).toContain('`${siteUrl}/terms-and-conditions`');
     expect(sitemapSource).toContain('`${siteUrl}/refund-policy`');
     expect(sitemapSource).toContain('`${siteUrl}/security`');
+  });
+
+  it("loads Yandex Metrica only for the public website host", () => {
+    expect(rootLayoutSource).toContain("YandexMetrica");
+    expect(yandexMetricaSource).toContain("next/script");
+    expect(yandexMetricaSource).toContain("110570956");
+    expect(yandexMetricaSource).toContain('"talkwagon.chat"');
+    expect(yandexMetricaSource).toContain('"www.talkwagon.chat"');
+    expect(yandexMetricaSource).not.toContain('"app.talkwagon.chat"');
+    expect(yandexMetricaSource).not.toContain("webvisor: true");
+    expect(privacySource).toContain("Yandex Metrica");
   });
 });

@@ -161,8 +161,9 @@ export default function PrivacyPolicyPage() {
           <p>
             Talk Wagon does not use cookies to sell your customer contact data. If support chat, analytics, or embedded
             third-party tools are active on public pages, those providers may process technical information according to
-            their own policies. Avoid sending passwords, API keys, WhatsApp access tokens, or private credentials through
-            public support forms or chat.
+            their own policies. Talk Wagon may use Yandex Metrica on public website pages to understand page visits,
+            link clicks, and website reliability. Avoid sending passwords, API keys, WhatsApp access tokens, or private
+            credentials through public support forms or chat.
           </p>
         </div>
       </InfoSection>
