@@ -14,5 +14,10 @@ describe('broadcast template card UI', () => {
     expect(step1).toContain("isSelected ? 'text-[#a8f5d5]' : 'text-slate-500'")
     expect(step1).not.toContain('bg-[#3ddf84]')
   })
-})
 
+  it('shows broadcast templates as exact name, language, and status labels', () => {
+    expect(step1).toContain("{template.name} — {template.language ?? 'No language'} — {template.status ?? 'Unknown'}")
+    expect(step1).toContain("{template.language ?? 'No language'}")
+    expect(step1).not.toContain("{template.language ?? 'en_US'}")
+  })
+})

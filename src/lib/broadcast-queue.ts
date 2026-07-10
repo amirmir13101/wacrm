@@ -45,6 +45,14 @@ export function nextRetryAt(message: string, attemptCount: number): string | nul
   return new Date(Date.now() + delay).toISOString()
 }
 
+export function safeBroadcastSendError(message: string): string {
+  if (/132001|template name does not exist in the translation/i.test(message)) {
+    return 'Selected template/language is not available in Meta anymore. Please re-sync templates and select the approved template again.'
+  }
+
+  return message
+}
+
 export async function sendQueuedTemplateRecipient(args: {
   phoneNumberId: string
   accessToken: string
@@ -58,6 +66,15 @@ export async function sendQueuedTemplateRecipient(args: {
     return {
       status: 'failed',
       error: 'Invalid phone number format',
+      failure_type: 'permanent',
+      next_retry_at: null,
+    }
+  }
+
+  if (!args.broadcast.template_language) {
+    return {
+      status: 'failed',
+      error: 'Selected template has no approved language. Please re-sync templates and select an approved template.',
       failure_type: 'permanent',
       next_retry_at: null,
     }
@@ -77,7 +94,7 @@ export async function sendQueuedTemplateRecipient(args: {
         accessToken: args.accessToken,
         to: variant,
         templateName: args.broadcast.template_name,
-        language: args.broadcast.template_language || 'en_US',
+        language: args.broadcast.template_language,
         params,
       })
       return {
@@ -91,13 +108,14 @@ export async function sendQueuedTemplateRecipient(args: {
   }
 
   const failureType = classifyBroadcastFailure(lastError)
+  const safeError = safeBroadcastSendError(lastError)
   return {
     status: 'failed',
-    error: lastError,
+    error: safeError,
     failure_type: failureType,
     next_retry_at:
       args.attemptCount < BROADCAST_QUEUE_MAX_ATTEMPTS
-        ? nextRetryAt(lastError, args.attemptCount)
+        ? nextRetryAt(safeError, args.attemptCount)
         : null,
   }
 }

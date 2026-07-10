@@ -141,7 +141,17 @@ export async function POST(_request: Request, context: RouteContext) {
       )
     }
 
-    const language = typedBroadcast.template_language || 'en_US'
+    const language = typedBroadcast.template_language
+    if (!language) {
+      return NextResponse.json(
+        {
+          error:
+            'Retry blocked because the original template has no approved language. Please re-sync templates and create a new broadcast.',
+        },
+        { status: 400 },
+      )
+    }
+
     const { data: approvedTemplate, error: templateError } = await supabase
       .from('message_templates')
       .select('id')
@@ -160,7 +170,10 @@ export async function POST(_request: Request, context: RouteContext) {
 
     if (!approvedTemplate) {
       return NextResponse.json(
-        { error: 'Retry blocked because the original template is not Approved.' },
+        {
+          error:
+            'Retry blocked because the original template/language is not approved or no longer available in Meta.',
+        },
         { status: 400 },
       )
     }

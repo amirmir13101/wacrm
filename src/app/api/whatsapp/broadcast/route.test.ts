@@ -23,6 +23,30 @@ describe('/api/whatsapp/broadcast compatibility route', () => {
     expect(source).toContain('evaluateBroadcastRecipients')
   })
 
+  it('queues broadcasts from the exact selected approved template record without defaulting language', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
+
+    expect(source).toContain('templateId: body.template_id')
+    expect(source).toContain('isApprovedTemplateStatus')
+    expect(source).toContain('Selected template has no approved language')
+    expect(source).toContain('templateName = template.name')
+    expect(source).toContain('templateLanguage = template.language')
+    expect(source).not.toContain("let templateLanguage = (body.template_language as string | undefined) ?? 'en_US'")
+  })
+
+  it('worker validates the exact queued template name and language before sending', () => {
+    const workerSource = readFileSync(
+      join(process.cwd(), 'src/app/api/whatsapp/broadcast/worker/route.ts'),
+      'utf8',
+    )
+
+    expect(workerSource).toContain('row.broadcast.template_language')
+    expect(workerSource).toContain(".eq('name', row.broadcast.template_name)")
+    expect(workerSource).toContain(".eq('language', row.broadcast.template_language)")
+    expect(workerSource).toContain('This template/language is not available in Meta anymore')
+    expect(workerSource).not.toContain("row.broadcast.template_language || 'en_US'")
+  })
+
   it('does not consume monthly broadcast quota while messages are only queued', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
 

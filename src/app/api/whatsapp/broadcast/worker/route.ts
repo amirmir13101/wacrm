@@ -334,6 +334,24 @@ async function processQueue(request: Request) {
       continue
     }
 
+    if (!row.broadcast.template_language) {
+      await admin
+        .from('broadcast_recipients')
+        .update({
+          status: 'failed',
+          error_message:
+            'Selected template has no approved language. Please re-sync templates and select an approved template.',
+          last_error_message:
+            'Selected template has no approved language. Please re-sync templates and select an approved template.',
+          failure_type: 'permanent',
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', row.id)
+      failed++
+      continue
+    }
+
     const templateKey = `${workspaceId}:${row.broadcast.template_name}:${row.broadcast.template_language}`
     if (!approvedTemplateCache.has(templateKey)) {
       const { data: approved } = await admin
@@ -341,7 +359,7 @@ async function processQueue(request: Request) {
         .select('id')
         .eq('workspace_id', workspaceId)
         .eq('name', row.broadcast.template_name)
-        .eq('language', row.broadcast.template_language || 'en_US')
+        .eq('language', row.broadcast.template_language)
         .in('status', [...APPROVED_TEMPLATE_STATUSES])
         .maybeSingle()
       approvedTemplateCache.set(templateKey, Boolean(approved))
@@ -352,8 +370,10 @@ async function processQueue(request: Request) {
         .from('broadcast_recipients')
         .update({
           status: 'failed',
-          error_message: 'Template is not Approved.',
-          last_error_message: 'Template is not Approved.',
+          error_message:
+            'This template/language is not available in Meta anymore. Please re-sync templates and select an approved template again.',
+          last_error_message:
+            'This template/language is not available in Meta anymore. Please re-sync templates and select an approved template again.',
           failure_type: 'permanent',
           locked_at: null,
           locked_by: null,

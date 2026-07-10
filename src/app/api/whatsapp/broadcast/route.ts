@@ -19,6 +19,7 @@ import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 import type { Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
+import { isApprovedTemplateStatus } from '@/lib/whatsapp/template-status-normalize'
 
 interface IncomingRecipient {
   phone: string
@@ -77,9 +78,12 @@ async function fetchApprovedOrSelectedTemplate(args: {
   if (args.templateId) {
     query = query.eq('id', args.templateId)
   } else if (args.templateName) {
+    if (!args.language) {
+      throw new Error('Choose the exact language for this template before queueing a broadcast.')
+    }
     query = query
       .eq('name', args.templateName)
-      .eq('language', args.language || 'en_US')
+      .eq('language', args.language)
   } else {
     throw new Error('template_id or template_name is required')
   }
@@ -307,7 +311,7 @@ export async function POST(request: Request) {
     let audience: AudienceConfig | null = body.audience ?? null
     let variables: Record<string, VariableMapping> = body.variables ?? {}
     let templateName = body.template_name as string | undefined
-    let templateLanguage = (body.template_language as string | undefined) ?? 'en_US'
+    let templateLanguage = body.template_language as string | undefined
 
     if (!audience) {
       const recipients = Array.isArray(body.recipients)
@@ -337,8 +341,23 @@ export async function POST(request: Request) {
     if (!template) {
       return NextResponse.json({ error: 'Template not found.' }, { status: 400 })
     }
+    if (!isApprovedTemplateStatus(String(template.status ?? ''))) {
+      return NextResponse.json(
+        { error: 'Selected template is not approved. Please sync templates and select an approved template.' },
+        { status: 400 },
+      )
+    }
+    if (!template.language) {
+      return NextResponse.json(
+        {
+          error:
+            'Selected template has no approved language. Please re-sync templates and select an approved template.',
+        },
+        { status: 400 },
+      )
+    }
     templateName = template.name
-    templateLanguage = template.language ?? 'en_US'
+    templateLanguage = template.language
 
     const [whatsappConnected, rates, contacts] = await Promise.all([
       fetchWhatsAppConnected({ workspaceId: workspace.workspaceId }),

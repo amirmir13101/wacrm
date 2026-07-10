@@ -96,7 +96,9 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
                 }`}
               >
                 <div className="flex items-start justify-between">
-                  <h3 className="text-sm font-medium text-white">{template.name}</h3>
+                  <h3 className="text-sm font-medium text-white">
+                    {template.name} — {template.language ?? 'No language'} — {template.status ?? 'Unknown'}
+                  </h3>
                   <span
                     className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${catColor}`}
                   >
@@ -107,7 +109,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
                   {template.body_text}
                 </p>
                 <div className={`flex items-center gap-2 text-[10px] ${isSelected ? 'text-[#a8f5d5]' : 'text-slate-500'}`}>
-                  <span>{template.language ?? 'en_US'}</span>
+                  <span>{template.language ?? 'No language'}</span>
                   {template.status && (
                     <>
                       <span>-</span>

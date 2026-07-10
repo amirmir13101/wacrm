@@ -5,6 +5,7 @@ import {
   getQueueStatusAction,
   getRetryDelayMs,
   isCronSecretValid,
+  safeBroadcastSendError,
   shouldFinalizeBroadcast,
   shouldProcessBroadcastStatus,
 } from './broadcast-queue'
@@ -87,6 +88,16 @@ describe('queue retry and finalization helpers', () => {
     expect(isCronSecretValid('secret', 'secret')).toBe(true)
     expect(isCronSecretValid('secret', 'wrong')).toBe(false)
     expect(isCronSecretValid(undefined, 'secret')).toBe(false)
+  })
+
+  it('maps Meta #132001 template translation errors to an actionable permanent failure', () => {
+    expect(
+      safeBroadcastSendError(
+        'Meta API error: 400 - (#132001) Template name does not exist in the translation',
+      ),
+    ).toBe(
+      'Selected template/language is not available in Meta anymore. Please re-sync templates and select the approved template again.',
+    )
   })
 
   it('marks all-failed campaigns failed and mixed campaigns completed', () => {
