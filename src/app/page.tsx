@@ -38,7 +38,7 @@ const homeImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp CRM for Team Inbox, Broadcasts and Automation",
+  title: "WhatsApp CRM for Team Inbox and Broadcasts | Talk Wagon",
   description:
     "Talk Wagon is a WhatsApp CRM for team inboxes, contacts, approved template broadcasts, automated follow-ups, sales pipelines, and customer communication workflows.",
   alternates: {
