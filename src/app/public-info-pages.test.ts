@@ -13,8 +13,13 @@ describe("public legal and information pages", () => {
   const headerSource = readSource("src/components/marketing/public-header.tsx");
   const footerSource = readSource("src/components/marketing/public-footer.tsx");
   const domainRoutingSource = readSource("src/lib/domain-routing.ts");
+  const robotsSource = readSource("src/app/robots.ts");
   const sitemapSource = readSource("src/app/sitemap.ts");
   const rootLayoutSource = readSource("src/app/layout.tsx");
+  const dashboardLayoutSource = readSource("src/app/(dashboard)/layout.tsx");
+  const authLayoutSource = readSource("src/app/(auth)/layout.tsx");
+  const adminLayoutSource = readSource("src/app/admin/layout.tsx");
+  const dataDeletionStatusSource = readSource("src/app/data-deletion/status/page.tsx");
   const yandexMetricaSource = readSource("src/components/marketing/yandex-metrica.tsx");
   const privacySource = readSource("src/app/privacy-policy/page.tsx");
 
@@ -96,10 +101,61 @@ describe("public legal and information pages", () => {
     expect(sitemapSource).toContain('getSiteUrl()');
     expect(sitemapSource).toContain('`${siteUrl}/about`');
     expect(sitemapSource).toContain('`${siteUrl}/contact`');
+    expect(sitemapSource).toContain('`${siteUrl}/data-deletion`');
     expect(sitemapSource).toContain('`${siteUrl}/privacy-policy`');
     expect(sitemapSource).toContain('`${siteUrl}/terms-and-conditions`');
     expect(sitemapSource).toContain('`${siteUrl}/refund-policy`');
     expect(sitemapSource).toContain('`${siteUrl}/security`');
+    expect(sitemapSource).not.toContain("app.talkwagon.chat");
+    expect(sitemapSource).not.toContain('`${siteUrl}/dashboard`');
+    expect(sitemapSource).not.toContain('`${siteUrl}/login`');
+    expect(sitemapSource).not.toContain('`${siteUrl}/admintops`');
+    expect(sitemapSource).not.toContain('`${siteUrl}/data-deletion/status`');
+  });
+
+  it("keeps robots.txt focused on public crawling and blocks private CRM routes", () => {
+    expect(robotsSource).toContain('sitemap: `${siteUrl}/sitemap.xml`');
+    expect(robotsSource).toContain("host: siteUrl");
+
+    for (const blockedRoute of [
+      "/api/",
+      "/login",
+      "/dashboard",
+      "/admintops",
+      "/settings",
+      "/inbox",
+      "/broadcasts",
+      "/contacts",
+      "/billing",
+      "/flows",
+      "/ai-chatbot",
+      "/whatsapp-api-pricing",
+      "/data-deletion/status",
+    ]) {
+      expect(robotsSource).toContain(`"${blockedRoute}"`);
+    }
+  });
+
+  it("marks authenticated, admin, and data deletion status routes as noindex", () => {
+    for (const source of [
+      dashboardLayoutSource,
+      authLayoutSource,
+      adminLayoutSource,
+      dataDeletionStatusSource,
+    ]) {
+      expect(source).toContain("robots");
+      expect(source).toContain("index: false");
+      expect(source).toContain("follow: false");
+    }
+  });
+
+  it("provides root fallback canonical and social metadata", () => {
+    expect(rootLayoutSource).toContain("metadataBase: new URL(getSiteUrl())");
+    expect(rootLayoutSource).toContain("alternates");
+    expect(rootLayoutSource).toContain("canonical: getSiteUrl()");
+    expect(rootLayoutSource).toContain("openGraph");
+    expect(rootLayoutSource).toContain("twitter");
+    expect(rootLayoutSource).toContain("talk-wagon-home-hero-dashboard.webp");
   });
 
   it("loads Yandex Metrica only for the public website host", () => {

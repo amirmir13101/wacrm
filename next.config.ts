@@ -120,6 +120,7 @@ const nextConfig: NextConfig = {
       "/features/:path*",
       "/about",
       "/contact",
+      "/data-deletion",
       "/privacy-policy",
       "/terms-and-conditions",
       "/refund-policy",

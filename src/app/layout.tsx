@@ -24,6 +24,32 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  alternates: {
+    canonical: getSiteUrl(),
+  },
+  openGraph: {
+    title: "Talk Wagon - WhatsApp CRM for Teams, Broadcasts and Automation",
+    description:
+      "Manage WhatsApp customer conversations, contacts, broadcasts, templates, flows, automations, and team access from one CRM workspace.",
+    url: getSiteUrl(),
+    siteName: "Talk Wagon",
+    type: "website",
+    images: [
+      {
+        url: "/hostiko-crm/generated/talk-wagon-home-hero-dashboard.webp",
+        width: 1168,
+        height: 880,
+        alt: "Talk Wagon WhatsApp CRM dashboard preview",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Talk Wagon - WhatsApp CRM for Teams",
+    description:
+      "A production-ready WhatsApp CRM for team inboxes, broadcasts, flows, contacts, and automation.",
+    images: ["/hostiko-crm/generated/talk-wagon-home-hero-dashboard.webp"],
+  },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
