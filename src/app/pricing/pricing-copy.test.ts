@@ -23,13 +23,13 @@ describe('pricing page copy', () => {
   it('clearly explains the Pro first-month promotional price and renewal price', () => {
     expect(source).toContain('regularPrice: "$9.90"')
     expect(source).toContain('price: "$1"')
-    expect(source).toContain('offerLabel: "First month promo"')
+    expect(source).toContain('offerLabel: "90% OFF"')
     expect(source).toContain('billing: "$1 first month, then $9.90/month"')
     expect(source).toContain('New workspaces pay $1 for the first month only')
     expect(source).toContain('Renewals continue at $9.90/month')
+    expect(source).toContain('{plan.price}/month')
     expect(source).not.toContain('regularPrice: "$5"')
     expect(source).not.toContain('Now $1/month, regular $5/month')
-    expect(source).not.toContain('offerLabel: "90% OFF"')
   })
 
   it('does not show yearly Pro pricing or yearly CTAs on the public pricing page', () => {

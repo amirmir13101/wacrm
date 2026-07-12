@@ -107,7 +107,7 @@ const plans = [
     name: "Pro",
     price: "$1",
     regularPrice: "$9.90",
-    offerLabel: "First month promo",
+    offerLabel: "90% OFF",
     billing: "$1 first month, then $9.90/month",
     description:
       "For growing teams that want all Talk Wagon CRM features, team workflows, broadcasts, automations, and pipeline tools with a clear monthly broadcast allowance.",
@@ -342,7 +342,7 @@ export default function PricingPage() {
                       <span className="pb-2 text-xl font-bold text-[#d5e9e2]/60 line-through decoration-2">
                         Regular price: {plan.regularPrice}/month
                       </span>
-                      <span className="text-5xl font-extrabold">{plan.price} first month</span>
+                      <span className="text-5xl font-extrabold">{plan.price}/month</span>
                     </div>
                     <span className="inline-flex rounded-full bg-[#ffbd29] px-3 py-1 text-xs font-extrabold uppercase text-[#07130e]">
                       {plan.offerLabel}
