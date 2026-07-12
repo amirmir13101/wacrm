@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { getManualCheckoutPlan, getManualPaymentMethod } from '@/lib/payments/manual-payment-config'
+import {
+  getManualCheckoutPlan,
+  getManualCheckoutPricing,
+  getManualPaymentMethod,
+  PRO_FIRST_MONTH_PROMO_AMOUNT,
+} from '@/lib/payments/manual-payment-config'
 import { createClient } from '@/lib/supabase/server'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 
@@ -17,6 +22,47 @@ function passwordValidationError(password: string) {
   if (!/[a-z]/.test(password)) return 'Password needs at least one lowercase letter.'
   if (!/[0-9]/.test(password)) return 'Password needs at least one number.'
   return null
+}
+
+export async function GET(request: Request) {
+  const url = new URL(request.url)
+  const plan = getManualCheckoutPlan(readString(url.searchParams.get('plan_type')) || 'pro')
+  if (!plan) {
+    return NextResponse.json({ error: 'Choose a valid checkout plan.' }, { status: 400 })
+  }
+
+  if (plan.planType !== 'pro') {
+    return NextResponse.json({
+      pricing: getManualCheckoutPricing({ plan, firstMonthPromoEligible: false }),
+    })
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return NextResponse.json({
+      pricing: getManualCheckoutPricing({ plan, firstMonthPromoEligible: true }),
+    })
+  }
+
+  const workspaceResult = await requireCurrentWorkspace()
+  if (!workspaceResult.ok) {
+    return NextResponse.json({ error: 'Login found, but no active workspace was available.' }, { status: 400 })
+  }
+
+  const eligible = await isFirstMonthPromoEligible({
+    admin: supabaseAdmin(),
+    workspaceId: workspaceResult.workspace.workspaceId,
+    userId: user.id,
+    payerEmail: user.email ?? '',
+  })
+
+  return NextResponse.json({
+    pricing: getManualCheckoutPricing({ plan, firstMonthPromoEligible: eligible }),
+  })
 }
 
 export async function POST(request: Request) {
@@ -115,6 +161,17 @@ export async function POST(request: Request) {
   }
 
   const admin = supabaseAdmin()
+  const firstMonthPromoEligible =
+    plan.planType === 'pro'
+      ? await isFirstMonthPromoEligible({
+          admin,
+          workspaceId,
+          userId: linkedUserId,
+          payerEmail,
+        })
+      : false
+  const pricing = getManualCheckoutPricing({ plan, firstMonthPromoEligible })
+
   const { data, error } = await admin
     .from('manual_payment_requests')
     .insert({
@@ -122,8 +179,13 @@ export async function POST(request: Request) {
       user_id: linkedUserId,
       plan_type: plan.planType,
       billing_period: plan.billingPeriod,
-      amount: plan.amount,
-      currency: plan.currency,
+      amount: pricing.amount,
+      original_amount: pricing.originalAmount,
+      charged_amount: pricing.chargedAmount,
+      currency: pricing.currency,
+      is_first_month_promo: pricing.isFirstMonthPromo,
+      promo_type: pricing.promoType,
+      pricing_label: pricing.pricingLabel,
       payment_method: paymentMethod.id,
       payer_name: payerName,
       payer_email: payerEmail,
@@ -144,9 +206,61 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     request: data,
+    pricing,
     message:
       'Your payment request has been submitted. Please send your payment screenshot on WhatsApp or live chat. After verification, our team will activate your account.',
   })
+}
+
+async function isFirstMonthPromoEligible(args: {
+  admin: ReturnType<typeof supabaseAdmin>
+  workspaceId: string | null
+  userId: string | null
+  payerEmail: string
+}): Promise<boolean> {
+  const workspaceId = args.workspaceId || null
+  const userId = args.userId || null
+  const payerEmail = args.payerEmail.trim().toLowerCase()
+
+  if (workspaceId) {
+    const { data: workspace, error } = await args.admin
+      .from('workspaces')
+      .select('first_month_promo_used_at')
+      .eq('id', workspaceId)
+      .maybeSingle<{ first_month_promo_used_at: string | null }>()
+    if (error) throw new Error(`Could not verify promotional pricing eligibility: ${error.message}`)
+    if (workspace?.first_month_promo_used_at) return false
+  }
+
+  const ownershipFilters = []
+  if (workspaceId) ownershipFilters.push(`workspace_id.eq.${workspaceId}`)
+  if (userId) ownershipFilters.push(`user_id.eq.${userId}`)
+  if (payerEmail) ownershipFilters.push(`payer_email.ilike.${payerEmail}`)
+
+  if (ownershipFilters.length === 0) return true
+
+  const { data: approved, error: approvedError } = await args.admin
+    .from('manual_payment_requests')
+    .select('id')
+    .eq('plan_type', 'pro')
+    .eq('status', 'approved')
+    .or(ownershipFilters.join(','))
+    .limit(1)
+
+  if (approvedError) throw new Error(`Could not verify previous payments: ${approvedError.message}`)
+  if ((approved ?? []).length > 0) return false
+
+  const { data: pendingRenewal, error: pendingError } = await args.admin
+    .from('manual_payment_requests')
+    .select('id')
+    .eq('plan_type', 'pro')
+    .eq('status', 'pending')
+    .gte('amount', PRO_FIRST_MONTH_PROMO_AMOUNT + 0.01)
+    .or(ownershipFilters.join(','))
+    .limit(1)
+
+  if (pendingError) throw new Error(`Could not verify pending renewal payments: ${pendingError.message}`)
+  return (pendingRenewal ?? []).length === 0
 }
 
 async function createOrLinkCheckoutCustomer(args: {

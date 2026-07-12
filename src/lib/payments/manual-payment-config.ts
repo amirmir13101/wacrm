@@ -9,13 +9,28 @@ export interface ManualCheckoutPlan {
   readonly title: string
   readonly shortTitle: string
   readonly amount: number
+  readonly regularAmount?: number
   readonly currency: 'USD'
   readonly priceLabel: string
+  readonly regularPriceLabel?: string
   readonly originalPriceLabel?: string
   readonly offerLabel?: string
   readonly billingLabel: string
   readonly description: string
   readonly activationNote: string
+}
+
+export interface ManualCheckoutPricing {
+  readonly amount: number
+  readonly originalAmount: number
+  readonly chargedAmount: number
+  readonly currency: 'USD'
+  readonly priceLabel: string
+  readonly billingLabel: string
+  readonly pricingLabel: string
+  readonly isFirstMonthPromo: boolean
+  readonly promoType: 'first_month' | null
+  readonly renewalMessage?: string
 }
 
 export interface ManualPaymentMethodDetails {
@@ -26,6 +41,11 @@ export interface ManualPaymentMethodDetails {
 }
 
 export const MANUAL_PAYMENT_WHATSAPP_NUMBER = '447882756946'
+export const PRO_FIRST_MONTH_PROMO_AMOUNT = 1
+export const PRO_REGULAR_MONTHLY_AMOUNT = 9.9
+export const PRO_FIRST_MONTH_PRICE_LABEL = '$1 first month'
+export const PRO_REGULAR_MONTHLY_PRICE_LABEL = '$9.90/month'
+export const PRO_FIRST_MONTH_PROMO_LABEL = '$1 first month, then $9.90/month'
 
 export const MANUAL_CHECKOUT_PLANS = {
   pro: {
@@ -34,11 +54,13 @@ export const MANUAL_CHECKOUT_PLANS = {
     billingPeriod: 'monthly',
     title: 'Talk Wagon Pro Monthly',
     shortTitle: 'Pro Monthly',
-    amount: 1,
+    amount: PRO_FIRST_MONTH_PROMO_AMOUNT,
+    regularAmount: PRO_REGULAR_MONTHLY_AMOUNT,
     currency: 'USD',
-    priceLabel: '$1/month',
-    originalPriceLabel: '$9.99/month',
-    offerLabel: '90% OFF',
+    priceLabel: PRO_FIRST_MONTH_PROMO_LABEL,
+    regularPriceLabel: PRO_REGULAR_MONTHLY_PRICE_LABEL,
+    originalPriceLabel: PRO_REGULAR_MONTHLY_PRICE_LABEL,
+    offerLabel: 'First month promo',
     billingLabel: 'Manual monthly activation',
     description:
       'Unlock full Talk Wagon CRM features, unlimited CRM usage, team inbox, broadcasts, automations, and pipeline tools.',
@@ -94,6 +116,53 @@ export function getManualCheckoutPlan(plan: string): ManualCheckoutPlan | null {
 export function getManualPaymentMethod(method: string): ManualPaymentMethodDetails | null {
   if (method === 'easypaisa' || method === 'bank_transfer') return MANUAL_PAYMENT_METHODS[method]
   return null
+}
+
+export function getManualCheckoutPricing(args: {
+  readonly plan: ManualCheckoutPlan
+  readonly firstMonthPromoEligible: boolean
+}): ManualCheckoutPricing {
+  if (args.plan.planType !== 'pro') {
+    return {
+      amount: args.plan.amount,
+      originalAmount: args.plan.amount,
+      chargedAmount: args.plan.amount,
+      currency: args.plan.currency,
+      priceLabel: args.plan.priceLabel,
+      billingLabel: args.plan.billingLabel,
+      pricingLabel: args.plan.billingLabel,
+      isFirstMonthPromo: false,
+      promoType: null,
+    }
+  }
+
+  if (args.firstMonthPromoEligible) {
+    return {
+      amount: PRO_FIRST_MONTH_PROMO_AMOUNT,
+      originalAmount: PRO_REGULAR_MONTHLY_AMOUNT,
+      chargedAmount: PRO_FIRST_MONTH_PROMO_AMOUNT,
+      currency: args.plan.currency,
+      priceLabel: PRO_FIRST_MONTH_PRICE_LABEL,
+      billingLabel: 'First month promotional price',
+      pricingLabel: 'First month promotional price: $1',
+      isFirstMonthPromo: true,
+      promoType: 'first_month',
+      renewalMessage: 'Renews at $9.90/month after the first month.',
+    }
+  }
+
+  return {
+    amount: PRO_REGULAR_MONTHLY_AMOUNT,
+    originalAmount: PRO_REGULAR_MONTHLY_AMOUNT,
+    chargedAmount: PRO_REGULAR_MONTHLY_AMOUNT,
+    currency: args.plan.currency,
+    priceLabel: PRO_REGULAR_MONTHLY_PRICE_LABEL,
+    billingLabel: 'Monthly renewal price',
+    pricingLabel: 'Monthly renewal price: $9.90/month',
+    isFirstMonthPromo: false,
+    promoType: null,
+    renewalMessage: 'Your first-month promotion has already been used. Renewal price is $9.90/month.',
+  }
 }
 
 export function buildPaymentProofWhatsAppUrl(args: {

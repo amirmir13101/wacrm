@@ -24,6 +24,11 @@ interface ManualPaymentRequest {
   plan_type: "pro" | "lifetime";
   billing_period: "monthly" | "yearly" | "lifetime_setup" | null;
   amount: number;
+  original_amount: number | null;
+  charged_amount: number | null;
+  is_first_month_promo: boolean;
+  promo_type: "first_month" | null;
+  pricing_label: string | null;
   currency: string;
   payment_method: "easypaisa" | "bank_transfer";
   payer_name: string;
@@ -45,6 +50,7 @@ interface ManualPaymentRequest {
     subscription_status?: string | null;
     billing_period?: string | null;
     subscription_ends_at?: string | null;
+    first_month_promo_used_at?: string | null;
   } | null;
   profile?: { full_name?: string | null; email?: string | null } | null;
 }
@@ -236,6 +242,18 @@ export default function AdminPaymentsPage() {
                         <div className="text-xs text-slate-500">
                           {request.currency} {request.amount}
                         </div>
+                        {request.pricing_label ? (
+                          <div className="mt-1 text-xs text-slate-400">{request.pricing_label}</div>
+                        ) : null}
+                        {request.is_first_month_promo ? (
+                          <span className="mt-2 inline-flex rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-300">
+                            First month promo
+                          </span>
+                        ) : request.plan_type === "pro" ? (
+                          <span className="mt-2 inline-flex rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">
+                            Renewal price
+                          </span>
+                        ) : null}
                       </TableCell>
                       <TableCell className="align-top text-slate-200">
                         {request.payment_method === "bank_transfer" ? "Bank Transfer" : "Easypaisa"}

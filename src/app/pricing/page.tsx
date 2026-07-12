@@ -106,15 +106,15 @@ const plans = [
   {
     name: "Pro",
     price: "$1",
-    regularPrice: "$9.99",
-    offerLabel: "90% OFF",
-    billing: "Monthly Pro plan",
+    regularPrice: "$9.90",
+    offerLabel: "First month promo",
+    billing: "$1 first month, then $9.90/month",
     description:
       "For growing teams that want all Talk Wagon CRM features, team workflows, broadcasts, automations, and pipeline tools with a clear monthly broadcast allowance.",
     cta: "Upgrade to Pro",
     href: "/checkout/pro",
     note:
-      "Choose monthly manual Pro activation. Use your own official WhatsApp API key; WhatsApp/Meta charges are separate.",
+      "New workspaces pay $1 for the first month only. Renewals continue at $9.90/month. Use your own official WhatsApp API key; WhatsApp/Meta charges are separate.",
     featured: true,
     features: [
       "250,000 broadcast messages per month",
@@ -340,9 +340,9 @@ export default function PricingPage() {
                   <div className="mt-6 space-y-3">
                     <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
                       <span className="pb-2 text-xl font-bold text-[#d5e9e2]/60 line-through decoration-2">
-                        {plan.regularPrice}/month
+                        Regular price: {plan.regularPrice}/month
                       </span>
-                      <span className="text-5xl font-extrabold">{plan.price}/month</span>
+                      <span className="text-5xl font-extrabold">{plan.price} first month</span>
                     </div>
                     <span className="inline-flex rounded-full bg-[#ffbd29] px-3 py-1 text-xs font-extrabold uppercase text-[#07130e]">
                       {plan.offerLabel}

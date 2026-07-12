@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   let query = admin
     .from('manual_payment_requests')
     .select(
-      'id, workspace_id, user_id, plan_type, billing_period, amount, currency, payment_method, payer_name, payer_email, phone, company_name, workspace_name, transaction_reference, note, status, admin_note, auth_user_created, approved_at, rejected_at, created_at, updated_at, workspace:workspaces(name, plan_type, subscription_status, billing_period, subscription_ends_at)',
+      'id, workspace_id, user_id, plan_type, billing_period, amount, original_amount, charged_amount, is_first_month_promo, promo_type, pricing_label, currency, payment_method, payer_name, payer_email, phone, company_name, workspace_name, transaction_reference, note, status, admin_note, auth_user_created, approved_at, rejected_at, created_at, updated_at, workspace:workspaces(name, plan_type, subscription_status, billing_period, subscription_ends_at, first_month_promo_used_at)',
     )
     .order('created_at', { ascending: false })
     .limit(200)

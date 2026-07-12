@@ -20,13 +20,16 @@ describe('pricing page copy', () => {
     expect(source).not.toContain('Unlimited messages inside Talk Wagon CRM')
   })
 
-  it('keeps the Pro promotional price as an old/current price display', () => {
-    expect(source).toContain('regularPrice: "$9.99"')
+  it('clearly explains the Pro first-month promotional price and renewal price', () => {
+    expect(source).toContain('regularPrice: "$9.90"')
     expect(source).toContain('price: "$1"')
-    expect(source).toContain('offerLabel: "90% OFF"')
-    expect(source).toContain('line-through')
+    expect(source).toContain('offerLabel: "First month promo"')
+    expect(source).toContain('billing: "$1 first month, then $9.90/month"')
+    expect(source).toContain('New workspaces pay $1 for the first month only')
+    expect(source).toContain('Renewals continue at $9.90/month')
     expect(source).not.toContain('regularPrice: "$5"')
     expect(source).not.toContain('Now $1/month, regular $5/month')
+    expect(source).not.toContain('offerLabel: "90% OFF"')
   })
 
   it('does not show yearly Pro pricing or yearly CTAs on the public pricing page', () => {

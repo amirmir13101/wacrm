@@ -10,6 +10,7 @@ import {
   buildPaymentProofWhatsAppUrl,
   MANUAL_PAYMENT_METHODS,
   type ManualCheckoutPlan,
+  type ManualCheckoutPricing,
   type ManualPaymentMethod,
 } from '@/lib/payments/manual-payment-config'
 import { createClient } from '@/lib/supabase/client'
@@ -47,18 +48,31 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
   const [loginPassword, setLoginPassword] = useState('')
   const [loginSubmitting, setLoginSubmitting] = useState(false)
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null)
+  const [pricingPreview, setPricingPreview] = useState<ManualCheckoutPricing | null>(null)
   const isSignedInCheckout = checkoutMode === 'signed-in' && Boolean(signedInEmail)
   const selectedPaymentDetails = MANUAL_PAYMENT_METHODS[paymentMethod]
+  const effectivePlan = useMemo(
+    () =>
+      pricingPreview
+        ? {
+            ...plan,
+            amount: pricingPreview.amount,
+            priceLabel: pricingPreview.priceLabel,
+            billingLabel: pricingPreview.billingLabel,
+          }
+        : plan,
+    [plan, pricingPreview],
+  )
 
   const proofUrl = useMemo(
     () =>
       buildPaymentProofWhatsAppUrl({
-        plan,
+        plan: effectivePlan,
         payerName,
         payerEmail: signedInEmail ?? payerEmail,
         workspaceName: companyName,
       }),
-    [companyName, payerEmail, payerName, plan, signedInEmail],
+    [companyName, effectivePlan, payerEmail, payerName, signedInEmail],
   )
 
   useEffect(() => {
@@ -74,6 +88,26 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
       cancelled = true
     }
   }, [supabase])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/payments/manual?plan_type=${encodeURIComponent(plan.planType)}`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload.error ?? 'Could not load checkout price.')
+        return payload.pricing as ManualCheckoutPricing | undefined
+      })
+      .then((pricing) => {
+        if (!cancelled && pricing) setPricingPreview(pricing)
+      })
+      .catch(() => {
+        if (!cancelled) setPricingPreview(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [checkoutMode, plan.planType, signedInEmail])
 
   async function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -187,17 +221,28 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
             {plan.originalPriceLabel ? (
               <div className="mt-2 flex flex-wrap items-end gap-3">
                 <span className="pb-1 text-xl font-bold text-[#d5e9e2]/60 line-through decoration-2">
-                  {plan.originalPriceLabel}
+                  {plan.regularPriceLabel ?? plan.originalPriceLabel}
                 </span>
-                <span className="text-4xl font-extrabold text-[#ffbd29] sm:text-5xl">{plan.priceLabel}</span>
+                <span className="text-4xl font-extrabold text-[#ffbd29] sm:text-5xl">
+                  {pricingPreview?.priceLabel ?? plan.priceLabel}
+                </span>
               </div>
             ) : (
-              <p className="mt-2 text-4xl font-extrabold text-[#ffbd29] sm:text-5xl">{plan.priceLabel}</p>
+              <p className="mt-2 text-4xl font-extrabold text-[#ffbd29] sm:text-5xl">
+                {pricingPreview?.priceLabel ?? plan.priceLabel}
+              </p>
             )}
             {plan.offerLabel ? (
               <span className="mt-3 inline-flex rounded-full bg-[#3ddf84] px-3 py-1 text-xs font-extrabold uppercase text-[#07130e]">
-                {plan.offerLabel}
+                {pricingPreview?.isFirstMonthPromo === false
+                  ? 'Renewal price'
+                  : plan.offerLabel}
               </span>
+            ) : null}
+            {pricingPreview?.renewalMessage ? (
+              <p className="mt-3 text-xs font-semibold leading-5 text-[#d8fff1]">
+                {pricingPreview.renewalMessage}
+              </p>
             ) : null}
           </div>
           <p className="mt-4 flex gap-2 text-sm leading-6 text-[#d8fff1] sm:mt-5">
@@ -407,7 +452,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
                 <Field label="Selected plan">
                   <input
                     readOnly
-                    value={`${plan.shortTitle} - ${plan.priceLabel}`}
+                    value={`${plan.shortTitle} - ${pricingPreview?.priceLabel ?? plan.priceLabel}`}
                     className="h-12 w-full rounded-2xl border border-[#dbe9e2] bg-[#f7fbf8] px-4 text-[#07130e]"
                   />
                 </Field>
