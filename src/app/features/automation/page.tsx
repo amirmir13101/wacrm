@@ -36,14 +36,14 @@ const automationImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp Automation for Follow-Ups and CRM Workflows",
+  title: "WhatsApp Automation Software for Follow-Ups and CRM Workflows",
   description:
-    "Automate WhatsApp follow-ups, contact updates, agent assignment, tags, deal creation, webhooks, wait steps, and customer communication workflows in Talk Wagon CRM.",
+    "Use WhatsApp automation software to automate follow-ups, contact updates, agent assignment, tags, deal creation, webhooks, wait steps, and customer communication workflows in Talk Wagon CRM.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
-    title: "Talk Wagon WhatsApp Automation for CRM Follow-Ups",
+    title: "Talk Wagon WhatsApp Automation Software for CRM Follow-Ups",
     description:
       "Build WhatsApp automation workflows for follow-ups, contacts, agents, deals, conditions, webhooks, and customer communication.",
     url: canonicalUrl,
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Talk Wagon WhatsApp Automation for CRM Follow-Ups",
+    title: "Talk Wagon WhatsApp Automation Software for CRM Follow-Ups",
     description:
       "WhatsApp automation for follow-ups, contacts, agents, deals, conditions, webhooks, and CRM actions.",
     images: [automationImages.hero],
@@ -260,7 +260,7 @@ const faqs = [
   {
     question: "Is AI automation included in Talk Wagon?",
     answer:
-      "Talk Wagon supports AI-assisted workflow planning and smarter CRM automation patterns while keeping owners in control of the final workflow.",
+      "Talk Wagon supports AI-assisted workflow planning, WhatsApp chatbot handoff patterns, and smarter CRM automation patterns while keeping owners in control of the final workflow.",
   },
   {
     question: "Can I use automation for sales and support workflows?",
@@ -277,7 +277,7 @@ const softwareSchema = {
   operatingSystem: "Web",
   url: canonicalUrl,
   description:
-    "WhatsApp automation and AI CRM workflows for customer follow-ups, agent assignment, contact updates, deal creation, webhooks, template messaging, and sales or support processes.",
+    "WhatsApp automation software and AI CRM workflows for customer follow-ups, WhatsApp chatbot handoff patterns, agent assignment, contact updates, deal creation, webhooks, template messaging, and sales or support processes.",
   offers: {
     "@type": "Offer",
     category: "WhatsApp CRM automation",

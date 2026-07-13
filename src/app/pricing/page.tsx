@@ -35,14 +35,14 @@ const pricingImages = {
 export const metadata: Metadata = {
   title: "WhatsApp CRM Pricing and Plans for Teams",
   description:
-    "Compare Talk Wagon WhatsApp CRM plans for team inbox, contacts, approved broadcasts, automation, follow-ups, analytics, and self-hosted CRM setup.",
+    "Compare Talk Wagon WhatsApp CRM software plans for team inbox, contacts, approved broadcasts, automation, follow-ups, analytics, WhatsApp Business API workflows, and self-hosted CRM setup.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
     title: "Talk Wagon WhatsApp CRM Pricing",
     description:
-      "Compare Free, Pro, and Lifetime self-hosted Talk Wagon CRM plans for WhatsApp teams, broadcasts, automation, analytics, and customer communication.",
+      "Compare Free, Pro, and Lifetime self-hosted Talk Wagon CRM plans for WhatsApp teams, broadcasts, automation, WhatsApp Business API workflows, analytics, and customer communication.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Talk Wagon WhatsApp CRM Pricing",
     description:
-      "Compare WhatsApp CRM plans for team inboxes, broadcasts, automation, analytics, customer communication, and self-hosted branding.",
+      "Compare WhatsApp CRM software plans for team inboxes, broadcasts, automation, analytics, customer communication, WhatsApp Business API workflows, and self-hosted branding.",
     images: [pricingImages.hero],
   },
   robots: {
@@ -187,7 +187,7 @@ const faqs = [
   {
     question: "Can I use my own WhatsApp API key?",
     answer:
-      "Yes. Talk Wagon is designed to work with official WhatsApp API style workflows, so businesses can use their own approved API setup.",
+      "Yes. Talk Wagon is designed to work with official WhatsApp Business API style workflows, so businesses can use their own approved API setup.",
   },
   {
     question: "What is included in the Lifetime plan?",
@@ -214,7 +214,7 @@ const softwareSchema = {
   operatingSystem: "Web",
   url: canonicalUrl,
   description:
-    "WhatsApp CRM pricing plans for team inboxes, contact management, broadcasts, AI automation, follow-ups, self-hosted CRM branding, and official WhatsApp API workflows.",
+    "WhatsApp CRM software pricing plans for team inboxes, contact management, broadcasts, AI automation, follow-ups, self-hosted CRM branding, and official WhatsApp Business API workflows.",
   offers: plans.map((plan) => ({
     "@type": "Offer",
     name: `Talk Wagon ${plan.name}`,
@@ -452,7 +452,7 @@ export default function PricingPage() {
             </h2>
             <p className="mt-5 text-base leading-8 text-[#5b7169]">
               Talk Wagon does not sell WhatsApp/Meta messages directly. Users connect
-              their own official WhatsApp API/account where needed, while Talk Wagon
+              their own official WhatsApp Business API/account where needed, while Talk Wagon
               provides the CRM workflow for teams, contacts, broadcasts, automation, and
               customer follow-up.
             </p>

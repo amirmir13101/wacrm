@@ -36,12 +36,14 @@ const flowImages = {
 export const metadata: Metadata = {
   title: "WhatsApp Automation Flows and Visual Builder",
   description:
-    "Build visual WhatsApp automation flows for follow-ups, routing, approved templates, reminders, and customer journeys with Talk Wagon CRM.",
+    "Build visual WhatsApp automation flows for follow-ups, routing, approved templates, reminders, WhatsApp chatbot handoffs, and customer journeys with Talk Wagon CRM.",
   keywords: [
     "WhatsApp automation flows",
     "WhatsApp flow builder",
     "visual workflow builder",
     "WhatsApp follow-up automation",
+    "WhatsApp automation software",
+    "WhatsApp chatbot",
     "customer journey automation",
     "WhatsApp template automation",
     "CRM workflow automation",
@@ -54,7 +56,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "WhatsApp Automation Flows & Visual Builder | Talk Wagon",
     description:
-      "Build visual WhatsApp automation flows for follow-ups, routing, approved templates, reminders, and customer journeys with Talk Wagon CRM.",
+      "Build visual WhatsApp automation flows for follow-ups, routing, approved templates, reminders, WhatsApp chatbot handoffs, and customer journeys with Talk Wagon CRM.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -71,7 +73,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "WhatsApp Automation Flows & Visual Builder | Talk Wagon",
     description:
-      "Visual WhatsApp automation flows for follow-ups, routing, approved templates, reminders, and customer journeys.",
+      "Visual WhatsApp automation flows for follow-ups, routing, approved templates, WhatsApp chatbot handoffs, reminders, and customer journeys.",
     images: [flowImages.hero],
   },
   robots: {
@@ -174,7 +176,7 @@ const faqs = [
   {
     question: "What is a WhatsApp automation flow?",
     answer:
-      "A WhatsApp automation flow is a visual CRM workflow that connects triggers, conditions, waits, messages, approved templates, assignments, contact updates, deals, and webhooks into a repeatable customer journey.",
+      "A WhatsApp automation flow is a visual CRM workflow that connects triggers, conditions, waits, messages, approved templates, assignments, contact updates, deals, WhatsApp chatbot handoffs, and webhooks into a repeatable customer journey.",
   },
   {
     question: "Can I build WhatsApp customer journeys without coding?",
@@ -221,7 +223,7 @@ const softwareSchema = {
   operatingSystem: "Web",
   url: canonicalUrl,
   description:
-    "Visual WhatsApp automation flows for follow-ups, reminders, template messages, routing, customer journeys, run history, and CRM workflow automation.",
+    "Visual WhatsApp automation flows for follow-ups, reminders, template messages, routing, WhatsApp chatbot handoffs, customer journeys, run history, and CRM workflow automation.",
   featureList: [
     "Visual WhatsApp flow builder",
     "Triggers, conditions, actions, and wait steps",

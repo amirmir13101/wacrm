@@ -37,14 +37,14 @@ const broadcastImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp Broadcast Campaigns With CRM Tracking",
+  title: "WhatsApp Broadcast Software With CRM Tracking",
   description:
-    "Create opt-in WhatsApp broadcast campaigns with selected contacts, approved templates, preflight checks, team permissions, delivery tracking, and CRM follow-up workflows.",
+    "Create opt-in WhatsApp broadcast software workflows with selected contacts, approved templates, preflight checks, team permissions, delivery tracking, and CRM follow-up workflows.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
-    title: "Talk Wagon WhatsApp Broadcast Campaigns With CRM Tracking",
+    title: "Talk Wagon WhatsApp Broadcast Software With CRM Tracking",
     description:
       "Manage opt-in WhatsApp broadcast workflows with contacts, approved templates, campaign organization, team access, delivery tracking, and CRM follow-ups.",
     url: canonicalUrl,
@@ -61,7 +61,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Talk Wagon WhatsApp Broadcast Campaigns With CRM Tracking",
+    title: "Talk Wagon WhatsApp Broadcast Software With CRM Tracking",
     description:
       "Opt-in WhatsApp broadcast workflows with contacts, approved templates, campaign organization, delivery tracking, and CRM follow-ups.",
     images: [broadcastImages.hero],
@@ -204,12 +204,12 @@ const faqs = [
   {
     question: "What is a WhatsApp broadcast CRM?",
     answer:
-      "A WhatsApp broadcast CRM helps a business organize contacts, choose campaign audiences, use approved templates, track campaign status, and connect replies with follow-up workflows.",
+      "A WhatsApp broadcast CRM works like WhatsApp broadcast software for opted-in campaigns: it helps a business organize contacts, choose campaign audiences, use approved templates, track campaign status, and connect replies with follow-up workflows.",
   },
   {
     question: "Can I send campaigns to selected contacts?",
     answer:
-      "Yes. Talk Wagon is designed around contact selection and campaign organization so broadcasts can be prepared for the right audience.",
+      "Yes. Talk Wagon is designed around contact selection and campaign organization so each WhatsApp broadcast message can be prepared for the right audience.",
   },
   {
     question: "Does Talk Wagon support WhatsApp templates?",
@@ -234,12 +234,32 @@ const faqs = [
   {
     question: "Is this useful for sales and marketing teams?",
     answer:
-      "Yes. Sales and marketing teams can use broadcasts for lead follow-up, offers, product updates, reminders, and customer reactivation workflows.",
+      "Yes. Sales and marketing teams can use Talk Wagon as a WhatsApp marketing tool for lead follow-up, offers, product updates, reminders, and customer reactivation workflows.",
   },
   {
     question: "Can I organize contacts before sending campaigns?",
     answer:
       "Yes. Contacts can be imported, searched, paginated, segmented, and managed inside the CRM before a campaign is prepared.",
+  },
+  {
+    question: "What WhatsApp broadcast limit should teams plan for?",
+    answer:
+      "The normal WhatsApp broadcast limit in the consumer app is different from official business template workflows. Talk Wagon helps teams prepare opted-in campaigns through approved templates, CRM contact selection, and workspace tracking.",
+  },
+  {
+    question: "How many contacts can be added in a WhatsApp broadcast workflow?",
+    answer:
+      "The number depends on your official WhatsApp account, approved template use, contact consent, and provider rules. Talk Wagon keeps the campaign organized in the CRM so teams can review contacts before sending.",
+  },
+  {
+    question: "How does WhatsApp broadcast work in Talk Wagon?",
+    answer:
+      "A team chooses an approved template, selects eligible contacts, reviews the campaign, queues the broadcast, and then tracks replies and follow-ups from the CRM.",
+  },
+  {
+    question: "Can I create an example of WhatsApp broadcast message before sending?",
+    answer:
+      "Yes. Teams can prepare the approved template, review the message variables, check the selected audience, and confirm the campaign before it is queued.",
   },
 ] as const;
 
@@ -251,7 +271,7 @@ const softwareSchema = {
   operatingSystem: "Web",
   url: canonicalUrl,
   description:
-    "A WhatsApp broadcast CRM for campaign workflows, approved templates, contact selection, team permissions, campaign tracking, and follow-up organization.",
+    "A WhatsApp broadcast CRM and WhatsApp marketing software workflow for approved templates, contact selection, team permissions, campaign tracking, and follow-up organization.",
   offers: {
     "@type": "Offer",
     category: "WhatsApp broadcast CRM",

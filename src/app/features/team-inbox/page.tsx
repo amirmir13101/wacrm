@@ -40,14 +40,14 @@ const teamInboxImages = {
 export const metadata: Metadata = {
   title: "WhatsApp Team Inbox for Sales and Support",
   description:
-    "Manage WhatsApp customer conversations in a shared team inbox with agents, assignments, contact history, role-based permissions, and follow-up workflows.",
+    "Manage WhatsApp customer conversations in a WhatsApp team inbox with agents, assignments, contact history, role-based permissions, and follow-up workflows.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
     title: "Talk Wagon WhatsApp Team Inbox",
     description:
-      "Give your sales and support team a shared WhatsApp CRM inbox for customer conversations, assignments, contact history, and follow-up workflows.",
+      "Give your sales and support team a WhatsApp team inbox and shared WhatsApp CRM inbox for customer conversations, assignments, contact history, and follow-up workflows.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Talk Wagon WhatsApp Team Inbox",
     description:
-      "A shared WhatsApp CRM inbox for customer conversations, assignments, contact history, and follow-up workflows.",
+      "A WhatsApp team inbox and shared WhatsApp CRM inbox for customer conversations, assignments, contact history, and follow-up workflows.",
     images: [teamInboxImages.hero],
   },
   robots: {
@@ -220,7 +220,7 @@ const faqs = [
   {
     question: "What is a WhatsApp team inbox?",
     answer:
-      "A WhatsApp team inbox lets multiple team members manage customer conversations from one shared CRM workspace instead of relying on scattered personal chats.",
+      "A WhatsApp team inbox lets multiple team members manage customer conversations from one shared WhatsApp CRM workspace instead of relying on scattered personal chats.",
   },
   {
     question: "Can I assign WhatsApp conversations to agents?",
@@ -240,7 +240,7 @@ const faqs = [
   {
     question: "Can the team inbox work with automation?",
     answer:
-      "Yes. You can connect team inbox workflows with follow-up automation, contact updates, conversation assignment, deal creation, and webhooks.",
+      "Yes. You can connect team inbox workflows with WhatsApp automation, follow-up automation, contact updates, conversation assignment, deal creation, and webhooks.",
   },
   {
     question: "Is this suitable for sales and support teams?",

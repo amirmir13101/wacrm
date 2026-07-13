@@ -8,7 +8,7 @@ import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/contact");
 const pageDescription =
-  "Contact Talk Wagon for WhatsApp CRM sales questions, technical support, billing help, setup, partnership, automation, broadcasts, or team inbox questions.";
+  "Contact Talk Wagon for WhatsApp CRM software sales questions, technical support, billing help, setup, partnership, automation, broadcasts, or team inbox questions.";
 
 export const metadata: Metadata = {
   title: "Contact Us | Talk Wagon CRM",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Contact Talk Wagon",
     description:
-      "Reach Talk Wagon for WhatsApp CRM sales, support, billing, setup, and partnership questions.",
+      "Reach Talk Wagon for WhatsApp CRM software sales, support, billing, setup, and partnership questions.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
 const topics = [
   {
     title: "Sales questions",
-    text: "Ask about Talk Wagon plans, WhatsApp CRM workflows, teams, broadcasts, or automation features.",
+    text: "Ask about Talk Wagon plans, WhatsApp CRM software workflows, teams, broadcasts, or automation features.",
     icon: Building2,
   },
   {
@@ -71,8 +71,8 @@ export default function ContactPage() {
       <InfoPageShell>
       <InfoHero
         eyebrow="Contact Talk Wagon"
-        title="Contact Talk Wagon for WhatsApp CRM Help"
-        description="Use the contact form for sales, support, billing, setup, automation, broadcasts, team inbox, or partnership questions. Live chat can be connected later without adding a fake widget."
+        title="Contact Talk Wagon for WhatsApp CRM Software Help"
+        description="Use the contact form for sales, support, billing, setup, automation, broadcasts, WhatsApp team inbox, or partnership questions. Live chat can be connected later without adding a fake widget."
         badges={["Sales", "Support", "Billing", "Setup", "Partnerships"]}
         breadcrumbs={[
           { label: "Home", href: "/" },

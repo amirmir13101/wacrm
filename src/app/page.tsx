@@ -38,14 +38,14 @@ const homeImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp CRM for Team Inbox and Broadcasts | Talk Wagon",
+  title: "WhatsApp CRM Software for Team Inbox and Broadcasts | Talk Wagon",
   description:
-    "Talk Wagon is a WhatsApp CRM for team inboxes, contacts, approved template broadcasts, automated follow-ups, sales pipelines, and customer communication workflows.",
+    "Talk Wagon is WhatsApp CRM software for team inboxes, contacts, approved template broadcasts, automated follow-ups, sales pipelines, and customer communication workflows.",
   alternates: {
     canonical: canonicalUrl,
   },
   openGraph: {
-    title: "Talk Wagon WhatsApp CRM for Teams and Customer Communication",
+    title: "Talk Wagon WhatsApp CRM Software for Teams and Customer Communication",
     description:
       "Manage WhatsApp conversations, contacts, team agents, approved broadcasts, automated follow-ups, and sales pipelines from one CRM workspace.",
     url: canonicalUrl,
@@ -62,7 +62,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Talk Wagon WhatsApp CRM for Teams and Customer Communication",
+    title: "Talk Wagon WhatsApp CRM Software for Teams and Customer Communication",
     description:
       "Manage WhatsApp conversations, contacts, team agents, approved broadcasts, automated follow-ups, and sales pipelines from one CRM workspace.",
     images: [homeImages.hero],
@@ -88,7 +88,7 @@ const featureCards = [
   {
     title: "WhatsApp Team Inbox",
     description:
-      "Manage customer messages in one shared CRM inbox with agents, assignments, conversation history, and permission-based access.",
+      "Manage customer messages in one WhatsApp team inbox with agents, assignments, conversation history, and permission-based access.",
     icon: MessageSquareText,
     image: homeImages.teamInbox,
     alt: "Shared WhatsApp team inbox for agents and managers",
@@ -106,7 +106,7 @@ const featureCards = [
   {
     title: "Broadcast Campaigns",
     description:
-      "Send approved WhatsApp template campaigns to selected contacts and track delivery workflow status from the CRM.",
+      "Send approved WhatsApp broadcast message campaigns to selected contacts and track delivery workflow status from the CRM.",
     icon: Radio,
     image: homeImages.broadcasts,
     alt: "Broadcast campaign CRM for WhatsApp contacts",
@@ -154,7 +154,7 @@ const plans = [
   {
     title: "Starter CRM",
     audience: "For small teams",
-    description: "Manage contacts and customer conversations in one WhatsApp CRM workspace.",
+    description: "Manage contacts and customer conversations in one WhatsApp CRM software workspace.",
     features: ["Shared inbox foundation", "Contact management CRM", "Customer conversation tracking"],
   },
   {
@@ -176,7 +176,7 @@ const faqs = [
   {
     question: "What is a WhatsApp CRM?",
     answer:
-      "A WhatsApp CRM helps businesses organize customer conversations, contacts, team agents, broadcasts, follow-ups, and sales activity in one dashboard.",
+      "A WhatsApp CRM, or WhatsApp CRM software, helps businesses organize customer conversations, contacts, team agents, broadcasts, follow-ups, and sales activity in one dashboard.",
   },
   {
     question: "Can my team manage WhatsApp conversations together?",
@@ -208,7 +208,7 @@ const softwareSchema = {
   operatingSystem: "Web",
   url: canonicalUrl,
   description:
-    "Production-ready WhatsApp CRM for team inboxes, contact management, broadcast campaigns, AI workflow automation, customer follow-ups, team agent permissions, and sales pipeline tracking.",
+    "Production-ready WhatsApp CRM software for team inboxes, contact management, broadcast campaigns, AI workflow automation, customer follow-ups, team agent permissions, and sales pipeline tracking.",
   offers: {
     "@type": "Offer",
     category: "Business messaging CRM",

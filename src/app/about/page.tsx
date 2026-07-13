@@ -8,7 +8,7 @@ import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/about");
 const pageDescription =
-  "Learn about Talk Wagon CRM, a Berankify LTD project for WhatsApp CRM, chatbot automation, broadcasts, team inboxes, contacts, and customer communication.";
+  "Learn about Talk Wagon CRM, a Berankify LTD project for WhatsApp CRM software, chatbot automation, broadcasts, team inboxes, contacts, and customer communication.";
 
 export const metadata: Metadata = {
   title: "About Us | Talk Wagon CRM",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "About Talk Wagon CRM",
     description:
-      "Talk Wagon helps teams manage WhatsApp customer conversations, contacts, broadcasts, automations, and sales follow-ups in one workspace.",
+      "Talk Wagon helps teams manage WhatsApp customer conversations, contacts, broadcasts, automations, and sales follow-ups in one WhatsApp CRM software workspace.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -71,8 +71,8 @@ export default function AboutPage() {
       <InfoPageShell>
       <InfoHero
         eyebrow="About Talk Wagon"
-        title="A WhatsApp CRM Built for Customer Communication Teams"
-        description="Talk Wagon CRM is a Berankify LTD project built to help businesses manage WhatsApp conversations, automate replies, send broadcasts, organize contacts, and manage customer journeys from one workspace."
+        title="A WhatsApp CRM Software Platform Built for Customer Communication Teams"
+        description="Talk Wagon CRM is a Berankify LTD project built to help businesses manage WhatsApp conversations, automate replies, send broadcasts, organize contacts, and manage customer journeys from one WhatsApp CRM software workspace."
         badges={["Berankify LTD project", "Team Inbox", "Chatbot", "Broadcasts", "Automation"]}
         breadcrumbs={[
           { label: "Home", href: "/" },
@@ -86,7 +86,7 @@ export default function AboutPage() {
       >
         <div className="rounded-[26px] border border-[#dce9e2] bg-white p-6 text-base leading-8 text-[#48675b] shadow-[0_18px_45px_rgba(7,19,14,0.08)]">
           <p>
-            Talk Wagon CRM is a project of Berankify LTD. It is designed for businesses that need a shared team inbox,
+            Talk Wagon CRM is a project of Berankify LTD. It is designed for businesses that need a WhatsApp team inbox,
             customer contact management, broadcast preparation, template-aware messaging, chatbot automation, pipeline
             tracking, and role-based access in one workspace. The goal is simple: help teams follow up faster while
             keeping customer context and permissions clear.

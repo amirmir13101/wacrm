@@ -41,14 +41,17 @@ const featureImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp CRM Features for Teams, Flows and Broadcasts",
+  title: "WhatsApp CRM Software Features for Teams, Flows and Broadcasts",
   description:
-    "Explore Talk Wagon WhatsApp CRM features for shared inboxes, contacts, visual flows, approved broadcasts, Meta template approval, automation, agent permissions, analytics, and pipeline tracking.",
+    "Explore Talk Wagon WhatsApp CRM software features for shared inboxes, contacts, visual flows, approved broadcasts, Meta template approval, automation, agent permissions, analytics, and pipeline tracking.",
   keywords: [
     "WhatsApp CRM features",
+    "WhatsApp CRM software",
     "WhatsApp automation flows",
     "WhatsApp team inbox",
     "WhatsApp broadcast CRM",
+    "WhatsApp marketing tool",
+    "WhatsApp Business API",
     "Meta WhatsApp template approval",
     "customer journey automation",
     "sales pipeline CRM",
@@ -61,7 +64,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Talk Wagon WhatsApp CRM Features for Growing Teams",
     description:
-      "Discover WhatsApp CRM tools for shared inboxes, contacts, visual flows, approved broadcasts, Meta template approval, automation, permissions, analytics, and pipeline tracking.",
+      "Discover WhatsApp CRM software tools for shared inboxes, contacts, visual flows, approved broadcasts, Meta template approval, automation, permissions, analytics, and pipeline tracking.",
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
@@ -78,7 +81,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Talk Wagon WhatsApp CRM Features for Growing Teams",
     description:
-      "WhatsApp CRM features for shared inboxes, contacts, visual flows, approved broadcasts, Meta template approval, automation, permissions, analytics, and pipeline tracking.",
+      "WhatsApp CRM software features for shared inboxes, contacts, visual flows, approved broadcasts, Meta template approval, automation, permissions, analytics, and pipeline tracking.",
     images: [featureImages.hero],
   },
   robots: {
@@ -221,12 +224,12 @@ const faqs = [
   {
     question: "What are WhatsApp CRM features?",
     answer:
-      "WhatsApp CRM features are tools that help a business manage conversations, contacts, visual flows, broadcasts, automations, agents, permissions, and sales follow-ups from one workspace.",
+      "WhatsApp CRM software features are tools that help a business manage conversations, contacts, visual flows, broadcasts, automations, agents, permissions, and sales follow-ups from one workspace.",
   },
   {
     question: "Does Talk Wagon support a shared WhatsApp inbox?",
     answer:
-      "Yes. Talk Wagon supports a team inbox where owners and permitted agents can view, assign, reply to, and manage WhatsApp conversations.",
+      "Yes. Talk Wagon supports a WhatsApp team inbox where owners and permitted agents can view, assign, reply to, and manage WhatsApp conversations.",
   },
   {
     question: "Can I manage WhatsApp contacts in the CRM?",
@@ -236,7 +239,7 @@ const faqs = [
   {
     question: "Can Talk Wagon send WhatsApp broadcasts?",
     answer:
-      "Yes. Broadcasts use approved WhatsApp templates, queue processing, preflight checks, recipient eligibility, and live status updates.",
+      "Yes. Broadcasts use approved WhatsApp templates, queue processing, preflight checks, recipient eligibility, and live status updates, so Talk Wagon can work as a practical WhatsApp marketing tool for opted-in campaigns.",
   },
   {
     question: "Does the CRM support WhatsApp template messages?",
@@ -266,7 +269,7 @@ const faqs = [
   {
     question: "Is this connected to the official Meta WhatsApp Cloud API?",
     answer:
-      "Talk Wagon is designed around WhatsApp Business Platform and Meta Cloud API workflows for templates, webhooks, and message handling.",
+      "Talk Wagon is designed around WhatsApp Business Platform, WhatsApp Business API, and Meta Cloud API workflows for templates, webhooks, and message handling.",
   },
   {
     question: "Can agents use the owner WhatsApp connection safely?",
@@ -283,7 +286,7 @@ const softwareSchema = {
   operatingSystem: "Web",
   url: canonicalUrl,
   description:
-    "WhatsApp CRM features for team inboxes, contact management, visual flows, broadcasts, Meta template approval, AI automation, follow-ups, role-based agents, permissions, and sales pipeline tracking.",
+    "WhatsApp CRM software features for team inboxes, contact management, visual flows, broadcasts, Meta template approval, AI automation, follow-ups, role-based agents, permissions, and sales pipeline tracking.",
   offers: {
     "@type": "Offer",
     category: "WhatsApp CRM",
