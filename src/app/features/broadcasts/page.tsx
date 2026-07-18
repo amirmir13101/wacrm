@@ -371,12 +371,12 @@ export default function BroadcastsFeaturePage() {
               WhatsApp broadcast CRM for organized campaigns
             </p>
             <h1 className="text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl">
-              WhatsApp Broadcast Campaigns With CRM Tracking
+              WhatsApp Broadcast Software With CRM Tracking
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Prepare opt-in WhatsApp campaigns with selected contacts, approved
-              templates, preflight checks, team permissions, delivery status, and
-              follow-up workflows connected to your CRM.
+              Use WhatsApp broadcast software to prepare opt-in campaigns with selected
+              contacts, approved templates, preflight checks, team permissions, delivery
+              status, and follow-up workflows connected to your CRM.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
@@ -438,7 +438,7 @@ export default function BroadcastsFeaturePage() {
           <div>
             <p className="text-sm font-bold uppercase text-[#08bba4]">The solution</p>
             <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-              Run WhatsApp Broadcasts From an Organized CRM Workflow
+              How WhatsApp Broadcast Software Organizes Campaign Work
             </h2>
             <p className="mt-5 text-base leading-8 text-[#5b7169]">
               Talk Wagon connects your contacts, approved WhatsApp templates, campaign
@@ -689,7 +689,7 @@ export default function BroadcastsFeaturePage() {
           <div className="text-center">
             <p className="text-sm font-bold uppercase text-[#08bba4]">FAQ</p>
             <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-              WhatsApp Broadcast CRM FAQ
+              WhatsApp Broadcast Software FAQ
             </h2>
           </div>
           <div className="mt-10 grid gap-4">

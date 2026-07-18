@@ -29,7 +29,7 @@ describe("public Flows feature page", () => {
       'title: "WhatsApp Automation Flows and Visual Builder"',
     );
     expect(flowsPage).toContain(
-      "Visual WhatsApp Automation Flows for Follow-Ups, Routing and Customer Journeys",
+      "WhatsApp Chatbot Handoffs and Visual Automation Flows",
     );
     expect(flowsPage).not.toContain("Build automated customer journeys visually.");
     expect(flowsPage).toContain("Visual Flow Builder");

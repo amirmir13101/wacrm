@@ -267,9 +267,9 @@ const faqs = [
       "Yes. The pipeline helps track leads, deals, assigned agents, stages, and sales progress from WhatsApp conversations.",
   },
   {
-    question: "Is this connected to the official Meta WhatsApp Cloud API?",
+    question: "How does Talk Wagon work with the WhatsApp Business API?",
     answer:
-      "Talk Wagon is designed around WhatsApp Business Platform, WhatsApp Business API, and Meta Cloud API workflows for templates, webhooks, and message handling.",
+      "Talk Wagon provides CRM tools around a business's own approved WhatsApp Business API or Meta Cloud API configuration. It organizes templates, webhooks, messages, contacts, and team workflows, but it does not sell API access or control Meta charges.",
   },
   {
     question: "Can agents use the owner WhatsApp connection safely?",
@@ -343,9 +343,10 @@ export default function FeaturesPage() {
               WhatsApp CRM Features for Teams, Automation and Growth
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Explore tools for shared inboxes, contact management, visual flows,
-              approved template broadcasts, Meta template approval, automation workflows,
-              follow-ups, role-based agents, analytics, and sales pipeline tracking.
+              Explore WhatsApp Business API CRM tools for shared inboxes, contact
+              management, visual flows, approved template broadcasts, automation,
+              role-based agents, analytics, and sales pipeline tracking around your
+              business&apos;s own approved WhatsApp configuration.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
@@ -385,12 +386,13 @@ export default function FeaturesPage() {
           <div className="mx-auto max-w-3xl text-center">
             <SectionEyebrow>WhatsApp CRM features</SectionEyebrow>
             <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-              Everything Your WhatsApp Customer Workflow Needs in One CRM
+              WhatsApp Business API CRM Features in One Workspace
             </h2>
             <p className="mt-4 text-[#5b7169]">
-              Talk Wagon combines daily WhatsApp communication, visual flows,
-              team workflows, automation, broadcasts, template approval, permissions,
-              and sales tracking so businesses can manage customer growth from one workspace.
+              Talk Wagon combines daily communication, visual flows, team workflows,
+              broadcasts, template approval, permissions, and sales tracking around your
+              customer-provided official WhatsApp setup. Talk Wagon provides the CRM layer;
+              it does not sell API access or control Meta pricing.
             </p>
           </div>
 
@@ -413,7 +415,7 @@ export default function FeaturesPage() {
                   href={feature.href}
                   className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] hover:text-[#07130e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
                 >
-                  Learn more
+                  Explore {feature.title}
                   <ChevronRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
               </article>

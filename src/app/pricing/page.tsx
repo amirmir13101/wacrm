@@ -204,6 +204,11 @@ const faqs = [
     answer:
       "Yes. Agencies can use Talk Wagon to manage WhatsApp customer workflows or choose the Lifetime option for branded self-hosted deployment.",
   },
+  {
+    question: "How does WhatsApp API pricing relate to Talk Wagon plans?",
+    answer:
+      "Talk Wagon plans cover CRM access and listed CRM usage. WhatsApp API pricing, Meta conversation charges, or provider fees are separate and depend on the business's own official WhatsApp account and provider setup.",
+  },
 ] as const;
 
 const softwareSchema = {
@@ -267,12 +272,12 @@ export default function PricingPage() {
               WhatsApp CRM pricing for teams and agencies
             </p>
             <h1 className="text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl">
-              Simple Pricing for WhatsApp CRM Teams
+              WhatsApp API Pricing and Talk Wagon CRM Plans
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Start free with your official WhatsApp API key, upgrade for complete CRM
-              features, or choose a lifetime self-hosted setup with your company branding
-              and workspace control.
+              Compare Talk Wagon CRM plans while keeping official WhatsApp API pricing
+              separate. Connect your own approved WhatsApp setup, then choose the CRM
+              access level that fits your team and workspace.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
@@ -456,6 +461,25 @@ export default function PricingPage() {
               provides the CRM workflow for teams, contacts, broadcasts, automation, and
               customer follow-up.
             </p>
+            <p className="mt-4 text-sm leading-7 text-[#5b7169]">
+              Compare the WhatsApp CRM software features for the{" "}
+              <Link className="font-bold text-[#08745d] hover:text-[#07130e]" href="/features/team-inbox">
+                team inbox
+              </Link>
+              ,{" "}
+              <Link className="font-bold text-[#08745d] hover:text-[#07130e]" href="/features/automation">
+                automation workflows
+              </Link>
+              ,{" "}
+              <Link className="font-bold text-[#08745d] hover:text-[#07130e]" href="/features/flows">
+                visual flows
+              </Link>
+              , and{" "}
+              <Link className="font-bold text-[#08745d] hover:text-[#07130e]" href="/features/broadcasts">
+                broadcast campaigns
+              </Link>
+              .
+            </p>
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
               {included.map(([item, Icon]) => (
                 <div key={item} className="flex gap-3 rounded-[22px] bg-white p-5 ring-1 ring-[#dbe9e2]">
@@ -481,7 +505,7 @@ export default function PricingPage() {
           <div>
             <p className="text-sm font-bold uppercase text-[#ffbd29]">Transparent WhatsApp API Pricing</p>
             <h2 className="mt-4 text-3xl font-extrabold sm:text-4xl">
-              Clear CRM Pricing, Separate Official API Costs
+              WhatsApp API Pricing Is Separate From CRM Subscription Costs
             </h2>
             <p className="mt-5 text-base leading-8 text-[#d5e9e2]">
               Talk Wagon is the CRM platform. WhatsApp/Meta API or conversation charges

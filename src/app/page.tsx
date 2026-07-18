@@ -195,9 +195,9 @@ const faqs = [
       "Yes. It is built for follow-up automation, workflow triggers, customer updates, agent assignment, and AI-powered automation planning.",
   },
   {
-    question: "Is it suitable for sales and support teams?",
+    question: "Is this WhatsApp business CRM suitable for different teams?",
     answer:
-      "Yes. Sales teams can manage leads and pipelines, while support teams can handle customer conversations and follow-ups from one workspace.",
+      "Yes. Sales teams can manage leads and pipelines, support teams can handle customer conversations and follow-ups, and other businesses can adapt the same workspace to their customer communication process.",
   },
 ];
 
@@ -278,9 +278,9 @@ export default async function HomePage() {
               WhatsApp CRM for Team Inbox, Broadcasts and Automation
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Manage customer conversations, contacts, team agents, approved template
-              broadcasts, automated follow-ups, and sales pipelines from one secure
-              customer communication CRM.
+              Use Talk Wagon as a WhatsApp CRM to manage customer conversations,
+              contacts, team agents, approved template broadcasts, automated follow-ups,
+              and sales pipelines from one secure workspace.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
@@ -320,7 +320,7 @@ export default async function HomePage() {
       <section className="bg-white px-5 py-14 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-6xl text-center">
           <h2 className="text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-            Build a Complete WhatsApp Customer Communication Workflow
+            Build a Complete WhatsApp CRM Customer Communication Workflow
           </h2>
           <p className="mx-auto mt-4 max-w-3xl text-[#5b7169]">
             Start with customer conversations, organize contact records, assign agents,
@@ -414,7 +414,7 @@ export default async function HomePage() {
                     href={card.href}
                     className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] hover:text-[#07130e]"
                   >
-                    Learn more
+                    Explore {card.title}
                     <ChevronRight className="h-4 w-4" aria-hidden="true" />
                   </Link>
                 </div>

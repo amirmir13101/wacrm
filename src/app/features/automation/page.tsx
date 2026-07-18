@@ -157,7 +157,7 @@ const automationActions = [
   {
     title: "Send Webhook",
     description:
-      "Notify another business system when a WhatsApp CRM workflow reaches an important step.",
+      "Use a webhook as a controlled WhatsApp CRM integration point when a workflow reaches an important step.",
     icon: Webhook,
   },
   {
@@ -253,9 +253,9 @@ const faqs = [
       "Yes. Automation can update contact fields and tags so your customer records stay aligned with the latest conversation workflow.",
   },
   {
-    question: "Can Talk Wagon connect with external tools using webhooks?",
+    question: "How can webhooks support a WhatsApp CRM integration?",
     answer:
-      "Yes. The Send Webhook action can notify external systems when a workflow reaches a specific step.",
+      "The Send Webhook action can notify a configured external system when a workflow reaches a specific step, providing a controlled integration point without exposing workspace credentials.",
   },
   {
     question: "Is AI automation included in Talk Wagon?",

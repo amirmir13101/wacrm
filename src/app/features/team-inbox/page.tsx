@@ -220,7 +220,7 @@ const faqs = [
   {
     question: "What is a WhatsApp team inbox?",
     answer:
-      "A WhatsApp team inbox lets multiple team members manage customer conversations from one shared WhatsApp CRM workspace instead of relying on scattered personal chats.",
+      "A WhatsApp team inbox, sometimes called a WhatsApp shared inbox, lets multiple team members manage customer conversations from one CRM workspace instead of relying on scattered personal chats.",
   },
   {
     question: "Can I assign WhatsApp conversations to agents?",
@@ -360,9 +360,9 @@ export default function TeamInboxPage() {
               WhatsApp Team Inbox for Sales, Support and Follow-Ups
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Give sales and support agents one shared WhatsApp CRM inbox where customer
+              Give sales and support agents a WhatsApp shared inbox where customer
               conversations, contact history, assignments, permissions, and follow-up
-              workflows stay organized.
+              workflows stay organized in one CRM workspace.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
@@ -625,7 +625,7 @@ export default function TeamInboxPage() {
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-sm font-bold uppercase text-[#ffbd29]">Comparison</p>
             <h2 className="mt-4 text-3xl font-extrabold sm:text-4xl">
-              Shared Team Inbox vs Manual WhatsApp Handling
+              WhatsApp Shared Inbox vs Manual WhatsApp Handling
             </h2>
           </div>
           <div className="mt-10 grid gap-6 lg:grid-cols-2">

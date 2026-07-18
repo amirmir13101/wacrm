@@ -199,6 +199,11 @@ const faqs = [
       "Yes. Flows can help route conversations, assign work, update contact data, and support sales or support handoff workflows based on workspace permissions.",
   },
   {
+    question: "How do WhatsApp chatbot handoffs work with visual flows?",
+    answer:
+      "A configured WhatsApp chatbot can answer from approved business knowledge, while a visual flow can route the conversation, apply waits or conditions, and hand it to a team member when the workflow requires human help.",
+  },
+  {
     question: "Can Flows automate WhatsApp follow-ups and reminders?",
     answer:
       "Yes. Teams can combine message actions, approved templates, wait steps, conditions, and assignments to automate follow-ups, reminders, nurturing, and support handoffs.",
@@ -330,12 +335,12 @@ export default function FlowsFeaturePage() {
               WhatsApp flow builder for sales, support and customer journeys
             </p>
             <h1 className="text-4xl font-extrabold leading-tight text-white sm:text-5xl lg:text-6xl">
-              Visual WhatsApp Automation Flows for Follow-Ups, Routing and Customer Journeys
+              WhatsApp Chatbot Handoffs and Visual Automation Flows
             </h1>
             <p className="mt-6 text-base leading-8 text-[#d5e9e2] sm:text-lg">
-              Design automated WhatsApp CRM workflows for follow-ups, reminders,
-              routing, approved template messages, customer nurturing, and support
-              handoffs without repetitive manual work.
+              Coordinate WhatsApp chatbot handoffs, follow-ups, reminders, routing,
+              approved template messages, and customer journeys in one visual CRM
+              workflow without repetitive manual work.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
               <Link
@@ -408,11 +413,12 @@ export default function FlowsFeaturePage() {
               Automate customer conversations
             </p>
             <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
-              Follow-Ups, Reminders, Routing and Lead Nurturing in One Workflow
+              Connect WhatsApp Chatbot Handoffs, Follow-Ups and Routing
             </h2>
             <p className="mt-4 text-[#5b7169]">
-              Flows help teams reduce repeated manual work while keeping every customer
-              journey connected to contacts, conversations, templates, and CRM history.
+              The chatbot handles grounded answers from approved knowledge, while flows
+              coordinate configured waits, conditions, routing, and human handoffs. This
+              keeps each journey connected to contacts, conversations, templates, and CRM history.
             </p>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2">
