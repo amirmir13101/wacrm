@@ -39,7 +39,7 @@ const broadcastImages = {
 export const metadata: Metadata = {
   title: "WhatsApp Broadcast Software With CRM Tracking",
   description:
-    "Create opt-in WhatsApp broadcast software workflows with selected contacts, approved templates, preflight checks, team permissions, delivery tracking, and CRM follow-up workflows.",
+    "Create opt-in WhatsApp broadcast software campaigns with approved templates, audience checks, team access, delivery tracking, and CRM follow-ups.",
   alternates: {
     canonical: canonicalUrl,
   },

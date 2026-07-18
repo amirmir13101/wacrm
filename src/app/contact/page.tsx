@@ -4,6 +4,7 @@ import { Building2, CreditCard, Headphones, Handshake } from "lucide-react";
 import { ContactMessageForm } from "@/components/marketing/contact-message-form";
 import { InfoCard, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
 import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/marketing/seo-json-ld";
+import { publicInfoSocialImage } from "@/lib/seo/metadata";
 import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/contact");
@@ -23,11 +24,13 @@ export const metadata: Metadata = {
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
+    images: [publicInfoSocialImage],
   },
   twitter: {
     card: "summary",
     title: "Contact Talk Wagon CRM",
     description: pageDescription,
+    images: [publicInfoSocialImage.url],
   },
   robots: {
     index: true,

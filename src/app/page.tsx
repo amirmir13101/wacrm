@@ -24,6 +24,7 @@ import {
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 import { PublicCtaButtons } from "@/components/marketing/public-cta-buttons";
+import { OrganizationWebSiteJsonLd } from "@/components/marketing/seo-json-ld";
 import { authenticatedRedirectPath } from "@/lib/auth/approval";
 import { getCanonicalUrl } from "@/lib/site-url";
 import { createClient } from "@/lib/supabase/server";
@@ -247,6 +248,7 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#f7fbf8] text-[#07130e]">
+      <OrganizationWebSiteJsonLd />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareSchema) }}

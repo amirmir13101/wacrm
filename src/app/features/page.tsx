@@ -41,9 +41,9 @@ const featureImages = {
 } as const;
 
 export const metadata: Metadata = {
-  title: "WhatsApp CRM Software Features for Teams, Flows and Broadcasts",
+  title: "WhatsApp CRM Features for Teams and Automation",
   description:
-    "Explore Talk Wagon WhatsApp CRM software features for shared inboxes, contacts, visual flows, approved broadcasts, Meta template approval, automation, agent permissions, analytics, and pipeline tracking.",
+    "Explore Talk Wagon WhatsApp CRM software for team inboxes, contacts, visual flows, approved broadcasts, automation, permissions, analytics, and pipelines.",
   keywords: [
     "WhatsApp CRM features",
     "WhatsApp CRM software",

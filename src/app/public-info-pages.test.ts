@@ -71,6 +71,7 @@ describe("public legal and information pages", () => {
       readSource("src/app/features/broadcasts/page.tsx"),
       readSource("src/app/features/flows/page.tsx"),
       readSource("src/app/pricing/page.tsx"),
+      readSource("src/lib/seo/metadata.ts"),
     ].join("\n");
     const imagePaths = Array.from(
       sources.matchAll(/\/hostiko-crm\/generated\/[^"')\]]+\.(?:webp|png|jpg|jpeg)/g),

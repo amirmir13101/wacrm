@@ -4,6 +4,7 @@ import { Bot, MessageSquareText, ShieldCheck, Users } from "lucide-react";
 
 import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
 import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/marketing/seo-json-ld";
+import { publicInfoSocialImage } from "@/lib/seo/metadata";
 import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/about");
@@ -23,11 +24,13 @@ export const metadata: Metadata = {
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
+    images: [publicInfoSocialImage],
   },
   twitter: {
     card: "summary",
     title: "About Talk Wagon CRM",
     description: pageDescription,
+    images: [publicInfoSocialImage.url],
   },
   robots: {
     index: true,

@@ -10,6 +10,7 @@ import {
   InfoSection,
 } from '@/components/marketing/info-page'
 import { BreadcrumbJsonLd, WebPageJsonLd } from '@/components/marketing/seo-json-ld'
+import { publicInfoSocialImage } from '@/lib/seo/metadata'
 import { getCanonicalUrl } from '@/lib/site-url'
 
 const SUPPORT_EMAIL = 'support@talkwagon.chat'
@@ -30,11 +31,13 @@ export const metadata: Metadata = {
     url: canonicalUrl,
     siteName: 'Talk Wagon',
     type: 'website',
+    images: [publicInfoSocialImage],
   },
   twitter: {
     card: 'summary',
     title: 'Meta Data Deletion Instructions',
     description: pageDescription,
+    images: [publicInfoSocialImage.url],
   },
   robots: {
     index: true,

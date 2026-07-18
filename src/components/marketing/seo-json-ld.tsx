@@ -20,6 +20,38 @@ export function JsonLdScript({ id, data }: JsonLdScriptProps) {
   );
 }
 
+export function OrganizationWebSiteJsonLd() {
+  const siteUrl = getCanonicalUrl("/");
+  const organizationId = `${siteUrl}#organization`;
+
+  return (
+    <JsonLdScript
+      id="talk-wagon-organization-website-json-ld"
+      data={{
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": organizationId,
+            name: "Talk Wagon",
+            url: siteUrl,
+            logo: getCanonicalUrl("/hostiko-crm/brand/talk-wagon-logo-public.png"),
+          },
+          {
+            "@type": "WebSite",
+            "@id": `${siteUrl}#website`,
+            name: "Talk Wagon",
+            url: siteUrl,
+            publisher: {
+              "@id": organizationId,
+            },
+          },
+        ],
+      }}
+    />
+  );
+}
+
 export function WebPageJsonLd({
   path,
   name,

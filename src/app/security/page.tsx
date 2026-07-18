@@ -4,14 +4,15 @@ import { KeyRound, LockKeyhole, MessageSquareLock, ShieldCheck, UserCog, Workflo
 
 import { InfoCard, InfoCardGrid, InfoCta, InfoHero, InfoPageShell, InfoSection } from "@/components/marketing/info-page";
 import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/marketing/seo-json-ld";
+import { publicInfoSocialImage } from "@/lib/seo/metadata";
 import { getCanonicalUrl } from "@/lib/site-url";
 
 const canonicalUrl = getCanonicalUrl("/security");
 const pageDescription =
-  "Learn how Talk Wagon CRM approaches workspace security, role-based permissions, protected API routes, WhatsApp configuration, AI provider keys, and Firecrawl key handling.";
+  "Learn how Talk Wagon protects CRM workspaces with role-based permissions, protected API routes, secure WhatsApp configuration, and masked provider keys.";
 
 export const metadata: Metadata = {
-  title: "Security",
+  title: "WhatsApp CRM Security and Data Protection",
   description: pageDescription,
   alternates: {
     canonical: canonicalUrl,
@@ -23,11 +24,13 @@ export const metadata: Metadata = {
     url: canonicalUrl,
     siteName: "Talk Wagon",
     type: "website",
+    images: [publicInfoSocialImage],
   },
   twitter: {
     card: "summary",
     title: "Security",
     description: pageDescription,
+    images: [publicInfoSocialImage.url],
   },
   robots: {
     index: true,

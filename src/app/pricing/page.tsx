@@ -35,7 +35,7 @@ const pricingImages = {
 export const metadata: Metadata = {
   title: "WhatsApp CRM Pricing and Plans for Teams",
   description:
-    "Compare Talk Wagon WhatsApp CRM software plans for team inbox, contacts, approved broadcasts, automation, follow-ups, analytics, WhatsApp Business API workflows, and self-hosted CRM setup.",
+    "Compare Talk Wagon WhatsApp CRM software plans for team inboxes, contacts, approved broadcasts, automation, analytics, and WhatsApp Business API workflows.",
   alternates: {
     canonical: canonicalUrl,
   },
@@ -220,7 +220,7 @@ const softwareSchema = {
     name: `Talk Wagon ${plan.name}`,
     price: plan.name === "14-Day Free Trial" ? "0" : plan.name === "Pro" ? "1" : "499",
     priceCurrency: "USD",
-    description: plan.description,
+    description: `${plan.description} ${plan.billing}.`,
     availability: "https://schema.org/InStock",
   })),
 };
