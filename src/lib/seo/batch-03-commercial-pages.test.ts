@@ -20,7 +20,7 @@ const pageMetadata = [
     description:
       'Turn WhatsApp sales conversations into assigned leads, organized contact context, CRM pipeline stages, and timely follow-ups with Talk Wagon.',
     image:
-      'public/hostiko-crm/generated/commercial/talk-wagon-whatsapp-sales-workflow.webp',
+      'public/hostiko-crm/generated/commercial/talk-wagon-whatsapp-sales-workflow-v2.webp',
     imageAlt:
       'Conceptual Talk Wagon WhatsApp sales workflow with conversations, team assignment, follow-ups, and pipeline stages',
   },
@@ -31,7 +31,7 @@ const pageMetadata = [
     description:
       'Plan opt-in WhatsApp newsletter campaigns with approved templates, audience checks, queue processing, delivery tracking, and CRM follow-ups.',
     image:
-      'public/hostiko-crm/generated/commercial/talk-wagon-whatsapp-newsletter-workflow.webp',
+      'public/hostiko-crm/generated/commercial/talk-wagon-whatsapp-newsletter-workflow-v2.webp',
     imageAlt:
       'Conceptual Talk Wagon WhatsApp newsletter workflow with an opt-in audience, approval checks, campaign queue, delivery status, and inbox replies',
   },
@@ -42,7 +42,7 @@ const pageMetadata = [
     description:
       'Compare Talk Wagon as a WATI alternative for team inboxes, CRM workflows, broadcasts, automation, permissions, and transparent plan evaluation.',
     image:
-      'public/hostiko-crm/generated/commercial/talk-wagon-wati-alternative-evaluation.webp',
+      'public/hostiko-crm/generated/commercial/talk-wagon-wati-alternative-evaluation-v2.webp',
     imageAlt:
       'Conceptual Talk Wagon evaluation of WhatsApp CRM inbox, broadcast, automation, cost, and workflow-fit considerations',
   },

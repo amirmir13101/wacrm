@@ -9,7 +9,7 @@ const title = 'WhatsApp Sales CRM for Leads and Follow-Ups';
 const description =
   'Turn WhatsApp sales conversations into assigned leads, organized contact context, CRM pipeline stages, and timely follow-ups with Talk Wagon.';
 const socialImage =
-  '/hostiko-crm/generated/commercial/talk-wagon-whatsapp-sales-workflow.webp';
+  '/hostiko-crm/generated/commercial/talk-wagon-whatsapp-sales-workflow-v2.webp';
 const socialImageAlt =
   'Conceptual Talk Wagon WhatsApp sales workflow with conversations, team assignment, follow-ups, and pipeline stages';
 

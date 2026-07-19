@@ -9,7 +9,7 @@ const title = 'WATI Alternative for WhatsApp CRM Teams';
 const description =
   'Compare Talk Wagon as a WATI alternative for team inboxes, CRM workflows, broadcasts, automation, permissions, and transparent plan evaluation.';
 const socialImage =
-  '/hostiko-crm/generated/commercial/talk-wagon-wati-alternative-evaluation.webp';
+  '/hostiko-crm/generated/commercial/talk-wagon-wati-alternative-evaluation-v2.webp';
 const socialImageAlt =
   'Conceptual Talk Wagon evaluation of WhatsApp CRM inbox, broadcast, automation, cost, and workflow-fit considerations';
 

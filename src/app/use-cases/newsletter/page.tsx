@@ -9,7 +9,7 @@ const title = 'WhatsApp Newsletter Software for Teams';
 const description =
   'Plan opt-in WhatsApp newsletter campaigns with approved templates, audience checks, queue processing, delivery tracking, and CRM follow-ups.';
 const socialImage =
-  '/hostiko-crm/generated/commercial/talk-wagon-whatsapp-newsletter-workflow.webp';
+  '/hostiko-crm/generated/commercial/talk-wagon-whatsapp-newsletter-workflow-v2.webp';
 const socialImageAlt =
   'Conceptual Talk Wagon WhatsApp newsletter workflow with an opt-in audience, approval checks, campaign queue, delivery status, and inbox replies';
 
