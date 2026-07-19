@@ -194,6 +194,26 @@ export default function WhatsAppNewsletterUseCasePage() {
       processTitle="From Consent to Campaign Follow-Up"
       processDescription="Each stage keeps a separate operational concern visible before and after the campaign is queued."
       steps={steps}
+      supportingVisuals={[
+        {
+          image:
+            '/hostiko-crm/generated/commercial/talk-wagon-whatsapp-newsletter-campaign-prep-v2.webp',
+          imageAlt:
+            'Talk Wagon newsletter broadcast workflow dashboard showing template selection, message preview, campaign performance, and reply management',
+          title: 'Campaign preparation view',
+          description:
+            'Show the planning side of newsletter work: approved templates, schedule controls, delivery checks, and reply management before sending.',
+        },
+        {
+          image:
+            '/hostiko-crm/generated/commercial/talk-wagon-whatsapp-newsletter-queue-replies-v2.webp',
+          imageAlt:
+            'Talk Wagon newsletter CRM dashboard showing broadcast setup, audience segments, delivery queue, analytics widgets, and reply inbox preview',
+          title: 'Queue and reply follow-up',
+          description:
+            'Reinforce that a campaign does not end at send time; replies, queue state, and customer follow-ups stay connected to the CRM.',
+        },
+      ]}
       sections={sections}
       notice={{
         title: 'Consent and Meta policy remain essential',

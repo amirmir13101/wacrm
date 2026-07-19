@@ -53,6 +53,19 @@ export type CommercialLandingSource = {
   readonly description: string;
 };
 
+export type CommercialLandingVisual = {
+  readonly image: string;
+  readonly imageAlt: string;
+  readonly title: string;
+  readonly description: string;
+};
+
+export type CommercialLandingComparisonRow = {
+  readonly factor: string;
+  readonly talkWagon: string;
+  readonly alternative: string;
+};
+
 type CommercialLandingPageProps = {
   readonly path: string;
   readonly breadcrumbLabel: string;
@@ -70,6 +83,14 @@ type CommercialLandingPageProps = {
   readonly processTitle: string;
   readonly processDescription: string;
   readonly steps: readonly CommercialLandingStep[];
+  readonly supportingVisuals?: readonly CommercialLandingVisual[];
+  readonly comparison?: {
+    readonly eyebrow: string;
+    readonly title: string;
+    readonly description: string;
+    readonly alternativeLabel: string;
+    readonly rows: readonly CommercialLandingComparisonRow[];
+  };
   readonly sections: readonly CommercialLandingSection[];
   readonly notice: {
     readonly title: string;
@@ -100,6 +121,8 @@ export function CommercialLandingPage({
   processTitle,
   processDescription,
   steps,
+  supportingVisuals,
+  comparison,
   sections,
   notice,
   sources,
@@ -257,6 +280,121 @@ export function CommercialLandingPage({
           </ol>
         </div>
       </section>
+
+      {supportingVisuals?.length ? (
+        <section className="bg-[#07130e] px-5 py-20 text-white sm:px-8 lg:px-10">
+          <div className="mx-auto max-w-7xl">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="text-sm font-bold text-[#3ddf84] uppercase">
+                Product workflow views
+              </p>
+              <h2 className="mt-4 text-3xl font-extrabold sm:text-4xl">
+                See the Workflow From More Than One Angle
+              </h2>
+              <p className="mt-4 text-base leading-8 text-[#d5e9e2]">
+                Each view highlights a different part of the same CRM workflow:
+                setup, team execution, and ongoing performance tracking.
+              </p>
+            </div>
+            <div className="mt-10 grid gap-6 lg:grid-cols-2">
+              {supportingVisuals.map((visual) => (
+                <article
+                  key={visual.image}
+                  className="overflow-hidden rounded-[30px] border border-white/10 bg-white/8 shadow-[0_24px_70px_rgba(0,0,0,0.32)] backdrop-blur"
+                >
+                  <div className="p-3 sm:p-4">
+                    <Image
+                      src={visual.image}
+                      alt={visual.imageAlt}
+                      width={1168}
+                      height={880}
+                      className="h-auto w-full rounded-[24px]"
+                    />
+                  </div>
+                  <div className="border-t border-white/10 px-6 py-5">
+                    <h3 className="text-xl font-extrabold text-white">
+                      {visual.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-7 text-[#b8cfc7]">
+                      {visual.description}
+                    </p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {comparison ? (
+        <section className="bg-white px-5 py-20 sm:px-8 lg:px-10">
+          <div className="mx-auto max-w-7xl">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="text-sm font-bold text-[#08bba4] uppercase">
+                {comparison.eyebrow}
+              </p>
+              <h2 className="mt-4 text-3xl font-extrabold text-[#07130e] sm:text-4xl">
+                {comparison.title}
+              </h2>
+              <p className="mt-4 text-base leading-8 text-[#5b7169]">
+                {comparison.description}
+              </p>
+            </div>
+            <div className="mt-10 overflow-hidden rounded-[30px] border border-[#dbe9e2] bg-white shadow-[0_24px_70px_rgba(7,19,14,0.08)]">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] border-collapse text-left">
+                  <caption className="sr-only">
+                    Talk Wagon comparison with {comparison.alternativeLabel}
+                  </caption>
+                  <thead className="bg-[#07130e] text-white">
+                    <tr>
+                      <th
+                        scope="col"
+                        className="w-[24%] px-6 py-5 text-sm font-extrabold"
+                      >
+                        Decision factor
+                      </th>
+                      <th
+                        scope="col"
+                        className="w-[38%] px-6 py-5 text-sm font-extrabold"
+                      >
+                        Talk Wagon
+                      </th>
+                      <th
+                        scope="col"
+                        className="w-[38%] px-6 py-5 text-sm font-extrabold"
+                      >
+                        {comparison.alternativeLabel}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comparison.rows.map((row) => (
+                      <tr
+                        key={row.factor}
+                        className="border-t border-[#dbe9e2] align-top"
+                      >
+                        <th
+                          scope="row"
+                          className="bg-[#f7fbf8] px-6 py-5 text-sm font-extrabold text-[#07130e]"
+                        >
+                          {row.factor}
+                        </th>
+                        <td className="px-6 py-5 text-sm leading-7 text-[#40574e]">
+                          {row.talkWagon}
+                        </td>
+                        <td className="px-6 py-5 text-sm leading-7 text-[#40574e]">
+                          {row.alternative}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="bg-[#f7fbf8] px-5 py-20 sm:px-8 lg:px-10">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-3">

@@ -134,6 +134,44 @@ const sections = [
   },
 ] as const;
 
+const comparisonRows = [
+  {
+    factor: 'Core workflow',
+    talkWagon:
+      'Built around a shared WhatsApp team inbox, contacts, broadcasts, visual flows, automations, pipelines, reporting, and workspace permissions.',
+    alternative:
+      'WATI should be reviewed against its current official plan pages and help-center documentation for the exact inbox, campaign, automation, and team capabilities included in each plan.',
+  },
+  {
+    factor: 'Cost model',
+    talkWagon:
+      'Talk Wagon CRM pricing is separate from Meta WhatsApp API messaging charges, so teams can compare the CRM subscription and message usage as separate cost layers.',
+    alternative:
+      'WATI documentation describes plan subscription costs, messaging fees, and optional add-ons. Confirm the current total for your country, plan, and expected message volume.',
+  },
+  {
+    factor: 'Team access',
+    talkWagon:
+      'Workspace roles and permissions are designed for owners, managers, agents, and team members who need controlled CRM access.',
+    alternative:
+      'Compare the current WATI plan you are considering for user seats, role controls, permissions, and any add-on or tier requirements.',
+  },
+  {
+    factor: 'Automation fit',
+    talkWagon:
+      'Includes CRM automations and visual flows for routing, follow-ups, tags, delays, handoff steps, and connected WhatsApp actions.',
+    alternative:
+      'Review current WATI automation and flow documentation directly to confirm the specific triggers, actions, limits, and integrations your team needs.',
+  },
+  {
+    factor: 'Best evaluation method',
+    talkWagon:
+      'Test a real workflow from incoming message to assignment, contact update, broadcast, automation, reporting, and follow-up.',
+    alternative:
+      'Test the same workflow in WATI or with current WATI documentation so the comparison is based on live requirements instead of a generic checklist.',
+  },
+] as const;
+
 const sources = [
   {
     label: 'WATI official pricing page',
@@ -219,6 +257,34 @@ export default function WatiAlternativePage() {
       processTitle="How to Evaluate a WATI Alternative"
       processDescription="Use current official evidence and a real team workflow to compare the options that matter to your business."
       steps={steps}
+      supportingVisuals={[
+        {
+          image:
+            '/hostiko-crm/generated/commercial/talk-wagon-wati-workflow-evaluation-v2.webp',
+          imageAlt:
+            'Talk Wagon platform evaluation dashboard showing decision matrix cards, automation workflow builder, broadcast planning, and team roles',
+          title: 'Workflow evaluation dashboard',
+          description:
+            'Help visitors compare operational fit by looking at inbox workflows, automation needs, broadcast handling, and team permissions together.',
+        },
+        {
+          image:
+            '/hostiko-crm/generated/commercial/talk-wagon-wati-decision-framework-v2.webp',
+          imageAlt:
+            'Talk Wagon alternative evaluation dashboard showing workflow comparison, pricing transparency, campaign queue, automation flow, and migration checklist',
+          title: 'Decision framework view',
+          description:
+            'Use the second view to support careful vendor evaluation without claiming feature parity or showing competitor-owned interfaces.',
+        },
+      ]}
+      comparison={{
+        eyebrow: 'Side-by-side evaluation',
+        title: 'Talk Wagon vs WATI: What to Compare Before Choosing',
+        description:
+          'Use this comparison table as a buying checklist. It explains how to evaluate workflow, cost, team access, and automation fit without assuming the two products have identical features.',
+        alternativeLabel: 'WATI',
+        rows: comparisonRows,
+      }}
       sections={sections}
       notice={{
         title: 'Independent comparison and trademark notice',

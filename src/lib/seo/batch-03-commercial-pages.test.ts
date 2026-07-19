@@ -48,6 +48,39 @@ const pageMetadata = [
   },
 ] as const;
 
+const supportingImages = [
+  {
+    source: pages.sales,
+    image:
+      'public/hostiko-crm/generated/commercial/talk-wagon-whatsapp-sales-team-workflow-v2.webp',
+  },
+  {
+    source: pages.sales,
+    image:
+      'public/hostiko-crm/generated/commercial/talk-wagon-whatsapp-sales-pipeline-follow-up-v2.webp',
+  },
+  {
+    source: pages.newsletter,
+    image:
+      'public/hostiko-crm/generated/commercial/talk-wagon-whatsapp-newsletter-campaign-prep-v2.webp',
+  },
+  {
+    source: pages.newsletter,
+    image:
+      'public/hostiko-crm/generated/commercial/talk-wagon-whatsapp-newsletter-queue-replies-v2.webp',
+  },
+  {
+    source: pages.wati,
+    image:
+      'public/hostiko-crm/generated/commercial/talk-wagon-wati-workflow-evaluation-v2.webp',
+  },
+  {
+    source: pages.wati,
+    image:
+      'public/hostiko-crm/generated/commercial/talk-wagon-wati-decision-framework-v2.webp',
+  },
+] as const;
+
 describe('Batch 03 commercial landing pages', () => {
   it('creates only the three approved commercial routes with unique metadata', () => {
     const titles = new Set<string>();
@@ -93,6 +126,47 @@ describe('Batch 03 commercial landing pages', () => {
     expect(
       existsSync(join(process.cwd(), 'src/app/wati-alternative/page.tsx'))
     ).toBe(true);
+  });
+
+  it('adds two supporting workflow images to each commercial page', () => {
+    const component = readSource(
+      'src/components/marketing/commercial-landing-page.tsx'
+    );
+
+    expect(component).toContain('supportingVisuals?.length');
+    expect(component).toContain('Product workflow views');
+
+    for (const item of supportingImages) {
+      expect(existsSync(join(process.cwd(), item.image))).toBe(true);
+      expect(statSync(join(process.cwd(), item.image)).size).toBeLessThan(
+        250 * 1024
+      );
+      expect(item.source).toContain(item.image.replace('public', ''));
+    }
+
+    expect(pages.sales.match(/supportingVisuals=\{\[/g)).toHaveLength(1);
+    expect(pages.newsletter.match(/supportingVisuals=\{\[/g)).toHaveLength(1);
+    expect(pages.wati.match(/supportingVisuals=\{\[/g)).toHaveLength(1);
+  });
+
+  it('adds a factual WATI alternative comparison table', () => {
+    const component = readSource(
+      'src/components/marketing/commercial-landing-page.tsx'
+    );
+
+    expect(component).toContain('CommercialLandingComparisonRow');
+    expect(component).toContain('Decision factor');
+    expect(component).toContain('alternativeLabel');
+    expect(component).toContain('<table');
+    expect(pages.wati).toContain('comparisonRows');
+    expect(pages.wati).toContain('Talk Wagon vs WATI');
+    expect(pages.wati).toContain('Side-by-side evaluation');
+    expect(pages.wati).toContain('Core workflow');
+    expect(pages.wati).toContain('Cost model');
+    expect(pages.wati).toContain('Team access');
+    expect(pages.wati).toContain('Automation fit');
+    expect(pages.wati).toContain('Best evaluation method');
+    expect(pages.wati).toContain('current official plan pages');
   });
 
   it('preserves keyword ownership without taking terms from the existing seven pages', () => {

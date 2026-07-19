@@ -193,6 +193,26 @@ export default function WhatsAppSalesUseCasePage() {
       processTitle="A Practical WhatsApp Sales Process"
       processDescription="The CRM provides the structure; your team controls the sales process, customer communication, and final commercial decisions."
       steps={steps}
+      supportingVisuals={[
+        {
+          image:
+            '/hostiko-crm/generated/commercial/talk-wagon-whatsapp-sales-team-workflow-v2.webp',
+          imageAlt:
+            'Talk Wagon sales CRM dashboard showing contact queues, deal pipeline stages, and automated follow-up workflow panels',
+          title: 'Team assignment and contact context',
+          description:
+            'Show sales teams how conversations, contact details, assigned owners, and lead stages stay visible in one CRM workspace.',
+        },
+        {
+          image:
+            '/hostiko-crm/generated/commercial/talk-wagon-whatsapp-sales-pipeline-follow-up-v2.webp',
+          imageAlt:
+            'Talk Wagon sales dashboard with messaging inbox, contact profile, pipeline stages, follow-up tasks, and performance widgets',
+          title: 'Pipeline follow-up view',
+          description:
+            'Use the second view to reinforce the path from a customer message to follow-up tasks, pipeline work, and team performance tracking.',
+        },
+      ]}
       sections={sections}
       notice={{
         title: 'Use approved, consent-based WhatsApp communication',
