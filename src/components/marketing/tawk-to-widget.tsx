@@ -16,22 +16,32 @@ declare global {
   }
 }
 
-const TAWK_PUBLIC_PATHS = new Set([
+const TAWK_PUBLIC_EXACT_PATHS = new Set([
   '/',
-  '/features',
-  '/features/team-inbox',
-  '/features/broadcasts',
-  '/features/automation',
-  '/pricing',
-  '/checkout/pro',
-  '/checkout/lifetime',
   '/about',
   '/contact',
+  '/data-deletion',
+  '/features',
+  '/pricing',
   '/privacy-policy',
-  '/terms-and-conditions',
   '/refund-policy',
   '/security',
+  '/terms-and-conditions',
+  '/wati-alternative',
 ]);
+
+const TAWK_PUBLIC_PATH_PREFIXES = [
+  '/data-deletion/',
+  '/features/',
+  '/use-cases/',
+] as const;
+
+function isTawkPublicPath(pathname: string): boolean {
+  return (
+    TAWK_PUBLIC_EXACT_PATHS.has(pathname) ||
+    TAWK_PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  );
+}
 
 const MARKETING_HOSTS = new Set([
   'talkwagon.chat',
@@ -53,7 +63,7 @@ export function TawkToWidget() {
     const allowed =
       typeof window !== 'undefined' &&
       isMarketingHost(window.location.hostname.toLowerCase()) &&
-      TAWK_PUBLIC_PATHS.has(pathname);
+      isTawkPublicPath(pathname);
 
     setShouldShowTawk(allowed);
     window.__talkWagonTawkAllowed = allowed;

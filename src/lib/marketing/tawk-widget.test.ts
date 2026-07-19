@@ -16,12 +16,37 @@ describe('Tawk marketing widget domain guard', () => {
     expect(source).toContain('isMarketingHost(window.location.hostname.toLowerCase())')
   })
 
-  it('keeps the widget limited to explicit public marketing paths', () => {
-    expect(source).toContain('const TAWK_PUBLIC_PATHS = new Set')
+  it('keeps the widget limited to public marketing paths', () => {
+    expect(source).toContain('const TAWK_PUBLIC_EXACT_PATHS = new Set')
+    expect(source).toContain('const TAWK_PUBLIC_PATH_PREFIXES = [')
+    expect(source).toContain('function isTawkPublicPath(pathname: string): boolean')
+    expect(source).toContain("'/features/'")
+    expect(source).toContain("'/use-cases/'")
     expect(source).toContain("'/pricing'")
     expect(source).toContain("'/contact'")
+    expect(source).toContain("'/data-deletion'")
+    expect(source).toContain("'/wati-alternative'")
     expect(source).not.toContain("'/dashboard'")
     expect(source).not.toContain("'/settings'")
     expect(source).not.toContain("'/ai-chatbot'")
+    expect(source).not.toContain("'/checkout/pro'")
+    expect(source).not.toContain("'/checkout/lifetime'")
+  })
+
+  it('mounts once from the root layout for future public pages', () => {
+    const rootLayout = readFileSync(join(process.cwd(), 'src/app/layout.tsx'), 'utf8')
+    expect(rootLayout.split('<TawkToWidget />')).toHaveLength(2)
+    expect(source.match(/id="tawk-to-widget"/g)).toHaveLength(1)
+  })
+
+  it('covers completed public routes added after the original widget allowlist', () => {
+    for (const route of [
+      "'/features/'",
+      "'/use-cases/'",
+      "'/wati-alternative'",
+      "'/data-deletion'",
+    ]) {
+      expect(source).toContain(route)
+    }
   })
 })
