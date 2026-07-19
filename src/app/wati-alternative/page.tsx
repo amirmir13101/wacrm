@@ -141,6 +141,8 @@ const comparisonRows = [
       'Built around a shared WhatsApp team inbox, contacts, broadcasts, visual flows, automations, pipelines, reporting, and workspace permissions.',
     alternative:
       'WATI is an AI-powered customer engagement platform with a Team Inbox, customer information in a built-in CRM, AI agents or chatbots, assignment to team members, campaign tools, and multi-channel conversation support including WhatsApp, Instagram, Facebook, RCS, SMS, and TikTok.',
+    evidence:
+      'WATI public product and help pages reviewed on July 19, 2026 describe messaging, automation, AI, CRM, analytics, Team Inbox, and multi-channel customer engagement. Talk Wagon copy is limited to features present in this CRM.',
   },
   {
     factor: 'Cost model',
@@ -148,6 +150,8 @@ const comparisonRows = [
       'Talk Wagon Pro is positioned as a CRM subscription for the workspace, with Meta WhatsApp API messaging charges and provider costs kept separate. The public Pro page currently presents $1 for the first month, then $9.90/month, with a 250,000 CRM-side broadcast message allowance.',
     alternative:
       'WATI describes total cost as three layers: subscription plan, WhatsApp messaging charges, and optional add-ons. Its pricing page also states that message charges apply separately and vary by marketing, utility, and authentication message type.',
+    evidence:
+      "WATI's official pricing-structure article states that total cost depends on subscription plan, messaging charges, and optional add-ons. Talk Wagon pricing remains separate from Meta WhatsApp API charges.",
   },
   {
     factor: 'Team access',
@@ -155,13 +159,17 @@ const comparisonRows = [
       'Workspace roles and permissions are designed for owners, managers, agents, and team members who need controlled CRM access.',
     alternative:
       'WATI Growth lists 3 included users with no additional users, while Pro and Business list 5 included users. Additional users are shown as $24/user/month on Pro and $69/user/month on Business in the reviewed public pricing content.',
+    evidence:
+      "The reviewed WATI pricing page listed 3 users on Growth, 5 users on Pro and Business, and additional-user pricing for Pro and Business. Talk Wagon's public pricing page presents its own plan limits separately, and this comparison does not change those plan terms.",
   },
   {
     factor: 'Automation fit',
     talkWagon:
       'Includes CRM automations and visual flows for routing, follow-ups, tags, delays, handoff steps, and connected WhatsApp actions.',
     alternative:
-      'WATI’s reviewed plan content lists 1,000 free automation triggers/month on Growth, 2,000 on Pro, and 5,000 on Business. Pro also promotes advanced chatbots, forms, integrations, Instagram automation, smart retargeting, and AI/agent add-on positioning.',
+      "WATI's reviewed plan content lists 1,000 free automation triggers/month on Growth, 2,000 on Pro, and 5,000 on Business. Pro also promotes advanced chatbots, forms, integrations, Instagram automation, smart retargeting, and AI/agent add-on positioning.",
+    evidence:
+      'These automation-trigger allowances and feature groupings come from WATI public pricing/help content reviewed on July 19, 2026. This page omits any WATI feature where the public evidence is not clear enough to summarize safely.',
   },
   {
     factor: 'Best evaluation method',
@@ -169,6 +177,8 @@ const comparisonRows = [
       'Test a real workflow from incoming message to assignment, contact update, broadcast, automation, reporting, and follow-up.',
     alternative:
       'Evaluate WATI against the same workflow: inbox routing, assignment, customer data, broadcast campaign setup, automation trigger usage, integrations, webhook/API limits, support availability, and the final monthly cost after messages and add-ons.',
+    evidence:
+      'This row is a buyer checklist, not a superiority claim. It keeps both tools measured against the same workflow so the page is useful without assuming one-to-one feature parity.',
   },
 ] as const;
 

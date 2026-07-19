@@ -29,6 +29,14 @@ const footerGroups = [
     ],
   },
   {
+    heading: "Use Cases",
+    links: [
+      ["WhatsApp Sales CRM", "/use-cases/sales"],
+      ["WhatsApp Newsletter", "/use-cases/newsletter"],
+      ["WATI Alternative", "/wati-alternative"],
+    ],
+  },
+  {
     heading: "Resources",
     links: [
       ["WhatsApp CRM", "/"],
@@ -38,6 +46,7 @@ const footerGroups = [
       ["AI CRM Automation", "/features/automation"],
       ["Sales CRM", "/features#sales-pipeline"],
       ["WhatsApp Broadcast CRM", "/features/broadcasts"],
+      ["Compare WATI Alternative", "/wati-alternative"],
     ],
   },
   {
@@ -74,7 +83,7 @@ export function PublicFooter() {
 
   return (
     <footer id="footer" className="bg-[#0d1b15] px-5 py-16 text-white sm:px-8 lg:px-10">
-      <div className="mx-auto grid max-w-7xl gap-x-10 gap-y-10 text-center md:grid-cols-2 lg:grid-cols-[minmax(320px,1.35fr)_repeat(5,minmax(0,1fr))] lg:text-left">
+      <div className="mx-auto grid max-w-7xl gap-x-8 gap-y-10 text-center md:grid-cols-2 lg:grid-cols-[minmax(280px,1.25fr)_repeat(6,minmax(0,1fr))] lg:text-left">
         <div className="md:col-span-2 lg:col-span-1">
           <Link
             href={marketingHrefForHost("/", currentHost)}

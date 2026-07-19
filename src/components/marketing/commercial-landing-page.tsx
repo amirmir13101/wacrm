@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 
 import { HeroBadgeRow } from '@/components/marketing/hero-badge-row';
-import { PublicCtaButtons } from '@/components/marketing/public-cta-buttons';
 import { PublicFooter } from '@/components/marketing/public-footer';
 import { PublicHeader } from '@/components/marketing/public-header';
 import {
@@ -64,6 +63,7 @@ export type CommercialLandingComparisonRow = {
   readonly factor: string;
   readonly talkWagon: string;
   readonly alternative: string;
+  readonly evidence?: string;
 };
 
 type CommercialLandingPageProps = {
@@ -184,13 +184,13 @@ export function CommercialLandingPage({
               {description}
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
-              <Link
+              <a
                 href="/signup"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#3ddf84] px-7 text-sm font-bold text-[#07130e] hover:bg-[#ffbd29] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Start Free Trial
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
+              </a>
               <Link
                 href="/pricing"
                 className="inline-flex h-12 items-center justify-center rounded-full border border-white/30 px-7 text-sm font-bold text-white hover:bg-white hover:text-[#07130e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
@@ -342,7 +342,7 @@ export function CommercialLandingPage({
             </div>
             <div className="mt-10 overflow-hidden rounded-[30px] border border-[#dbe9e2] bg-white shadow-[0_24px_70px_rgba(7,19,14,0.08)]">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] border-collapse text-left">
+                <table className="w-full min-w-[980px] border-collapse text-left">
                   <caption className="sr-only">
                     Talk Wagon comparison with {comparison.alternativeLabel}
                   </caption>
@@ -350,21 +350,27 @@ export function CommercialLandingPage({
                     <tr>
                       <th
                         scope="col"
-                        className="w-[24%] px-6 py-5 text-sm font-extrabold"
+                        className="w-[20%] px-6 py-5 text-sm font-extrabold"
                       >
                         Decision factor
                       </th>
                       <th
                         scope="col"
-                        className="w-[38%] px-6 py-5 text-sm font-extrabold"
+                        className="w-[28%] px-6 py-5 text-sm font-extrabold"
                       >
                         Talk Wagon
                       </th>
                       <th
                         scope="col"
-                        className="w-[38%] px-6 py-5 text-sm font-extrabold"
+                        className="w-[28%] px-6 py-5 text-sm font-extrabold"
                       >
                         {comparison.alternativeLabel}
+                      </th>
+                      <th
+                        scope="col"
+                        className="w-[24%] px-6 py-5 text-sm font-extrabold"
+                      >
+                        Evidence or important context
                       </th>
                     </tr>
                   </thead>
@@ -385,6 +391,10 @@ export function CommercialLandingPage({
                         </td>
                         <td className="px-6 py-5 text-sm leading-7 text-[#40574e]">
                           {row.alternative}
+                        </td>
+                        <td className="px-6 py-5 text-sm leading-7 text-[#40574e]">
+                          {row.evidence ??
+                            'Use current official product evidence for this row; omit the claim if the evidence is unclear.'}
                         </td>
                       </tr>
                     ))}
@@ -556,12 +566,20 @@ export function CommercialLandingPage({
               {ctaDescription}
             </p>
           </div>
-          <PublicCtaButtons
-            primaryLabel="Start Free Trial"
-            primaryHref="/signup"
-            secondaryLabel="View Pricing"
-            secondaryHref="/pricing"
-          />
+          <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+            <a
+              href="/signup"
+              className="inline-flex min-h-12 w-full items-center justify-center whitespace-nowrap rounded-full bg-[#07130e] px-6 py-3 text-center text-sm leading-none font-extrabold text-white shadow-[0_14px_30px_rgba(7,19,14,0.18)] transition-colors hover:bg-[#1b372b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#07130e] sm:w-auto"
+            >
+              Start Free Trial
+            </a>
+            <Link
+              href="/pricing"
+              className="inline-flex min-h-12 w-full items-center justify-center whitespace-nowrap rounded-full border-2 border-[#07130e] bg-white px-6 py-3 text-center text-sm leading-none font-extrabold text-[#07130e] transition-colors hover:bg-[#07130e] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#07130e] sm:w-auto"
+            >
+              View Pricing
+            </Link>
+          </div>
         </div>
       </section>
 
