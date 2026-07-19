@@ -20,6 +20,11 @@ export function PublicCtaButtons({
   secondaryHref,
   className,
 }: PublicCtaButtonsProps) {
+  const primaryIsAuthHref = primaryHref === "/login" || primaryHref === "/signup";
+  const secondaryIsAuthHref = secondaryHref === "/login" || secondaryHref === "/signup";
+  const PrimaryComponent = primaryIsAuthHref ? "a" : Link;
+  const SecondaryComponent = secondaryIsAuthHref ? "a" : Link;
+
   return (
     <div
       className={cn(
@@ -27,7 +32,7 @@ export function PublicCtaButtons({
         className,
       )}
     >
-      <Link
+      <PrimaryComponent
         href={primaryHref}
         className={cn(
           baseButtonClass,
@@ -35,9 +40,9 @@ export function PublicCtaButtons({
         )}
       >
         {primaryLabel}
-      </Link>
+      </PrimaryComponent>
       {secondaryLabel && secondaryHref ? (
-        <Link
+        <SecondaryComponent
           href={secondaryHref}
           className={cn(
             baseButtonClass,
@@ -45,7 +50,7 @@ export function PublicCtaButtons({
           )}
         >
           {secondaryLabel}
-        </Link>
+        </SecondaryComponent>
       ) : null}
     </div>
   );

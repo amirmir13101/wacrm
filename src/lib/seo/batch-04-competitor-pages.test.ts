@@ -12,6 +12,9 @@ const commercialPage = readSource(
 );
 const publicHeader = readSource('src/components/marketing/public-header.tsx');
 const publicFooter = readSource('src/components/marketing/public-footer.tsx');
+const publicCtaButtons = readSource(
+  'src/components/marketing/public-cta-buttons.tsx'
+);
 const sitemap = readSource('src/app/sitemap.ts');
 
 describe('Batch 04 competitor and alternative pages', () => {
@@ -71,6 +74,9 @@ describe('Batch 04 competitor and alternative pages', () => {
   });
 
   it('adds public navigation and footer discovery for completed commercial pages', () => {
+    expect(publicHeader).toContain('const featureItems');
+    expect(publicHeader).toContain('All Features');
+    expect(publicHeader).toContain('Visual Flows');
     expect(publicHeader).toContain('const useCaseItems');
     expect(publicHeader).toContain('WhatsApp Sales');
     expect(publicHeader).toContain('WhatsApp Newsletter');
@@ -78,10 +84,31 @@ describe('Batch 04 competitor and alternative pages', () => {
     expect(publicHeader).toContain('WATI Alternative');
     expect(publicHeader).toContain('Use Cases');
     expect(publicHeader).toContain('Compare');
+    expect(publicHeader).toContain('const desktopDropdowns');
+    expect(publicHeader).toContain('const orderedDesktopNavItems');
+    expect(publicHeader).toContain('const orderedMobileNavItems');
+    expect(publicHeader).toMatch(
+      /homeNavItem[\s\S]*desktopDropdowns\[0\][\s\S]*pricingNavItem[\s\S]*desktopDropdowns\[1\][\s\S]*desktopDropdowns\[2\]/
+    );
+    expect(publicHeader).toContain('openDesktopDropdown');
+    expect(publicHeader).toContain('openMobileGroups');
+    expect(publicHeader).toContain('aria-haspopup="menu"');
+    expect(publicHeader).toContain('aria-expanded={isOpen}');
+    expect(publicHeader).toContain('aria-controls={dropdownId}');
+    expect(publicHeader).toContain('role="menu"');
+    expect(publicHeader).toContain('role="menuitem"');
+    expect(publicHeader).toContain('whitespace-nowrap');
+    expect(publicHeader).not.toContain('onMouseEnter={() => setOpenDesktopDropdown');
     expect(publicHeader).toContain('xl:flex');
     expect(publicHeader).toContain('xl:hidden');
     expect(publicHeader).toContain('<a');
     expect(publicHeader).toContain('appHrefForHost("/signup", currentHost)');
+    expect(publicHeader).not.toContain('{ label: "Flows", href: "/features/flows" },');
+    expect(publicHeader).not.toContain('{ label: "Team Inbox", href: "/features/team-inbox" },\n  { label: "Automation"');
+    expect(publicFooter).toContain('href === "/login" || href === "/signup"');
+    expect(publicFooter).toContain('<a href={footerHref(href)}');
+    expect(publicCtaButtons).toContain('primaryIsAuthHref');
+    expect(publicCtaButtons).toContain('const PrimaryComponent = primaryIsAuthHref ? "a" : Link');
     expect(commercialPage).toContain('<a');
     expect(commercialPage).toContain('href="/signup"');
     expect(commercialPage).not.toContain('PublicCtaButtons');

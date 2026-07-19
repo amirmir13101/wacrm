@@ -109,7 +109,11 @@ export function PublicFooter() {
             <ul className="mt-4 space-y-2 text-sm text-[#7fb9a9] sm:space-y-3">
               {group.links.map(([label, href]) => (
                 <li key={label}>
-                  {href ? (
+                  {href === "/login" || href === "/signup" ? (
+                    <a href={footerHref(href)} className="inline-flex min-h-9 items-center justify-center hover:text-[#3ddf84] lg:min-h-0 lg:justify-start">
+                      {label}
+                    </a>
+                  ) : href ? (
                     <Link href={footerHref(href)} className="inline-flex min-h-9 items-center justify-center hover:text-[#3ddf84] lg:min-h-0 lg:justify-start">
                       {label}
                     </Link>

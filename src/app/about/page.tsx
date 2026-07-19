@@ -149,6 +149,7 @@ export default function AboutPage() {
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link
             href="/signup"
+                prefetch={false}
             className="inline-flex min-h-12 items-center justify-center rounded-full bg-[#07130e] px-6 text-sm font-extrabold text-white hover:bg-[#1b372b]"
           >
             Start For Free

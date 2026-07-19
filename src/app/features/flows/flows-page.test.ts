@@ -71,7 +71,9 @@ describe("public Flows feature page", () => {
   });
 
   it("adds public navigation and footer links without importing protected systems", () => {
-    expect(publicHeader).toContain('{ label: "Flows", href: "/features/flows" }');
+    expect(publicHeader).toContain('const featureItems');
+    expect(publicHeader).toContain('{ label: "Visual Flows", href: "/features/flows" }');
+    expect(publicHeader).toContain('const desktopDropdowns');
     expect(publicHeader).toContain('active === "flows"');
     expect(publicFooter).toContain('["Flows", "/features/flows"]');
     expect(publicFooter).toContain('["Meta Template Approval", "/features/flows#meta-template-submission"]');
