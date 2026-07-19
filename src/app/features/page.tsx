@@ -220,6 +220,27 @@ const useCases = [
   "Use webhooks to connect WhatsApp conversations with external tools.",
 ] as const;
 
+const commercialGuides = [
+  {
+    title: "WhatsApp Sales",
+    href: "/use-cases/sales",
+    description:
+      "See how the team inbox, contact context, pipeline, and automations support an organized WhatsApp sales workflow.",
+  },
+  {
+    title: "WhatsApp Newsletter",
+    href: "/use-cases/newsletter",
+    description:
+      "Plan opt-in newsletter-style campaigns with approved templates, audience checks, queue processing, and follow-ups.",
+  },
+  {
+    title: "WATI Alternative",
+    href: "/wati-alternative",
+    description:
+      "Use a factual, dated framework to compare WhatsApp CRM workflows, cost layers, and current plan information.",
+  },
+] as const;
+
 const faqs = [
   {
     question: "What are WhatsApp CRM features?",
@@ -791,6 +812,22 @@ export default function FeaturesPage() {
                 <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-[#08bba4]" aria-hidden="true" />
                 <span className="text-sm font-bold text-[#07130e]">{item}</span>
               </div>
+            ))}
+          </div>
+          <div className="mt-10 grid gap-5 md:grid-cols-3">
+            {commercialGuides.map((guide) => (
+              <Link
+                key={guide.href}
+                href={guide.href}
+                className="group rounded-[24px] bg-white p-6 ring-1 ring-[#dbe9e2] transition hover:ring-[#3ddf84] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#08bba4]"
+              >
+                <h3 className="text-lg font-extrabold text-[#07130e]">{guide.title}</h3>
+                <p className="mt-3 text-sm leading-7 text-[#5b7169]">{guide.description}</p>
+                <span className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#08745d] group-hover:text-[#07130e]">
+                  Read the guide
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </span>
+              </Link>
             ))}
           </div>
         </div>

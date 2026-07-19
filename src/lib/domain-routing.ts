@@ -38,6 +38,8 @@ export const PUBLIC_ROOT_DOMAIN_PATHS = [
   '/security',
   '/sitemap.xml',
   '/terms-and-conditions',
+  '/use-cases',
+  '/wati-alternative',
 ] as const
 
 export function normalizeDomainHost(hostname: string | null | undefined): string {

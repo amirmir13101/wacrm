@@ -10,6 +10,11 @@ type JsonLdScriptProps = {
   readonly data: Record<string, unknown>;
 };
 
+type FaqItem = {
+  readonly question: string;
+  readonly answer: string;
+};
+
 export function JsonLdScript({ id, data }: JsonLdScriptProps) {
   return (
     <script
@@ -98,6 +103,32 @@ export function BreadcrumbJsonLd({
           position: index + 1,
           name: item.name,
           item: getCanonicalUrl(item.url),
+        })),
+      }}
+    />
+  );
+}
+
+export function FaqJsonLd({
+  id,
+  faqs,
+}: {
+  readonly id: string;
+  readonly faqs: readonly FaqItem[];
+}) {
+  return (
+    <JsonLdScript
+      id={id}
+      data={{
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: faqs.map((faq) => ({
+          "@type": "Question",
+          name: faq.question,
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: faq.answer,
+          },
         })),
       }}
     />

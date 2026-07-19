@@ -480,6 +480,13 @@ export default function PricingPage() {
               </Link>
               .
             </p>
+            <p className="mt-4 text-sm leading-7 text-[#5b7169]">
+              Comparing WhatsApp CRM options? Use the factual, source-linked{" "}
+              <Link className="font-bold text-[#08745d] hover:text-[#07130e]" href="/wati-alternative">
+                WATI alternative guide
+              </Link>{" "}
+              to evaluate workflows, cost layers, and current plan information.
+            </p>
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
               {included.map(([item, Icon]) => (
                 <div key={item} className="flex gap-3 rounded-[22px] bg-white p-5 ring-1 ring-[#dbe9e2]">

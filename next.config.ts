@@ -125,6 +125,8 @@ const nextConfig: NextConfig = {
       "/terms-and-conditions",
       "/refund-policy",
       "/security",
+      "/use-cases/:path*",
+      "/wati-alternative",
     ]
     const productionCacheHeaders =
       process.env.NODE_ENV === "production"
