@@ -61,12 +61,12 @@ const outcomes = [
   {
     title: 'Check automation against real use cases',
     description:
-      'Map the workflows your team needs—such as routing, templates, waits, tags, webhooks, pipeline actions, and human handoff—to documented capabilities.',
+      'Map the workflows your team needs, such as routing, templates, waits, tags, webhooks, pipeline actions, and human handoff, to the features and limits that affect daily operations.',
   },
   {
-    title: 'Verify current limits before deciding',
+    title: 'Compare real operating limits',
     description:
-      'Plan names, allowances, add-ons, and pricing can change. Confirm the current vendor documentation and your connected Meta account requirements.',
+      'Compare users, broadcasts, automation triggers, API calls, webhooks, integrations, AI credits, support level, and message-charge structure before choosing a platform.',
   },
 ] as const;
 
@@ -77,9 +77,9 @@ const steps = [
       'Write down the team inbox, contact, campaign, automation, reporting, and permission needs that matter now.',
   },
   {
-    title: 'Check official documentation',
+    title: 'Compare the plan structure',
     description:
-      'Use current vendor pages to verify plan structure, usage allowances, add-ons, and billing conditions.',
+      'Review Growth, Pro, Business, and Talk Wagon Pro as complete operating models, not just headline subscription prices.',
   },
   {
     title: 'Separate all cost layers',
@@ -94,7 +94,7 @@ const steps = [
   {
     title: 'Choose from evidence',
     description:
-      "Select the option that fits your team's operating model instead of relying on an undated feature checklist.",
+      "Select the option that fits your team's inbox, campaign, automation, reporting, and budget requirements instead of relying on a generic feature checklist.",
   },
 ] as const;
 
@@ -112,24 +112,24 @@ const sections = [
   },
   {
     eyebrow: 'WATI evidence reviewed',
-    title: 'Official WATI Documentation Describes Tiered Plans',
+    title: 'WATI Uses Tiered Plans With Separate Usage Charges',
     description:
-      "As reviewed on July 18, 2026, WATI's official help center describes Growth, Pro, and Business plans and says total cost can combine a subscription, messaging fees, and optional add-ons.",
+      "Research reviewed on July 19, 2026 shows WATI positions Growth, Pro, and Business plans around different usage allowances. Its public pricing materials separate the subscription from WhatsApp message charges and optional add-ons.",
     points: [
-      'Plan features and allowances vary by tier',
-      'Messaging charges depend on the applicable country and Meta pricing model',
-      'Optional capabilities can introduce additional add-on or usage costs',
+      'Growth is positioned for one connected channel, 3 included users, 15k broadcasts/month, 1,000 automation triggers/month, 10k API calls/month, 2 select Commerce/CRM integrations, no webhooks, and 24x5 email support.',
+      'Pro adds 5 included users, additional users listed at $24/user/month, unlimited broadcasts at standard rates, 2,000 automation triggers/month, 5 integrations including HubSpot, 200k API calls/month, limited webhooks, and 24x7 email/chat support.',
+      'Business adds higher-scale operations such as additional users listed at $69/user/month, volume-discount messaging positioning, 5,000 automation triggers/month, unlimited integrations including Salesforce, 20M API calls/month, extensive webhooks, multiple numbers, round-robin assignment, priority support, and dedicated success support positioning.',
     ],
   },
   {
     eyebrow: 'Decision criteria',
-    title: 'Evaluate Fit Instead of Assuming Feature Parity',
+    title: 'Evaluate Fit by Workflow, Limits and Total Cost',
     description:
-      'Talk Wagon and WATI are separate products. A useful comparison checks the exact current plan, region, connected Meta setup, team workflow, and operating requirements.',
+      'Talk Wagon and WATI are separate products. A useful comparison looks at what your team actually needs: number of agents, broadcast volume, automation depth, API usage, webhooks, CRM pipeline work, reporting, and the cost of Meta messaging outside the CRM subscription.',
     points: [
-      'Verify current plan limits directly with each vendor',
-      'Test the full journey from inbound message to team follow-up',
-      'Confirm the total cost for your actual message volume and add-ons',
+      'For simple CRM operations, compare the shared inbox, contacts, team permissions, templates, broadcasts, flows, automations, pipelines, and reporting in one workspace.',
+      'For high-volume or ecommerce-heavy operations, compare the cost of extra users, integrations, add-ons, webhook/API limits, AI features, and message-rate handling.',
+      'For migration decisions, compare the complete journey from inbound message to assignment, contact update, approved template, campaign queue, automation, human handoff, and follow-up reporting.',
     ],
   },
 ] as const;
@@ -140,35 +140,35 @@ const comparisonRows = [
     talkWagon:
       'Built around a shared WhatsApp team inbox, contacts, broadcasts, visual flows, automations, pipelines, reporting, and workspace permissions.',
     alternative:
-      'WATI should be reviewed against its current official plan pages and help-center documentation for the exact inbox, campaign, automation, and team capabilities included in each plan.',
+      'WATI is an AI-powered customer engagement platform with a Team Inbox, customer information in a built-in CRM, AI agents or chatbots, assignment to team members, campaign tools, and multi-channel conversation support including WhatsApp, Instagram, Facebook, RCS, SMS, and TikTok.',
   },
   {
     factor: 'Cost model',
     talkWagon:
-      'Talk Wagon CRM pricing is separate from Meta WhatsApp API messaging charges, so teams can compare the CRM subscription and message usage as separate cost layers.',
+      'Talk Wagon Pro is positioned as a CRM subscription for the workspace, with Meta WhatsApp API messaging charges and provider costs kept separate. The public Pro page currently presents $1 for the first month, then $9.90/month, with a 250,000 CRM-side broadcast message allowance.',
     alternative:
-      'WATI documentation describes plan subscription costs, messaging fees, and optional add-ons. Confirm the current total for your country, plan, and expected message volume.',
+      'WATI describes total cost as three layers: subscription plan, WhatsApp messaging charges, and optional add-ons. Its pricing page also states that message charges apply separately and vary by marketing, utility, and authentication message type.',
   },
   {
     factor: 'Team access',
     talkWagon:
       'Workspace roles and permissions are designed for owners, managers, agents, and team members who need controlled CRM access.',
     alternative:
-      'Compare the current WATI plan you are considering for user seats, role controls, permissions, and any add-on or tier requirements.',
+      'WATI Growth lists 3 included users with no additional users, while Pro and Business list 5 included users. Additional users are shown as $24/user/month on Pro and $69/user/month on Business in the reviewed public pricing content.',
   },
   {
     factor: 'Automation fit',
     talkWagon:
       'Includes CRM automations and visual flows for routing, follow-ups, tags, delays, handoff steps, and connected WhatsApp actions.',
     alternative:
-      'Review current WATI automation and flow documentation directly to confirm the specific triggers, actions, limits, and integrations your team needs.',
+      'WATI’s reviewed plan content lists 1,000 free automation triggers/month on Growth, 2,000 on Pro, and 5,000 on Business. Pro also promotes advanced chatbots, forms, integrations, Instagram automation, smart retargeting, and AI/agent add-on positioning.',
   },
   {
     factor: 'Best evaluation method',
     talkWagon:
       'Test a real workflow from incoming message to assignment, contact update, broadcast, automation, reporting, and follow-up.',
     alternative:
-      'Test the same workflow in WATI or with current WATI documentation so the comparison is based on live requirements instead of a generic checklist.',
+      'Evaluate WATI against the same workflow: inbox routing, assignment, customer data, broadcast campaign setup, automation trigger usage, integrations, webhook/API limits, support availability, and the final monthly cost after messages and add-ons.',
   },
 ] as const;
 
@@ -203,17 +203,17 @@ const faqs = [
   {
     question: 'Is Talk Wagon a WATI alternative?',
     answer:
-      'Talk Wagon can be evaluated as a WATI alternative by teams comparing a WhatsApp CRM workspace, shared inbox, contacts, broadcasts, automations, visual flows, permissions, pipeline tools, and reporting. The products are separate and should be compared against current official documentation.',
+      'Yes. Talk Wagon can be evaluated as a WATI alternative for teams that want a WhatsApp CRM workspace with shared inbox, contacts, broadcasts, automations, visual flows, permissions, pipeline tools, and reporting. WATI is broader in some areas, including multi-channel conversation support and ecommerce-focused integrations; Talk Wagon focuses on a lean WhatsApp CRM workflow with clear pricing and workspace controls.',
   },
   {
     question: 'Does Talk Wagon claim to have every WATI feature?',
     answer:
-      'No. This page does not claim feature parity. Buyers should verify the exact current capabilities, limits, regional availability, integrations, add-ons, and plan terms they need with each vendor.',
+      'No. Talk Wagon does not claim one-to-one feature parity with WATI. The practical difference is positioning: WATI presents a larger AI-powered customer engagement suite with tiered allowances and add-ons, while Talk Wagon focuses on WhatsApp CRM operations such as team inbox, contacts, broadcasts, flows, automations, pipelines, permissions, and reporting.',
   },
   {
     question: 'How should I compare WATI and Talk Wagon pricing?',
     answer:
-      'Compare all cost layers: the CRM subscription, Meta WhatsApp messaging charges, optional add-ons, setup requirements, and any provider or infrastructure costs. Use current vendor pricing for your country and usage rather than an undated total.',
+      'Compare all cost layers. Talk Wagon Pro is presented as $1 for the first month and then $9.90/month for CRM access, with Meta WhatsApp API charges separate. WATI describes three cost components: subscription plan, messaging charges, and optional add-ons. For WATI, also account for user-seat pricing, automation-trigger allowance, integrations, webhooks, API-call limits, and any paid AI or ecommerce add-ons your team needs.',
   },
   {
     question: 'Does Talk Wagon include Meta WhatsApp messaging fees?',
@@ -223,7 +223,7 @@ const faqs = [
   {
     question: 'What should a team test before switching WhatsApp CRM software?',
     answer:
-      'Test a real workflow from incoming customer message through assignment, contact updates, template sending, automation, reporting, and human follow-up. Also verify data migration, permissions, current plan limits, and Meta requirements.',
+      'Test a real workflow from incoming customer message through assignment, contact updates, approved template sending, broadcast queueing, automation triggers, pipeline movement, reporting, and human follow-up. Also compare data migration effort, team permissions, user-seat needs, message volume, API/webhook limits, support level, and Meta requirements.',
   },
   {
     question: 'Is Talk Wagon affiliated with WATI?',
@@ -251,7 +251,7 @@ export default function WatiAlternativePage() {
       ]}
       outcomesEyebrow="Comparison framework"
       outcomesTitle="Compare the Workflow, Costs and Current Plan Details"
-      outcomesDescription="A responsible alternative page should help buyers verify fit. It should not invent prices, imply affiliation, or assume two separate products have identical features."
+      outcomesDescription="A responsible alternative page should give buyers enough detail to understand fit: workflow, pricing layers, team access, automation limits, integrations, support, and connected WhatsApp requirements."
       outcomes={outcomes}
       processEyebrow="Evaluation process"
       processTitle="How to Evaluate a WATI Alternative"
@@ -289,7 +289,7 @@ export default function WatiAlternativePage() {
       notice={{
         title: 'Independent comparison and trademark notice',
         description:
-          'Talk Wagon is not affiliated with, endorsed by, or sponsored by WATI. WATI is a trademark of its respective owner. Third-party information on this page was reviewed from official public sources on July 18, 2026 and may change; confirm current details directly with WATI.',
+          'Talk Wagon is not affiliated with, endorsed by, or sponsored by WATI. WATI is a trademark of its respective owner. Third-party information on this page was researched from public WATI sources and Meta/WhatsApp platform context on July 19, 2026. Pricing, allowances, and product packaging can change, so this page avoids claiming permanent feature parity.',
       }}
       sources={sources}
       relatedLinks={[

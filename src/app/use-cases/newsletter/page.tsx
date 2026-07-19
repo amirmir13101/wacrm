@@ -52,17 +52,17 @@ const outcomes = [
   {
     title: 'Prepare an eligible audience',
     description:
-      'Use contact records, tags, custom fields, consent information, or an uploaded recipient list to prepare the intended campaign audience.',
+      'Use contact records, tags, custom fields, consent information, exclusions, or an uploaded recipient list so the campaign starts with the right audience instead of every number in the database.',
   },
   {
     title: 'Use an approved WhatsApp template',
     description:
-      'Select a template and language that are available in the connected Meta account before a campaign enters the sending queue.',
+      'Select a Meta-approved template and language from the connected WhatsApp Business Account before a business-initiated campaign enters the sending queue.',
   },
   {
     title: 'Review the campaign before queueing',
     description:
-      'Check audience selection, template readiness, variables, exclusions, and the final recipient estimate during preflight.',
+      'Check audience selection, template readiness, variable placeholders, exclusions, recipient count, and cost context during preflight.',
   },
   {
     title: 'Track message outcomes',
@@ -75,12 +75,12 @@ const steps = [
   {
     title: 'Confirm consent',
     description:
-      'Build a recipient list from customers who have given the required permission to receive messages.',
+      'Build a recipient list from customers who have agreed to receive updates from your business on WhatsApp.',
   },
   {
     title: 'Choose a template',
     description:
-      'Select the approved WhatsApp template, language, and campaign variables for the message.',
+      'Select the approved WhatsApp template, language, header/body variables, and call-to-action details for the message.',
   },
   {
     title: 'Select the audience',
@@ -90,7 +90,7 @@ const steps = [
   {
     title: 'Run preflight',
     description:
-      'Review template availability, recipient eligibility, message count, and estimated API cost context.',
+      'Review template availability, recipient eligibility, duplicate or excluded contacts, message count, and estimated API cost context.',
   },
   {
     title: 'Queue and monitor',
@@ -104,7 +104,7 @@ const sections = [
     eyebrow: 'Campaign preparation',
     title: 'Create a Structured WhatsApp Newsletter Workflow',
     description:
-      'A newsletter-style WhatsApp campaign needs more than a message box. Talk Wagon keeps the template, audience, exclusions, variables, and preflight review in one process.',
+      'A newsletter-style WhatsApp campaign needs more than a message box. Talk Wagon keeps the approved template, audience, exclusions, variables, opt-in discipline, and preflight review in one process before anything is queued.',
     points: [
       'Meta-approved template and language selection',
       'Audience selection from CRM contact data',
@@ -115,7 +115,7 @@ const sections = [
     eyebrow: 'Reliable processing',
     title: 'Keep Sending Work on the Server',
     description:
-      'Campaigns are queued for server-side processing so the browser does not need to remain open while eligible recipients are handled.',
+      'Campaigns are queued for server-side processing so the browser does not need to remain open while eligible recipients are handled and delivery states come back through the connected WhatsApp workflow.',
     points: [
       'Queue progress recorded in the CRM',
       'Pause, resume, cancel, and retry controls where permitted',
@@ -126,7 +126,7 @@ const sections = [
     eyebrow: 'Customer follow-up',
     title: 'Connect Replies to the Team Inbox',
     description:
-      'A campaign is only one part of the customer journey. Replies can return to the shared inbox so permitted agents can continue the conversation with CRM context.',
+      'A campaign is only one part of the customer journey. Replies can return to the shared inbox so permitted agents can continue the conversation with CRM context, tags, assignment, and follow-up workflows.',
     points: [
       'Shared inbox for customer replies',
       'Tags, assignment, and contact updates',
@@ -139,27 +139,27 @@ const faqs = [
   {
     question: 'What is a WhatsApp newsletter?',
     answer:
-      'A WhatsApp newsletter is a planned update sent to an eligible, opted-in audience through WhatsApp. Business-initiated campaigns generally require an approved message template and must follow Meta policies.',
+      'A WhatsApp newsletter is a planned update sent to an eligible, opted-in audience through WhatsApp. It can be used for product updates, offers, reminders, event notices, community updates, or customer education. Business-initiated WhatsApp campaigns generally require an approved message template and must follow Meta policies.',
   },
   {
     question: 'Can Talk Wagon send a WhatsApp newsletter to every contact?',
     answer:
-      'No. Businesses should send only to eligible recipients with the required consent and must follow WhatsApp Business messaging rules. Talk Wagon includes audience and preflight controls, but the business remains responsible for compliance.',
+      'Talk Wagon can help you select contacts, tags, exclusions, custom fields, and uploaded recipients, but businesses should send only to eligible recipients with the required consent. The CRM supports audience and preflight controls; the business remains responsible for lawful opt-in and message compliance.',
   },
   {
     question: 'Do WhatsApp newsletter campaigns use approved templates?',
     answer:
-      "Yes. Talk Wagon's broadcast workflow uses templates and languages available in the connected Meta account and checks template readiness before queueing.",
+      "Yes. Talk Wagon's broadcast workflow uses templates and languages available in the connected Meta account. This matters because Meta templates are the approved format for many business-initiated WhatsApp messages, including marketing, utility, and authentication-style communication.",
   },
   {
     question: 'Can I segment a WhatsApp newsletter audience?',
     answer:
-      'Talk Wagon supports contact-based audience selection using available CRM data such as tags, custom fields, exclusions, and uploaded recipient lists.',
+      'Yes. Talk Wagon supports contact-based audience selection using CRM data such as tags, custom fields, exclusions, and uploaded recipient lists, so a campaign can target customers by interest, service type, location, stage, or any custom structure your workspace maintains.',
   },
   {
     question: 'Can I see whether newsletter messages were delivered?',
     answer:
-      'Talk Wagon records campaign and recipient status updates such as queued, sent, delivered, read, and failed when those updates are available from the connected WhatsApp workflow.',
+      'Talk Wagon records campaign and recipient status updates such as queued, sent, delivered, read, and failed when those updates are available from the connected WhatsApp workflow. This helps teams separate messages that were actually sent from queued, failed, or pending recipients.',
   },
   {
     question:

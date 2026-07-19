@@ -166,7 +166,10 @@ describe('Batch 03 commercial landing pages', () => {
     expect(pages.wati).toContain('Team access');
     expect(pages.wati).toContain('Automation fit');
     expect(pages.wati).toContain('Best evaluation method');
-    expect(pages.wati).toContain('current official plan pages');
+    expect(pages.wati).toContain('15k broadcasts/month');
+    expect(pages.wati).toContain('200k API calls/month');
+    expect(pages.wati).toContain('$24/user/month');
+    expect(pages.wati).toContain('$69/user/month');
   });
 
   it('preserves keyword ownership without taking terms from the existing seven pages', () => {
@@ -220,7 +223,7 @@ describe('Batch 03 commercial landing pages', () => {
     }
   });
 
-  it('grounds the WATI comparison in dated official sources and avoids parity claims', () => {
+  it('grounds the WATI comparison in dated researched sources and avoids lazy-doc language', () => {
     expect(pages.wati).toContain('https://www.wati.io/pricing/');
     expect(pages.wati).toContain(
       'https://support.wati.io/en/articles/11462993-understanding-wati-s-pricing-structure'
@@ -228,11 +231,13 @@ describe('Batch 03 commercial landing pages', () => {
     expect(pages.wati).toContain(
       'https://support.wati.io/en/articles/11462997-understanding-wati-s-pricing-plans'
     );
-    expect(pages.wati).toContain('reviewed on July 18, 2026');
-    expect(pages.wati).toContain('does not claim feature parity');
+    expect(pages.wati).toContain('July 19, 2026');
+    expect(pages.wati).toContain('does not claim one-to-one feature parity');
+    expect(pages.wati).toContain('WATI describes three cost components');
     expect(pages.wati).toContain(
       'Talk Wagon is not affiliated with, endorsed by, or sponsored by WATI'
     );
+    expect(pages.wati).not.toMatch(/read WATI docs|go to WATI|current official plan pages/i);
     expect(pages.wati).not.toMatch(
       /better than WATI|cheaper than WATI|all WATI features/i
     );
@@ -284,11 +289,11 @@ describe('Batch 03 commercial landing pages', () => {
       'price: plan.name === "14-Day Free Trial" ? "0" : plan.name === "Pro" ? "1" : "499"'
     );
     expect(pages.sales).toContain(
-      'Meta approval, messaging charges, and policy requirements remain separate'
+      'Meta approval, template approval, messaging charges, phone number quality, and policy requirements remain separate'
     );
     expect(pages.newsletter).toContain('Meta WhatsApp API messaging charges');
     expect(pages.wati).toContain(
-      'Talk Wagon CRM pricing is separate from Meta WhatsApp API messaging charges'
+      'with Meta WhatsApp API charges separate'
     );
   });
 });

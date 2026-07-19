@@ -57,7 +57,7 @@ const outcomes = [
   {
     title: 'Keep lead context beside the conversation',
     description:
-      'Use contact details, tags, notes, conversation history, and custom fields to help agents understand the lead before following up.',
+      'Use contact details, tags, notes, conversation history, and custom fields so agents can see who the customer is, what they asked, and what follow-up is already due.',
   },
   {
     title: 'Move qualified leads into a pipeline',
@@ -67,7 +67,7 @@ const outcomes = [
   {
     title: 'Build repeatable follow-up workflows',
     description:
-      'Use visual flows and automations for routing, waits, approved templates, tags, field updates, and other configured next steps.',
+      'Use visual flows and automations for routing, waits, approved template sends, tags, field updates, deal creation, and human handoff when the sale needs a person.',
   },
 ] as const;
 
@@ -75,7 +75,7 @@ const steps = [
   {
     title: 'Receive the enquiry',
     description:
-      "A customer starts a conversation through the business's connected WhatsApp setup.",
+      "A customer starts a conversation through the business's connected WhatsApp setup, such as a website button, ad, QR code, wa.me link, or saved contact.",
   },
   {
     title: 'Assign an agent',
@@ -85,7 +85,7 @@ const steps = [
   {
     title: 'Qualify the lead',
     description:
-      'Add tags, update contact fields, and record useful context without leaving the CRM.',
+      'Add tags, update custom fields, capture the request, and mark whether the lead is new, returning, urgent, high value, or ready for a deal stage.',
   },
   {
     title: 'Track the opportunity',
@@ -104,32 +104,32 @@ const sections = [
     eyebrow: 'Shared sales inbox',
     title: 'Organize WhatsApp Sales Conversations',
     description:
-      "A shared workspace helps sales teams manage customer messages without sharing an owner's login or relying on disconnected personal phones.",
+      "A shared workspace helps sales teams manage WhatsApp leads without sharing an owner's login, copying screenshots between agents, or losing context inside personal phones.",
     points: [
       'Conversation assignment and clear ownership',
       'Contact records connected to message history',
-      'Role-based access for sales agents and managers',
+      'Role-based access for sales agents, managers, and workspace owners',
     ],
   },
   {
     eyebrow: 'Pipeline visibility',
     title: 'Connect Conversations to Deal Stages',
     description:
-      'Turn qualified enquiries into pipeline deals so the team can track progress after the first reply instead of losing the opportunity in chat history.',
+      'Turn qualified enquiries into pipeline deals so the team can track progress after the first reply. A lead can move from new enquiry to quoted, follow-up, negotiation, won, or lost without disappearing in chat history.',
     points: [
       'Deal stages and assigned team members',
       'Customer context available during follow-up',
-      'A clearer view of open sales work',
+      'A clearer view of open sales work, stale leads, and next actions',
     ],
   },
   {
     eyebrow: 'WhatsApp commerce workflows',
     title: 'Support the Customer Journey Around a Sale',
     description:
-      'Use CRM workflows around product questions, quotations, reminders, and customer follow-ups while keeping commercial communication grounded in your configured business process.',
+      'Use CRM workflows around product questions, quotations, abandoned conversations, reminders, payment follow-ups, and post-sale check-ins while keeping commercial communication inside your configured business process.',
     points: [
       'Keyword, tag, and field-based automation options',
-      'Approved template steps where Meta requires them',
+      'Approved template steps for business-initiated follow-ups outside the active service window',
       'Human handoff when a conversation needs an agent',
     ],
   },
@@ -139,7 +139,7 @@ const faqs = [
   {
     question: 'What is WhatsApp sales CRM software?',
     answer:
-      'WhatsApp sales CRM software helps a business organize WhatsApp leads, contact context, agent assignment, follow-ups, and pipeline activity in one workspace.',
+      'WhatsApp sales CRM software helps a business turn WhatsApp messages into organized sales work: lead ownership, contact context, tags, notes, pipeline stages, follow-up reminders, approved template replies, and reporting in one workspace.',
   },
   {
     question: 'Can Talk Wagon assign WhatsApp leads to sales agents?',
@@ -149,17 +149,17 @@ const faqs = [
   {
     question: 'Can a WhatsApp conversation become a pipeline deal?',
     answer:
-      'Yes. Talk Wagon includes a sales pipeline where teams can create deals, assign owners, and track stages connected to their customer workflow.',
+      'Yes. Talk Wagon includes a sales pipeline where teams can create deals, assign owners, add stages, and keep the opportunity connected to the customer workflow instead of treating chat and CRM as separate tools.',
   },
   {
     question: 'Does Talk Wagon support automated sales follow-ups?',
     answer:
-      'Talk Wagon supports configured automations and visual flows with actions such as waits, tags, assignment, contact updates, deal creation, and approved template sends.',
+      'Talk Wagon supports configured automations and visual flows with actions such as waits, tags, assignment, contact updates, deal creation, approved template sends, and handoff to a human agent. It is designed to automate the repeatable steps while keeping final sales decisions with your team.',
   },
   {
     question: 'Does Talk Wagon provide WhatsApp Business API access?',
     answer:
-      "No. Talk Wagon provides the CRM workflow around a business's own approved WhatsApp Business API or Meta Cloud API configuration. Meta approval, messaging charges, and policy requirements remain separate.",
+      "Talk Wagon provides the CRM workflow around a business's own approved WhatsApp Business API or Meta Cloud API configuration. Meta approval, template approval, messaging charges, phone number quality, and policy requirements remain separate from the CRM subscription.",
   },
   {
     question: 'Can Talk Wagon guarantee more sales?',
