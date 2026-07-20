@@ -23,18 +23,24 @@ const useCaseItems = [
   { label: "WhatsApp Newsletter", href: "/use-cases/newsletter" },
 ] as const;
 
+const resourceItems = [
+  { label: "Blog", href: "/blog" },
+  { label: "Greeting Message Guide", href: "/blog/whatsapp-business-greeting-message-examples" },
+] as const;
+
 const comparisonItems = [
   { label: "WATI Alternative", href: "/wati-alternative" },
 ] as const;
 
 const trustItems = ["Team Inbox", "Flows", "Automation", "Broadcasts", "Secure Workspaces"];
 
-type DesktopDropdownId = "features" | "use-cases" | "compare";
+type DesktopDropdownId = "features" | "use-cases" | "resources" | "compare";
 type MobileGroupId = DesktopDropdownId;
 
 const desktopDropdowns = [
   { id: "features", label: "Features", items: featureItems },
   { id: "use-cases", label: "Use Cases", items: useCaseItems },
+  { id: "resources", label: "Resources", items: resourceItems },
   { id: "compare", label: "Compare", items: comparisonItems },
 ] as const;
 
@@ -44,6 +50,7 @@ const orderedDesktopNavItems = [
   { type: "link", item: pricingNavItem },
   { type: "dropdown", dropdown: desktopDropdowns[1] },
   { type: "dropdown", dropdown: desktopDropdowns[2] },
+  { type: "dropdown", dropdown: desktopDropdowns[3] },
 ] as const;
 
 const orderedMobileNavItems = orderedDesktopNavItems;
@@ -56,7 +63,8 @@ interface PublicHeaderProps {
     | "team-inbox"
     | "automation"
     | "broadcasts"
-    | "pricing";
+    | "pricing"
+    | "blog";
 }
 
 export function PublicHeader({ active }: PublicHeaderProps) {
@@ -107,6 +115,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
 
   function isDropdownActive(id: DesktopDropdownId): boolean {
     if (id === "features") return isFeatureActive;
+    if (id === "resources") return active === "blog";
     return false;
   }
 

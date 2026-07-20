@@ -39,6 +39,8 @@ const footerGroups = [
   {
     heading: "Resources",
     links: [
+      ["Blog", "/blog"],
+      ["WhatsApp Greeting Messages", "/blog/whatsapp-business-greeting-message-examples"],
       ["WhatsApp CRM", "/"],
       ["WhatsApp Flows", "/features/flows"],
       ["WhatsApp Automation", "/features/automation"],

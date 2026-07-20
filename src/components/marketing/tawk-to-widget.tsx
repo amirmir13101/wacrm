@@ -19,6 +19,7 @@ declare global {
 const TAWK_PUBLIC_EXACT_PATHS = new Set([
   '/',
   '/about',
+  '/blog',
   '/contact',
   '/data-deletion',
   '/features',
@@ -32,6 +33,7 @@ const TAWK_PUBLIC_EXACT_PATHS = new Set([
 
 const TAWK_PUBLIC_PATH_PREFIXES = [
   '/data-deletion/',
+  '/blog/',
   '/features/',
   '/use-cases/',
 ] as const;
