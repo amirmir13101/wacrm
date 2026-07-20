@@ -88,8 +88,11 @@ describe('Batch 04 competitor and alternative pages', () => {
     expect(publicHeader).toContain('const orderedDesktopNavItems');
     expect(publicHeader).toContain('const orderedMobileNavItems');
     expect(publicHeader).toMatch(
-      /homeNavItem[\s\S]*desktopDropdowns\[0\][\s\S]*pricingNavItem[\s\S]*desktopDropdowns\[1\][\s\S]*desktopDropdowns\[2\]/
+      /homeNavItem[\s\S]*desktopDropdowns\[0\][\s\S]*desktopDropdowns\[1\][\s\S]*desktopDropdowns\[2\][\s\S]*blogNavItem[\s\S]*pricingNavItem/
     );
+    expect(publicHeader).toContain('const blogNavItem = { label: "Blog", href: "/blog" } as const;');
+    expect(publicHeader).not.toContain('const resourceItems');
+    expect(publicHeader).not.toContain('Resources');
     expect(publicHeader).toContain('openDesktopDropdown');
     expect(publicHeader).toContain('openMobileGroups');
     expect(publicHeader).toContain('aria-haspopup="menu"');

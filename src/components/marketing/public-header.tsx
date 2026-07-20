@@ -8,6 +8,7 @@ import { CheckCircle2, ChevronDown, Menu, X } from "lucide-react";
 import { appHrefForHost, marketingHrefForHost } from "@/lib/domain-routing";
 
 const homeNavItem = { label: "Home", href: "/" } as const;
+const blogNavItem = { label: "Blog", href: "/blog" } as const;
 const pricingNavItem = { label: "Pricing", href: "/pricing" } as const;
 
 const featureItems = [
@@ -23,34 +24,28 @@ const useCaseItems = [
   { label: "WhatsApp Newsletter", href: "/use-cases/newsletter" },
 ] as const;
 
-const resourceItems = [
-  { label: "Blog", href: "/blog" },
-  { label: "Greeting Message Guide", href: "/blog/whatsapp-business-greeting-message-examples" },
-] as const;
-
 const comparisonItems = [
   { label: "WATI Alternative", href: "/wati-alternative" },
 ] as const;
 
 const trustItems = ["Team Inbox", "Flows", "Automation", "Broadcasts", "Secure Workspaces"];
 
-type DesktopDropdownId = "features" | "use-cases" | "resources" | "compare";
+type DesktopDropdownId = "features" | "use-cases" | "compare";
 type MobileGroupId = DesktopDropdownId;
 
 const desktopDropdowns = [
   { id: "features", label: "Features", items: featureItems },
   { id: "use-cases", label: "Use Cases", items: useCaseItems },
-  { id: "resources", label: "Resources", items: resourceItems },
   { id: "compare", label: "Compare", items: comparisonItems },
 ] as const;
 
 const orderedDesktopNavItems = [
   { type: "link", item: homeNavItem },
   { type: "dropdown", dropdown: desktopDropdowns[0] },
-  { type: "link", item: pricingNavItem },
   { type: "dropdown", dropdown: desktopDropdowns[1] },
   { type: "dropdown", dropdown: desktopDropdowns[2] },
-  { type: "dropdown", dropdown: desktopDropdowns[3] },
+  { type: "link", item: blogNavItem },
+  { type: "link", item: pricingNavItem },
 ] as const;
 
 const orderedMobileNavItems = orderedDesktopNavItems;
@@ -115,7 +110,6 @@ export function PublicHeader({ active }: PublicHeaderProps) {
 
   function isDropdownActive(id: DesktopDropdownId): boolean {
     if (id === "features") return isFeatureActive;
-    if (id === "resources") return active === "blog";
     return false;
   }
 
@@ -178,7 +172,8 @@ export function PublicHeader({ active }: PublicHeaderProps) {
                     const item = entry.item;
                     const isActive =
                       (active === "home" && item.href === "/") ||
-                      (active === "pricing" && item.href === "/pricing");
+                      (active === "pricing" && item.href === "/pricing") ||
+                      (active === "blog" && item.href === "/blog");
 
                     return (
                       <Link

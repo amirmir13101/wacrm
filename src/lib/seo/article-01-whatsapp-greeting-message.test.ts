@@ -98,10 +98,19 @@ describe('Article 01 WhatsApp Business greeting message guide', () => {
   });
 
   it('adds blog discovery to navigation, footer, sitemap, and Talk2 public paths', () => {
-    expect(publicHeader).toContain('const resourceItems');
-    expect(publicHeader).toContain('Greeting Message Guide');
-    expect(publicHeader).toContain('Resources');
-    expect(publicHeader).toContain('"resources"');
+    expect(publicHeader).toContain('const blogNavItem = { label: "Blog", href: "/blog" } as const;');
+    expect(publicHeader).toContain('{ type: "link", item: blogNavItem }');
+    expect(publicHeader).toContain('(active === "blog" && item.href === "/blog")');
+    expect(publicHeader).not.toContain('const resourceItems');
+    expect(publicHeader).not.toContain('Greeting Message Guide');
+    expect(publicHeader).not.toContain('Resources');
+    expect(publicHeader).not.toContain('"resources"');
+    expect(blogIndex).toContain('blogArticles.map');
+    expect(blogIndex).toContain('article.image.src');
+    expect(blogIndex).toContain('article.title');
+    expect(blogIndex).toContain('article.excerpt');
+    expect(blogIndex).toContain('article.readingTime');
+    expect(blogIndex).toContain('Read guide');
     expect(publicFooter).toContain('WhatsApp Greeting Messages');
     expect(tawkWidget).toContain("'/blog'");
     expect(tawkWidget).toContain("'/blog/'");
