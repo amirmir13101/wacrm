@@ -78,7 +78,7 @@ export default function BlogIndexPage() {
         <section className="px-5 py-16 sm:px-8 lg:px-10">
           <div className="mx-auto max-w-7xl">
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {blogArticles.map((article) => (
+              {blogArticles.map((article, index) => (
                 <article
                   key={article.slug}
                   className="overflow-hidden rounded-[30px] border border-[#dbe9e2] bg-white shadow-[0_24px_70px_rgba(7,19,14,0.08)] transition hover:border-[#3ddf84]/70"
@@ -90,13 +90,22 @@ export default function BlogIndexPage() {
                       width={article.image.width}
                       height={article.image.height}
                       className="aspect-[16/9] w-full object-cover"
-                      priority
+                      priority={index === 0}
                     />
                     <div className="p-6">
                       <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#08bba4]">
                         <span>Guide</span>
                         <span aria-hidden="true">•</span>
                         <span>{article.readingTime}</span>
+                        <span aria-hidden="true">•</span>
+                        <time dateTime={article.publishedDate}>
+                          {new Date(`${article.publishedDate}T00:00:00Z`).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            timeZone: "UTC",
+                          })}
+                        </time>
                       </div>
                       <h2 className="mt-4 text-2xl font-extrabold leading-tight text-[#07130e] group-hover:text-[#08bba4]">
                         {article.title}

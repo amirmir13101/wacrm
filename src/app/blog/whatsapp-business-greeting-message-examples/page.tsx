@@ -419,6 +419,14 @@ export default function WhatsAppBusinessGreetingMessageArticlePage() {
                       </table>
                     </div>
                   </div>
+                  <p>
+                    If your main goal is to explain when the team is unavailable, use an away message instead.
+                    Our complete guide to{" "}
+                    <Link href="/blog/whatsapp-away-message-examples" className="font-semibold text-[#08bba4]">
+                      WhatsApp away message examples
+                    </Link>{" "}
+                    covers scheduling, after-hours wording, weekend and holiday replies, and human follow-up.
+                  </p>
                 </section>
 
                 <section id="setup">
