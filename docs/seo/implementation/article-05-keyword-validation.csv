@@ -1,0 +1,5 @@
+keyword,type,country,database,language,volume,kd,cpc_usd,source_file,row,evidence_file,notes
+integrating whatsapp with crm,primary,United States,us,English,110,18,10.01,docs/seo/research-v2.2/talkwagon-strict-opportunities-v2.2.csv,30,semrush-phrase-related-us-whatsapp-crm-2026-07-18.txt,Previously researched historical metric; not currently revalidated
+crm integration with whatsapp,secondary,United States,us,English,110,22,11.84,docs/seo/research-v2.2/talkwagon-strict-opportunities-v2.2.csv,32,semrush-phrase-related-us-whatsapp-crm-2026-07-18.txt,Previously researched historical metric; not currently revalidated
+whatsapp crm integration,supporting,Germany,de,German,70,11,9.72,docs/seo/research-v2.2/talkwagon-codex-keyword-input-v2.2.csv,20,semrush-phrase-related-de-whatsapp-crm-2026-07-18.txt,Supporting phrase mapped to automation/global support; used only as contextual concept
+whatsapp entegrasyonu,supporting,Turkey,tr,Turkish,90,9,0.65,docs/seo/implementation/batch-07-future-article-keywords.csv,2,semrush-phrase-related-tr-whatsapp-crm-2026-07-18.txt,Future localized guide candidate; not targeted by English Article 05

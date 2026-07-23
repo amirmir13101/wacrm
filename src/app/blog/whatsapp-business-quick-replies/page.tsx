@@ -734,6 +734,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
                 { href: "/blog/whatsapp-business-greeting-message-examples", label: "Greeting message guide" },
                 { href: "/blog/whatsapp-away-message-examples", label: "Away message guide" },
                 { href: "/blog/whatsapp-commerce-explained", label: "WhatsApp commerce guide" },
+                { href: "/blog/integrating-whatsapp-with-crm", label: "WhatsApp CRM integration guide" },
               ].map((link) => (
                 <Link
                   key={link.href}

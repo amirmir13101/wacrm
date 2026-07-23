@@ -2,6 +2,47 @@ import { getCanonicalUrl } from "@/lib/site-url";
 
 export const blogArticles = [
   {
+    slug: "integrating-whatsapp-with-crm",
+    path: "/blog/integrating-whatsapp-with-crm",
+    title: "How to Integrate WhatsApp with a CRM: Practical Setup Guide",
+    seoTitle: "How to Integrate WhatsApp with a CRM: Practical Setup Guide",
+    description:
+      "Learn how to integrate WhatsApp with a CRM, choose the right setup route, map customer data, use webhooks, handle templates, and test safely.",
+    excerpt:
+      "A practical guide to connecting WhatsApp conversations with CRM contacts, ownership, webhooks, templates, automation, reporting, and human handoff.",
+    primaryKeyword: "integrating whatsapp with crm",
+    secondaryKeywords: [
+      "crm integration with whatsapp",
+      "WhatsApp CRM integration",
+      "WhatsApp Business API integration",
+      "WhatsApp webhooks",
+      "WhatsApp contacts sync",
+      "WhatsApp CRM workflow",
+      "WhatsApp customer data",
+    ],
+    market: "United States",
+    semrush: {
+      database: "us",
+      volume: 110,
+      kd: 18,
+      cpc: 10.01,
+      intent: "Informational-commercial",
+      researchDate: "Previously researched; not currently revalidated",
+      validationStatus: "V2.2 historical metrics only; Semrush was not revalidated for Article 05",
+    },
+    author: "TalkWagon Editorial Team",
+    publishedDate: "2026-07-24",
+    updatedDate: "2026-07-24",
+    readingTime: "14 min read",
+    image: {
+      src: "/hostiko-crm/generated/blog/talk-wagon-whatsapp-crm-integration-hero.webp",
+      width: 1600,
+      height: 900,
+      alt: "TalkWagon CRM dashboard showing WhatsApp conversations connected to customer profiles, owners, pipeline stages, and follow-up workflows",
+    },
+    canonicalUrl: getCanonicalUrl("/blog/integrating-whatsapp-with-crm"),
+  },
+  {
     slug: "whatsapp-commerce-explained",
     path: "/blog/whatsapp-commerce-explained",
     title: "WhatsApp Commerce: What It Is and How It Works",

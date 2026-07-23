@@ -434,7 +434,12 @@ export default function WhatsAppBusinessGreetingMessageArticlePage() {
                     <Link href="/blog/whatsapp-commerce-explained" className="font-semibold text-[#08bba4]">
                       WhatsApp commerce explainer
                     </Link>{" "}
-                    shows how catalogs, questions, payment instructions, support, and follow-up fit together.
+                    shows how catalogs, questions, payment instructions, support, and follow-up fit together. If
+                    your team needs the technical CRM connection behind those workflows, use the{" "}
+                    <Link href="/blog/integrating-whatsapp-with-crm" className="font-semibold text-[#08bba4]">
+                      WhatsApp CRM integration guide
+                    </Link>
+                    .
                   </p>
                 </section>
 

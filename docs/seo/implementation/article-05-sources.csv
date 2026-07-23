@@ -1,0 +1,11 @@
+source_type,name,url,checked_date,usage
+official,WhatsApp for Business Developer Hub,https://whatsappbusiness.com/developers/developer-hub/,2026-07-24,Used for official Business Platform framing and developer-resource context
+official,WhatsApp Business webhooks article,https://whatsappbusiness.com/blog/how-to-use-webhooks-from-whatsapp-business-api/,2026-07-24,Used for webhook/event and verification context
+official,Meta Developers WhatsApp Platform documentation,https://developers.facebook.com/documentation/business-messaging/whatsapp/,2026-07-24,Referenced as official source family for Cloud API setup webhooks Embedded Signup templates opt-in errors rate limits and policy enforcement
+competitor,Wati CRM WhatsApp integration coverage,https://www.wati.io/,2026-07-24,Reviewed for competitor topic coverage and gaps
+competitor,Respond.io WhatsApp CRM setup coverage,https://respond.io/,2026-07-24,Reviewed for setup-style coverage and gaps
+competitor,Picky Assist WhatsApp CRM integration guide,https://pickyassist.com/,2026-07-24,Reviewed for integration-step coverage and gaps
+competitor,LeadSquared WhatsApp CRM integration coverage,https://www.leadsquared.com/,2026-07-24,Reviewed for CRM integration positioning
+competitor,SleekFlow WhatsApp CRM guide,https://sleekflow.io/,2026-07-24,Reviewed for conversational commerce and CRM positioning
+competitor,Kommo WhatsApp CRM integration coverage,https://www.kommo.com/,2026-07-24,Reviewed for integration-route framing
+competitor,Zoho WhatsApp Business integration help,https://www.zoho.com/,2026-07-24,Reviewed for native CRM integration expectations

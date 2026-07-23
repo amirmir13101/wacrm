@@ -795,6 +795,7 @@ export default function WhatsAppCommerceExplainedArticlePage() {
                   { href: "/blog/whatsapp-business-greeting-message-examples", label: "Greeting message examples" },
                   { href: "/blog/whatsapp-away-message-examples", label: "Away message examples" },
                   { href: "/blog/whatsapp-business-quick-replies", label: "Quick replies guide" },
+                  { href: "/blog/integrating-whatsapp-with-crm", label: "WhatsApp CRM integration guide" },
                   { href: "/pricing", label: "TalkWagon pricing" },
                 ].map((link) => (
                   <Link

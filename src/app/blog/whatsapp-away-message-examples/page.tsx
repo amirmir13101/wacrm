@@ -434,6 +434,11 @@ export default function WhatsAppAwayMessageArticlePage() {
                     <Link href="/blog/whatsapp-commerce-explained" className="font-semibold text-[#08bba4]">
                       WhatsApp commerce explainer
                     </Link>
+                    . If your team needs to connect WhatsApp conversations to owners, contact records, and
+                    pipeline follow-up, read the{" "}
+                    <Link href="/blog/integrating-whatsapp-with-crm" className="font-semibold text-[#08bba4]">
+                      WhatsApp CRM integration guide
+                    </Link>
                     .
                   </p>
                 </section>
