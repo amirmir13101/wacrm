@@ -6,7 +6,6 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
-  Library,
   MessageSquareText,
   ShieldCheck,
   Sparkles,
@@ -409,17 +408,19 @@ function SectionHeading({
   eyebrow,
   title,
   children,
+  id,
 }: {
   readonly eyebrow: string;
   readonly title: string;
   readonly children?: ReactNode;
+  readonly id?: string;
 }) {
   return (
-    <div className="mt-16">
+    <section id={id} className="scroll-mt-24">
       <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#08bba4]">{eyebrow}</p>
       <h2 className="mt-3 text-3xl font-extrabold leading-tight text-[#07130e] sm:text-4xl">{title}</h2>
       {children ? <div className="mt-5 text-lg leading-8 text-[#315345]">{children}</div> : null}
-    </div>
+    </section>
   );
 }
 
@@ -465,73 +466,74 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
         <article>
           <header className="relative overflow-hidden bg-[#07130e] px-5 py-16 text-white sm:px-8 lg:px-10">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(61,223,132,0.2),transparent_32%),linear-gradient(135deg,#07130e,#123226)]" />
-            <div className="relative mx-auto max-w-5xl">
-              <Link
-                href="/blog"
-                className="inline-flex items-center gap-2 rounded-full border border-[#3ddf84]/35 bg-white/8 px-4 py-2 text-sm font-semibold text-[#d8fff1] transition hover:border-[#3ddf84]"
-              >
-                Blog
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
-              <h1 className="mt-8 text-4xl font-extrabold leading-tight sm:text-5xl lg:text-6xl">
-                WhatsApp Business Quick Replies: Setup Guide and Practical Examples
-              </h1>
-              <p className="mt-6 max-w-3xl text-lg leading-8 text-[#d8fff1]">
-                Quick replies are saved responses that help a business answer repeated questions
-                faster without asking agents to type the same message all day. Used well, they
-                create consistency. Used carelessly, they can sound robotic or send outdated
-                information. This guide shows how to build a useful library and when a human
-                should still review the answer.
-              </p>
-              <p className="mt-5">
-                It also explains how WhatsApp Business reply shortcuts fit beside greeting
-                messages, away messages, team inbox work, and higher-control automation.
-              </p>
-              <div className="mt-6 flex flex-wrap items-center gap-3 text-sm font-semibold text-[#d8fff1]">
-                <span>{article.author}</span>
-                <span aria-hidden="true">|</span>
-                <time dateTime={article.publishedDate}>Published July 23, 2026</time>
-                <span aria-hidden="true">|</span>
-                <span>{article.readingTime}</span>
+            <div className="relative mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
+              <div>
+                <nav className="text-sm font-semibold text-[#d8fff1]" aria-label="Breadcrumb">
+                  <Link href="/" className="hover:text-[#3ddf84]">
+                    Home
+                  </Link>
+                  <span className="mx-2 text-[#7fb9a9]">/</span>
+                  <Link href="/blog" className="hover:text-[#3ddf84]">
+                    Blog
+                  </Link>
+                  <span className="mx-2 text-[#7fb9a9]">/</span>
+                  <span>Quick replies</span>
+                </nav>
+                <h1 className="mt-8 text-4xl font-extrabold leading-tight sm:text-5xl lg:text-6xl">
+                  WhatsApp Business Quick Replies: Setup Guide and Practical Examples
+                </h1>
+                <p className="mt-6 max-w-3xl text-lg leading-8 text-[#d8fff1]">
+                  Quick replies are saved responses that help a business answer repeated questions
+                  faster without asking agents to type the same message all day. Used well, they
+                  create consistency. Used carelessly, they can sound robotic or send outdated
+                  information. This guide shows how to build a useful library and when a human
+                  should still review the answer.
+                </p>
+                <p className="mt-5 max-w-3xl text-lg leading-8 text-[#d8fff1]">
+                  It also explains how WhatsApp Business reply shortcuts fit beside greeting
+                  messages, away messages, team inbox work, and higher-control automation.
+                </p>
+                <div className="mt-6 flex flex-wrap items-center gap-3 text-sm font-semibold text-[#d8fff1]">
+                  <span>{article.author}</span>
+                  <span aria-hidden="true">|</span>
+                  <time dateTime={article.publishedDate}>Published July 23, 2026</time>
+                  <span aria-hidden="true">|</span>
+                  <span>{article.readingTime}</span>
+                </div>
               </div>
               <EditorialImage image={articleImages.hero} priority />
             </div>
           </header>
 
-          <div className="mx-auto max-w-4xl px-5 py-14 sm:px-8 lg:px-0">
-            <div className="rounded-[28px] border border-[#3ddf84]/35 bg-[#ecfff6] p-6 text-lg leading-8 text-[#315345]">
-              <p>
-                A WhatsApp quick reply is not a chatbot and it is not a broadcast template. It is
-                a reusable saved response that a person can choose during a conversation. That
-                difference matters because quick replies are strongest when they combine speed
-                with judgment: the reply is ready, but the agent still checks the customer context
-                before sending.
-              </p>
-            </div>
-
-            <nav className="mt-10 rounded-[28px] border border-[#dbe9e2] bg-white p-6 shadow-[0_18px_50px_rgba(7,19,14,0.06)]">
-              <div className="flex items-center gap-3">
-                <Library className="h-5 w-5 text-[#08bba4]" aria-hidden="true" />
-                <h2 className="text-lg font-extrabold text-[#07130e]">In this guide</h2>
+          <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[260px_1fr] lg:px-10">
+            <aside className="hidden lg:block">
+              <div className="sticky top-8 rounded-[26px] border border-[#dbe9e2] bg-white p-5 shadow-[0_18px_50px_rgba(7,19,14,0.08)]">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#08bba4]">In this guide</p>
+                <ol className="mt-4 space-y-3 text-sm font-semibold text-[#315345]">
+                  <li><a href="#what-it-is" className="hover:text-[#08bba4]">What quick replies are</a></li>
+                  <li><a href="#comparison" className="hover:text-[#08bba4]">Quick replies vs other tools</a></li>
+                  <li><a href="#setup" className="hover:text-[#08bba4]">Setup and shortcuts</a></li>
+                  <li><a href="#examples" className="hover:text-[#08bba4]">Reply examples</a></li>
+                  <li><a href="#library" className="hover:text-[#08bba4]">Library organization</a></li>
+                  <li><a href="#writing" className="hover:text-[#08bba4]">Writing rules</a></li>
+                  <li><a href="#checklist" className="hover:text-[#08bba4]">Checklist</a></li>
+                  <li><a href="#faqs" className="hover:text-[#08bba4]">FAQs</a></li>
+                </ol>
               </div>
-              <div className="mt-5 grid gap-3 text-sm font-semibold text-[#315345] sm:grid-cols-2">
-                {[
-                  "What quick replies are",
-                  "Quick replies vs other message types",
-                  "Setup steps and shortcuts",
-                  "Reusable reply examples",
-                  "Library organization",
-                  "Writing and review checklist",
-                ].map((item) => (
-                  <div key={item} className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-[#08bba4]" aria-hidden="true" />
-                    {item}
-                  </div>
-                ))}
-              </div>
-            </nav>
+            </aside>
 
-            <SectionHeading eyebrow="Definition" title="What WhatsApp Business quick replies are">
+            <div className="min-w-0">
+              <div className="rounded-[28px] border border-[#3ddf84]/35 bg-[#ecfff6] p-6 text-lg leading-8 text-[#315345]">
+                <p>
+                  A WhatsApp quick reply is not a chatbot and it is not a broadcast template. It is
+                  a reusable saved response that a person can choose during a conversation. That
+                  difference matters because quick replies are strongest when they combine speed
+                  with judgment: the reply is ready, but the agent still checks the customer context
+                  before sending.
+                </p>
+              </div>
+
+              <SectionHeading id="what-it-is" eyebrow="Definition" title="What WhatsApp Business quick replies are">
               <p>
                 WhatsApp Business quick replies are reusable messages for common customer
                 questions. In the WhatsApp Business app, a business can create saved replies and
@@ -546,7 +548,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
               </p>
             </SectionHeading>
 
-            <SectionHeading eyebrow="Distinctions" title="Quick replies are not every WhatsApp message tool">
+              <SectionHeading id="comparison" eyebrow="Distinctions" title="Quick replies are not every WhatsApp message tool">
               <p>
                 Many businesses mix up quick replies, greeting messages, away messages, automated
                 workflows, and approved platform templates. They can all involve repeated wording,
@@ -579,7 +581,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
 
             <EditorialImage image={articleImages.comparison} />
 
-            <SectionHeading eyebrow="Setup" title="How to create and use WhatsApp Business quick replies">
+              <SectionHeading id="setup" eyebrow="Setup" title="How to create and use WhatsApp Business quick replies">
               <p>
                 The exact labels can vary by device and app version, but the workflow is simple:
                 create a saved message, give it a shortcut, save it, then choose it from a chat
@@ -604,7 +606,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
 
             <EditorialImage image={articleImages.setup} />
 
-            <SectionHeading eyebrow="Examples" title="Practical WhatsApp Business quick reply examples">
+              <SectionHeading id="examples" eyebrow="Examples" title="Practical WhatsApp Business quick reply examples">
               <p>
                 Use these examples as starting points, not as messages to send blindly. Replace
                 every placeholder, check the latest customer message, and remove anything that
@@ -631,7 +633,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
 
             <EditorialImage image={articleImages.examples} />
 
-            <SectionHeading eyebrow="Library" title="How to organize a quick-reply library">
+              <SectionHeading id="library" eyebrow="Library" title="How to organize a quick-reply library">
               <p>
                 The problem with saved replies is not usually the first week. The problem appears
                 later, when old prices, old hours, and duplicate replies stay in circulation. A
@@ -651,7 +653,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
 
             <EditorialImage image={articleImages.library} />
 
-            <SectionHeading eyebrow="Writing" title="How to write better quick replies">
+              <SectionHeading id="writing" eyebrow="Writing" title="How to write better quick replies">
               <p>
                 The best saved reply sounds like a helpful agent wrote it, not like a system pasted
                 a script into the chat. It should be accurate, brief, safe, and easy to adapt.
@@ -669,7 +671,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
               </ul>
             </div>
 
-            <SectionHeading eyebrow="Mistakes" title="Common quick-reply mistakes to avoid">
+              <SectionHeading id="mistakes" eyebrow="Mistakes" title="Common quick-reply mistakes to avoid">
               <p>
                 Quick replies are meant to reduce repetitive typing. They should not reduce care.
                 A saved reply that ignores context can frustrate a customer faster than a slower
@@ -687,7 +689,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
 
             <EditorialImage image={articleImages.handoff} />
 
-            <SectionHeading eyebrow="Checklist" title="Practical implementation checklist">
+              <SectionHeading id="checklist" eyebrow="Checklist" title="Practical implementation checklist">
               <p>
                 Start small. A tight set of accurate quick replies is easier to train, review, and
                 improve than a giant library nobody trusts.
@@ -707,7 +709,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
 
             <EditorialImage image={articleImages.maintenance} />
 
-            <SectionHeading eyebrow="Team workflows" title="How TalkWagon supports consistent team communication">
+              <SectionHeading id="team-workflows" eyebrow="Team workflows" title="How TalkWagon supports consistent team communication">
               <p>
                 TalkWagon is built for teams that manage customer conversations across a shared
                 WhatsApp CRM workspace. A team can keep customer context in one place, organize
@@ -745,7 +747,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
 
             <EditorialImage image={articleImages.team} />
 
-            <SectionHeading eyebrow="FAQs" title="Helpful FAQs about WhatsApp Business quick replies" />
+              <SectionHeading id="faqs" eyebrow="FAQs" title="Helpful FAQs about WhatsApp Business quick replies" />
 
             <div className="mt-8 grid gap-4">
               {faqs.map((faq) => (
@@ -801,6 +803,7 @@ export default function WhatsAppBusinessQuickRepliesArticlePage() {
                 ))}
               </ul>
             </section>
+          </div>
           </div>
         </article>
       </main>
