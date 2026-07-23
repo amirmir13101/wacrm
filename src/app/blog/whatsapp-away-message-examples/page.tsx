@@ -429,6 +429,11 @@ export default function WhatsAppAwayMessageArticlePage() {
                     <Link href="/blog/whatsapp-business-quick-replies" className="font-semibold text-[#08bba4]">
                       WhatsApp Business quick replies guide
                     </Link>
+                    . For buying conversations that continue into product selection, payment instructions,
+                    and post-purchase support, read the{" "}
+                    <Link href="/blog/whatsapp-commerce-explained" className="font-semibold text-[#08bba4]">
+                      WhatsApp commerce explainer
+                    </Link>
                     .
                   </p>
                 </section>

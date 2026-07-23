@@ -2,6 +2,47 @@ import { getCanonicalUrl } from "@/lib/site-url";
 
 export const blogArticles = [
   {
+    slug: "whatsapp-commerce-explained",
+    path: "/blog/whatsapp-commerce-explained",
+    title: "WhatsApp Commerce: What It Is and How It Works",
+    seoTitle: "WhatsApp Commerce: What It Is and How It Works",
+    description:
+      "Learn what WhatsApp commerce means, how catalogs, conversations, payments, policies, team inboxes, automation, and CRM follow-ups fit together.",
+    excerpt:
+      "A practical explainer for businesses that want to understand WhatsApp commerce, catalogs, customer journeys, safe payment communication, and team workflows.",
+    primaryKeyword: "whatsapp commerce",
+    secondaryKeywords: [
+      "whatsapp shop",
+      "whatsapp catalog",
+      "WhatsApp commerce workflow",
+      "WhatsApp Business catalog",
+      "conversational commerce on WhatsApp",
+      "WhatsApp commerce policy",
+      "WhatsApp sales workflow",
+    ],
+    market: "United States",
+    semrush: {
+      database: "us",
+      volume: 320,
+      kd: 14,
+      cpc: 7.42,
+      intent: "Informational-commercial",
+      researchDate: "Previously researched; not currently revalidated",
+      validationStatus: "V2.1 historical metrics only; Semrush was not revalidated for Article 04",
+    },
+    author: "TalkWagon Editorial Team",
+    publishedDate: "2026-07-24",
+    updatedDate: "2026-07-24",
+    readingTime: "17 min read",
+    image: {
+      src: "/hostiko-crm/generated/blog/talk-wagon-whatsapp-commerce-hero.webp",
+      width: 1600,
+      height: 900,
+      alt: "TalkWagon commerce dashboard showing a shared inbox, product catalog, and sales pipeline for WhatsApp commerce workflows",
+    },
+    canonicalUrl: getCanonicalUrl("/blog/whatsapp-commerce-explained"),
+  },
+  {
     slug: "whatsapp-business-quick-replies",
     path: "/blog/whatsapp-business-quick-replies",
     title: "WhatsApp Business Quick Replies: Setup Guide and Practical Examples",

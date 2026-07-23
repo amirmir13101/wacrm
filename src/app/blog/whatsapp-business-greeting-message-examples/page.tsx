@@ -430,7 +430,11 @@ export default function WhatsAppBusinessGreetingMessageArticlePage() {
                     <Link href="/blog/whatsapp-business-quick-replies" className="font-semibold text-[#08bba4]">
                       WhatsApp Business quick replies guide
                     </Link>
-                    .
+                    . If the conversation is part of a buying journey, the{" "}
+                    <Link href="/blog/whatsapp-commerce-explained" className="font-semibold text-[#08bba4]">
+                      WhatsApp commerce explainer
+                    </Link>{" "}
+                    shows how catalogs, questions, payment instructions, support, and follow-up fit together.
                   </p>
                 </section>
 
