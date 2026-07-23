@@ -424,7 +424,12 @@ export default function WhatsAppAwayMessageArticlePage() {
                       WhatsApp Business greeting message examples
                     </Link>
                     . It covers welcome wording, first questions, and greeting-specific setup without duplicating
-                    the after-hours guidance here.
+                    the after-hours guidance here. For reusable saved responses that agents choose during a live
+                    conversation, use the separate{" "}
+                    <Link href="/blog/whatsapp-business-quick-replies" className="font-semibold text-[#08bba4]">
+                      WhatsApp Business quick replies guide
+                    </Link>
+                    .
                   </p>
                 </section>
 

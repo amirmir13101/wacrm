@@ -425,7 +425,12 @@ export default function WhatsAppBusinessGreetingMessageArticlePage() {
                     <Link href="/blog/whatsapp-away-message-examples" className="font-semibold text-[#08bba4]">
                       WhatsApp away message examples
                     </Link>{" "}
-                    covers scheduling, after-hours wording, weekend and holiday replies, and human follow-up.
+                    covers scheduling, after-hours wording, weekend and holiday replies, and human follow-up. If your team
+                    needs reusable saved responses for live conversations, read the{" "}
+                    <Link href="/blog/whatsapp-business-quick-replies" className="font-semibold text-[#08bba4]">
+                      WhatsApp Business quick replies guide
+                    </Link>
+                    .
                   </p>
                 </section>
 

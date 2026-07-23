@@ -1,0 +1,12 @@
+source,source_type,url,used_for
+"WhatsApp Help Center: how to use quick replies","authoritative documentation","https://faq.whatsapp.com/1791149784551042","Verified that quick replies are shortcuts for frequently sent messages and informed setup wording."
+"WhatsApp Help Center: greeting messages","authoritative documentation","https://faq.whatsapp.com/501866148528310","Used to distinguish greeting messages from quick replies."
+"WhatsApp Help Center: away messages","authoritative documentation","https://faq.whatsapp.com/2565868990219715","Used to distinguish away messages from quick replies."
+"Meta for Developers: WhatsApp templates overview","authoritative documentation","https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/overview","Used to distinguish Business Platform templates from app-level saved replies."
+"Meta for Developers: template categorization","authoritative documentation","https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/template-categorization","Used as background for template approval/category distinctions."
+"Google Search Central: creating helpful content","search quality guidance","https://developers.google.com/search/docs/fundamentals/creating-helpful-content","Used as editorial guidance for people-first completeness and avoiding thin content."
+"Aunoa quick reply guide","competitor/reference page","https://aunoa.ai/en/blog/whatsapp-business-quick-reply-guide/","Reviewed for setup intent and content gaps."
+"Trengo quick reply messages","competitor/reference page","https://trengo.com/blog/quick-reply-messages-whatsapp-business","Reviewed for example intent and content gaps."
+"QuickReply.ai ecommerce quick replies","competitor/reference page","https://www.quickreply.ai/whatsapp-automation/guide-to-using-whatsapp-quick-replies-for-your-ecommerce-business","Reviewed for ecommerce-specific examples and broader generalization gaps."
+"HelloMateo quick reply guide","competitor/reference page","https://www.hellomateo.de/en/resources/blog/whatsapp-quick-replying","Reviewed for setup coverage and search intent."
+"Wabo AI quick replies guide","competitor/reference page","https://wabo.ai/how-to-use-whatsapp-quick-replies-for-efficient-customer-service/","Reviewed for service-efficiency framing and setup terminology."

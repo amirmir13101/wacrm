@@ -2,6 +2,47 @@ import { getCanonicalUrl } from "@/lib/site-url";
 
 export const blogArticles = [
   {
+    slug: "whatsapp-business-quick-replies",
+    path: "/blog/whatsapp-business-quick-replies",
+    title: "WhatsApp Business Quick Replies: Setup Guide and Practical Examples",
+    seoTitle: "WhatsApp Business Quick Replies: Setup Guide and Examples",
+    description:
+      "Learn how WhatsApp Business quick replies work, how to set shortcuts, and how to build reusable customer service, sales, order, and handoff replies.",
+    excerpt:
+      "A practical guide to WhatsApp Business quick replies, including setup steps, message examples, library organization, writing rules, and team review advice.",
+    primaryKeyword: "whatsapp business quick replies",
+    secondaryKeywords: [
+      "WhatsApp quick replies",
+      "quick reply messages for WhatsApp Business",
+      "WhatsApp Business quick reply examples",
+      "how to set quick replies in WhatsApp Business",
+      "customer service quick reply templates",
+      "WhatsApp saved replies",
+      "WhatsApp Business reply shortcuts",
+    ],
+    market: "Previously researched",
+    semrush: {
+      database: "Previously researched",
+      volume: null,
+      kd: null,
+      cpc: null,
+      intent: "Informational",
+      researchDate: "Previously researched; not revalidated for Article 03",
+      validationStatus: "Semrush not revalidated because the trial expired",
+    },
+    author: "TalkWagon Editorial Team",
+    publishedDate: "2026-07-23",
+    updatedDate: "2026-07-23",
+    readingTime: "15 min read",
+    image: {
+      src: "/hostiko-crm/generated/blog/talk-wagon-whatsapp-business-quick-replies-hero.webp",
+      width: 1600,
+      height: 900,
+      alt: "TalkWagon workspace showing a WhatsApp Business quick-reply library beside a customer conversation and message composer",
+    },
+    canonicalUrl: getCanonicalUrl("/blog/whatsapp-business-quick-replies"),
+  },
+  {
     slug: "whatsapp-away-message-examples",
     path: "/blog/whatsapp-away-message-examples",
     title: "WhatsApp Away Messages: Professional Examples and Setup Guide",
