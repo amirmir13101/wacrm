@@ -603,6 +603,8 @@ export default function WhatsAppCrmIntegrationArticlePage() {
                     <Link href="/blog/whatsapp-away-message-examples" className="font-bold text-[#087d68] underline-offset-4 hover:underline">away messages</Link>,{" "}
                     <Link href="/blog/whatsapp-business-quick-replies" className="font-bold text-[#087d68] underline-offset-4 hover:underline">quick replies</Link>, and{" "}
                     <Link href="/blog/whatsapp-commerce-explained" className="font-bold text-[#087d68] underline-offset-4 hover:underline">WhatsApp commerce</Link>.
+                    If you are choosing between a Shopify-centered support platform and a WhatsApp-first CRM, read the{" "}
+                    <Link href="/blog/delightchat-alternative" className="font-bold text-[#087d68] underline-offset-4 hover:underline">DelightChat alternative comparison</Link>.
                   </p>
                 </SectionHeading>
 

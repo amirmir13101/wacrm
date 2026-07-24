@@ -104,6 +104,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "monthly",
       priority: 0.7,
     },
+    {
+      url: `${siteUrl}/blog/delightchat-alternative`,
+      lastModified: new Date("2026-07-24"),
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
     ...managedArticles.map((article) => ({
       url: `${siteUrl}/blog/${article.slug}`,
       lastModified: new Date(article.updatedAt),

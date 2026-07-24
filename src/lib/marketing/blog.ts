@@ -2,6 +2,46 @@ import { getCanonicalUrl } from "@/lib/site-url";
 
 export const blogArticles = [
   {
+    slug: "delightchat-alternative",
+    path: "/blog/delightchat-alternative",
+    title: "DelightChat Alternative: A Practical Comparison for WhatsApp Teams",
+    seoTitle: "DelightChat Alternative for WhatsApp Teams: TalkWagon Comparison",
+    description:
+      "Compare DelightChat and TalkWagon by workflow fit, Shopify context, WhatsApp CRM ownership, broadcasts, automation, pricing checks, and migration readiness.",
+    excerpt:
+      "An evidence-led DelightChat alternative guide for teams deciding between Shopify-centered omnichannel support and a WhatsApp-first CRM workflow.",
+    primaryKeyword: "delightchat alternative",
+    secondaryKeywords: [
+      "DelightChat competitors",
+      "DelightChat vs TalkWagon",
+      "WhatsApp CRM alternative",
+      "Shopify WhatsApp support alternative",
+      "WhatsApp shared inbox CRM",
+      "WhatsApp automation CRM",
+    ],
+    market: "United States",
+    semrush: {
+      database: "us",
+      volume: 50,
+      kd: 3,
+      cpc: 0,
+      intent: "Navigational-commercial",
+      researchDate: "Previously researched; not currently revalidated",
+      validationStatus: "V2.2 historical metrics only; Semrush was not revalidated for Article 06",
+    },
+    author: "TalkWagon Editorial Team",
+    publishedDate: "2026-07-24",
+    updatedDate: "2026-07-24",
+    readingTime: "13 min read",
+    image: {
+      src: "/hostiko-crm/generated/blog/talk-wagon-delightchat-alternative-hero.webp",
+      width: 1600,
+      height: 900,
+      alt: "TalkWagon dashboard showing a team evaluating DelightChat against a WhatsApp-first CRM alternative",
+    },
+    canonicalUrl: getCanonicalUrl("/blog/delightchat-alternative"),
+  },
+  {
     slug: "integrating-whatsapp-with-crm",
     path: "/blog/integrating-whatsapp-with-crm",
     title: "How to Integrate WhatsApp with a CRM: Practical Setup Guide",
