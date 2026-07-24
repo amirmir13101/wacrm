@@ -133,7 +133,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/flows', '/ai-chatbot', '/billing', '/whatsapp-api-pricing', '/settings', '/team', '/admin', '/admintops']
+  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/flows', '/ai-chatbot', '/billing', '/whatsapp-api-pricing', '/settings', '/team', '/admin', '/admintops', '/article-preview']
   if (
     !user &&
     (
@@ -178,7 +178,8 @@ export async function middleware(request: NextRequest) {
   if (user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const isAdminPagePath =
       request.nextUrl.pathname.startsWith('/admin') ||
-      request.nextUrl.pathname.startsWith('/admintops')
+      request.nextUrl.pathname.startsWith('/admintops') ||
+      request.nextUrl.pathname.startsWith('/article-preview')
     const redirectPath = approvalRedirectPath(profile)
     if (redirectPath && request.nextUrl.pathname !== redirectPath) {
       const url = request.nextUrl.clone()

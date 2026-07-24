@@ -106,6 +106,8 @@ const nextConfig: NextConfig = {
       "/settings/:path*",
       "/team/:path*",
       "/admin/:path*",
+      "/admintops/:path*",
+      "/article-preview/:path*",
       "/checkout/:path*",
       "/invite/:path*",
       "/change-password",
@@ -127,6 +129,7 @@ const nextConfig: NextConfig = {
       "/security",
       "/use-cases/:path*",
       "/wati-alternative",
+      "/blog/:path*",
     ]
     const productionCacheHeaders =
       process.env.NODE_ENV === "production"

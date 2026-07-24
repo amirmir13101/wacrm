@@ -7,7 +7,20 @@ import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 import { BreadcrumbJsonLd, WebPageJsonLd } from "@/components/marketing/seo-json-ld";
 import { blogArticles } from "@/lib/marketing/blog";
+import { listPublishedManagedArticles } from "@/lib/marketing/blog-cms";
 import { getCanonicalUrl } from "@/lib/site-url";
+
+export const revalidate = 60;
+
+function formatArticleDate(value: string): string {
+  const normalized = value.includes("T") ? value : `${value}T00:00:00Z`;
+  return new Date(normalized).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
 
 const canonicalUrl = getCanonicalUrl("/blog");
 const pageDescription =
@@ -46,7 +59,25 @@ export const metadata: Metadata = {
   },
 };
 
-export default function BlogIndexPage() {
+export default async function BlogIndexPage() {
+  const managedArticles = await listPublishedManagedArticles();
+  const articles = [
+    ...managedArticles.map((article) => ({
+      slug: article.slug,
+      path: `/blog/${article.slug}`,
+      title: article.title,
+      excerpt: article.excerpt,
+      readingTime: article.readingTime,
+      publishedDate: article.publishedAt ?? article.updatedAt,
+      image: article.heroImageUrl ? {
+        src: article.heroImageUrl,
+        width: article.heroImageWidth,
+        height: article.heroImageHeight,
+        alt: article.heroImageAlt ?? article.title,
+      } : null,
+    })),
+    ...blogArticles.map((article) => ({ ...article, image: article.image })),
+  ];
   return (
     <>
       <WebPageJsonLd path="/blog" name="TalkWagon Blog" description={pageDescription} />
@@ -78,20 +109,38 @@ export default function BlogIndexPage() {
         <section className="px-5 py-16 sm:px-8 lg:px-10">
           <div className="mx-auto max-w-7xl">
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {blogArticles.map((article, index) => (
+              {articles.map((article, index) => (
                 <article
                   key={article.slug}
                   className="overflow-hidden rounded-[30px] border border-[#dbe9e2] bg-white shadow-[0_24px_70px_rgba(7,19,14,0.08)] transition hover:border-[#3ddf84]/70"
                 >
                   <Link href={article.path} className="group block">
-                    <Image
-                      src={article.image.src}
-                      alt={article.image.alt}
-                      width={article.image.width}
-                      height={article.image.height}
-                      className="aspect-[16/9] w-full object-cover"
-                      priority={index === 0}
-                    />
+                    {article.image ? (
+                      article.image.src.startsWith("/") ? (
+                        <Image
+                          src={article.image.src}
+                          alt={article.image.alt}
+                          width={article.image.width}
+                          height={article.image.height}
+                          className="aspect-[16/9] w-full object-cover"
+                          priority={index === 0}
+                        />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={article.image.src}
+                          alt={article.image.alt}
+                          width={article.image.width}
+                          height={article.image.height}
+                          loading={index === 0 ? "eager" : "lazy"}
+                          className="aspect-[16/9] w-full object-cover"
+                        />
+                      )
+                    ) : (
+                      <div className="flex aspect-[16/9] items-center justify-center bg-[radial-gradient(circle_at_30%_30%,rgba(61,223,132,0.35),transparent_30%),linear-gradient(135deg,#12392c,#07130e)] p-8 text-center text-xl font-black text-white">
+                        {article.title}
+                      </div>
+                    )}
                     <div className="p-6">
                       <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#08bba4]">
                         <span>Guide</span>
@@ -99,12 +148,7 @@ export default function BlogIndexPage() {
                         <span>{article.readingTime}</span>
                         <span aria-hidden="true">•</span>
                         <time dateTime={article.publishedDate}>
-                          {new Date(`${article.publishedDate}T00:00:00Z`).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                            timeZone: "UTC",
-                          })}
+                          {formatArticleDate(article.publishedDate)}
                         </time>
                       </div>
                       <h2 className="mt-4 text-2xl font-extrabold leading-tight text-[#07130e] group-hover:text-[#08bba4]">

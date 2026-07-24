@@ -1,8 +1,12 @@
 import type { MetadataRoute } from "next";
 import { getSiteUrl } from "@/lib/site-url";
+import { listPublishedManagedArticles } from "@/lib/marketing/blog-cms";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export const revalidate = 300;
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const siteUrl = getSiteUrl();
+  const managedArticles = await listPublishedManagedArticles();
   return [
     {
       url: siteUrl,
@@ -100,6 +104,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.7,
     },
+    ...managedArticles.map((article) => ({
+      url: `${siteUrl}/blog/${article.slug}`,
+      lastModified: new Date(article.updatedAt),
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
+    })),
     {
       url: `${siteUrl}/about`,
       lastModified: new Date(),

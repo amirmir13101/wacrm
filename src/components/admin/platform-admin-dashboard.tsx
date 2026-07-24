@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { BadgeDollarSign, Loader2, ShieldCheck, Upload, Users } from "lucide-react";
+import { BadgeDollarSign, BookOpen, Loader2, ShieldCheck, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,8 @@ interface AdminSummary {
   suspended_users: number;
   uploaded_lists: number;
   uploaded_contacts: number;
+  published_articles: number;
+  draft_articles: number;
 }
 
 export function PlatformAdminDashboard() {
@@ -51,16 +53,18 @@ export function PlatformAdminDashboard() {
           Loading platform metrics...
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7">
           <Metric label="Pending users" value={summary?.pending_users ?? 0} />
           <Metric label="Approved users" value={summary?.approved_users ?? 0} />
           <Metric label="Suspended users" value={summary?.suspended_users ?? 0} />
           <Metric label="Uploaded lists" value={summary?.uploaded_lists ?? 0} />
           <Metric label="Uploaded contacts" value={summary?.uploaded_contacts ?? 0} />
+          <Metric label="Published articles" value={summary?.published_articles ?? 0} />
+          <Metric label="Article drafts" value={summary?.draft_articles ?? 0} />
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card className="bg-slate-900">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-white">
@@ -117,6 +121,26 @@ export function PlatformAdminDashboard() {
               className="mt-4 inline-flex h-9 items-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-500"
             >
               Open Payments
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-900">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white">
+              <BookOpen className="h-5 w-5 text-amber-300" />
+              Articles
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-slate-400">
+              Create drafts, preview editorial layouts, and publish approved blog articles.
+            </p>
+            <Link
+              href="/admin/articles"
+              className="mt-4 inline-flex h-9 items-center rounded-md bg-amber-500 px-4 text-sm font-medium text-slate-950 hover:bg-amber-400"
+            >
+              Open Articles
             </Link>
           </CardContent>
         </Card>

@@ -16,6 +16,8 @@ export default function robots(): MetadataRoute.Robots {
           "/ai-chatbot/",
           "/admin",
           "/admin/",
+          "/article-preview",
+          "/article-preview/",
           "/api",
           "/api/",
           "/automations",
