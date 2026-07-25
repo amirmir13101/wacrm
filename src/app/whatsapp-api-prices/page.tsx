@@ -169,7 +169,7 @@ export default async function PublicWhatsAppApiPricesPage() {
                 href="/pricing"
                 className="inline-flex h-12 items-center justify-center rounded-full border border-white/30 px-7 text-sm font-extrabold text-white hover:bg-white hover:text-[#07130e]"
               >
-                TalkWagon pricing page
+                1$ Whatsapp CRM
               </a>
             </div>
           </div>
