@@ -15,7 +15,8 @@ describe('pricing page copy', () => {
   })
 
   it('describes the Pro monthly broadcast and team member limits', () => {
-    expect(source).toContain('250,000 broadcast messages per month')
+    expect(source).toContain('1,000,000 broadcast messages per billing period')
+    expect(source).toContain('allowance refreshes when a renewed billing period starts')
     expect(source).toContain('Up to 10 team members')
     expect(source).not.toContain('Unlimited messages inside Talk Wagon CRM')
   })

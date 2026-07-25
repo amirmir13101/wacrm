@@ -2,7 +2,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 
 export const TRIAL_BROADCAST_LIMIT = 1000
 export const TRIAL_DAYS = 14
-export const PRO_BROADCAST_MONTHLY_LIMIT = 250_000
+export const PRO_BROADCAST_MONTHLY_LIMIT = 1_000_000
 
 export type WorkspacePlanType = 'trial' | 'pro' | 'lifetime'
 export type WorkspaceSubscriptionStatus = 'trialing' | 'active' | 'expired' | 'cancelled' | 'manual'
@@ -150,7 +150,7 @@ export function trialBlockMessage(args: {
 
   if (args.reason === 'pro_limit_exceeded') {
     const remaining = Math.max(args.remaining ?? 0, 0)
-    return `Your Pro plan includes 250,000 broadcast messages per month. You have ${remaining.toLocaleString()} remaining this month. Reduce your recipients or wait for the next monthly reset.`
+    return `Your Pro plan includes 1,000,000 broadcast messages per billing period. You have ${remaining.toLocaleString()} remaining in this period. Reduce your recipients or wait for the next billing-period reset.`
   }
 
   if (args.reason === 'lifetime_setup_not_hosted') {
@@ -193,30 +193,33 @@ export async function getWorkspaceTrialStatus(workspaceId: string): Promise<Work
 
   if (status.planType !== 'pro') return statusWithPayment
 
-  const now = new Date()
-  const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-  const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
-  const { data: usage, error: usageError } = await supabaseAdmin()
-    .from('workspace_broadcast_usage')
-    .select('messages_used, period_start, period_end')
-    .eq('workspace_id', workspaceId)
-    .eq('period_start', periodStart.toISOString().slice(0, 10))
-    .maybeSingle()
+  const { data: usage, error: usageError } = await supabaseAdmin().rpc(
+    'get_workspace_broadcast_usage_status',
+    { p_workspace_id: workspaceId },
+  )
 
   if (usageError) {
     throw new Error(`Failed to load Pro broadcast usage: ${usageError.message}`)
   }
 
-  const used = Math.max(Number(usage?.messages_used ?? 0), 0)
+  const usageStatus = (usage ?? {}) as {
+    used?: number
+    limit?: number
+    remaining?: number
+    period_start?: string
+    period_end?: string
+  }
+  const proLimit = Math.max(Number(usageStatus.limit ?? PRO_BROADCAST_MONTHLY_LIMIT), 0)
+  const used = Math.max(Number(usageStatus.used ?? 0), 0)
   return {
     ...status,
     manualPaymentStatus: statusWithPayment.manualPaymentStatus,
     manualPaymentMethod: statusWithPayment.manualPaymentMethod,
-    proBroadcastLimit: PRO_BROADCAST_MONTHLY_LIMIT,
+    proBroadcastLimit: proLimit,
     proBroadcastUsed: used,
-    proBroadcastRemaining: Math.max(PRO_BROADCAST_MONTHLY_LIMIT - used, 0),
-    proBroadcastPeriodStart: usage?.period_start ?? periodStart.toISOString(),
-    proBroadcastPeriodEnd: usage?.period_end ?? periodEnd.toISOString(),
+    proBroadcastRemaining: Math.max(Number(usageStatus.remaining ?? proLimit - used), 0),
+    proBroadcastPeriodStart: usageStatus.period_start ?? null,
+    proBroadcastPeriodEnd: usageStatus.period_end ?? null,
   }
 }
 

@@ -15,6 +15,10 @@ describe('workspace trial migration', () => {
     join(process.cwd(), 'supabase/migrations/054_workspace_monthly_broadcast_usage.sql'),
     'utf8',
   )
+  const renewalUsageMigration = readFileSync(
+    join(process.cwd(), 'supabase/migrations/063_pro_broadcast_allowance_renewal_reset.sql'),
+    'utf8',
+  )
 
   it('adds workspace plan and trial broadcast usage fields', () => {
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS plan_type')
@@ -52,7 +56,7 @@ describe('workspace trial migration', () => {
     expect(subscriptionMigration).not.toContain("workspace_row.subscription_status IN ('active', 'manual') THEN")
   })
 
-  it('adds workspace-scoped monthly Pro broadcast usage with an atomic reserve function', () => {
+  it('adds workspace-scoped Pro billing-period usage with an atomic reserve function', () => {
     expect(monthlyUsageMigration).toContain('CREATE TABLE IF NOT EXISTS public.workspace_broadcast_usage')
     expect(monthlyUsageMigration).toContain('workspace_id UUID NOT NULL REFERENCES public.workspaces')
     expect(monthlyUsageMigration).toContain('period_start DATE NOT NULL')
@@ -64,5 +68,10 @@ describe('workspace trial migration', () => {
     expect(monthlyUsageMigration).toContain("'pro_limit_exceeded'")
     expect(monthlyUsageMigration).toContain('date_trunc(\'month\'')
     expect(monthlyUsageMigration).toContain('CREATE OR REPLACE FUNCTION public.release_workspace_broadcast_usage')
+    expect(renewalUsageMigration).toContain('pro_limit INTEGER := 1000000')
+    expect(renewalUsageMigration).toContain('broadcast_usage_period_anchor_at')
+    expect(renewalUsageMigration).toContain('get_workspace_broadcast_usage_status')
+    expect(renewalUsageMigration).toContain('reset_workspace_pro_broadcast_period')
+    expect(renewalUsageMigration).toContain('reset_pro_broadcast_period_after_manual_approval')
   })
 })

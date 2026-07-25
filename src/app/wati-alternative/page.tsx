@@ -147,7 +147,7 @@ const comparisonRows = [
   {
     factor: 'Cost model',
     talkWagon:
-      'Talk Wagon Pro is positioned as a CRM subscription for the workspace, with Meta WhatsApp API messaging charges and provider costs kept separate. The public Pro page currently presents $1 for the first month, then $9.99/month, with a 250,000 CRM-side broadcast message allowance.',
+      'Talk Wagon Pro is positioned as a CRM subscription for the workspace, with Meta WhatsApp API messaging charges and provider costs kept separate. The public Pro page currently presents $1 for the first month, then $9.99/month, with a 1,000,000-message CRM-side broadcast allowance per billing period.',
     alternative:
       'WATI describes total cost as three layers: subscription plan, WhatsApp messaging charges, and optional add-ons. Its pricing page also states that message charges apply separately and vary by marketing, utility, and authentication message type.',
     evidence:

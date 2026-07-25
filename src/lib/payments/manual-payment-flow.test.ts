@@ -142,8 +142,8 @@ describe('manual payment flow wiring', () => {
     expect(trialCard).not.toContain('Request Lifetime Setup')
     expect(trialCard).not.toContain('Lifetime plan active')
     expect(trialCard).toContain('Lifetime is a self-hosted setup request')
-    expect(trialCard).toContain('broadcast messages used this month')
-    expect(trialCard).toContain('remaining this month')
+    expect(trialCard).toContain('broadcast messages used this billing period')
+    expect(trialCard).toContain('remaining this billing period')
     expect(trialCard).not.toContain('Broadcast sending is not limited by the free trial quota')
   })
 

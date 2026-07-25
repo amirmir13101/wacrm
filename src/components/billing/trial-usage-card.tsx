@@ -98,7 +98,7 @@ export function TrialUsageCard({ compact = false, onStatus }: TrialUsageCardProp
   const proPeriodLabel = trial.billingPeriod === 'yearly' ? 'yearly' : 'monthly'
   const planMessage = isPro
     ? [
-        `${trial.proBroadcastUsed.toLocaleString()} / ${trial.proBroadcastLimit.toLocaleString()} broadcast messages used this month. ${proRemaining.toLocaleString()} remaining.`,
+        `${trial.proBroadcastUsed.toLocaleString()} / ${trial.proBroadcastLimit.toLocaleString()} broadcast messages used this billing period. ${proRemaining.toLocaleString()} remaining.`,
         expiryDate ? `Your Pro ${proPeriodLabel} plan is active until ${expiryDate}.` : null,
       ]
         .filter(Boolean)
@@ -172,7 +172,7 @@ export function TrialUsageCard({ compact = false, onStatus }: TrialUsageCardProp
         <div className={compact ? 'mt-3' : 'mt-4'}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-[#d8fff1]">
             <span>Broadcast messages: {trial.proBroadcastUsed.toLocaleString()} / {trial.proBroadcastLimit.toLocaleString()} used</span>
-            <span>{proRemaining.toLocaleString()} remaining this month</span>
+            <span>{proRemaining.toLocaleString()} remaining this billing period</span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-emerald-950">
             <div

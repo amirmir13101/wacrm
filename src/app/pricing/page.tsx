@@ -117,7 +117,7 @@ const plans = [
       "Eligible new customers pay $1 for the first month once. Renewals continue at $9.99/month. Use your own official WhatsApp API key; WhatsApp/Meta charges are separate.",
     featured: true,
     features: [
-      "250,000 broadcast messages per month",
+      "1,000,000 broadcast messages per billing period",
       "All CRM features included",
       "WhatsApp team inbox",
       "Contact import and management",
@@ -182,7 +182,7 @@ const faqs = [
   {
     question: "What broadcast limit is included in Pro?",
     answer:
-      "Pro includes 250,000 broadcast messages per month from the CRM side. It does not remove any separate WhatsApp/Meta API or conversation charges from your official provider.",
+      "Pro includes 1,000,000 broadcast messages per billing period from the CRM side. The allowance refreshes when a renewed billing period starts. It does not remove any separate WhatsApp/Meta API or conversation charges from your official provider.",
   },
   {
     question: "Can I use my own WhatsApp API key?",

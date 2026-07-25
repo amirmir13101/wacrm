@@ -556,8 +556,8 @@ export default function DelightChatAlternativeArticlePage() {
                   so a serious buyer should verify the current checkout or quote before deciding.
                 </p>
                 <p className="mt-5">
-                  TalkWagon&apos;s public pricing lists Pro at $1 first month, then $9.99/month, with 250,000
-                  broadcast messages per month and up to 10 team members. WhatsApp/Meta charges are still
+                  TalkWagon&apos;s public pricing lists Pro at $1 first month, then $9.99/month, with 1,000,000
+                  broadcast messages per billing period and up to 10 team members. WhatsApp/Meta charges are still
                   separate because official messaging charges are not the same as CRM subscription fees.
                 </p>
               </SectionHeading>

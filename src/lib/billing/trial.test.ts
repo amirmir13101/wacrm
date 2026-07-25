@@ -121,8 +121,8 @@ describe('workspace trial status', () => {
   it('returns clear beginner-friendly trial block messages', () => {
     expect(trialBlockMessage({ reason: 'trial_expired' })).toMatch(/14-day free trial has ended/)
     expect(trialBlockMessage({ reason: 'pro_expired' })).toMatch(/Pro plan has expired/)
-    expect(trialBlockMessage({ reason: 'pro_limit_exceeded', remaining: 230000 })).toContain(
-      '250,000 broadcast messages per month',
+    expect(trialBlockMessage({ reason: 'pro_limit_exceeded', remaining: 980000 })).toContain(
+      '1,000,000 broadcast messages per billing period',
     )
     expect(trialBlockMessage({ reason: 'trial_limit_exceeded', remaining: 100 })).toContain(
       'You have 100 remaining',

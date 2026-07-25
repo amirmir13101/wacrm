@@ -72,7 +72,7 @@ export default function BillingPage() {
         used: trial.proBroadcastUsed,
         limit: trial.proBroadcastLimit,
         remaining: trial.proBroadcastRemaining ?? 0,
-        label: 'Pro monthly broadcast usage',
+        label: 'Pro billing-period broadcast usage',
         period: `${formatDate(trial.proBroadcastPeriodStart)} to ${formatDate(trial.proBroadcastPeriodEnd)}`,
       };
     }
