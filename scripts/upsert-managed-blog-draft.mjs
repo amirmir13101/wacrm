@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import WebSocket from "ws";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: resolve(root, ".env.local"), quiet: true });
@@ -35,6 +36,7 @@ if (!url || !serviceKey) throw new Error("Required Supabase server environment i
 
 const supabase = createClient(url, serviceKey, {
   auth: { persistSession: false, autoRefreshToken: false },
+  realtime: { transport: WebSocket },
 });
 
 const { data: existing, error: lookupError } = await supabase
