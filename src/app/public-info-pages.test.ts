@@ -142,6 +142,7 @@ describe("public legal and information pages", () => {
     expect(sitemapSource).toContain('getSiteUrl()');
     expect(sitemapSource).toContain('`${siteUrl}/about`');
     expect(sitemapSource).toContain('`${siteUrl}/contact`');
+    expect(sitemapSource).toContain('`${siteUrl}/whatsapp-api-prices`');
     expect(sitemapSource).toContain('`${siteUrl}/data-deletion`');
     expect(sitemapSource).toContain('`${siteUrl}/privacy-policy`');
     expect(sitemapSource).toContain('`${siteUrl}/terms-and-conditions`');

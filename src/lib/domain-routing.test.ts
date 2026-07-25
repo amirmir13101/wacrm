@@ -44,6 +44,7 @@ describe('production domain routing helpers', () => {
     expect(matchesDomainPath('/checkout/pro', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
     expect(matchesDomainPath('/use-cases/sales', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
     expect(matchesDomainPath('/wati-alternative', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
+    expect(matchesDomainPath('/whatsapp-api-prices', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
     expect(matchesDomainPath('/dashboard', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(false)
   })
 
@@ -62,6 +63,9 @@ describe('production domain routing helpers', () => {
     )
     expect(productionDomainRedirectUrl('/wati-alternative', 'app.talkwagon.chat')).toBe(
       'https://talkwagon.chat/wati-alternative',
+    )
+    expect(productionDomainRedirectUrl('/whatsapp-api-prices', 'app.talkwagon.chat')).toBe(
+      'https://talkwagon.chat/whatsapp-api-prices',
     )
   })
 

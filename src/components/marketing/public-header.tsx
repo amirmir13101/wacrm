@@ -9,6 +9,7 @@ import { appHrefForHost, marketingHrefForHost } from "@/lib/domain-routing";
 
 const homeNavItem = { label: "Home", href: "/" } as const;
 const blogNavItem = { label: "Blog", href: "/blog" } as const;
+const apiPricingNavItem = { label: "API Pricing", href: "/whatsapp-api-prices" } as const;
 const pricingNavItem = { label: "Pricing", href: "/pricing" } as const;
 
 const featureItems = [
@@ -45,6 +46,7 @@ const orderedDesktopNavItems = [
   { type: "dropdown", dropdown: desktopDropdowns[1] },
   { type: "dropdown", dropdown: desktopDropdowns[2] },
   { type: "link", item: blogNavItem },
+  { type: "link", item: apiPricingNavItem },
   { type: "link", item: pricingNavItem },
 ] as const;
 
@@ -59,6 +61,7 @@ interface PublicHeaderProps {
     | "automation"
     | "broadcasts"
     | "pricing"
+    | "api-pricing"
     | "blog";
 }
 
@@ -173,6 +176,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
                     const isActive =
                       (active === "home" && item.href === "/") ||
                       (active === "pricing" && item.href === "/pricing") ||
+                      (active === "api-pricing" && item.href === "/whatsapp-api-prices") ||
                       (active === "blog" && item.href === "/blog");
 
                     return (

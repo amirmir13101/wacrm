@@ -522,6 +522,12 @@ export default function PricingPage() {
               The trial and Pro plans describe Talk Wagon CRM access, not third-party
               WhatsApp provider charges.
             </p>
+            <Link
+              href="/whatsapp-api-prices"
+              className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-[#3ddf84] px-6 text-sm font-extrabold text-[#07130e] hover:bg-[#ffbd29]"
+            >
+              Estimate WhatsApp API prices
+            </Link>
             <div className="mt-8 rounded-[28px] border border-white/10 bg-[#0d1b15] p-6">
               <p className="text-sm leading-7 text-[#d8fff1]">
                 This keeps your CRM subscription simple while preserving official API

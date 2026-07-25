@@ -40,6 +40,7 @@ export const PUBLIC_ROOT_DOMAIN_PATHS = [
   '/terms-and-conditions',
   '/use-cases',
   '/wati-alternative',
+  '/whatsapp-api-prices',
 ] as const
 
 export function normalizeDomainHost(hostname: string | null | undefined): string {

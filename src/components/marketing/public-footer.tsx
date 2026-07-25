@@ -42,6 +42,7 @@ const footerGroups = [
       ["Blog", "/blog"],
       ["WhatsApp Greeting Messages", "/blog/whatsapp-business-greeting-message-examples"],
       ["WhatsApp CRM", "/"],
+      ["WhatsApp API Prices", "/whatsapp-api-prices"],
       ["WhatsApp Flows", "/features/flows"],
       ["WhatsApp Automation", "/features/automation"],
       ["Meta Template Approval", "/features/flows#meta-template-submission"],
