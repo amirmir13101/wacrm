@@ -12,13 +12,14 @@ const commercialPage = readSource(
 );
 const publicHeader = readSource('src/components/marketing/public-header.tsx');
 const publicFooter = readSource('src/components/marketing/public-footer.tsx');
+const comparisonLinks = readSource('src/lib/marketing/comparison-links.ts');
 const publicCtaButtons = readSource(
   'src/components/marketing/public-cta-buttons.tsx'
 );
 const sitemap = readSource('src/app/sitemap.ts');
 
 describe('Batch 04 competitor and alternative pages', () => {
-  it('keeps WATI Alternative as the only authorized competitor page owner', () => {
+  it('keeps the code-managed WATI page as the only root competitor page owner', () => {
     expect(watiPage).toContain("const path = '/wati-alternative'");
     expect(watiPage).toContain("'WATI alternative'");
     expect(watiPage).toContain('Talk Wagon vs WATI');
@@ -80,8 +81,10 @@ describe('Batch 04 competitor and alternative pages', () => {
     expect(publicHeader).toContain('const useCaseItems');
     expect(publicHeader).toContain('WhatsApp Sales');
     expect(publicHeader).toContain('WhatsApp Newsletter');
-    expect(publicHeader).toContain('const comparisonItems');
-    expect(publicHeader).toContain('WATI Alternative');
+    expect(publicHeader).toContain('const comparisonItems = comparisonLinks');
+    expect(comparisonLinks).toContain('WATI Alternative');
+    expect(comparisonLinks).toContain('DelightChat Alternative');
+    expect(comparisonLinks).toContain('/blog/delightchat-alternative');
     expect(publicHeader).toContain('Use Cases');
     expect(publicHeader).toContain('Compare');
     expect(publicHeader).toContain('const desktopDropdowns');
@@ -120,7 +123,7 @@ describe('Batch 04 competitor and alternative pages', () => {
     expect(publicFooter).toContain('heading: "Use Cases"');
     expect(publicFooter).toContain('WhatsApp Sales CRM');
     expect(publicFooter).toContain('WhatsApp Newsletter');
-    expect(publicFooter).toContain('WATI Alternative');
-    expect(publicFooter).toContain('Compare WATI Alternative');
+    expect(publicFooter).toContain('...comparisonLinks.map');
+    expect(publicFooter).toContain('Compare ${label}');
   });
 });

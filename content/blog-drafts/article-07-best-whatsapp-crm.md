@@ -146,7 +146,7 @@ Broadcast capability should be evaluated as a controlled process, not a large â€
 
 *Use an opted-in test audience and inspect every state, including failure and reply handling. Delivery depends on several factors and should never be treated as guaranteed.*
 
-TalkWagon documents its [broadcast workflow](/features/broadcasts) and separate [WhatsApp API pricing estimator](/whatsapp-api-pricing). WATI, respond.io, Kommo, Interakt, SleekFlow, and Zoko also present campaign or broadcast capabilities, but their limits and billing models differ. Confirm the exact plan and current WhatsApp Business Platform rules that apply to your market.
+TalkWagon documents its [broadcast workflow](/features/broadcasts) and separate [WhatsApp API pricing estimator](/whatsapp-api-prices). WATI, respond.io, Kommo, Interakt, SleekFlow, and Zoko also present campaign or broadcast capabilities, but their limits and billing models differ. Confirm the exact plan and current WhatsApp Business Platform rules that apply to your market.
 
 ## Test 4: automation, AI, and human handoff
 

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CheckCircle2, ChevronDown, Menu, X } from "lucide-react";
 
 import { appHrefForHost, marketingHrefForHost } from "@/lib/domain-routing";
+import { comparisonLinks } from "@/lib/marketing/comparison-links";
 
 const homeNavItem = { label: "Home", href: "/" } as const;
 const blogNavItem = { label: "Blog", href: "/blog" } as const;
@@ -25,9 +26,7 @@ const useCaseItems = [
   { label: "WhatsApp Newsletter", href: "/use-cases/newsletter" },
 ] as const;
 
-const comparisonItems = [
-  { label: "WATI Alternative", href: "/wati-alternative" },
-] as const;
+const comparisonItems = comparisonLinks;
 
 const trustItems = ["Team Inbox", "Flows", "Automation", "Broadcasts", "Secure Workspaces"];
 

@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { appHrefForHost, marketingHrefForHost } from "@/lib/domain-routing";
+import { comparisonLinks } from "@/lib/marketing/comparison-links";
 
 const footerGroups = [
   {
@@ -33,7 +34,7 @@ const footerGroups = [
     links: [
       ["WhatsApp Sales CRM", "/use-cases/sales"],
       ["WhatsApp Newsletter", "/use-cases/newsletter"],
-      ["WATI Alternative", "/wati-alternative"],
+      ...comparisonLinks.map(({ label, href }) => [label, href] as const),
     ],
   },
   {
@@ -49,7 +50,7 @@ const footerGroups = [
       ["AI CRM Automation", "/features/automation"],
       ["Sales CRM", "/features#sales-pipeline"],
       ["WhatsApp Broadcast CRM", "/features/broadcasts"],
-      ["Compare WATI Alternative", "/wati-alternative"],
+      ...comparisonLinks.map(({ label, href }) => [`Compare ${label}`, href] as const),
     ],
   },
   {

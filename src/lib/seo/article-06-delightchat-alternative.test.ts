@@ -79,7 +79,7 @@ describe("Article 06 DelightChat alternative guide", () => {
       "/features/flows",
       "/use-cases/sales",
       "/pricing",
-      "/whatsapp-api-pricing",
+      "/whatsapp-api-prices",
       "/wati-alternative",
     ]) {
       expect(articlePage).toContain(phrase);

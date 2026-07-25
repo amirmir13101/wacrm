@@ -617,7 +617,7 @@ export default function DelightChatAlternativeArticlePage() {
                     WhatsApp commerce
                   </Link>
                   . For messaging costs outside the CRM plan, review{" "}
-                  <Link href="/whatsapp-api-pricing" className="font-bold text-[#087d68] underline-offset-4 hover:underline">
+                  <Link href="/whatsapp-api-prices" className="font-bold text-[#087d68] underline-offset-4 hover:underline">
                     WhatsApp API pricing
                   </Link>
                   .
