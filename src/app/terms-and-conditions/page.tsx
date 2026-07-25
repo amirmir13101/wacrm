@@ -125,6 +125,11 @@ export default function TermsAndConditionsPage() {
             Talk Wagon may offer free, subscription, lifetime, or self-hosted setup options. Plan details, available
             features, and billing terms may vary by selected service.
           </InfoCard>
+          <InfoCard title="Introductory offer eligibility">
+            The free trial and first-month Pro promotion are limited to one redemption per eligible customer.
+            Talk Wagon may use account, workspace, email, phone, and payment-provider identifiers to prevent repeated
+            introductory-offer use. Renewals are charged at the current regular monthly price shown at checkout.
+          </InfoCard>
           <InfoCard title="WhatsApp and third-party costs">
             WhatsApp, Meta, hosting, payment, or third-party integration costs may be separate from Talk Wagon fees
             unless explicitly included in your selected setup.

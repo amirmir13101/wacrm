@@ -12,9 +12,9 @@ import {
 describe('manual payment checkout config', () => {
   it('defines Pro monthly and Lifetime manual checkout prices', () => {
     expect(MANUAL_CHECKOUT_PLANS.pro.amount).toBe(1)
-    expect(MANUAL_CHECKOUT_PLANS.pro.priceLabel).toBe('$1 first month, then $9.90/month')
-    expect(MANUAL_CHECKOUT_PLANS.pro.regularAmount).toBe(9.9)
-    expect(MANUAL_CHECKOUT_PLANS.pro.originalPriceLabel).toBe('$9.90/month')
+    expect(MANUAL_CHECKOUT_PLANS.pro.priceLabel).toBe('$1 first month, then $9.99/month')
+    expect(MANUAL_CHECKOUT_PLANS.pro.regularAmount).toBe(9.99)
+    expect(MANUAL_CHECKOUT_PLANS.pro.originalPriceLabel).toBe('$9.99/month')
     expect(MANUAL_CHECKOUT_PLANS.pro.offerLabel).toBe('First month promo')
     expect(MANUAL_CHECKOUT_PLANS.lifetime.amount).toBe(499)
     expect(MANUAL_CHECKOUT_PLANS.lifetime.priceLabel).toBe('$499 one-time')
@@ -32,7 +32,7 @@ describe('manual payment checkout config', () => {
       firstMonthPromoEligible: true,
     })
     expect(promo.amount).toBe(1)
-    expect(promo.originalAmount).toBe(9.9)
+    expect(promo.originalAmount).toBe(9.99)
     expect(promo.chargedAmount).toBe(1)
     expect(promo.isFirstMonthPromo).toBe(true)
     expect(promo.promoType).toBe('first_month')
@@ -42,10 +42,10 @@ describe('manual payment checkout config', () => {
       plan: MANUAL_CHECKOUT_PLANS.pro,
       firstMonthPromoEligible: false,
     })
-    expect(renewal.amount).toBe(9.9)
-    expect(renewal.chargedAmount).toBe(9.9)
+    expect(renewal.amount).toBe(9.99)
+    expect(renewal.chargedAmount).toBe(9.99)
     expect(renewal.isFirstMonthPromo).toBe(false)
-    expect(renewal.pricingLabel).toBe('Monthly renewal price: $9.90/month')
+    expect(renewal.pricingLabel).toBe('Monthly renewal price: $9.99/month')
   })
 
   it('contains Easypaisa and UBL bank payment details', () => {

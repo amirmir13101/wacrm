@@ -106,15 +106,15 @@ const plans = [
   {
     name: "Pro",
     price: "$1",
-    regularPrice: "$9.90",
+    regularPrice: "$9.99",
     offerLabel: "90% OFF",
-    billing: "$1 first month, then $9.90/month",
+    billing: "$1 first month, then $9.99/month",
     description:
       "For growing teams that want all Talk Wagon CRM features, team workflows, broadcasts, automations, and pipeline tools with a clear monthly broadcast allowance.",
     cta: "Upgrade to Pro",
     href: "/checkout/pro",
     note:
-      "New workspaces pay $1 for the first month only. Renewals continue at $9.90/month. Use your own official WhatsApp API key; WhatsApp/Meta charges are separate.",
+      "Eligible new customers pay $1 for the first month once. Renewals continue at $9.99/month. Use your own official WhatsApp API key; WhatsApp/Meta charges are separate.",
     featured: true,
     features: [
       "250,000 broadcast messages per month",

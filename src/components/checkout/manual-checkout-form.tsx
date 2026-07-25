@@ -49,6 +49,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
   const [loginSubmitting, setLoginSubmitting] = useState(false)
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null)
   const [pricingPreview, setPricingPreview] = useState<ManualCheckoutPricing | null>(null)
+  const [pricingLoading, setPricingLoading] = useState(true)
   const isSignedInCheckout = checkoutMode === 'signed-in' && Boolean(signedInEmail)
   const selectedPaymentDetails = MANUAL_PAYMENT_METHODS[paymentMethod]
   const effectivePlan = useMemo(
@@ -91,6 +92,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
 
   useEffect(() => {
     let cancelled = false
+    setPricingLoading(true)
     fetch(`/api/payments/manual?plan_type=${encodeURIComponent(plan.planType)}`)
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}))
@@ -102,6 +104,9 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
       })
       .catch(() => {
         if (!cancelled) setPricingPreview(null)
+      })
+      .finally(() => {
+        if (!cancelled) setPricingLoading(false)
       })
 
     return () => {
@@ -131,9 +136,11 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
               }),
           transaction_reference: transactionReference,
           note,
+          expected_charged_amount: effectivePlan.amount,
         }),
       })
       const payload = await response.json().catch(() => ({}))
+      if (payload.pricing) setPricingPreview(payload.pricing as ManualCheckoutPricing)
       if (!response.ok) throw new Error(payload.error ?? 'Could not submit payment request.')
       setRequestId(payload.request?.id ?? null)
       toast.success('Payment request submitted. Send proof for manual verification.')
@@ -224,12 +231,12 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
                   {plan.regularPriceLabel ?? plan.originalPriceLabel}
                 </span>
                 <span className="text-4xl font-extrabold text-[#ffbd29] sm:text-5xl">
-                  {pricingPreview?.priceLabel ?? plan.priceLabel}
+                  {pricingLoading ? 'Checking price…' : pricingPreview?.priceLabel ?? plan.priceLabel}
                 </span>
               </div>
             ) : (
               <p className="mt-2 text-4xl font-extrabold text-[#ffbd29] sm:text-5xl">
-                {pricingPreview?.priceLabel ?? plan.priceLabel}
+                {pricingLoading ? 'Checking price…' : pricingPreview?.priceLabel ?? plan.priceLabel}
               </p>
             )}
             {plan.offerLabel ? (
@@ -452,7 +459,9 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
                 <Field label="Selected plan">
                   <input
                     readOnly
-                    value={`${plan.shortTitle} - ${pricingPreview?.priceLabel ?? plan.priceLabel}`}
+                    value={`${plan.shortTitle} - ${
+                      pricingLoading ? 'Checking price…' : pricingPreview?.priceLabel ?? plan.priceLabel
+                    }`}
                     className="h-12 w-full rounded-2xl border border-[#dbe9e2] bg-[#f7fbf8] px-4 text-[#07130e]"
                   />
                 </Field>
@@ -489,7 +498,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
               <div className="flex justify-center">
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || pricingLoading}
                   className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[#3ddf84] px-8 text-sm font-extrabold text-[#07130e] transition hover:bg-[#ffbd29] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
                 >
                   {submitting ? (

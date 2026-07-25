@@ -284,7 +284,7 @@ describe('Batch 03 commercial landing pages', () => {
 
   it('does not alter displayed pricing or claim that Meta messaging is included', () => {
     const pricing = readSource('src/app/pricing/page.tsx');
-    expect(pricing).toContain('billing: "$1 first month, then $9.90/month"');
+    expect(pricing).toContain('billing: "$1 first month, then $9.99/month"');
     expect(pricing).toContain(
       'price: plan.name === "14-Day Free Trial" ? "0" : plan.name === "Pro" ? "1" : "499"'
     );

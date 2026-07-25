@@ -69,6 +69,11 @@ export default function RefundPolicyPage() {
             upgrading or requesting a paid setup.
           </p>
           <p className="mt-4">
+            The free trial and first-month Pro promotional price are one-time introductory offers for eligible
+            customers. Creating another account or workspace does not renew eligibility. After the introductory month,
+            Pro renewals use the current regular monthly price displayed at checkout.
+          </p>
+          <p className="mt-4">
             Talk Wagon currently presents a monthly Pro plan on the public pricing page. Yearly billing is not offered
             on the public pricing page for now. After the trial period, active monthly subscription usage, completed setup
             work, or configured self-hosted delivery is generally non-refundable unless a fair exception applies.

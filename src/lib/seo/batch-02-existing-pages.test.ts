@@ -42,7 +42,7 @@ describe("Batch 02 existing-page SEO ownership", () => {
     expect(pages.features).toContain("does not sell API access or control Meta charges");
     expect(pages.pricing).toContain("WhatsApp API pricing, Meta conversation charges, or provider fees are separate");
     expect(pages.pricing).toContain("Talk Wagon does not sell WhatsApp/Meta messages directly");
-    expect(pages.pricing).toContain('billing: "$1 first month, then $9.90/month"');
+    expect(pages.pricing).toContain('billing: "$1 first month, then $9.99/month"');
     expect(pages.pricing).toContain('price: plan.name === "14-Day Free Trial" ? "0" : plan.name === "Pro" ? "1" : "499"');
   });
 

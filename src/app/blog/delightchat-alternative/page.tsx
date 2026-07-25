@@ -132,7 +132,7 @@ const comparisonRows = [
     delightchat:
       "Public pricing surfaces observed on July 24, 2026 showed different plan figures, so teams should verify the current checkout or quote.",
     talkwagon:
-      "Public pricing is listed as $1 first month, then $9.90/month for Pro, with Meta/WhatsApp charges separate.",
+      "Public pricing is listed as $1 first month, then $9.99/month for Pro, with Meta/WhatsApp charges separate.",
   },
 ] as const;
 
@@ -556,7 +556,7 @@ export default function DelightChatAlternativeArticlePage() {
                   so a serious buyer should verify the current checkout or quote before deciding.
                 </p>
                 <p className="mt-5">
-                  TalkWagon&apos;s public pricing lists Pro at $1 first month, then $9.90/month, with 250,000
+                  TalkWagon&apos;s public pricing lists Pro at $1 first month, then $9.99/month, with 250,000
                   broadcast messages per month and up to 10 team members. WhatsApp/Meta charges are still
                   separate because official messaging charges are not the same as CRM subscription fees.
                 </p>

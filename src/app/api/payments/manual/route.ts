@@ -2,10 +2,15 @@ import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import {
+  isBillingOfferEligible,
+  normalizeBillingEmail,
+  normalizeBillingPhone,
+  PRO_FIRST_MONTH_OFFER_CODE,
+} from '@/lib/billing/offer-eligibility'
+import {
   getManualCheckoutPlan,
   getManualCheckoutPricing,
   getManualPaymentMethod,
-  PRO_FIRST_MONTH_PROMO_AMOUNT,
 } from '@/lib/payments/manual-payment-config'
 import { createClient } from '@/lib/supabase/server'
 import { requireCurrentWorkspace } from '@/lib/team/server'
@@ -14,6 +19,11 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function readString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return value
 }
 
 function passwordValidationError(password: string) {
@@ -53,12 +63,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Login found, but no active workspace was available.' }, { status: 400 })
   }
 
-  const eligible = await isFirstMonthPromoEligible({
-    admin: supabaseAdmin(),
-    workspaceId: workspaceResult.workspace.workspaceId,
-    userId: user.id,
-    payerEmail: user.email ?? '',
-  })
+  let eligible: boolean
+  try {
+    eligible = await isBillingOfferEligible({
+      admin: supabaseAdmin(),
+      offerCode: PRO_FIRST_MONTH_OFFER_CODE,
+      identity: {
+        workspaceId: workspaceResult.workspace.workspaceId,
+        userId: user.id,
+        email: user.email,
+      },
+    })
+  } catch {
+    return NextResponse.json(
+      { error: 'Checkout pricing is temporarily unavailable.' },
+      { status: 503 },
+    )
+  }
 
   return NextResponse.json({
     pricing: getManualCheckoutPricing({ plan, firstMonthPromoEligible: eligible }),
@@ -98,6 +119,7 @@ export async function POST(request: Request) {
   const workspaceName = companyName || `${payerName || 'Customer'} Workspace`
   const transactionReference = readString(body.transaction_reference)
   const note = readString(body.note)
+  const expectedChargedAmount = readFiniteNumber(body.expected_charged_amount)
 
   const supabase = await createClient()
   const {
@@ -161,16 +183,70 @@ export async function POST(request: Request) {
   }
 
   const admin = supabaseAdmin()
-  const firstMonthPromoEligible =
-    plan.planType === 'pro'
-      ? await isFirstMonthPromoEligible({
-          admin,
+  const normalizedEmail = normalizeBillingEmail(payerEmail)
+  const normalizedPhone = normalizeBillingPhone(phone)
+  let firstMonthPromoEligible = false
+  if (plan.planType === 'pro') {
+    try {
+      firstMonthPromoEligible = await isBillingOfferEligible({
+        admin,
+        offerCode: PRO_FIRST_MONTH_OFFER_CODE,
+        identity: {
           workspaceId,
           userId: linkedUserId,
-          payerEmail,
-        })
-      : false
+          email: normalizedEmail,
+          phone: normalizedPhone,
+          paymentProvider: 'manual',
+        },
+      })
+    } catch {
+      return NextResponse.json(
+        { error: 'Checkout pricing is temporarily unavailable.' },
+        { status: 503 },
+      )
+    }
+  }
   const pricing = getManualCheckoutPricing({ plan, firstMonthPromoEligible })
+
+  if (
+    expectedChargedAmount !== null
+    && Math.abs(expectedChargedAmount - pricing.chargedAmount) > 0.001
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'Your eligible checkout price changed after account verification. Review the updated price, then submit again.',
+        pricing,
+      },
+      { status: 409 },
+    )
+  }
+
+  let hasPendingRequest: boolean
+  try {
+    hasPendingRequest = await hasMatchingPendingManualRequest({
+      admin,
+      workspaceId,
+      userId: linkedUserId,
+      normalizedEmail,
+      normalizedPhone,
+    })
+  } catch {
+    return NextResponse.json(
+      { error: 'Payment request verification is temporarily unavailable.' },
+      { status: 503 },
+    )
+  }
+  if (hasPendingRequest) {
+    return NextResponse.json(
+      {
+        error:
+          'A payment request for this customer is already pending review. Send its proof or wait for the current review before submitting another.',
+        pricing,
+      },
+      { status: 409 },
+    )
+  }
 
   const { data, error } = await admin
     .from('manual_payment_requests')
@@ -190,6 +266,8 @@ export async function POST(request: Request) {
       payer_name: payerName,
       payer_email: payerEmail,
       phone,
+      normalized_email: normalizedEmail,
+      normalized_phone: normalizedPhone,
       company_name: companyName || null,
       workspace_name: workspaceName,
       auth_user_created: authUserCreated,
@@ -212,55 +290,64 @@ export async function POST(request: Request) {
   })
 }
 
-async function isFirstMonthPromoEligible(args: {
+async function hasMatchingPendingManualRequest(args: {
   admin: ReturnType<typeof supabaseAdmin>
   workspaceId: string | null
   userId: string | null
-  payerEmail: string
+  normalizedEmail: string | null
+  normalizedPhone: string | null
 }): Promise<boolean> {
-  const workspaceId = args.workspaceId || null
-  const userId = args.userId || null
-  const payerEmail = args.payerEmail.trim().toLowerCase()
+  const checks: Array<PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>> = []
 
-  if (workspaceId) {
-    const { data: workspace, error } = await args.admin
-      .from('workspaces')
-      .select('first_month_promo_used_at')
-      .eq('id', workspaceId)
-      .maybeSingle<{ first_month_promo_used_at: string | null }>()
-    if (error) throw new Error(`Could not verify promotional pricing eligibility: ${error.message}`)
-    if (workspace?.first_month_promo_used_at) return false
+  if (args.workspaceId) {
+    checks.push(
+      args.admin
+        .from('manual_payment_requests')
+        .select('id')
+        .eq('status', 'pending')
+        .eq('workspace_id', args.workspaceId)
+        .limit(1),
+    )
+  }
+  if (args.userId) {
+    checks.push(
+      args.admin
+        .from('manual_payment_requests')
+        .select('id')
+        .eq('status', 'pending')
+        .eq('user_id', args.userId)
+        .limit(1),
+    )
+  }
+  if (args.normalizedEmail) {
+    checks.push(
+      args.admin
+        .from('manual_payment_requests')
+        .select('id')
+        .eq('status', 'pending')
+        .eq('normalized_email', args.normalizedEmail)
+        .limit(1),
+    )
+  }
+  if (args.normalizedPhone) {
+    checks.push(
+      args.admin
+        .from('manual_payment_requests')
+        .select('id')
+        .eq('status', 'pending')
+        .eq('normalized_phone', args.normalizedPhone)
+        .limit(1),
+    )
   }
 
-  const ownershipFilters = []
-  if (workspaceId) ownershipFilters.push(`workspace_id.eq.${workspaceId}`)
-  if (userId) ownershipFilters.push(`user_id.eq.${userId}`)
-  if (payerEmail) ownershipFilters.push(`payer_email.ilike.${payerEmail}`)
-
-  if (ownershipFilters.length === 0) return true
-
-  const { data: approved, error: approvedError } = await args.admin
-    .from('manual_payment_requests')
-    .select('id')
-    .eq('plan_type', 'pro')
-    .eq('status', 'approved')
-    .or(ownershipFilters.join(','))
-    .limit(1)
-
-  if (approvedError) throw new Error(`Could not verify previous payments: ${approvedError.message}`)
-  if ((approved ?? []).length > 0) return false
-
-  const { data: pendingRenewal, error: pendingError } = await args.admin
-    .from('manual_payment_requests')
-    .select('id')
-    .eq('plan_type', 'pro')
-    .eq('status', 'pending')
-    .gte('amount', PRO_FIRST_MONTH_PROMO_AMOUNT + 0.01)
-    .or(ownershipFilters.join(','))
-    .limit(1)
-
-  if (pendingError) throw new Error(`Could not verify pending renewal payments: ${pendingError.message}`)
-  return (pendingRenewal ?? []).length === 0
+  const results = await Promise.all(checks)
+  for (const result of results) {
+    if (result.error) {
+      throw new Error(`Could not verify pending payment requests: ${result.error.message}`)
+    }
+    if ((result.data ?? []).length > 0) return true
+  }
+  return false
 }
 
 async function createOrLinkCheckoutCustomer(args: {
@@ -285,21 +372,9 @@ async function createOrLinkCheckoutCustomer(args: {
       throw new Error('This email belongs to a team member account. Please login or use another email.')
     }
 
-    const { error: updateError } = await admin
-      .from('profiles')
-      .update({
-        full_name: args.fullName,
-        account_type: 'workspace_owner',
-        updated_at: now,
-      })
-      .eq('user_id', existingProfile.user_id)
-    if (updateError) throw new Error(updateError.message)
-
-    const workspaceId = await ensureCheckoutWorkspace({
-      userId: existingProfile.user_id,
-      workspaceName: args.workspaceName,
-    })
-    return { userId: existingProfile.user_id, workspaceId, authUserCreated: false }
+    throw new Error(
+      'An account already exists with this email. Please login first, then submit checkout again.',
+    )
   }
 
   const { data: created, error: createError } = await admin.auth.admin.createUser({

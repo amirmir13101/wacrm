@@ -95,7 +95,7 @@ describe("Batch 01 technical SEO", () => {
     expect(pricing).not.toContain('"@type": "Product"');
     expect(pricing).toContain('price: plan.name === "14-Day Free Trial" ? "0" : plan.name === "Pro" ? "1" : "499"');
     expect(pricing).toContain("description: `${plan.description} ${plan.billing}.`");
-    expect(pricing).toContain('billing: "$1 first month, then $9.90/month"');
+    expect(pricing).toContain('billing: "$1 first month, then $9.99/month"');
   });
 
   it("keeps the sitemap public-only and robots restrictions intact", () => {

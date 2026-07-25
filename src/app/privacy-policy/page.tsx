@@ -105,7 +105,9 @@ export default function PrivacyPolicyPage() {
           </InfoCard>
           <InfoCard title="Payment and support data">
             Plan requests, manual payment proof references, support messages, contact form details, and onboarding notes
-            may be processed to help operate the service and respond to your requests.
+            may be processed to help operate the service and respond to your requests. We may also retain normalized
+            account identifiers and hashed payment-provider identifiers to enforce one-time trial and promotional-offer
+            eligibility without storing full card details.
           </InfoCard>
         </InfoCardGrid>
       </InfoSection>

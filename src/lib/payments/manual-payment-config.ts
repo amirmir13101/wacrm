@@ -42,10 +42,10 @@ export interface ManualPaymentMethodDetails {
 
 export const MANUAL_PAYMENT_WHATSAPP_NUMBER = '447882756946'
 export const PRO_FIRST_MONTH_PROMO_AMOUNT = 1
-export const PRO_REGULAR_MONTHLY_AMOUNT = 9.9
+export const PRO_REGULAR_MONTHLY_AMOUNT = 9.99
 export const PRO_FIRST_MONTH_PRICE_LABEL = '$1 first month'
-export const PRO_REGULAR_MONTHLY_PRICE_LABEL = '$9.90/month'
-export const PRO_FIRST_MONTH_PROMO_LABEL = '$1 first month, then $9.90/month'
+export const PRO_REGULAR_MONTHLY_PRICE_LABEL = '$9.99/month'
+export const PRO_FIRST_MONTH_PROMO_LABEL = '$1 first month, then $9.99/month'
 
 export const MANUAL_CHECKOUT_PLANS = {
   pro: {
@@ -147,7 +147,7 @@ export function getManualCheckoutPricing(args: {
       pricingLabel: 'First month promotional price: $1',
       isFirstMonthPromo: true,
       promoType: 'first_month',
-      renewalMessage: 'Renews at $9.90/month after the first month.',
+      renewalMessage: 'Renews at $9.99/month after the first month.',
     }
   }
 
@@ -158,10 +158,10 @@ export function getManualCheckoutPricing(args: {
     currency: args.plan.currency,
     priceLabel: PRO_REGULAR_MONTHLY_PRICE_LABEL,
     billingLabel: 'Monthly renewal price',
-    pricingLabel: 'Monthly renewal price: $9.90/month',
+    pricingLabel: 'Monthly renewal price: $9.99/month',
     isFirstMonthPromo: false,
     promoType: null,
-    renewalMessage: 'Your first-month promotion has already been used. Renewal price is $9.90/month.',
+    renewalMessage: 'Your first-month promotion has already been used. Renewal price is $9.99/month.',
   }
 }
 
