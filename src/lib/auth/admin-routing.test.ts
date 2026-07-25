@@ -51,7 +51,7 @@ describe('platform admin routing separation', () => {
     expect(domainRouting).toContain("export const PUBLIC_ROOT_DOMAIN_PATHS")
     expect(domainRouting).toContain("'/features'")
     expect(domainRouting).toContain("'/pricing'")
-    expect(domainRouting).toContain("'/checkout'")
+    expect(domainRouting).not.toContain("  '/checkout',")
     expect(domainRouting).toContain('matchesDomainPath(pathname, PUBLIC_ROOT_DOMAIN_PATHS)')
     expect(domainRouting).toContain('https://${ROOT_DOMAIN}${pathname}${search}')
     expect(middleware).toContain('productionDomainRedirectUrl(')

@@ -41,7 +41,7 @@ describe('production domain routing helpers', () => {
   it('matches nested public routes that should leave the app subdomain', () => {
     expect(matchesDomainPath('/features', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
     expect(matchesDomainPath('/features/flows', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
-    expect(matchesDomainPath('/checkout/pro', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
+    expect(matchesDomainPath('/checkout/pro', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(false)
     expect(matchesDomainPath('/use-cases/sales', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
     expect(matchesDomainPath('/wati-alternative', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
     expect(matchesDomainPath('/whatsapp-api-prices', PUBLIC_ROOT_DOMAIN_PATHS)).toBe(true)
@@ -54,9 +54,6 @@ describe('production domain routing helpers', () => {
     )
     expect(productionDomainRedirectUrl('/features', 'app.talkwagon.chat')).toBe(
       'https://talkwagon.chat/features',
-    )
-    expect(productionDomainRedirectUrl('/checkout/pro', 'app.talkwagon.chat')).toBe(
-      'https://talkwagon.chat/checkout/pro',
     )
     expect(productionDomainRedirectUrl('/use-cases/newsletter', 'app.talkwagon.chat')).toBe(
       'https://talkwagon.chat/use-cases/newsletter',
@@ -73,6 +70,7 @@ describe('production domain routing helpers', () => {
     expect(productionDomainRedirectUrl('/login', 'app.talkwagon.chat')).toBeNull()
     expect(productionDomainRedirectUrl('/dashboard', 'app.talkwagon.chat')).toBeNull()
     expect(productionDomainRedirectUrl('/settings', 'app.talkwagon.chat')).toBeNull()
+    expect(productionDomainRedirectUrl('/checkout/pro', 'app.talkwagon.chat')).toBeNull()
   })
 
   it('keeps marketing routes on the root domain to avoid redirect loops', () => {

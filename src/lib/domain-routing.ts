@@ -28,7 +28,6 @@ export const APP_DOMAIN_PATHS = [
 export const PUBLIC_ROOT_DOMAIN_PATHS = [
   '/about',
   '/contact',
-  '/checkout',
   '/data-deletion',
   '/features',
   '/pricing',

@@ -225,7 +225,7 @@ export function ManualCheckoutForm({ plan }: ManualCheckoutFormProps) {
           <p className="mt-3 text-sm leading-6 text-[#d5e9e2] sm:mt-4 sm:leading-7">{plan.description}</p>
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/8 p-4 sm:mt-6 sm:p-5">
             <p className="text-sm text-[#d5e9e2]">{plan.billingLabel}</p>
-            {plan.originalPriceLabel ? (
+            {plan.originalPriceLabel && pricingPreview?.isFirstMonthPromo !== false ? (
               <div className="mt-2 flex flex-wrap items-end gap-3">
                 <span className="pb-1 text-xl font-bold text-[#d5e9e2]/60 line-through decoration-2">
                   {plan.regularPriceLabel ?? plan.originalPriceLabel}

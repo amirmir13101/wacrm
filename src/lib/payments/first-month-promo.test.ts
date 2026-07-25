@@ -29,6 +29,10 @@ describe('first-month Pro promotional pricing', () => {
     join(root, 'src/lib/payments/manual-payment-config.ts'),
     'utf8',
   )
+  const domainRouting = readFileSync(
+    join(root, 'src/lib/domain-routing.ts'),
+    'utf8',
+  )
 
   it('adds additive promo tracking fields without deleting payment history', () => {
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS public.billing_offer_redemptions')
@@ -91,6 +95,16 @@ describe('first-month Pro promotional pricing', () => {
     expect(adminRoute).toContain('is_first_month_promo')
     expect(adminRoute).toContain('pricing_label')
     expect(adminReviewRoute).toContain(".rpc('approve_manual_pro_payment'")
+  })
+
+  it('keeps authenticated renewals on the app host and removes promo strike-through styling', () => {
+    expect(domainRouting).not.toContain("  '/checkout',")
+    expect(checkoutForm).toContain(
+      'plan.originalPriceLabel && pricingPreview?.isFirstMonthPromo !== false',
+    )
+    expect(checkoutForm).toContain(
+      "pricingPreview?.isFirstMonthPromo === false\n                  ? 'Renewal price'",
+    )
   })
 
   it('prevents trial and promo reuse across durable customer and provider identities', () => {
