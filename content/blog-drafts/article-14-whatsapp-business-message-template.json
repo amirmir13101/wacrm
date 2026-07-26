@@ -1,0 +1,49 @@
+{
+  "slug": "whatsapp-business-message-template",
+  "status": "draft",
+  "title": "WhatsApp Business Message Templates: Rules, Categories, Examples, and Approval Basics",
+  "seoTitle": "WhatsApp Business Message Templates Guide",
+  "description": "Understand WhatsApp business message templates, categories, components, approval basics, examples, and team workflows for safer customer messaging.",
+  "excerpt": "A practical guide to WhatsApp business message templates: when they are needed, how categories work, what components to use, and how teams can manage approvals.",
+  "contentFile": "article-14-whatsapp-business-message-template.md",
+  "category": "WhatsApp Templates",
+  "author": "TalkWagon Editorial Team",
+  "readingTime": "16 min read",
+  "primaryKeyword": "whatsapp business message template",
+  "secondaryKeywords": [
+    "whatsapp message template",
+    "whatsapp messaging template",
+    "whatsapp text message template",
+    "whatsapp message template examples"
+  ],
+  "heroImageUrl": "/hostiko-crm/generated/blog/talk-wagon-whatsapp-business-message-template-hero.webp",
+  "heroImageAlt": "TalkWagon template management dashboard showing WhatsApp business message template categories, approval workflow, languages, and preview cards",
+  "heroImageWidth": 1600,
+  "heroImageHeight": 900,
+  "faqs": [
+    {
+      "question": "What is a WhatsApp business message template?",
+      "answer": "A WhatsApp business message template is a pre-approved message format used by a business to start or continue certain WhatsApp conversations at scale, especially outside the customer service window on the WhatsApp Business Platform."
+    },
+    {
+      "question": "Which WhatsApp template categories are commonly used?",
+      "answer": "Meta categorizes templates into marketing, utility, and authentication use cases. The correct category depends on the message purpose, not just the wording."
+    },
+    {
+      "question": "What parts can a WhatsApp message template include?",
+      "answer": "Templates can include components such as a header, body, footer, and buttons. The body carries the main text and variables, while buttons can support replies, links, or actions."
+    },
+    {
+      "question": "Why do WhatsApp templates get rejected?",
+      "answer": "Common reasons include unclear purpose, incorrect category, misleading content, poor variable context, policy-sensitive wording, missing opt-out handling for marketing messages, or text that does not match the selected use case."
+    },
+    {
+      "question": "Can quick replies replace WhatsApp templates?",
+      "answer": "No. Quick replies help agents answer faster inside conversations. Templates are approved message assets used for business-initiated or structured messaging workflows. They solve different problems."
+    },
+    {
+      "question": "How should teams manage templates?",
+      "answer": "Teams should keep a template library with owners, categories, languages, approval status, variable rules, use cases, review dates, and performance notes so campaigns and service messages are not sent with outdated or risky content."
+    }
+  ]
+}

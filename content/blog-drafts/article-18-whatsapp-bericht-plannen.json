@@ -1,0 +1,44 @@
+{
+  "slug": "whatsapp-bericht-plannen",
+  "status": "draft",
+  "title": "WhatsApp Bericht Plannen: Complete Gids voor Teams",
+  "seoTitle": "WhatsApp Bericht Plannen: Gids voor Teams",
+  "description": "Leer hoe je een WhatsApp bericht plant met timing, toestemming, sjablonen, teamafspraken, CRM-workflows en veilige opvolging.",
+  "excerpt": "Een praktische Nederlandstalige gids voor teams die WhatsApp berichten willen plannen zonder context, toestemming of opvolging te verliezen.",
+  "contentFile": "article-18-whatsapp-bericht-plannen.md",
+  "category": "WhatsApp Planning",
+  "author": "TalkWagon Editorial Team",
+  "readingTime": "14 min read",
+  "primaryKeyword": "whatsapp bericht plannen",
+  "secondaryKeywords": [
+    "whatsapp bericht inplannen",
+    "whatsapp bericht automatisch versturen",
+    "whatsapp planning voor bedrijven"
+  ],
+  "heroImageUrl": "/hostiko-crm/generated/blog/talk-wagon-whatsapp-bericht-plannen-hero.webp",
+  "heroImageAlt": "TalkWagon planning dashboard voor Nederlandse teams met geplande WhatsApp berichten, goedkeuringen en team inbox",
+  "heroImageWidth": 1600,
+  "heroImageHeight": 900,
+  "faqs": [
+    {
+      "question": "Kun je een WhatsApp bericht plannen?",
+      "answer": "Ja, maar de juiste methode hangt af van je situatie. Een klein bedrijf kan soms met app-functies werken, terwijl teams meestal een CRM of WhatsApp Business Platform-workflow nodig hebben voor goedkeuring, sjablonen, segmentatie en opvolging."
+    },
+    {
+      "question": "Wat is het verschil tussen plannen en automatiseren?",
+      "answer": "Plannen betekent dat een bericht op een gekozen moment wordt verzonden. Automatiseren betekent dat een trigger, voorwaarde of klantactie bepaalt wat er gebeurt. Een team kan beide combineren."
+    },
+    {
+      "question": "Heb ik toestemming nodig voor geplande WhatsApp berichten?",
+      "answer": "Voor zakelijke WhatsApp-berichten moet je kunnen uitleggen waarom de klant het bericht mag verwachten. Voor marketing en proactieve berichten is opt-in en duidelijke afmelding extra belangrijk."
+    },
+    {
+      "question": "Wanneer heb ik een template nodig?",
+      "answer": "Als je bedrijf een bericht initieert buiten de normale servicecontext op het WhatsApp Business Platform, is meestal een goedgekeurde template nodig. Controleer altijd de actuele Meta-regels voor je use case."
+    },
+    {
+      "question": "Hoe voorkom ik fouten bij geplande berichten?",
+      "answer": "Controleer tijdzone, taal, doelgroep, template-status, variabelen, links, afmeldingen en wie de reacties opvolgt voordat het bericht wordt verzonden."
+    }
+  ]
+}

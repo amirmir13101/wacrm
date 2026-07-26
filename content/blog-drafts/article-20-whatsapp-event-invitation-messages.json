@@ -1,0 +1,45 @@
+{
+  "slug": "whatsapp-event-invitation-messages",
+  "status": "draft",
+  "title": "WhatsApp Event Invitation Messages: Templates, Timing, and RSVP Workflows",
+  "seoTitle": "WhatsApp Event Invitation Messages Guide",
+  "description": "Create WhatsApp event invitation messages with business-ready templates, RSVP flows, reminders, consent checks, timing, and follow-up workflows.",
+  "excerpt": "A practical guide to WhatsApp event invitation messages for webinars, launches, workshops, appointments, open houses, and customer events.",
+  "contentFile": "article-20-whatsapp-event-invitation-messages.md",
+  "category": "WhatsApp Templates",
+  "author": "TalkWagon Editorial Team",
+  "readingTime": "15 min read",
+  "primaryKeyword": "whatsapp message for event invitation",
+  "secondaryKeywords": [
+    "whatsapp invitation message",
+    "meeting message on whatsapp",
+    "event invitation message",
+    "RSVP message examples"
+  ],
+  "heroImageUrl": "/hostiko-crm/generated/blog/talk-wagon-whatsapp-event-invitation-messages-hero.webp",
+  "heroImageAlt": "TalkWagon event invitation workflow showing approved template, RSVP segments, reminder schedule, and delivery tracking",
+  "heroImageWidth": 1600,
+  "heroImageHeight": 900,
+  "faqs": [
+    {
+      "question": "What should a WhatsApp event invitation message include?",
+      "answer": "It should include the event name, reason to attend, date, time, location or link, who it is for, RSVP action, deadline, and a way to ask questions or opt out where relevant."
+    },
+    {
+      "question": "Can businesses send event invitations on WhatsApp?",
+      "answer": "Yes, but they should send invitations only to people who have opted in or have a clear relationship with the business. On the WhatsApp Business Platform, a proactive event invitation will often need an approved template."
+    },
+    {
+      "question": "Is an event invitation a marketing or utility template?",
+      "answer": "Many event invitations are marketing because they promote attendance or engagement. A reminder for an event the customer already registered for may be closer to a utility update. The final category depends on the exact message purpose."
+    },
+    {
+      "question": "How many reminders should I send for an event?",
+      "answer": "A practical sequence is one invitation, one confirmation, one reminder 24 hours before, and one final reminder shortly before the event. Reduce frequency if the audience is sensitive or the event is low urgency."
+    },
+    {
+      "question": "How should teams handle event replies?",
+      "answer": "Route replies into a shared inbox, tag RSVP status, assign questions to the right person, update attendance lists, and prepare follow-up messages for attended, missed, and interested contacts."
+    }
+  ]
+}

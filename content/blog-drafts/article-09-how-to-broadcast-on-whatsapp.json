@@ -1,0 +1,49 @@
+{
+  "slug": "how-to-broadcast-on-whatsapp",
+  "status": "draft",
+  "title": "How to Broadcast on WhatsApp: Lists, Consent, Templates, and Safe Operations",
+  "seoTitle": "How to Broadcast on WhatsApp Safely (2026)",
+  "description": "Learn how to broadcast on WhatsApp with consent, approved templates, audience checks, scheduling, delivery tracking, and safe business workflows.",
+  "excerpt": "A practical guide for teams that want to send WhatsApp broadcasts without turning a campaign into spam, broken templates, or unmanaged replies.",
+  "contentFile": "article-09-how-to-broadcast-on-whatsapp.md",
+  "category": "WhatsApp Marketing",
+  "author": "TalkWagon Editorial Team",
+  "readingTime": "15 min read",
+  "primaryKeyword": "how to broadcast on whatsapp",
+  "secondaryKeywords": [
+    "whatsapp broadcast list",
+    "whatsapp broadcast message",
+    "broadcast message whatsapp",
+    "what is a whatsapp broadcast"
+  ],
+  "heroImageUrl": "/hostiko-crm/generated/blog/talk-wagon-how-to-broadcast-on-whatsapp-hero.webp",
+  "heroImageAlt": "TalkWagon broadcast workspace showing approved templates, audience checks, scheduled queue status, and delivery tracking",
+  "heroImageWidth": 1600,
+  "heroImageHeight": 900,
+  "faqs": [
+    {
+      "question": "What is a WhatsApp broadcast?",
+      "answer": "A WhatsApp broadcast is a way to send one message to many selected recipients while keeping each recipient's conversation private. In a business workflow, broadcasts should be sent only to people who have opted in and should use approved templates when required by the WhatsApp Business Platform."
+    },
+    {
+      "question": "Can I broadcast on WhatsApp without a CRM?",
+      "answer": "Yes, very small teams can use the WhatsApp Business app broadcast-list feature. Larger teams usually need a CRM or WhatsApp Business Platform workflow for consent records, approved templates, segmentation, scheduling, failure handling, and reply ownership."
+    },
+    {
+      "question": "Do WhatsApp broadcasts need approved templates?",
+      "answer": "If the business initiates a message outside the customer service window on the WhatsApp Business Platform, it normally needs an approved message template. App-only broadcast behavior is different, but teams should still avoid sending unwanted messages."
+    },
+    {
+      "question": "How do I avoid spam complaints when broadcasting on WhatsApp?",
+      "answer": "Send only to opted-in contacts, keep the message relevant to the audience, identify the business clearly, give people an easy way to stop receiving messages, limit frequency, and monitor blocks, failures, and replies."
+    },
+    {
+      "question": "What should I track after sending a WhatsApp broadcast?",
+      "answer": "Track queued, sent, delivered, failed, replied, opted out, and handoff states. Delivery alone is not enough because replies, failures, consent changes, and follow-up ownership determine whether the campaign was useful."
+    },
+    {
+      "question": "Where does TalkWagon fit in a WhatsApp broadcast workflow?",
+      "answer": "TalkWagon helps teams prepare contact audiences, use approved templates, run broadcasts, track message progress, manage replies in the team inbox, and connect follow-up work to contacts, pipelines, automations, and human agents."
+    }
+  ]
+}
