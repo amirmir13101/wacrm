@@ -23,13 +23,23 @@ const drafts = [
     slug: "how-to-broadcast-on-whatsapp",
     primaryKeyword: "how to broadcast on whatsapp",
     image: "/hostiko-crm/generated/blog/talk-wagon-how-to-broadcast-on-whatsapp-hero.webp",
-    requiredPhrases: ["Consent and opt-out rules", "Template and message structure", "TalkWagon's [broadcast workflow]"],
+    bodyImages: [
+      "/hostiko-crm/generated/blog/talk-wagon-broadcast-audience-preflight.webp",
+      "/hostiko-crm/generated/blog/talk-wagon-broadcast-template-review.webp",
+      "/hostiko-crm/generated/blog/talk-wagon-broadcast-delivery-replies.webp",
+    ],
+    requiredPhrases: ["Consent and opt-out rules", "Template and message structure", "TalkWagon’s [broadcast workflow]"],
   },
   {
     metadataFile: "article-14-whatsapp-business-message-template.json",
     slug: "whatsapp-business-message-template",
     primaryKeyword: "whatsapp business message template",
     image: "/hostiko-crm/generated/blog/talk-wagon-whatsapp-business-message-template-hero.webp",
+    bodyImages: [
+      "/hostiko-crm/generated/blog/talk-wagon-template-category-decision-tree.webp",
+      "/hostiko-crm/generated/blog/talk-wagon-template-anatomy-editor.webp",
+      "/hostiko-crm/generated/blog/talk-wagon-template-governance-approval.webp",
+    ],
     requiredPhrases: ["Template messages versus quick replies", "Template categories", "Template library governance"],
   },
   {
@@ -37,14 +47,24 @@ const drafts = [
     slug: "whatsapp-bericht-plannen",
     primaryKeyword: "whatsapp bericht plannen",
     image: "/hostiko-crm/generated/blog/talk-wagon-whatsapp-bericht-plannen-hero.webp",
-    requiredPhrases: ["Inhoud", "Toestemming en klantverwachting", "Hoe TalkWagon helpt"],
+    bodyImages: [
+      "/hostiko-crm/generated/blog/talk-wagon-whatsapp-bericht-plannen-methoden.webp",
+      "/hostiko-crm/generated/blog/talk-wagon-whatsapp-bericht-plannen-workflow.webp",
+      "/hostiko-crm/generated/blog/talk-wagon-whatsapp-bericht-plannen-campagne.webp",
+    ],
+    requiredPhrases: ["Wat betekent een WhatsApp bericht plannen?", "Toestemming en klantverwachting", "Hoe TalkWagon helpt"],
   },
   {
     metadataFile: "article-20-whatsapp-event-invitation-messages.json",
     slug: "whatsapp-event-invitation-messages",
     primaryKeyword: "whatsapp message for event invitation",
     image: "/hostiko-crm/generated/blog/talk-wagon-whatsapp-event-invitation-messages-hero.webp",
-    requiredPhrases: ["RSVP and reminder workflow", "Event invitation templates", "Follow-up after the event"],
+    bodyImages: [
+      "/hostiko-crm/generated/blog/talk-wagon-event-invitation-builder.webp",
+      "/hostiko-crm/generated/blog/talk-wagon-event-rsvp-reminder-workflow.webp",
+      "/hostiko-crm/generated/blog/talk-wagon-event-campaign-analytics.webp",
+    ],
+    requiredPhrases: ["RSVP and reminder workflow", "Event invitation messages by use case", "Post-event follow-up"],
   },
 ] as const;
 
@@ -79,6 +99,22 @@ describe("Article 09, 14, 18, and 20 managed drafts", () => {
       const stat = statSync(filePath);
       expect(stat.size).toBeGreaterThan(40_000);
       expect(stat.size).toBeLessThan(150_000);
+    }
+  });
+
+  it("uses at least four optimized article images and avoids duplicate top-of-article table of contents", () => {
+    for (const draft of drafts) {
+      const { markdown } = loadDraft(draft.metadataFile);
+      expect(markdown).not.toMatch(/^## Table of contents\b/im);
+      expect(markdown).not.toMatch(/^## Inhoud\b/im);
+
+      for (const image of draft.bodyImages) {
+        expect(markdown).toContain(`](${image})`);
+        const filePath = path.join(root, "public", image);
+        const stat = statSync(filePath);
+        expect(stat.size).toBeGreaterThan(30_000);
+        expect(stat.size).toBeLessThan(150_000);
+      }
     }
   });
 
