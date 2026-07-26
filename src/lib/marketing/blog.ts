@@ -2,6 +2,47 @@ import { getCanonicalUrl } from "@/lib/site-url";
 
 export const blogArticles = [
   {
+    slug: "how-to-schedule-whatsapp-messages",
+    path: "/blog/how-to-schedule-whatsapp-messages",
+    title: "How to Schedule WhatsApp Messages: Methods, Limits, and Team Workflows",
+    seoTitle: "How to Schedule WhatsApp Messages: Methods, Limits, and Workflows",
+    description:
+      "Learn how to schedule WhatsApp messages for business use, including broadcasts, away messages, templates, reminders, automation, limits, and team checks.",
+    excerpt:
+      "A practical scheduling guide for WhatsApp business teams that need timed broadcasts, away-message schedules, follow-up reminders, template checks, and human review.",
+    primaryKeyword: "schedule whatsapp messages",
+    secondaryKeywords: [
+      "schedule whatsapp message",
+      "can I schedule messages ahead of time",
+      "automate WhatsApp messages",
+      "WhatsApp scheduled broadcast",
+      "WhatsApp follow-up reminders",
+      "WhatsApp message timing",
+      "WhatsApp Business schedule messages",
+    ],
+    market: "United States",
+    semrush: {
+      database: "us",
+      volume: 390,
+      kd: 6,
+      cpc: null,
+      intent: "Informational",
+      researchDate: "July 25, 2026",
+      validationStatus: "Live Semrush connector result recorded in the Article 08 roadmap",
+    },
+    author: "TalkWagon Editorial Team",
+    publishedDate: "2026-07-27",
+    updatedDate: "2026-07-27",
+    readingTime: "12 min read",
+    image: {
+      src: "/hostiko-crm/generated/blog/talk-wagon-schedule-whatsapp-messages-hero.webp",
+      width: 1600,
+      height: 900,
+      alt: "TalkWagon dashboard showing scheduled WhatsApp messages, a shared inbox, follow-up queue, and timing controls for business teams",
+    },
+    canonicalUrl: getCanonicalUrl("/blog/how-to-schedule-whatsapp-messages"),
+  },
+  {
     slug: "delightchat-alternative",
     path: "/blog/delightchat-alternative",
     title: "DelightChat Alternative: A Practical Comparison for WhatsApp Teams",

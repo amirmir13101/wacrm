@@ -81,6 +81,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.7,
     },
     {
+      url: `${siteUrl}/blog/how-to-schedule-whatsapp-messages`,
+      lastModified: new Date("2026-07-27"),
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+    {
       url: `${siteUrl}/blog/whatsapp-business-greeting-message-examples`,
       lastModified: new Date("2026-07-19"),
       changeFrequency: "monthly",
