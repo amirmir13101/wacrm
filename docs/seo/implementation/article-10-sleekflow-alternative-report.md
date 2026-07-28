@@ -123,4 +123,3 @@ Image rules checked:
 ## Protected systems
 
 No authentication, payment, checkout, pricing calculation, database, migration, WhatsApp credential, webhook, broadcast worker, scheduler, AI chatbot, automation, or VPS deployment configuration was intentionally changed.
-
