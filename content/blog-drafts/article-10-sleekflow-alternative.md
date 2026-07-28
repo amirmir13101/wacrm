@@ -11,8 +11,8 @@ TalkWagon is not affiliated with SleekFlow. This guide is written as a practical
 :::tw-cta
 variant: banner
 eyebrow: Limited time deal
-title: 1 million CRM broadcast messages. Start from $1.
-body: Manage WhatsApp conversations, contacts, broadcasts, AI chatbot workflows, automation, and follow-ups in one clean TalkWagon workspace.
+title: 1 million CRM broadcast messages for $1/month.
+body: Try one of the world’s cheapest WhatsApp CRM offers for conversations, contacts, broadcasts, AI chatbot workflows, automation, and follow-ups in one clean TalkWagon workspace.
 button: Start your 14-day free trial
 href: /signup
 :::
@@ -254,7 +254,7 @@ The best decision is practical: compare the full cost model, test the real workf
 :::tw-cta
 variant: banner
 eyebrow: Grow with TalkWagon
-title: Start using a low-cost WhatsApp CRM today
+title: Start using one of the world’s cheapest WhatsApp CRMs
 body: Turn WhatsApp chats into organized contacts, team replies, broadcasts, automations, AI answers, and follow-up work from one dashboard.
 button: Start free trial
 href: /signup

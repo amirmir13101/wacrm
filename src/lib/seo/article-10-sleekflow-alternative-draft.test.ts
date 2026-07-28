@@ -60,9 +60,9 @@ describe("Article 10 SleekFlow alternative managed draft", () => {
     const ctaCount = (markdown.match(/^:::tw-cta$/gm) ?? []).length;
     expect(ctaCount).toBe(3);
     expect(markdown).toContain("Start your 14-day free trial");
-    expect(markdown).toContain("1 million CRM broadcast messages. Start from $1.");
-    expect(markdown).toContain("Start using a low-cost WhatsApp CRM today");
-    expect(markdown).not.toMatch(/only \$1\/month|world cheapest|CRM access is separate|Plans include|renews at/i);
+    expect(markdown).toContain("1 million CRM broadcast messages for $1/month.");
+    expect(markdown).toContain("Start using one of the world’s cheapest WhatsApp CRMs");
+    expect(markdown).not.toMatch(/CRM access is separate|Plans include|renews at/i);
   });
 
   it("keeps comparison content useful and avoids source-link dumps", () => {

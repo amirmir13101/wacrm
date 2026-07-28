@@ -67,8 +67,8 @@ CTA placements:
 The CTA copy avoids misleading recurring `$1/month` claims. It uses the current offer framing:
 
 - 14-day free trial.
-- Stronger CTA copy with `1 million CRM broadcast messages` and `Start from $1` phrasing.
-- Low-cost WhatsApp CRM positioning without unverified cheapest-in-the-world claims.
+- Stronger CTA copy with `1 million CRM broadcast messages for $1/month` phrasing.
+- CTA-strip positioning includes `one of the world’s cheapest WhatsApp CRM offers` language as requested.
 - No disliked CTA note text about separate access charges or renewal-price caveats.
 
 ## Images
