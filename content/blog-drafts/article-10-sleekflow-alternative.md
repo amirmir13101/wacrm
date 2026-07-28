@@ -10,12 +10,11 @@ TalkWagon is not affiliated with SleekFlow. This guide is written as a practical
 
 :::tw-cta
 variant: banner
-eyebrow: Try before you switch
-title: Test a WhatsApp-first CRM without a long buying cycle
-body: Start with a 14-day free trial, connect your own approved WhatsApp setup, and see whether your team can manage conversations, contacts, broadcasts, automation, and follow-ups from one workspace.
+eyebrow: Limited time deal
+title: 1 million CRM broadcast messages. Start from $1.
+body: Manage WhatsApp conversations, contacts, broadcasts, AI chatbot workflows, automation, and follow-ups in one clean TalkWagon workspace.
 button: Start your 14-day free trial
 href: /signup
-note: CRM access is separate from WhatsApp/Meta or official provider messaging charges.
 :::
 
 ## What a SleekFlow alternative should actually solve
@@ -48,7 +47,7 @@ That difference matters because “more channels” and “better WhatsApp CRM o
 | Decision area | SleekFlow-style evaluation | TalkWagon-style evaluation | What the buyer should ask |
 |---|---|---|---|
 | Main channel strategy | Omnichannel engagement | WhatsApp-first CRM | Are most revenue and support conversations happening on WhatsApp? |
-| Cost review | Subscription, active contacts, channel usage, add-ons, WhatsApp costs | CRM plan plus separate WhatsApp/Meta or provider costs | Which model is easier to forecast for our team? |
+| Cost review | Subscription, active contacts, channel usage, add-ons, WhatsApp costs | CRM plan plus WhatsApp usage costs | Which model is easier to forecast for our team? |
 | Team inbox | Broad engagement inbox | Focused WhatsApp shared inbox | Can every conversation have an owner, status, notes, and follow-up? |
 | Broadcasts | Campaign and engagement workflows | Approved-template broadcast workflow connected to contacts and replies | Can we prepare audiences, exclude contacts, send safely, and manage replies? |
 | Automation | Flow builder and AI features | Visual flows, automation, AI chatbot, and human handoff around WhatsApp | Can automation stay helpful without hiding exceptions? |
@@ -58,12 +57,11 @@ The right choice depends on how your team works. If you need a wide customer-eng
 
 :::tw-cta
 variant: comparison
-eyebrow: Pricing checkpoint
-title: Compare the full WhatsApp cost stack before choosing
-body: TalkWagon Pro uses a first-month promo for eligible new customers and renews at $9.99/month after that. WhatsApp/Meta or provider messaging charges are separate, so compare CRM subscription, message costs, team seats, and operating limits together.
-button: View TalkWagon pricing
+eyebrow: Affordable WhatsApp CRM
+title: A lean CRM plan for serious WhatsApp teams
+body: Keep inboxes, broadcasts, contacts, workflows, AI chatbot support, and team permissions together without paying for a bulky CRM your team does not need.
+button: See TalkWagon pricing
 href: /pricing
-note: Current TalkWagon Pro includes up to 1,000,000 broadcast messages per billing period from the CRM side.
 :::
 
 ## When SleekFlow may still be the better fit
@@ -110,13 +108,13 @@ For a **SleekFlow alternative**, compare at least six cost layers:
 1. Base platform subscription.
 2. Seats or user limits.
 3. Contacts, active contacts, or monthly contact usage rules.
-4. WhatsApp Business Platform, Meta, or official provider messaging charges.
+4. WhatsApp usage costs connected to your business setup.
 5. Add-ons for automation, AI, channels, reporting, onboarding, or integrations.
 6. Internal migration and training effort.
 
 SleekFlow’s public pricing explains Monthly Active Contacts as an important pricing concept. That means buyers should understand exactly when a contact becomes active, how usage is counted, and how campaigns, inbox replies, AI, WhatsApp co-existence, or API calls affect the monthly number.
 
-TalkWagon keeps the CRM subscription simpler: the public [TalkWagon pricing page](/pricing) explains the 14-day free trial, the Pro first-month promo for eligible new customers, renewal pricing, included CRM features, team member limit, and broadcast-message allowance. It still keeps WhatsApp/Meta or official provider charges separate because those costs depend on the business’s own WhatsApp setup and market.
+TalkWagon keeps the CRM buying decision simpler: the public [TalkWagon pricing page](/pricing) explains the 14-day free trial, Pro plan offer, included CRM features, team member limit, and broadcast-message allowance in one place.
 
 ### A practical cost worksheet
 
@@ -129,14 +127,6 @@ TalkWagon keeps the CRM subscription simpler: the public [TalkWagon pricing page
 | Which features are required on day one? | Add-ons and advanced tiers can change the comparison. | Inbox, templates, broadcasts, automations, AI, exports |
 | How hard is migration? | Switching cost can outweigh subscription savings. | Data export, templates, workflows, roles, training |
 
-:::tw-cta
-variant: inline
-eyebrow: Cost clarity
-title: Estimate before you move campaigns
-body: Use TalkWagon’s public WhatsApp API pricing page to understand official messaging cost layers, then compare the CRM subscription separately.
-button: Open WhatsApp API prices
-href: /whatsapp-api-prices
-:::
 
 ## Shared inbox: evaluate ownership, not only message display
 
@@ -173,14 +163,6 @@ When evaluating alternatives to SleekFlow, check whether the broadcast workflow 
 
 TalkWagon’s [broadcast feature](/features/broadcasts) is designed around this practical cycle. If your marketing team sends campaigns and your support team receives the replies, the CRM must connect both sides.
 
-:::tw-cta
-variant: feature
-eyebrow: Broadcast workflow
-title: Manage campaigns and replies in the same WhatsApp CRM
-body: Prepare audiences, use approved templates, send broadcasts, and keep replies connected to the team inbox instead of scattering follow-up across separate tools.
-button: Explore broadcast features
-href: /features/broadcasts
-:::
 
 ## Automation: compare what happens when the bot is wrong
 
@@ -229,14 +211,6 @@ Send a small internal or low-risk campaign before moving a full audience. Confir
 
 Agents need to know where to reply, how to assign, how to update contacts, when to use templates, and when to escalate.
 
-:::tw-cta
-variant: card
-eyebrow: Migration support
-title: Start small, then scale the workflow
-body: Use TalkWagon for a focused pilot: one inbox queue, one contact segment, one approved template, and one automation. If the workflow feels clean, expand from there.
-button: Start using TalkWagon
-href: /signup
-:::
 
 ## Decision matrix: SleekFlow alternative checklist
 
@@ -279,10 +253,9 @@ The best decision is practical: compare the full cost model, test the real workf
 
 :::tw-cta
 variant: banner
-eyebrow: Final step
-title: Try TalkWagon as your WhatsApp-first CRM
-body: Start your 14-day free trial, compare the workflow with your current setup, and see whether your team can manage WhatsApp conversations, broadcasts, automation, AI chatbot answers, and follow-up in one place.
+eyebrow: Grow with TalkWagon
+title: Start using a low-cost WhatsApp CRM today
+body: Turn WhatsApp chats into organized contacts, team replies, broadcasts, automations, AI answers, and follow-up work from one dashboard.
 button: Start free trial
 href: /signup
-note: Plans include a first-month Pro promo for eligible new customers, then renew at the current Pro monthly price.
 :::

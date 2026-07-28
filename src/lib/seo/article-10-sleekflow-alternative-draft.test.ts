@@ -58,11 +58,11 @@ describe("Article 10 SleekFlow alternative managed draft", () => {
 
   it("adds native conversion CTA blocks without misleading recurring price claims", () => {
     const ctaCount = (markdown.match(/^:::tw-cta$/gm) ?? []).length;
-    expect(ctaCount).toBeGreaterThanOrEqual(5);
+    expect(ctaCount).toBe(3);
     expect(markdown).toContain("Start your 14-day free trial");
-    expect(markdown).toContain("renews at $9.99/month");
-    expect(markdown).toContain("1,000,000 broadcast messages per billing period");
-    expect(markdown).not.toMatch(/only \$1\/month/i);
+    expect(markdown).toContain("1 million CRM broadcast messages. Start from $1.");
+    expect(markdown).toContain("Start using a low-cost WhatsApp CRM today");
+    expect(markdown).not.toMatch(/only \$1\/month|world cheapest|CRM access is separate|Plans include|renews at/i);
   });
 
   it("keeps comparison content useful and avoids source-link dumps", () => {

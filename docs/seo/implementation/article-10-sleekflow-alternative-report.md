@@ -56,24 +56,20 @@ The draft follows the managed article structure used by previous blog drafts:
 
 ## Promotional CTA implementation
 
-Article 10 introduces reusable managed-article CTA blocks using the `:::tw-cta` markdown syntax. These render as native TalkWagon promotional sections inside the existing article renderer.
+Article 10 uses three reusable managed-article CTA blocks with the `:::tw-cta` markdown syntax. These render as native TalkWagon promotional strips inside the existing article renderer.
 
 CTA placements:
 
-1. Free-trial banner after the intro.
-2. Pricing comparison CTA after the core comparison table.
-3. Inline WhatsApp API cost-estimator CTA after the cost worksheet.
-4. Broadcast workflow feature CTA after the broadcast section.
-5. Migration support CTA before the decision matrix.
-6. Final conversion CTA near the conclusion.
+1. Limited-time deal banner after the intro.
+2. Affordable WhatsApp CRM strip after the core comparison table.
+3. Final conversion banner near the conclusion.
 
 The CTA copy avoids misleading recurring `$1/month` claims. It uses the current offer framing:
 
 - 14-day free trial.
-- Eligible new customers: first-month Pro promo.
-- Pro renewal price: `$9.99/month`.
-- Pro broadcast allowance: up to `1,000,000` broadcast messages per billing period from the CRM side.
-- WhatsApp/Meta or official provider messaging charges remain separate.
+- Stronger CTA copy with `1 million CRM broadcast messages` and `Start from $1` phrasing.
+- Low-cost WhatsApp CRM positioning without unverified cheapest-in-the-world claims.
+- No disliked CTA note text about separate access charges or renewal-price caveats.
 
 ## Images
 
