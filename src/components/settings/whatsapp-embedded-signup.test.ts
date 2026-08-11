@@ -75,4 +75,19 @@ describe('WhatsApp Embedded Signup API security', () => {
     expect(embeddedSignupCallbackRoute).toContain('encrypt(accessToken)')
     expect(embeddedSignupCallbackRoute).toContain("from('whatsapp_config')")
   })
+
+  it('requires the WABA ID and subscribes it to WhatsApp webhook events before saving as connected', () => {
+    expect(embeddedSignupCallbackRoute).toContain('!wabaId')
+    expect(embeddedSignupCallbackRoute).toContain('subscribed_apps')
+    expect(embeddedSignupCallbackRoute).toContain("subscribed_fields: 'messages'")
+    expect(embeddedSignupCallbackRoute.indexOf('await subscribeAppToWaba')).toBeLessThan(
+      embeddedSignupCallbackRoute.indexOf("from('whatsapp_config')"),
+    )
+  })
+
+  it('only accepts Embedded Signup postMessage events from real facebook.com origins', () => {
+    expect(whatsappConfigUi).toContain("originHost !== 'facebook.com'")
+    expect(whatsappConfigUi).toContain("!originHost.endsWith('.facebook.com')")
+    expect(whatsappConfigUi).not.toContain("event.origin.endsWith('facebook.com')")
+  })
 })

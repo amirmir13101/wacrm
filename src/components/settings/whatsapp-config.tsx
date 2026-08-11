@@ -274,7 +274,13 @@ export function WhatsAppConfig() {
 
   useEffect(() => {
     function handleEmbeddedSignupMessage(event: MessageEvent) {
-      if (!event.origin.endsWith('facebook.com')) return;
+      let originHost = '';
+      try {
+        originHost = new URL(event.origin).hostname;
+      } catch {
+        return;
+      }
+      if (originHost !== 'facebook.com' && !originHost.endsWith('.facebook.com')) return;
 
       let payload: EmbeddedSignupMessage | null = null;
       if (typeof event.data === 'string') {

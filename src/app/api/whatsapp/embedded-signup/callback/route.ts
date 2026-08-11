@@ -15,6 +15,11 @@ interface ExchangeResponse {
   error?: { message?: string; code?: number; type?: string }
 }
 
+interface MetaMutationResponse {
+  success?: boolean
+  error?: { message?: string; code?: number; type?: string }
+}
+
 function getServerConfig() {
   return {
     appId: process.env.META_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID || '',
@@ -47,6 +52,30 @@ async function exchangeCodeForToken(args: {
   }
 
   return payload.access_token
+}
+
+async function subscribeAppToWaba(args: {
+  wabaId: string
+  accessToken: string
+  graphApiVersion: string
+}) {
+  const response = await fetch(
+    `https://graph.facebook.com/${args.graphApiVersion}/${args.wabaId}/subscribed_apps`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ subscribed_fields: 'messages' }),
+    },
+  )
+  const payload = (await response.json().catch(() => ({}))) as MetaMutationResponse
+
+  if (!response.ok || payload.success === false) {
+    const message = payload.error?.message || `Meta webhook subscription failed: ${response.status}`
+    throw new Error(message)
+  }
 }
 
 export async function POST(request: Request) {
@@ -91,9 +120,9 @@ export async function POST(request: Request) {
       typeof body.phone_number_id === 'string' ? body.phone_number_id.trim() : ''
     const wabaId = typeof body.waba_id === 'string' ? body.waba_id.trim() : ''
 
-    if (!code || !phoneNumberId) {
+    if (!code || !phoneNumberId || !wabaId) {
       return NextResponse.json(
-        { error: 'Meta signup did not return a code and phone number ID.' },
+        { error: 'Meta signup did not return a code, phone number ID, and WABA ID.' },
         { status: 400 },
       )
     }
@@ -108,6 +137,12 @@ export async function POST(request: Request) {
     const phoneInfo = await verifyPhoneNumber({
       phoneNumberId,
       accessToken,
+    })
+
+    await subscribeAppToWaba({
+      wabaId,
+      accessToken,
+      graphApiVersion: serverConfig.graphApiVersion,
     })
 
     const encryptedAccessToken = encrypt(accessToken)
