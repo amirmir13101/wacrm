@@ -53,6 +53,27 @@ describe('WhatsApp Embedded Signup settings UI', () => {
     expect(whatsappConfigUi).toContain('response.error?.message')
     expect(whatsappConfigUi).toContain('response.error_message')
   })
+
+  it('requests versioned Embedded Signup session info so Meta returns phone and WABA IDs', () => {
+    expect(whatsappConfigUi).toContain("feature: 'whatsapp_embedded_signup'")
+    expect(whatsappConfigUi).toContain("sessionInfoVersion: '3'")
+  })
+
+  it('handles Embedded Signup IDs from supported Meta payload shapes', () => {
+    expect(whatsappConfigUi).toContain('function getEmbeddedSignupIds')
+    expect(whatsappConfigUi).toContain('payload.data?.phone_number_id')
+    expect(whatsappConfigUi).toContain('payload.data?.phoneNumberId')
+    expect(whatsappConfigUi).toContain('payload.data?.phone?.id')
+    expect(whatsappConfigUi).toContain('payload.data?.waba_id')
+    expect(whatsappConfigUi).toContain('payload.data?.wabaId')
+    expect(whatsappConfigUi).toContain('payload.data?.whatsapp_business_account?.id')
+  })
+
+  it('waits briefly for the Embedded Signup postMessage before reporting missing phone ID', () => {
+    expect(whatsappConfigUi).toContain('function waitForEmbeddedSignupIds')
+    expect(whatsappConfigUi).toContain('await waitForEmbeddedSignupIds()')
+    expect(whatsappConfigUi).toContain('Date.now() - startedAt >= 4000')
+  })
 })
 
 describe('WhatsApp Embedded Signup API security', () => {

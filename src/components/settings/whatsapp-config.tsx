@@ -52,6 +52,14 @@ type EmbeddedSignupMessage = {
   data?: {
     phone_number_id?: string;
     waba_id?: string;
+    phoneNumberId?: string;
+    wabaId?: string;
+    phone?: {
+      id?: string;
+    };
+    whatsapp_business_account?: {
+      id?: string;
+    };
   };
 };
 
@@ -108,6 +116,36 @@ export function WhatsAppConfig() {
     phone_number_id?: string;
     waba_id?: string;
   }>({});
+
+  function getEmbeddedSignupIds(payload: EmbeddedSignupMessage) {
+    return {
+      phone_number_id:
+        payload.data?.phone_number_id ||
+        payload.data?.phoneNumberId ||
+        payload.data?.phone?.id,
+      waba_id:
+        payload.data?.waba_id ||
+        payload.data?.wabaId ||
+        payload.data?.whatsapp_business_account?.id,
+    };
+  }
+
+  function waitForEmbeddedSignupIds() {
+    return new Promise<typeof embeddedSignupIdsRef.current>((resolve) => {
+      if (embeddedSignupIdsRef.current.phone_number_id) {
+        resolve(embeddedSignupIdsRef.current);
+        return;
+      }
+
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        if (embeddedSignupIdsRef.current.phone_number_id || Date.now() - startedAt >= 4000) {
+          window.clearInterval(interval);
+          resolve(embeddedSignupIdsRef.current);
+        }
+      }, 100);
+    });
+  }
 
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [wabaId, setWabaId] = useState('');
@@ -295,10 +333,7 @@ export function WhatsAppConfig() {
 
       if (payload?.type !== 'WA_EMBEDDED_SIGNUP') return;
       if (payload.event === 'FINISH' || payload.event === 'FINISH_ONLY_WABA') {
-        const ids = {
-          phone_number_id: payload.data?.phone_number_id,
-          waba_id: payload.data?.waba_id,
-        };
+        const ids = getEmbeddedSignupIds(payload);
         embeddedSignupIdsRef.current = ids;
         setEmbeddedSignupIds(ids);
       }
@@ -453,8 +488,9 @@ export function WhatsAppConfig() {
       }
 
       const code = response.authResponse?.code;
-      const phoneNumberId = embeddedSignupIdsRef.current.phone_number_id;
-      const embeddedWabaId = embeddedSignupIdsRef.current.waba_id;
+      const signupIds = await waitForEmbeddedSignupIds();
+      const phoneNumberId = signupIds.phone_number_id;
+      const embeddedWabaId = signupIds.waba_id;
 
       if (!code) {
         const cancelled = response.status && response.status !== 'connected';
@@ -540,6 +576,8 @@ export function WhatsAppConfig() {
           override_default_response_type: true,
           extras: {
             setup: {},
+            feature: 'whatsapp_embedded_signup',
+            sessionInfoVersion: '3',
           },
         },
       );
