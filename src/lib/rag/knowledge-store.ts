@@ -449,26 +449,21 @@ export async function deleteRagKnowledgeSource(args: {
   if (sourceError) throw new Error(sourceError.message)
   if (!source) throw new Error('Knowledge source not found.')
 
-  const { data: chunks, error: chunksError } = await admin
+  const { count: chunkCount, error: chunksError } = await admin
     .from('rag_knowledge_chunks')
-    .select('id')
+    .select('id', { head: true, count: 'exact' })
     .eq('workspace_id', args.workspaceId)
     .eq('source_id', args.sourceId)
 
   if (chunksError) throw new Error(chunksError.message)
-  const chunkIds = ((chunks ?? []) as Array<{ readonly id: string }>).map((chunk) => chunk.id)
 
-  let embeddingsDeleted = 0
-  if (chunkIds.length > 0) {
-    const { count, error } = await admin
-      .from('rag_embeddings')
-      .delete({ count: 'exact' })
-      .eq('workspace_id', args.workspaceId)
-      .in('chunk_id', chunkIds)
+  const { count: embeddingCount, error: embeddingsCountError } = await admin
+    .from('rag_embeddings')
+    .select('id, rag_knowledge_chunks!inner(source_id)', { head: true, count: 'exact' })
+    .eq('workspace_id', args.workspaceId)
+    .eq('rag_knowledge_chunks.source_id', args.sourceId)
 
-    if (error) throw new Error(error.message)
-    embeddingsDeleted = count ?? 0
-  }
+  if (embeddingsCountError) throw new Error(embeddingsCountError.message)
 
   const { count: chunksDeletedCount, error: deleteChunksError } = await admin
     .from('rag_knowledge_chunks')
@@ -489,8 +484,8 @@ export async function deleteRagKnowledgeSource(args: {
   return {
     deleted: true,
     sourceId: args.sourceId,
-    chunksDeleted: chunksDeletedCount ?? 0,
-    embeddingsDeleted,
+    chunksDeleted: chunksDeletedCount ?? chunkCount ?? 0,
+    embeddingsDeleted: embeddingCount ?? 0,
   }
 }
 

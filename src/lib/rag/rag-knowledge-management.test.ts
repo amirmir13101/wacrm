@@ -208,8 +208,10 @@ describe('RAG manual knowledge management', () => {
   it('permanently deletes sources, chunks, and embeddings while keeping WhatsApp RAG guarded', () => {
     expect(knowledgeStore).toContain('deleteRagKnowledgeSource')
     expect(knowledgeStore).toContain("from('rag_embeddings')")
-    expect(knowledgeStore).toContain(".in('chunk_id', chunkIds)")
+    expect(knowledgeStore).toContain("rag_knowledge_chunks!inner(source_id)")
+    expect(knowledgeStore).not.toContain(".in('chunk_id', chunkIds)")
     expect(knowledgeStore).toContain("from('rag_knowledge_chunks')")
+    expect(knowledgeStore).toContain(".eq('source_id', args.sourceId)")
     expect(knowledgeStore).toContain("from('rag_knowledge_sources')")
     expect(knowledgeStore).toContain('chunksDeleted')
     expect(knowledgeStore).toContain('embeddingsDeleted')
