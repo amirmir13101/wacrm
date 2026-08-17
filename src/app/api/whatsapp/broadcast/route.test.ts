@@ -83,6 +83,21 @@ describe('/api/whatsapp/broadcast compatibility route', () => {
     )
   })
 
+  it('refunds broadcast quota when Meta later marks an accepted broadcast message failed', () => {
+    const webhookSource = readFileSync(
+      join(process.cwd(), 'src/app/api/whatsapp/webhook/route.ts'),
+      'utf8',
+    )
+
+    expect(webhookSource).toContain("import { releaseWorkspaceBroadcastUsage } from '@/lib/billing/trial'")
+    expect(webhookSource).toContain(".select('id, status, broadcast:broadcasts(workspace_id)')")
+    expect(webhookSource).toContain("if (status.status === 'failed')")
+    expect(webhookSource).toContain('await releaseWorkspaceBroadcastUsage({ workspaceId, count: 1 })')
+    expect(webhookSource.indexOf("status.status === 'failed'")).toBeLessThan(
+      webhookSource.indexOf('await releaseWorkspaceBroadcastUsage({ workspaceId, count: 1 })'),
+    )
+  })
+
   it('loads shared admin-managed pricing rates for preflight estimates', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
 

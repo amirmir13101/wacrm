@@ -19,6 +19,10 @@ describe('workspace trial migration', () => {
     join(process.cwd(), 'supabase/migrations/063_pro_broadcast_allowance_renewal_reset.sql'),
     'utf8',
   )
+  const failedUsageReconcileMigration = readFileSync(
+    join(process.cwd(), 'supabase/migrations/064_reconcile_failed_broadcast_usage.sql'),
+    'utf8',
+  )
 
   it('adds workspace plan and trial broadcast usage fields', () => {
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS plan_type')
@@ -73,5 +77,16 @@ describe('workspace trial migration', () => {
     expect(renewalUsageMigration).toContain('get_workspace_broadcast_usage_status')
     expect(renewalUsageMigration).toContain('reset_workspace_pro_broadcast_period')
     expect(renewalUsageMigration).toContain('reset_pro_broadcast_period_after_manual_approval')
+  })
+
+  it('refunds historical late Meta failures without double-subtracting usage', () => {
+    expect(failedUsageReconcileMigration).toContain('CREATE TABLE IF NOT EXISTS public.broadcast_usage_corrections')
+    expect(failedUsageReconcileMigration).toContain('late_meta_failed_refund')
+    expect(failedUsageReconcileMigration).toContain('ON CONFLICT (recipient_id, correction_type) DO NOTHING')
+    expect(failedUsageReconcileMigration).toContain("recipient.status = 'failed'")
+    expect(failedUsageReconcileMigration).toContain('recipient.whatsapp_message_id IS NOT NULL')
+    expect(failedUsageReconcileMigration).toContain('recipient.sent_at IS NOT NULL')
+    expect(failedUsageReconcileMigration).toContain('messages_used = GREATEST(usage.messages_used - pro_adjustments.message_count, 0)')
+    expect(failedUsageReconcileMigration).toContain('trial_broadcast_used = GREATEST(')
   })
 })

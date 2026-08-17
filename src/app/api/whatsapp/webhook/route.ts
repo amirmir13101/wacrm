@@ -9,6 +9,7 @@ import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { inboundConsentUpdate } from '@/lib/contacts/consent'
 import { getRagAutoReplyRuntimeSettings } from '@/lib/rag/auto-reply'
 import { answerRagWhatsAppQuestion } from '@/lib/rag/chat'
+import { releaseWorkspaceBroadcastUsage } from '@/lib/billing/trial'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,6 +65,12 @@ interface WhatsAppWebhookEntry {
         status: string
         timestamp: string
         recipient_id: string
+        errors?: Array<{
+          code?: number
+          title?: string
+          message?: string
+          error_data?: { details?: string }
+        }>
       }>
     }
     field: string
@@ -278,6 +285,12 @@ async function handleStatusUpdate(status: {
   status: string
   timestamp: string
   recipient_id: string
+  errors?: Array<{
+    code?: number
+    title?: string
+    message?: string
+    error_data?: { details?: string }
+  }>
 }) {
   // 1) Mirror onto messages (legacy behavior) — Meta's status values
   //    already match the CHECK constraint on messages.status.
@@ -298,7 +311,7 @@ async function handleStatusUpdate(status: {
 
   const { data: recipient, error: recFetchErr } = await supabaseAdmin()
     .from('broadcast_recipients')
-    .select('id, status')
+    .select('id, status, broadcast:broadcasts(workspace_id)')
     .eq('whatsapp_message_id', status.id)
     .maybeSingle()
 
@@ -316,6 +329,20 @@ async function handleStatusUpdate(status: {
   if (status.status === 'sent' && !('sent_at' in update)) update.sent_at = tsIso
   if (status.status === 'delivered') update.delivered_at = tsIso
   if (status.status === 'read') update.read_at = tsIso
+  if (status.status === 'failed') {
+    const metaError = status.errors?.[0]
+    const details =
+      metaError?.error_data?.details ??
+      metaError?.message ??
+      metaError?.title ??
+      (metaError?.code ? `Meta delivery failed with code ${metaError.code}.` : null)
+
+    if (details) {
+      update.error_message = details
+      update.last_error_message = details
+    }
+    update.failure_type = 'permanent'
+  }
 
   const { error: recUpdateErr } = await supabaseAdmin()
     .from('broadcast_recipients')
@@ -324,6 +351,25 @@ async function handleStatusUpdate(status: {
 
   if (recUpdateErr) {
     console.error('Error updating broadcast recipient status:', recUpdateErr)
+    return
+  }
+
+  if (status.status === 'failed') {
+    const broadcast = Array.isArray(recipient.broadcast)
+      ? recipient.broadcast[0]
+      : recipient.broadcast
+    const workspaceId = broadcast?.workspace_id
+
+    if (workspaceId) {
+      try {
+        await releaseWorkspaceBroadcastUsage({ workspaceId, count: 1 })
+      } catch (error) {
+        console.error(
+          'Error releasing broadcast usage after Meta delivery failure:',
+          error instanceof Error ? error.message : error,
+        )
+      }
+    }
   }
 }
 
