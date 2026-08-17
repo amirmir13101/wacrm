@@ -18,7 +18,7 @@ import { dedupeSharedPricingRates } from '@/lib/whatsapp/pricing-rates'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
-import type { Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
+import type { Broadcast, Contact, MessageTemplate, VariableMapping, WhatsAppPricingRate } from '@/types'
 import { isApprovedTemplateStatus } from '@/lib/whatsapp/template-status-normalize'
 import { decrypt } from '@/lib/whatsapp/encryption'
 
@@ -40,6 +40,20 @@ type AudienceConfig = {
   }
   csvContacts?: { phone: string; name?: string }[]
   excludeTagIds?: string[]
+}
+
+const ACTIVE_BROADCAST_DELETE_STATUSES = new Set(['queued', 'sending'])
+
+function readBroadcastIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return [
+    ...new Set(
+      value
+        .filter((id): id is string => typeof id === 'string')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
+  ]
 }
 
 export function sameParams(a: string[], b: string[]) {
@@ -563,6 +577,80 @@ export async function POST(request: Request) {
     console.error('Error queueing WhatsApp broadcast:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to queue broadcast' },
+      { status: 500 },
+    )
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const workspaceResult = await requireCurrentWorkspace()
+    if (!workspaceResult.ok) {
+      return NextResponse.json(
+        { error: workspaceResult.error },
+        { status: workspaceResult.status },
+      )
+    }
+
+    const workspace = workspaceResult.workspace
+    const permissionSubject = {
+      role: workspace.role,
+      permissions: workspace.permissions,
+      can_connect_own_whatsapp: workspace.canConnectOwnWhatsApp,
+    }
+
+    if (!hasWorkspacePermission(permissionSubject, 'pause_resume_cancel_broadcasts')) {
+      return NextResponse.json({ error: 'Permission required' }, { status: 403 })
+    }
+
+    const body = await request.json().catch(() => ({}))
+    const ids = readBroadcastIds(body.ids)
+    if (ids.length === 0) {
+      return NextResponse.json({ error: 'Select at least one broadcast to delete.' }, { status: 400 })
+    }
+
+    const supabase = supabaseAdmin()
+    const { data: broadcasts, error: fetchError } = await supabase
+      .from('broadcasts')
+      .select('id, status')
+      .eq('workspace_id', workspace.workspaceId)
+      .in('id', ids)
+
+    if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
+
+    const found = (broadcasts ?? []) as Pick<Broadcast, 'id' | 'status'>[]
+    const deletableIds = found
+      .filter((broadcast) => !ACTIVE_BROADCAST_DELETE_STATUSES.has(broadcast.status))
+      .map((broadcast) => broadcast.id)
+    const blockedIds = found
+      .filter((broadcast) => ACTIVE_BROADCAST_DELETE_STATUSES.has(broadcast.status))
+      .map((broadcast) => broadcast.id)
+    const notFoundIds = ids.filter((id) => !found.some((broadcast) => broadcast.id === id))
+
+    if (deletableIds.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('broadcasts')
+        .delete()
+        .eq('workspace_id', workspace.workspaceId)
+        .in('id', deletableIds)
+
+      if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      ok: true,
+      deletedCount: deletableIds.length,
+      skippedCount: blockedIds.length + notFoundIds.length,
+      blockedIds,
+      notFoundIds,
+      message:
+        blockedIds.length > 0
+          ? 'Some broadcasts were not deleted because they are queued or sending.'
+          : 'Selected broadcasts deleted.',
+    })
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to delete broadcasts.' },
       { status: 500 },
     )
   }

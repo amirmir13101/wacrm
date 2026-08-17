@@ -291,22 +291,19 @@ export default function BroadcastDetailPage() {
 
   async function handleDelete() {
     setDeleting(true);
-    const supabase = createClient();
-    // broadcast_recipients cascades on broadcasts.id (migration 001), so a
-    // single delete is sufficient — the aggregate trigger in migration 003
-    // is defined on broadcast_recipients but fires only on its own row
-    // changes, not on a cascaded drop of the parent row.
-    const { error: delErr } = await supabase
-      .from('broadcasts')
-      .delete()
-      .eq('id', broadcastId);
-    setDeleting(false);
-    if (delErr) {
-      toast.error(`Failed to delete: ${delErr.message}`);
-      return;
+    try {
+      const res = await fetch(`/api/whatsapp/broadcast/${broadcastId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to delete broadcast');
+      toast.success('Broadcast deleted');
+      router.push('/broadcasts');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete broadcast');
+    } finally {
+      setDeleting(false);
     }
-    toast.success('Broadcast deleted');
-    router.push('/broadcasts');
   }
 
   async function handleRetryFailed() {
@@ -761,10 +758,16 @@ export default function BroadcastDetailPage() {
                       <TableCell className="max-w-xs truncate text-xs text-amber-300">
                         {recipient.skipped_reason ?? '-'}
                       </TableCell>
-                      <TableCell className="max-w-xs truncate text-xs text-red-400">
-                        {recipient.error_message ??
-                          recipient.last_error_message ??
-                          '-'}
+                      <TableCell
+                        className="max-w-md whitespace-normal break-words text-xs text-red-300"
+                        title={recipient.error_message ?? recipient.last_error_message ?? undefined}
+                      >
+                        <div>{recipient.error_message ?? recipient.last_error_message ?? '-'}</div>
+                        {recipient.failure_type && recipient.status === 'failed' && (
+                          <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-red-200/70">
+                            {recipient.failure_type}
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   );

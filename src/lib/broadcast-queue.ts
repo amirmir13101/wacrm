@@ -7,6 +7,7 @@ import {
 } from '@/lib/whatsapp/phone-utils'
 import {
   classifyBroadcastFailure,
+  formatBroadcastFailureMessage,
   resolveBroadcastVariables,
   type BroadcastFailureType,
 } from '@/lib/broadcast-retry'
@@ -46,11 +47,7 @@ export function nextRetryAt(message: string, attemptCount: number): string | nul
 }
 
 export function safeBroadcastSendError(message: string): string {
-  if (/132001|template name does not exist in the translation/i.test(message)) {
-    return 'Selected template/language is not available in Meta anymore. Please re-sync templates and select the approved template again.'
-  }
-
-  return message
+  return formatBroadcastFailureMessage({ message })
 }
 
 export async function sendQueuedTemplateRecipient(args: {

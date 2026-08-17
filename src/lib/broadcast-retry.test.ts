@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   classifyBroadcastFailure,
+  formatBroadcastFailureMessage,
   getRetryableRecipients,
   resolveBroadcastVariables,
 } from './broadcast-retry'
@@ -98,6 +99,26 @@ describe('classifyBroadcastFailure', () => {
     expect(classifyBroadcastFailure('something unusual happened')).toBe(
       'unknown',
     )
+  })
+
+  it('formats common Meta failures into specific broadcast recipient reasons', () => {
+    expect(
+      formatBroadcastFailureMessage({
+        message: 'Message undeliverable',
+        code: 131026,
+      }),
+    ).toContain('may not have an active WhatsApp account')
+    expect(
+      formatBroadcastFailureMessage({
+        message: 'The recipient phone number is not in the allowed list',
+        code: 131030,
+      }),
+    ).toContain('not allowed for the current WhatsApp test setup')
+    expect(
+      formatBroadcastFailureMessage({
+        message: 'Unsupported post request',
+      }),
+    ).toContain('credentials or permissions')
   })
 })
 

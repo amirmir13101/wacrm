@@ -10,6 +10,7 @@ import { inboundConsentUpdate } from '@/lib/contacts/consent'
 import { getRagAutoReplyRuntimeSettings } from '@/lib/rag/auto-reply'
 import { answerRagWhatsAppQuestion } from '@/lib/rag/chat'
 import { releaseWorkspaceBroadcastUsage } from '@/lib/billing/trial'
+import { formatBroadcastFailureMessage } from '@/lib/broadcast-retry'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -331,11 +332,17 @@ async function handleStatusUpdate(status: {
   if (status.status === 'read') update.read_at = tsIso
   if (status.status === 'failed') {
     const metaError = status.errors?.[0]
-    const details =
+    const rawDetails =
       metaError?.error_data?.details ??
       metaError?.message ??
       metaError?.title ??
       (metaError?.code ? `Meta delivery failed with code ${metaError.code}.` : null)
+    const details = rawDetails
+      ? formatBroadcastFailureMessage({
+          message: rawDetails,
+          code: metaError?.code,
+        })
+      : null
 
     if (details) {
       update.error_message = details

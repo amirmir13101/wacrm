@@ -98,6 +98,40 @@ describe('/api/whatsapp/broadcast compatibility route', () => {
     )
   })
 
+  it('stores specific formatted Meta failure details for failed broadcast recipients', () => {
+    const queueSource = readFileSync(join(process.cwd(), 'src/lib/broadcast-queue.ts'), 'utf8')
+    const webhookSource = readFileSync(
+      join(process.cwd(), 'src/app/api/whatsapp/webhook/route.ts'),
+      'utf8',
+    )
+
+    expect(queueSource).toContain('formatBroadcastFailureMessage')
+    expect(webhookSource).toContain('formatBroadcastFailureMessage')
+    expect(webhookSource).toContain('code: metaError?.code')
+    expect(webhookSource).toContain('update.last_error_message = details')
+  })
+
+  it('supports protected single and bulk broadcast deletion without deleting active sends', () => {
+    const bulkRoute = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
+    const detailRoute = readFileSync(
+      join(process.cwd(), 'src/app/api/whatsapp/broadcast/[id]/route.ts'),
+      'utf8',
+    )
+    const listPage = readFileSync(join(process.cwd(), 'src/app/(dashboard)/broadcasts/page.tsx'), 'utf8')
+    const detailPage = readFileSync(join(process.cwd(), 'src/app/(dashboard)/broadcasts/[id]/page.tsx'), 'utf8')
+
+    expect(bulkRoute).toContain('export async function DELETE')
+    expect(detailRoute).toContain('export async function DELETE')
+    expect(bulkRoute).toContain("'pause_resume_cancel_broadcasts'")
+    expect(detailRoute).toContain("'pause_resume_cancel_broadcasts'")
+    expect(bulkRoute).toContain("new Set(['queued', 'sending'])")
+    expect(detailRoute).toContain("new Set(['queued', 'sending'])")
+    expect(listPage).toContain('Select all broadcasts')
+    expect(listPage).toContain('Delete selected')
+    expect(listPage).toContain("fetch('/api/whatsapp/broadcast'")
+    expect(detailPage).toContain("fetch(`/api/whatsapp/broadcast/${broadcastId}`")
+  })
+
   it('loads shared admin-managed pricing rates for preflight estimates', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/api/whatsapp/broadcast/route.ts'), 'utf8')
 

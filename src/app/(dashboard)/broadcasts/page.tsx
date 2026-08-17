@@ -13,9 +13,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Radio, Plus, Loader2 } from 'lucide-react';
+import { Radio, Plus, Loader2, Trash2 } from 'lucide-react';
 import { getBroadcastStatus } from '@/lib/broadcast-status';
 import { TrialUsageCard } from '@/components/billing/trial-usage-card';
+import { toast } from 'sonner';
 
 /**
  * Poll cadence while any broadcast is sending. Kept modest so we don't
@@ -23,6 +24,7 @@ import { TrialUsageCard } from '@/components/billing/trial-usage-card';
  * counts consistent; we just need to surface the freshest snapshot.
  */
 const POLL_INTERVAL_MS = 5_000;
+const ACTIVE_BROADCAST_DELETE_STATUSES = new Set(['queued', 'sending']);
 
 function percent(numerator: number, denominator: number): number {
   if (!denominator) return 0;
@@ -60,6 +62,8 @@ export default function BroadcastsPage() {
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedBroadcastIds, setSelectedBroadcastIds] = useState<string[]>([]);
+  const [deletingBroadcastIds, setDeletingBroadcastIds] = useState<string[]>([]);
 
   // Used to kick off polling only while something is actively sending.
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -74,6 +78,9 @@ export default function BroadcastsPage() {
 
       if (fetchError) throw fetchError;
       setBroadcasts(data ?? []);
+      setSelectedBroadcastIds((current) =>
+        current.filter((id) => (data ?? []).some((broadcast) => broadcast.id === id)),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load broadcasts');
     } finally {
@@ -89,6 +96,55 @@ export default function BroadcastsPage() {
     () => broadcasts.some((b) => b.status === 'sending'),
     [broadcasts],
   );
+  const selectedDeletableCount = useMemo(
+    () =>
+      broadcasts.filter(
+        (broadcast) =>
+          selectedBroadcastIds.includes(broadcast.id) &&
+          !ACTIVE_BROADCAST_DELETE_STATUSES.has(broadcast.status),
+      ).length,
+    [broadcasts, selectedBroadcastIds],
+  );
+  const allSelected = broadcasts.length > 0 && selectedBroadcastIds.length === broadcasts.length;
+
+  function toggleSelectBroadcast(id: string) {
+    setSelectedBroadcastIds((current) =>
+      current.includes(id) ? current.filter((selectedId) => selectedId !== id) : [...current, id],
+    );
+  }
+
+  function toggleSelectAllBroadcasts() {
+    setSelectedBroadcastIds(allSelected ? [] : broadcasts.map((broadcast) => broadcast.id));
+  }
+
+  async function deleteBroadcasts(ids: string[]) {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return;
+
+    setDeletingBroadcastIds(uniqueIds);
+    try {
+      const res = await fetch('/api/whatsapp/broadcast', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: uniqueIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to delete broadcasts');
+
+      const deletedCount = Number(data.deletedCount ?? 0);
+      const skippedCount = Number(data.skippedCount ?? 0);
+      if (deletedCount > 0) toast.success(`${deletedCount} broadcast${deletedCount === 1 ? '' : 's'} deleted.`);
+      if (skippedCount > 0) {
+        toast.warning(`${skippedCount} broadcast${skippedCount === 1 ? '' : 's'} skipped because queued/sending broadcasts cannot be deleted.`);
+      }
+      setSelectedBroadcastIds((current) => current.filter((id) => !uniqueIds.includes(id)));
+      await fetchBroadcasts();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete broadcasts');
+    } finally {
+      setDeletingBroadcastIds([]);
+    }
+  }
 
   useEffect(() => {
     function startPolling() {
@@ -210,9 +266,41 @@ export default function BroadcastsPage() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[#3ddf84]/60 bg-slate-900 transition-colors hover:border-[#3ddf84]/80">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+            <p className="text-xs text-slate-400">
+              {selectedBroadcastIds.length > 0
+                ? `${selectedBroadcastIds.length} selected · ${selectedDeletableCount} can be deleted`
+                : 'Select broadcasts to delete completed, failed, cancelled, or sent history.'}
+            </p>
+            {selectedBroadcastIds.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={deletingBroadcastIds.length > 0 || selectedDeletableCount === 0}
+                onClick={() => deleteBroadcasts(selectedBroadcastIds)}
+                className="border-red-500/30 bg-transparent text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+              >
+                {deletingBroadcastIds.length > 0 ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                Delete selected
+              </Button>
+            )}
+          </div>
           <Table>
             <TableHeader>
               <TableRow className="border-slate-800 hover:bg-transparent">
+                <TableHead className="w-10 text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAllBroadcasts}
+                    aria-label="Select all broadcasts"
+                    className="h-4 w-4 rounded border-slate-700 bg-slate-950 accent-emerald-400"
+                  />
+                </TableHead>
                 <TableHead className="text-slate-400">Name</TableHead>
                 <TableHead className="hidden text-slate-400 md:table-cell">Template</TableHead>
                 <TableHead className="hidden text-right text-slate-400 sm:table-cell">
@@ -222,17 +310,30 @@ export default function BroadcastsPage() {
                 <TableHead className="hidden text-slate-400 lg:table-cell">Read</TableHead>
                 <TableHead className="text-slate-400">Status</TableHead>
                 <TableHead className="hidden text-slate-400 sm:table-cell">Date</TableHead>
+                <TableHead className="text-right text-slate-400">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {broadcasts.map((broadcast) => {
                 const status = getBroadcastStatus(broadcast.status);
+                const isSelected = selectedBroadcastIds.includes(broadcast.id);
+                const isActive = ACTIVE_BROADCAST_DELETE_STATUSES.has(broadcast.status);
+                const isDeleting = deletingBroadcastIds.includes(broadcast.id);
                 return (
                   <TableRow
                     key={broadcast.id}
                     className="cursor-pointer border-slate-800 hover:bg-slate-800/50"
                     onClick={() => router.push(`/broadcasts/${broadcast.id}`)}
                   >
+                    <TableCell onClick={(event) => event.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectBroadcast(broadcast.id)}
+                        aria-label={`Select broadcast ${broadcast.name}`}
+                        className="h-4 w-4 rounded border-slate-700 bg-slate-950 accent-emerald-400"
+                      />
+                    </TableCell>
                     <TableCell className="font-medium text-white">
                       {broadcast.name}
                     </TableCell>
@@ -271,6 +372,26 @@ export default function BroadcastsPage() {
                     </TableCell>
                     <TableCell className="hidden text-slate-400 sm:table-cell">
                       {new Date(broadcast.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        disabled={isActive || isDeleting}
+                        title={
+                          isActive
+                            ? 'Cannot delete while queued or sending'
+                            : 'Delete this broadcast'
+                        }
+                        onClick={() => deleteBroadcasts([broadcast.id])}
+                        className="text-red-300 hover:bg-red-500/10 hover:text-red-200 disabled:opacity-40"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );

@@ -48,6 +48,53 @@ export function classifyBroadcastFailure(message: string): BroadcastFailureType 
   return 'unknown'
 }
 
+export function formatBroadcastFailureMessage(args: {
+  readonly message: string
+  readonly code?: number | string | null
+}): string {
+  const code = args.code ? String(args.code) : ''
+  const message = args.message.trim()
+  const combined = `${code} ${message}`
+
+  if (/131026|message undeliverable|unable to deliver|not a whatsapp user|not on whatsapp/i.test(combined)) {
+    return 'This phone number may not have an active WhatsApp account, or WhatsApp could not deliver the template to this number.'
+  }
+
+  if (/131030|not in allowed list|not in the allowed list/i.test(combined)) {
+    return 'This recipient is not allowed for the current WhatsApp test setup. Add the number to the allowed list or use a live approved WhatsApp sender.'
+  }
+
+  if (/132001|template name does not exist in the translation/i.test(combined)) {
+    return 'Selected template/language is not available in Meta anymore. Please re-sync templates and select the approved template again.'
+  }
+
+  if (/131047|outside.*24|re-engagement|customer service window/i.test(combined)) {
+    return 'This message was blocked because the conversation is outside the allowed customer-service window. Use an approved template for re-engagement.'
+  }
+
+  if (/131049|marketing messages.*paused|healthy ecosystem/i.test(combined)) {
+    return 'Meta paused marketing messages to this recipient to protect user experience. Try again later or use another approved conversation path.'
+  }
+
+  if (/rate limit|too many requests|throughput|temporar|timeout|timed out|unavailable|5\d\d/i.test(combined)) {
+    return 'Meta temporarily could not send this message because of rate limits or service availability. Retry later.'
+  }
+
+  if (/permission|OAuth|access token|token|unsupported post request|does not have access/i.test(combined)) {
+    return 'WhatsApp credentials or permissions rejected this send. Reconnect WhatsApp or check the Meta app permissions.'
+  }
+
+  if (/invalid.*phone|phone.*invalid|recipient.*invalid/i.test(combined)) {
+    return 'This recipient phone number is invalid for WhatsApp delivery. Check the country code and number format.'
+  }
+
+  if (/blocked/i.test(combined)) {
+    return 'This recipient may have blocked the business or cannot currently receive this WhatsApp message.'
+  }
+
+  return message || 'Meta did not provide a detailed failure reason for this recipient.'
+}
+
 export function getRetryableRecipients<T extends RetryCandidate>(
   recipients: T[],
 ): { retryable: T[]; skipped: RetrySkip[] } {
