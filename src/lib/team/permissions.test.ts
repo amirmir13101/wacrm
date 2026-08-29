@@ -20,7 +20,19 @@ describe('workspace permissions', () => {
     expect(hasWorkspacePermission({ role: 'agent' }, 'reply_to_conversations')).toBe(true)
     expect(hasWorkspacePermission({ role: 'agent' }, 'manage_whatsapp_config')).toBe(false)
     expect(hasWorkspacePermission({ role: 'agent' }, 'view_broadcasts')).toBe(false)
+    expect(hasWorkspacePermission({ role: 'agent' }, 'view_ai_agent')).toBe(false)
     expect(canAccessDashboardPath({ role: 'agent' }, '/broadcasts')).toBe(false)
+    expect(canAccessDashboardPath({ role: 'agent' }, '/ai-agent')).toBe(false)
+    expect(canAccessDashboardPath({ role: 'agent' }, '/agents')).toBe(false)
+  })
+
+  it('allows managers and owners to use the separate AI Agent tab', () => {
+    expect(hasWorkspacePermission({ role: 'manager' }, 'view_ai_agent')).toBe(true)
+    expect(hasWorkspacePermission({ role: 'manager' }, 'manage_ai_agent')).toBe(true)
+    expect(canAccessDashboardPath({ role: 'manager' }, '/ai-agent')).toBe(true)
+    expect(canAccessDashboardPath({ role: 'manager' }, '/agents')).toBe(true)
+    expect(canAccessDashboardPath({ role: 'owner' }, '/ai-agent')).toBe(true)
+    expect(canAccessDashboardPath({ role: 'owner' }, '/agents')).toBe(true)
   })
 
   it('lets explicit permission overrides grant or deny feature access', () => {

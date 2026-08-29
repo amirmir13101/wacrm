@@ -53,6 +53,7 @@ const navItems: Array<{
   { href: "/broadcasts", label: "Broadcasts", icon: Radio, permission: "view_broadcasts" },
   { href: "/automations", label: "Automations", icon: Zap, permission: "view_automations" },
   { href: "/flows", label: "Flows", icon: Workflow, permission: "view_flows" },
+  { href: "/agents", label: "AI Agent", icon: Bot, permission: "view_ai_agent" },
   { href: "/ai-chatbot", label: "AI Chatbot", icon: Bot, permission: "view_rag_chatbot" },
   { href: "/billing", label: "Billing", icon: CreditCard },
   {

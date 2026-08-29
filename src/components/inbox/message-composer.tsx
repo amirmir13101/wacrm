@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useCallback, KeyboardEvent } from "react";
-import { Send, LayoutTemplate } from "lucide-react";
+import { Send, LayoutTemplate, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ReplyQuote } from "./reply-quote";
+import { toast } from "sonner";
 
 interface ReplyDraft {
   /** Internal UUID of the message being replied to — sent back through onSend. */
@@ -34,6 +35,7 @@ export function MessageComposer({
 }: MessageComposerProps) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const adjustHeight = useCallback(() => {
@@ -77,6 +79,50 @@ export function MessageComposer({
     },
     [adjustHeight]
   );
+
+  // Ask the separate AI Agent for a suggested reply. This only fills the
+  // composer; the agent can review/edit it and nothing is sent until the
+  // normal Send button is pressed.
+  const handleDraft = useCallback(async () => {
+    if (drafting || !canReply) return;
+    setDrafting(true);
+    try {
+      const response = await fetch("/api/ai/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (data.code === "ai_not_configured") {
+          toast.error("AI Agent is not set up yet — finish Setup first.");
+        } else {
+          toast.error(data.error ?? "Couldn't draft a reply.");
+        }
+        return;
+      }
+
+      const draftText = typeof data.draft === "string" ? data.draft.trim() : "";
+      if (!draftText) {
+        toast.error("The AI Agent didn't return a reply.");
+        return;
+      }
+
+      setText(draftText);
+      requestAnimationFrame(() => {
+        adjustHeight();
+        const textarea = textareaRef.current;
+        if (textarea) {
+          textarea.focus();
+          textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        }
+      });
+    } catch {
+      toast.error("Couldn't reach the AI Agent.");
+    } finally {
+      setDrafting(false);
+    }
+  }, [adjustHeight, canReply, conversationId, drafting]);
 
   return (
     <div className="border-t border-slate-800 bg-slate-900 p-3">
@@ -122,6 +168,22 @@ export function MessageComposer({
           title="Send template"
         >
           <LayoutTemplate className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 w-9 shrink-0 p-0 text-slate-400 hover:text-emerald-300"
+          disabled={!canReply || drafting}
+          onClick={handleDraft}
+          title={canReply ? "Draft with AI Agent" : undefined}
+          aria-label="Draft with AI Agent"
+        >
+          {drafting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
         </Button>
 
         <textarea

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia, sendTextMessage } from '@/lib/whatsapp/meta-api'
@@ -6,11 +6,16 @@ import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { inboundConsentUpdate } from '@/lib/contacts/consent'
 import { getRagAutoReplyRuntimeSettings } from '@/lib/rag/auto-reply'
 import { answerRagWhatsAppQuestion } from '@/lib/rag/chat'
 import { releaseWorkspaceBroadcastUsage } from '@/lib/billing/trial'
 import { formatBroadcastFailureMessage } from '@/lib/broadcast-retry'
+
+// AI, Flow, RAG, and automation work continues after Meta receives its
+// acknowledgement, within this route's allowed runtime window.
+export const maxDuration = 60
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -182,9 +187,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Process asynchronously so we can ack Meta within their timeout.
-  processWebhook(body).catch((error) => {
-    console.error('Error processing webhook:', error)
+  // Acknowledge Meta promptly while guaranteeing the inbound pipeline is
+  // kept alive. A detached promise can be terminated once the response is
+  // sent on serverless runtimes, which would make AI/Flow/RAG processing
+  // intermittent.
+  after(async () => {
+    try {
+      await processWebhook(body)
+    } catch (error) {
+      console.error('Error processing webhook:', error)
+    }
   })
 
   return NextResponse.json({ status: 'received' }, { status: 200 })
@@ -688,6 +700,26 @@ async function processMessage(
       inboundText,
       accessToken,
       phoneNumberId: await findPhoneNumberIdForWorkspace(workspaceId, userId),
+    })
+  }
+
+  // Separate AI Agent auto-reply. Deterministic Flows and the existing
+  // RAG chatbot keep precedence so enabling both systems cannot send two
+  // replies to the same inbound message. The dispatcher owns all other
+  // eligibility gates (agent assignment, per-thread pause/cap, provider
+  // configuration, and handoff) and never throws.
+  if (
+    workspaceId &&
+    !flowConsumed &&
+    !aiReplied &&
+    !interactiveReplyId &&
+    inboundText.trim()
+  ) {
+    await dispatchInboundToAiReply({
+      accountId: workspaceId,
+      conversationId: conversation.id,
+      contactId: contactRecord.id,
+      configOwnerUserId: userId,
     })
   }
 

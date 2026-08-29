@@ -133,7 +133,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/flows', '/ai-chatbot', '/billing', '/whatsapp-api-pricing', '/settings', '/team', '/admin', '/admintops', '/article-preview']
+  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/flows', '/ai-agent', '/agents', '/ai-chatbot', '/billing', '/whatsapp-api-pricing', '/settings', '/team', '/admin', '/admintops', '/article-preview']
   if (
     !user &&
     (

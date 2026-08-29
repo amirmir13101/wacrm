@@ -13,6 +13,7 @@ export type PermissionGroupId =
   | 'templates'
   | 'automations'
   | 'flows'
+  | 'ai_agent'
   | 'pipeline'
   | 'reports'
   | 'pricing'
@@ -126,6 +127,16 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'create_flows', label: 'Create flows' },
       { key: 'edit_flows', label: 'Edit flows' },
       { key: 'activate_deactivate_flows', label: 'Activate/deactivate flows' },
+    ],
+  },
+  {
+    id: 'ai_agent',
+    title: 'AI Agent',
+    helper: 'Separate AI agent settings, knowledge, playground, and usage visibility.',
+    section: 'main',
+    items: [
+      { key: 'view_ai_agent', label: 'View AI Agent' },
+      { key: 'manage_ai_agent', label: 'Manage AI Agent', danger: true },
     ],
   },
   {
@@ -253,7 +264,7 @@ export const ADVANCED_PERMISSION_SECTIONS = [
   {
     id: 'main',
     title: 'Main access',
-    groupIds: ['dashboard', 'inbox', 'contacts', 'pipeline', 'broadcasts', 'automations', 'flows', 'reports'],
+    groupIds: ['dashboard', 'inbox', 'contacts', 'pipeline', 'broadcasts', 'automations', 'flows', 'ai_agent', 'reports'],
   },
   {
     id: 'conversation',
@@ -299,6 +310,7 @@ export const MAIN_ACCESS_PERMISSIONS: Array<{
   { key: 'view_broadcasts', label: 'Broadcasts' },
   { key: 'view_automations', label: 'Automations' },
   { key: 'view_flows', label: 'Flows' },
+  { key: 'view_ai_agent', label: 'AI Agent' },
   { key: 'view_reports', label: 'Reports' },
 ]
 

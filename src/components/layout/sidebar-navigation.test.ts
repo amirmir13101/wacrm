@@ -31,10 +31,16 @@ describe('dashboard sidebar navigation organization', () => {
   })
 
   it('protects the new dashboard routes with the existing workspace guard', () => {
+    expect(sidebar).toContain('href: "/agents", label: "AI Agent"')
+    expect(sidebar).toContain('permission: "view_ai_agent"')
     expect(middleware).toContain("'/billing'")
     expect(middleware).toContain("'/whatsapp-api-pricing'")
+    expect(middleware).toContain("'/ai-agent'")
+    expect(middleware).toContain("'/agents'")
     expect(permissions).toContain("pathname.startsWith('/billing')")
     expect(permissions).toContain("pathname.startsWith('/whatsapp-api-pricing')")
+    expect(permissions).toContain("pathname.startsWith('/ai-agent')")
+    expect(permissions).toContain("pathname.startsWith('/agents')")
     expect(permissions).toContain("hasWorkspacePermission(subject, 'use_cost_calculator')")
   })
 })

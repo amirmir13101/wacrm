@@ -43,6 +43,7 @@ interface SendTextEngineArgs {
   conversationId: string
   contactId: string
   text: string
+  aiGenerated?: boolean
 }
 
 /**
@@ -127,6 +128,7 @@ export async function engineSendText(
     content_text: args.text,
     message_id: waMessageId,
     status: 'sent',
+    ai_generated: Boolean(args.aiGenerated),
   })
   if (msgErr) {
     throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)

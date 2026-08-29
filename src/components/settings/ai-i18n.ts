@@ -1,0 +1,77 @@
+import { useCallback } from 'react'
+
+const MESSAGES: Record<string, string> = {
+  'Settings.aiConfig.loadFailed': 'Loading AI settings...',
+  'Settings.aiConfig.title': 'AI Agent setup',
+  'Settings.aiConfig.description': 'Configure the separate AI Agent provider, behavior, auto-reply limits, handoff, and knowledge base.',
+  'Settings.aiConfig.adminOnlyConfig': 'Only workspace admins can change AI Agent settings.',
+  'Settings.aiConfig.providerAndKey': 'Provider and API key',
+  'Settings.aiConfig.encryptionNotice': 'Your provider key is encrypted before it is stored.',
+  'Settings.aiConfig.provider': 'Provider',
+  'Settings.aiConfig.model': 'Model',
+  'Settings.aiConfig.apiKey': 'API key',
+  'Settings.aiConfig.embeddingsKey': 'Embeddings API key',
+  'Settings.aiConfig.optionalSemanticSearch': '(optional semantic search)',
+  'Settings.aiConfig.embeddingsHint': 'Use this when you want semantic knowledge search. {sameKeyText}',
+  'Settings.aiConfig.sameKeyText': 'You can use the same OpenAI key.',
+  'Settings.aiConfig.testKey': 'Test key',
+  'Settings.aiConfig.testSuccess': 'AI provider connected successfully.',
+  'Settings.aiConfig.testRejected': 'AI provider rejected the request.',
+  'Settings.aiConfig.testNetworkError': 'Could not test the provider.',
+  'Settings.aiConfig.missingModel': 'Enter a model name.',
+  'Settings.aiConfig.missingApiKey': 'Enter an API key.',
+  'Settings.aiConfig.saveSuccess': 'AI Agent settings saved.',
+  'Settings.aiConfig.saveFailed': 'Could not save AI Agent settings.',
+  'Settings.aiConfig.removeSuccess': 'AI Agent settings removed.',
+  'Settings.aiConfig.removeFailed': 'Could not remove AI Agent settings.',
+  'Settings.aiConfig.behaviour': 'Behavior',
+  'Settings.aiConfig.behaviourDesc': 'Control when the AI Agent is active and how it hands off to your team.',
+  'Settings.aiConfig.businessContext': 'Business context',
+  'Settings.aiConfig.promptPlaceholder': 'Describe how the AI Agent should answer for this workspace.',
+  'Settings.aiConfig.enableAssistant': 'Enable assistant',
+  'Settings.aiConfig.enableAssistantDesc': 'Allow this separate AI Agent to answer when configured.',
+  'Settings.aiConfig.autoReply': 'Auto reply',
+  'Settings.aiConfig.autoReplyDesc': 'Let the AI Agent respond automatically within the configured limits.',
+  'Settings.aiConfig.maxAutoReplies': 'Max auto replies',
+  'Settings.aiConfig.maxAutoRepliesDesc': 'Limit how many times the AI Agent can reply in one conversation.',
+  'Settings.aiConfig.handoffTo': 'Handoff to',
+  'Settings.aiConfig.handoffToDesc': 'Choose a team member or leave replies in the shared queue.',
+  'Settings.aiConfig.handoffQueue': 'Shared queue',
+  'Settings.aiConfig.remove': 'Remove settings',
+  'Settings.aiConfig.save': 'Save settings',
+  'Settings.aiKnowledge.title': 'AI Agent knowledge',
+  'Settings.aiKnowledge.description': 'Add approved knowledge for this separate AI Agent. Current search mode: {searchType}.',
+  'Settings.aiKnowledge.semanticSearchOn': 'semantic search',
+  'Settings.aiKnowledge.keywordSearchOn': 'keyword search',
+  'Settings.aiKnowledge.loadFailed': 'Could not load AI Agent knowledge.',
+  'Settings.aiKnowledge.openFailed': 'Could not open this knowledge document.',
+  'Settings.aiKnowledge.titleContentRequired': 'Title and content are required.',
+  'Settings.aiKnowledge.saveSuccessNew': 'Knowledge document added.',
+  'Settings.aiKnowledge.saveSuccessUpdate': 'Knowledge document updated.',
+  'Settings.aiKnowledge.saveFailed': 'Could not save knowledge document.',
+  'Settings.aiKnowledge.removeSuccess': 'Knowledge document deleted.',
+  'Settings.aiKnowledge.removeFailed': 'Could not delete knowledge document.',
+  'Settings.aiKnowledge.reindexSuccess': 'Reindexed {count} knowledge document(s).',
+  'Settings.aiKnowledge.reindexFailed': 'Could not reindex knowledge.',
+  'Settings.aiKnowledge.loading': 'Loading knowledge...',
+  'Settings.aiKnowledge.noDocs': 'No AI Agent knowledge documents yet.',
+  'Settings.aiKnowledge.editDocTitle': 'Title',
+  'Settings.aiKnowledge.editDocTitlePlaceholder': 'Business FAQs',
+  'Settings.aiKnowledge.editDocContent': 'Content',
+  'Settings.aiKnowledge.editDocContentPlaceholder': 'Paste approved business knowledge here.',
+  'Settings.aiKnowledge.cancel': 'Cancel',
+  'Settings.aiKnowledge.saveDoc': 'Save document',
+  'Settings.aiKnowledge.addDoc': 'Add document',
+  'Settings.aiKnowledge.reindexTooltip': 'Rebuild semantic embeddings for all documents.',
+  'Settings.aiKnowledge.reindex': 'Reindex',
+}
+
+export function useAiTranslations(namespace: string) {
+  return useCallback((key: string, values?: Record<string, string | number>) => {
+    let message = MESSAGES[`${namespace}.${key}`] ?? key
+    for (const [name, value] of Object.entries(values ?? {})) {
+      message = message.replaceAll(`{${name}}`, String(value))
+    }
+    return message
+  }, [namespace])
+}

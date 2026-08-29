@@ -12,6 +12,7 @@ import {
   MapPin,
   LayoutTemplate,
   ImageOff,
+  Sparkles,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -258,6 +259,15 @@ export function MessageBubble({
             isAgent ? "justify-end" : "justify-start",
           )}
         >
+          {message.ai_generated && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded-full bg-white/15 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-white"
+              title="Sent automatically by the AI Agent"
+            >
+              <Sparkles className="h-2.5 w-2.5" />
+              AI
+            </span>
+          )}
           <span className="text-[10px] text-white/60">{time}</span>
           {isAgent && <StatusIcon status={message.status} />}
         </div>

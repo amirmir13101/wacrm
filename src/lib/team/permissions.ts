@@ -32,6 +32,8 @@ export const WORKSPACE_PERMISSIONS = [
   'create_flows',
   'edit_flows',
   'activate_deactivate_flows',
+  'view_ai_agent',
+  'manage_ai_agent',
   'view_rag_chatbot',
   'manage_rag_chatbot',
   'manage_rag_provider',
@@ -103,6 +105,8 @@ const MANAGER_PERMISSIONS: WorkspacePermissions = {
   create_flows: true,
   edit_flows: true,
   activate_deactivate_flows: true,
+  view_ai_agent: true,
+  manage_ai_agent: true,
   view_rag_chatbot: true,
   manage_rag_chatbot: true,
   view_pipeline: true,
@@ -230,6 +234,9 @@ export function canAccessDashboardPath(
   if (pathname.startsWith('/broadcasts')) return hasWorkspacePermission(subject, 'view_broadcasts')
   if (pathname.startsWith('/automations')) return hasWorkspacePermission(subject, 'view_automations')
   if (pathname.startsWith('/flows')) return hasWorkspacePermission(subject, 'view_flows')
+  if (pathname.startsWith('/ai-agent') || pathname.startsWith('/agents')) {
+    return hasWorkspacePermission(subject, 'view_ai_agent')
+  }
   if (pathname.startsWith('/ai-chatbot')) return hasWorkspacePermission(subject, 'view_rag_chatbot')
   if (pathname.startsWith('/billing')) return true
   if (pathname.startsWith('/whatsapp-api-pricing')) {

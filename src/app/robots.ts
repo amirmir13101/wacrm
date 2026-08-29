@@ -12,6 +12,10 @@ export default function robots(): MetadataRoute.Robots {
         disallow: [
           "/admintops",
           "/admintops/",
+          "/ai-agent",
+          "/ai-agent/",
+          "/agents",
+          "/agents/",
           "/ai-chatbot",
           "/ai-chatbot/",
           "/admin",

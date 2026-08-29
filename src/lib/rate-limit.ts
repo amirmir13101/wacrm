@@ -125,6 +125,15 @@ export const RATE_LIMITS = {
    *  fidget with reactions and a single "swap" is actually two calls
    *  (remove + add) under the hood. */
   react: { limit: 120, windowMs: 60_000 },
+  /** AI draft/playground calls. Keeps BYO-key testing responsive while
+   *  preventing accidental rapid-fire usage. */
+  aiDraft: { limit: 30, windowMs: 60_000 },
+  /** Per-workspace draft cap used by the upstream AI Agent routes. */
+  aiDraftAccount: { limit: 120, windowMs: 60_000 },
+  /** Admin/settings-class mutations such as AI provider config and KB edits. */
+  adminAction: { limit: 30, windowMs: 60_000 },
+  /** AI auto-reply send attempts per workspace. */
+  aiAutoReplyAccount: { limit: 120, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't
