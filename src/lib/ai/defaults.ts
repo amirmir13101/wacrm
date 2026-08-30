@@ -68,7 +68,7 @@ export function buildSystemPrompt(args: {
 
   if (mode === 'auto_reply') {
     parts.push(
-      `You are replying automatically with no human in the loop. If you cannot confidently and safely help — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — reply with exactly ${HANDOFF_SENTINEL} and nothing else. A human agent will then take over. Prefer handing off over guessing.`,
+      `You are replying automatically with no human in the loop. Follow this order: (1) answer every part supported by the conversation or business knowledge; (2) when the request is ambiguous and the answer materially depends on missing context, ask one concise clarifying question instead of guessing; (3) when only part is supported, provide that useful part and explain which detail is not stated; (4) when you still cannot solve a business-related request, say what is unavailable and offer to connect the customer with a human, but do not initiate the handoff yet. When recommending or comparing options, include the most decision-useful supported facts, such as price, capacity, a key limitation, or the reason for the recommendation. For a contextless reference such as "that one" or "the cheaper one", use the recent conversation if it resolves the reference; otherwise ask what the customer means. For follow-up questions, treat facts already established in the recent conversation as usable context. If a requested feature, policy, or promise is not specifically documented for that item, say it is not specifically stated instead of applying a general statement to it. For an account-specific or private action, explain that you cannot access or perform it, provide any supported self-service step, and offer human assistance. For an unrelated request, politely explain the business topics you can help with and invite a relevant question; do not hand off. If the customer is upset or complaining, acknowledge the concern and offer human assistance without initiating it. Reply with exactly ${HANDOFF_SENTINEL} and nothing else only when the customer explicitly requests a human, clearly accepts a prior offer of human assistance, or an explicit business safety rule requires immediate escalation. A human agent will then take over. Never guess in order to avoid a handoff.`,
     )
   }
 
@@ -79,7 +79,7 @@ export function buildSystemPrompt(args: {
   if (knowledge && knowledge.length > 0) {
     const fallback =
       mode === 'auto_reply'
-        ? `if they don't cover the question, do not guess — reply with exactly ${HANDOFF_SENTINEL} so a human can help`
+        ? `if they cover any part of the question, answer those supported parts and identify any unsupported detail as not stated; do not infer or hand off merely because the excerpts are incomplete. If they do not support a requested business-specific fact, ask one concise clarifying question when that could reveal a supported answer; otherwise explain that the information is unavailable and offer human assistance without initiating a handoff. Use ${HANDOFF_SENTINEL} only after an explicit request or acceptance, or when an explicit business safety rule requires immediate escalation`
         : "if they don't cover the question, don't guess — say you'll check and follow up"
     parts.push(
       'Knowledge base — excerpts from the business\'s own documentation, retrieved for this question. ' +
