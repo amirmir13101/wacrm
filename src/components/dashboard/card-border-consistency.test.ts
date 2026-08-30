@@ -26,11 +26,11 @@ describe('CRM dashboard card border consistency', () => {
     }
   })
 
-  it('keeps AI Chatbot cards on the same green border family', () => {
-    const aiChatbot = source('src/app/(dashboard)/ai-chatbot/page.tsx')
+  it('keeps Knowledge Base cards on the same green border family', () => {
+    const knowledgeBase = source('src/app/(dashboard)/knowledge-base/page.tsx')
 
-    expect(aiChatbot).toContain(normalBorder)
-    expect(aiChatbot).toContain(hoverBorder)
+    expect(knowledgeBase).toContain(normalBorder)
+    expect(knowledgeBase).toContain(hoverBorder)
   })
 
   it('applies the same border and hover border to key dashboard areas', () => {

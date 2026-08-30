@@ -1,19 +1,17 @@
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
-import { getMediaUrl, downloadMedia, sendTextMessage } from '@/lib/whatsapp/meta-api'
+import { getMediaUrl } from '@/lib/whatsapp/meta-api'
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { inboundConsentUpdate } from '@/lib/contacts/consent'
-import { getRagAutoReplyRuntimeSettings } from '@/lib/rag/auto-reply'
-import { answerRagWhatsAppQuestion } from '@/lib/rag/chat'
 import { releaseWorkspaceBroadcastUsage } from '@/lib/billing/trial'
 import { formatBroadcastFailureMessage } from '@/lib/broadcast-retry'
 
-// AI, Flow, RAG, and automation work continues after Meta receives its
+// AI Agent, Flow, and automation work continues after Meta receives its
 // acknowledgement, within this route's allowed runtime window.
 export const maxDuration = 60
 
@@ -604,7 +602,7 @@ async function processMessage(
     .eq('sender_type', 'customer')
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
 
-  const { data: insertedMessage, error: msgError } = await supabaseAdmin()
+  const { error: msgError } = await supabaseAdmin()
     .from('messages')
     .insert({
       conversation_id: conversation.id,
@@ -618,8 +616,6 @@ async function processMessage(
       reply_to_message_id: replyToInternalId,
       interactive_reply_id: interactiveReplyId,
     })
-    .select('id')
-    .single()
 
   if (msgError) {
     console.error('Error inserting message:', msgError)
@@ -689,29 +685,13 @@ async function processMessage(
     }
   }
 
-  let aiReplied = false
-  if (!flowConsumed && message.type === 'text') {
-    aiReplied = await maybeHandleRagAutoReply({
-      workspaceId,
-      userId,
-      conversationId: conversation.id,
-      inboundMessageId: insertedMessage?.id ?? null,
-      customerPhone: senderPhone,
-      inboundText,
-      accessToken,
-      phoneNumberId: await findPhoneNumberIdForWorkspace(workspaceId, userId),
-    })
-  }
-
-  // Separate AI Agent auto-reply. Deterministic Flows and the existing
-  // RAG chatbot keep precedence so enabling both systems cannot send two
-  // replies to the same inbound message. The dispatcher owns all other
+  // AI Agent auto-reply. Deterministic Flows keep precedence so the
+  // dispatcher cannot send a duplicate reply. The dispatcher owns all other
   // eligibility gates (agent assignment, per-thread pause/cap, provider
   // configuration, and handoff) and never throws.
   if (
     workspaceId &&
     !flowConsumed &&
-    !aiReplied &&
     !interactiveReplyId &&
     inboundText.trim()
   ) {
@@ -750,111 +730,9 @@ async function processMessage(
           message_text: inboundText,
           conversation_id: conversation.id,
         },
-        suppressCustomerReplies: flowConsumed || aiReplied,
+        suppressCustomerReplies: flowConsumed,
       }).catch((err) => console.error('[automations] dispatch failed:', err))
     }
-  }
-}
-
-async function findPhoneNumberIdForWorkspace(
-  workspaceId: string | null,
-  userId: string,
-): Promise<string | null> {
-  const query = supabaseAdmin()
-    .from('whatsapp_config')
-    .select('phone_number_id')
-    .eq('user_id', userId)
-    .eq('status', 'connected')
-    .order('connected_at', { ascending: false })
-    .limit(1)
-
-  if (workspaceId) query.eq('workspace_id', workspaceId)
-
-  const { data, error } = await query.maybeSingle()
-  if (error) {
-    console.error('[rag-auto-reply] phone number lookup failed:', error.message)
-    return null
-  }
-  return data?.phone_number_id ?? null
-}
-
-async function maybeHandleRagAutoReply(args: {
-  readonly workspaceId: string | null
-  readonly userId: string
-  readonly conversationId: string
-  readonly inboundMessageId: string | null
-  readonly customerPhone: string
-  readonly inboundText: string
-  readonly accessToken: string
-  readonly phoneNumberId: string | null
-}): Promise<boolean> {
-  if (!args.workspaceId) return false
-  const question = args.inboundText.trim()
-  if (!question) return false
-
-  const settings = await getRagAutoReplyRuntimeSettings(args.workspaceId)
-  if (!settings?.enabled) return false
-
-  let answerText: string | null = null
-  try {
-    const result = await answerRagWhatsAppQuestion({
-      workspaceId: args.workspaceId,
-      question,
-      conversationId: args.conversationId,
-      messageId: args.inboundMessageId,
-    })
-
-    if (result.fallbackReason === 'ai_paused_for_human') {
-      return false
-    }
-
-    if (result.status === 'answered') {
-      answerText = result.answer
-    } else if (result.status === 'fallback' && settings.fallbackMode === 'send_fallback') {
-      answerText = settings.fallbackMessage
-    }
-  } catch (error) {
-    console.error(
-      '[rag-auto-reply] answer generation failed:',
-      error instanceof Error ? error.message : error,
-    )
-    return false
-  }
-
-  if (!answerText || !args.phoneNumberId) return false
-
-  try {
-    const result = await sendTextMessage({
-      phoneNumberId: args.phoneNumberId,
-      accessToken: args.accessToken,
-      to: args.customerPhone,
-      text: answerText,
-    })
-
-    const { error: insertError } = await supabaseAdmin().from('messages').insert({
-      conversation_id: args.conversationId,
-      sender_type: 'bot',
-      content_type: 'text',
-      content_text: answerText,
-      message_id: result.messageId,
-      status: 'sent',
-    })
-    if (insertError) {
-      console.error('[rag-auto-reply] sent to Meta but DB insert failed:', insertError.message)
-    }
-
-    await supabaseAdmin()
-      .from('conversations')
-      .update({
-        last_message_text: answerText,
-        last_message_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', args.conversationId)
-    return true
-  } catch (error) {
-    console.error('[rag-auto-reply] send failed:', error instanceof Error ? error.message : error)
-    return false
   }
 }
 

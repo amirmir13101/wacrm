@@ -40,6 +40,7 @@ describe('team permission UI helpers', () => {
       'Automations',
       'Flows',
       'AI Agent',
+      'Knowledge Base',
       'Reports',
     ])
     expect(mainAccessLabels).not.toContain('AI Chatbot')

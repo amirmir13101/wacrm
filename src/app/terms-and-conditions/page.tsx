@@ -134,8 +134,8 @@ export default function TermsAndConditionsPage() {
             WhatsApp, Meta, hosting, payment, or third-party integration costs may be separate from Talk Wagon fees
             unless explicitly included in your selected setup.
           </InfoCard>
-          <InfoCard title="AI chatbot limitations">
-            AI chatbot, website import, and automation features are support tools. Your business should review knowledge
+          <InfoCard title="AI Agent limitations">
+            AI Agent, website import, and automation features are support tools. Your business should review knowledge
             base content, customer replies, policy statements, and automated responses before relying on them.
           </InfoCard>
           <InfoCard title="Service changes">

@@ -25,10 +25,11 @@ const messageBubble = readFileSync(join(process.cwd(), 'src/components/inbox/mes
 const authHook = readFileSync(join(process.cwd(), 'src/hooks/use-auth.tsx'), 'utf8')
 const sidebar = readFileSync(join(process.cwd(), 'src/components/layout/sidebar.tsx'), 'utf8')
 
-describe('separate AI Agent module', () => {
-  it('adds a separate AI Agent dashboard tab without replacing AI Chatbot', () => {
+describe('AI Agent module', () => {
+  it('keeps AI Agent and adds the standalone Knowledge Base without AI Chatbot navigation', () => {
     expect(sidebar).toContain('href: "/agents", label: "AI Agent"')
-    expect(sidebar).toContain('href: "/ai-chatbot", label: "AI Chatbot"')
+    expect(sidebar).toContain('href: "/knowledge-base", label: "Knowledge Base"')
+    expect(sidebar).not.toContain('href: "/ai-chatbot"')
     expect(page).toContain('AI Agents')
     expect(page).toContain("fetch('/api/ai/config')")
   })
@@ -42,12 +43,15 @@ describe('separate AI Agent module', () => {
     expect(migration).not.toContain('is_account_member')
   })
 
-  it('keeps AI Agent data separate from the RAG chatbot tables', () => {
+  it('keeps AI Agent-owned storage intact while extending retrieval to Knowledge Base data', () => {
     expect(store).toContain("from('ai_agent_configs')")
     expect(store).toContain("from('ai_agent_knowledge_documents')")
     expect(store).toContain("from('ai_agent_knowledge_chunks')")
     expect(officialConfig).toContain("from('ai_agent_configs')")
     expect(officialKnowledge).toContain("from('ai_agent_knowledge_chunks')")
+    expect(officialKnowledge).toContain("from('rag_knowledge_sources')")
+    expect(officialKnowledge).toContain('match_knowledge_base_semantic')
+    expect(officialKnowledge).toContain('match_knowledge_base_fts')
     expect(parityMigration).toContain('match_ai_agent_knowledge_fts')
     expect(parityMigration).toContain('claim_ai_reply_slot')
     expect(store).not.toContain("from('rag_knowledge_sources')")
@@ -62,12 +66,13 @@ describe('separate AI Agent module', () => {
     expect(playgroundRoute).toContain("requireWorkspacePermission('view_ai_agent')")
   })
 
-  it('dispatches the separate AI Agent only after Flow and RAG precedence checks', () => {
+  it('dispatches AI Agent after deterministic Flow precedence', () => {
     expect(webhookRoute).toContain("import { NextResponse, after } from 'next/server'")
     expect(webhookRoute).toContain('after(async () => {')
     expect(webhookRoute).toContain("import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'")
     expect(webhookRoute).toContain('!flowConsumed &&')
-    expect(webhookRoute).toContain('!aiReplied &&')
+    expect(webhookRoute).not.toContain('maybeHandleRagAutoReply')
+    expect(webhookRoute).not.toContain('!aiReplied &&')
     expect(webhookRoute).toContain('await dispatchInboundToAiReply({')
     expect(webhookRoute).toContain('accountId: workspaceId')
   })

@@ -14,6 +14,7 @@ export type PermissionGroupId =
   | 'automations'
   | 'flows'
   | 'ai_agent'
+  | 'knowledge_base'
   | 'pipeline'
   | 'reports'
   | 'pricing'
@@ -137,6 +138,16 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     items: [
       { key: 'view_ai_agent', label: 'View AI Agent' },
       { key: 'manage_ai_agent', label: 'Manage AI Agent', danger: true },
+    ],
+  },
+  {
+    id: 'knowledge_base',
+    title: 'Knowledge Base',
+    helper: 'Website imports, Firecrawl, saved knowledge, and retrieval activity.',
+    section: 'main',
+    items: [
+      { key: 'view_knowledge_base', label: 'View Knowledge Base' },
+      { key: 'manage_knowledge_base', label: 'Manage Knowledge Base', danger: true },
     ],
   },
   {
@@ -264,7 +275,7 @@ export const ADVANCED_PERMISSION_SECTIONS = [
   {
     id: 'main',
     title: 'Main access',
-    groupIds: ['dashboard', 'inbox', 'contacts', 'pipeline', 'broadcasts', 'automations', 'flows', 'ai_agent', 'reports'],
+    groupIds: ['dashboard', 'inbox', 'contacts', 'pipeline', 'broadcasts', 'automations', 'flows', 'ai_agent', 'knowledge_base', 'reports'],
   },
   {
     id: 'conversation',
@@ -311,6 +322,7 @@ export const MAIN_ACCESS_PERMISSIONS: Array<{
   { key: 'view_automations', label: 'Automations' },
   { key: 'view_flows', label: 'Flows' },
   { key: 'view_ai_agent', label: 'AI Agent' },
+  { key: 'view_knowledge_base', label: 'Knowledge Base' },
   { key: 'view_reports', label: 'Reports' },
 ]
 

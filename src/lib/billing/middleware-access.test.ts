@@ -5,14 +5,14 @@ import { describe, expect, it } from 'vitest'
 describe('middleware billing and workspace access gates', () => {
   const source = readFileSync(join(process.cwd(), 'src/middleware.ts'), 'utf8')
 
-  it('protects dashboard-only features including flows and AI chatbot pages', () => {
+  it('protects dashboard-only features including flows and Knowledge Base pages', () => {
     expect(source).toContain("'/flows'")
-    expect(source).toContain("'/ai-chatbot'")
+    expect(source).toContain("'/knowledge-base'")
     expect(source).toContain('canAccessDashboardPath')
   })
 
-  it('protects RAG and Flows API routes with auth, approval, permission, and billing checks', () => {
-    expect(source).toContain("request.nextUrl.pathname.startsWith('/api/rag')")
+  it('protects Knowledge Base and Flows API routes with auth, approval, permission, and billing checks', () => {
+    expect(source).toContain("request.nextUrl.pathname.startsWith('/api/knowledge-base')")
     expect(source).toContain("request.nextUrl.pathname.startsWith('/api/flows')")
     expect(source).toContain('evaluateWorkspaceBillingAccess')
     expect(source).toContain("status: 402")

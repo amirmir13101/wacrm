@@ -170,7 +170,7 @@ describe("public legal and information pages", () => {
       "/contacts",
       "/billing",
       "/flows",
-      "/ai-chatbot",
+      "/knowledge-base",
       "/whatsapp-api-pricing",
       "/data-deletion/status",
     ]) {

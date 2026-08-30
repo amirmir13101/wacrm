@@ -10,9 +10,12 @@ vi.mock('./embeddings', () => ({
 import { retrieveKnowledge, ingestDocument } from './knowledge'
 
 interface FakeState {
-  semantic: { id: string; content: string }[]
-  fts: { id: string; content: string }[]
+  semantic: { id: string; content: string; distance?: number; rank?: number }[]
+  knowledgeBaseSemantic: { id: string; content: string; distance?: number; rank?: number }[]
+  fts: { id: string; content: string; distance?: number; rank?: number }[]
+  knowledgeBaseFts: { id: string; content: string; distance?: number; rank?: number }[]
   chunkCount: number
+  knowledgeBaseCount: number
   rpcCalls: string[]
   inserted: Record<string, unknown>[] | null
   deletedFor: string | null
@@ -21,8 +24,11 @@ interface FakeState {
 function makeDb() {
   const state: FakeState = {
     semantic: [],
+    knowledgeBaseSemantic: [],
     fts: [],
+    knowledgeBaseFts: [],
     chunkCount: 5, // account has a non-empty KB by default
+    knowledgeBaseCount: 0,
     rpcCalls: [],
     inserted: null,
     deletedFor: null,
@@ -32,15 +38,32 @@ function makeDb() {
       state.rpcCalls.push(name)
       if (name === 'match_ai_agent_knowledge_semantic')
         return Promise.resolve({ data: state.semantic, error: null })
+      if (name === 'match_knowledge_base_semantic')
+        return Promise.resolve({ data: state.knowledgeBaseSemantic, error: null })
       if (name === 'match_ai_agent_knowledge_fts')
         return Promise.resolve({ data: state.fts, error: null })
+      if (name === 'match_knowledge_base_fts')
+        return Promise.resolve({ data: state.knowledgeBaseFts, error: null })
       return Promise.resolve({ data: null, error: null })
     },
-    from: () => ({
+    from: (table: string) => ({
       // retrieveKnowledge's empty-KB count guard.
-      select: () => ({
-        eq: () => Promise.resolve({ count: state.chunkCount, error: null }),
-      }),
+      select: () => {
+        const result = {
+          count:
+            table === 'rag_knowledge_sources'
+              ? state.knowledgeBaseCount
+              : state.chunkCount,
+          error: null,
+        }
+        const builder = {
+          eq: () => builder,
+          is: () => Promise.resolve(result),
+          then: (resolve: (value: typeof result) => unknown) =>
+            Promise.resolve(result).then(resolve),
+        }
+        return builder
+      },
       delete: () => ({
         eq: (_col: string, val: string) => {
           state.deletedFor = val
@@ -84,7 +107,10 @@ describe('retrieveKnowledge', () => {
     state.fts = [{ id: 'f1', content: 'F1' }]
     const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'q')
     expect(out).toEqual(['F1'])
-    expect(state.rpcCalls).toEqual(['match_ai_agent_knowledge_fts'])
+    expect(state.rpcCalls).toEqual([
+      'match_ai_agent_knowledge_fts',
+      'match_knowledge_base_fts',
+    ])
     expect(h.embedTexts).not.toHaveBeenCalled()
   })
 
@@ -99,7 +125,10 @@ describe('retrieveKnowledge', () => {
     expect(out).toEqual(['S1', 'S2', 'S3'])
     expect(h.embedTexts).toHaveBeenCalledTimes(1)
     // Enough semantic hits → no FTS top-up.
-    expect(state.rpcCalls).toEqual(['match_ai_agent_knowledge_semantic'])
+    expect(state.rpcCalls).toEqual([
+      'match_ai_agent_knowledge_semantic',
+      'match_knowledge_base_semantic',
+    ])
   })
 
   it('tops up with FTS and dedupes when semantic is short', async () => {
@@ -116,8 +145,39 @@ describe('retrieveKnowledge', () => {
     expect(out).toEqual(['S1', 'S2', 'F1'])
     expect(state.rpcCalls).toEqual([
       'match_ai_agent_knowledge_semantic',
+      'match_knowledge_base_semantic',
       'match_ai_agent_knowledge_fts',
+      'match_knowledge_base_fts',
     ])
+  })
+
+  it('answers when relevant context exists only in the standalone Knowledge Base', async () => {
+    const { db, state } = makeDb()
+    state.chunkCount = 0
+    state.knowledgeBaseCount = 1
+    state.knowledgeBaseFts = [{ id: 'kb-1', content: 'Standalone KB answer' }]
+
+    await expect(
+      retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'q'),
+    ).resolves.toEqual(['Standalone KB answer'])
+  })
+
+  it('merges useful context from both stores while respecting the same result limit', async () => {
+    const { db, state } = makeDb()
+    state.knowledgeBaseCount = 1
+    state.fts = [{ id: 'agent-1', content: 'Agent fact', rank: 0.9 }]
+    state.knowledgeBaseFts = [{ id: 'kb-1', content: 'Knowledge Base fact', rank: 0.8 }]
+
+    await expect(
+      retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'q', 2),
+    ).resolves.toEqual(['Agent fact', 'Knowledge Base fact'])
+  })
+
+  it('returns no context when neither source has a relevant match', async () => {
+    const { db } = makeDb()
+    await expect(
+      retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'unknown'),
+    ).resolves.toEqual([])
   })
 })
 

@@ -1,15 +1,11 @@
-import { generateText } from 'ai'
-
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { decrypt } from '@/lib/whatsapp/encryption'
-import { createRagOpenAICompatibleProvider, resolveRagProviderConfig } from './provider'
-import { isRagProviderType } from './settings'
+import { loadAiConfig } from '@/lib/ai/config'
+import { generateReply } from '@/lib/ai/generate'
 
 const DEFAULT_STRUCTURING_CALL_CAP = 3
 const MAX_STRUCTURING_CALL_CAP = 5
 const MAX_PAGE_CHARACTERS_PER_BATCH = 16_000
 const MAX_BATCH_CHARACTERS = 38_000
-const WEBSITE_STRUCTURING_TIMEOUT_MS = 25_000
 
 export interface RagWebsiteStructuringPage {
   readonly url: string
@@ -35,13 +31,6 @@ export interface RagWebsiteStructuringGenerationInput {
 export type RagWebsiteStructuringGenerator = (
   input: RagWebsiteStructuringGenerationInput,
 ) => Promise<string>
-
-interface ProviderSettingsRow {
-  readonly provider: string | null
-  readonly encrypted_api_key: string | null
-  readonly enabled: boolean | null
-  readonly backend_config: Record<string, unknown> | null
-}
 
 interface GroundedFact {
   readonly label: string | null
@@ -217,45 +206,16 @@ async function resolveWorkspaceStructuringGenerator(
   workspaceId: string,
 ): Promise<RagWebsiteStructuringGenerator | null> {
   try {
-    const { data, error } = await supabaseAdmin()
-      .from('rag_provider_settings')
-      .select('provider, encrypted_api_key, enabled, backend_config')
-      .eq('workspace_id', workspaceId)
-      .maybeSingle()
-
-    if (error) throw new Error(error.message)
-    const row = data as ProviderSettingsRow | null
-    if (!row?.encrypted_api_key || row.enabled !== true) return null
-
-    const providerCandidate = row.provider ?? ''
-    const providerType = isRagProviderType(providerCandidate) ? providerCandidate : 'openai'
-    const backend = row.backend_config ?? {}
-    const config = resolveRagProviderConfig({
-      provider: providerType,
-      apiKey: decrypt(row.encrypted_api_key),
-      baseUrl: typeof backend.baseUrl === 'string' ? backend.baseUrl : null,
-      chatModel: typeof backend.chatModel === 'string' ? backend.chatModel : null,
-      embeddingModel: typeof backend.embeddingModel === 'string' ? backend.embeddingModel : null,
-      embeddingDimensions: typeof backend.embeddingDimensions === 'number' ? backend.embeddingDimensions : null,
-    })
-    const provider = createRagOpenAICompatibleProvider(config)
+    const config = await loadAiConfig(supabaseAdmin(), workspaceId, { requireActive: false })
+    if (!config) return null
 
     return async (input) => {
-      const abortController = new AbortController()
-      const timer = setTimeout(() => abortController.abort(), WEBSITE_STRUCTURING_TIMEOUT_MS)
-      try {
-        const result = await generateText({
-          model: provider(config.chatModel),
-          system: input.system,
-          prompt: input.prompt,
-          temperature: 0,
-          maxOutputTokens: 5_000,
-          abortSignal: abortController.signal,
-        })
-        return result.text
-      } finally {
-        clearTimeout(timer)
-      }
+      const result = await generateReply({
+        config,
+        systemPrompt: input.system,
+        messages: [{ role: 'user', content: input.prompt }],
+      })
+      return result.text
     }
   } catch {
     return null

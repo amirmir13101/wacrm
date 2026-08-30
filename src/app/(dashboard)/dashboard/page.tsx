@@ -148,7 +148,7 @@ export default function DashboardPage() {
           <p className="mt-2 max-w-3xl text-sm leading-7 text-amber-50/85">
             Your workspace can still log in, but CRM features are locked until Trial or
             Pro access is active again. Renew or upgrade to Pro to continue using
-            inbox, contacts, broadcasts, automations, flows, AI chatbot, and imports.
+            inbox, contacts, broadcasts, automations, flows, AI Agent, and knowledge imports.
           </p>
           <Link
             href="/checkout/pro"

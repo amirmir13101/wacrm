@@ -105,7 +105,7 @@ describe("Batch 01 technical SEO", () => {
     for (const route of ["/features", "/pricing", "/about", "/contact", "/security"]) {
       expect(sitemap).toContain(`\`${"${siteUrl}"}${route}\``);
     }
-    for (const privateRoute of ["/dashboard", "/inbox", "/settings", "/ai-chatbot"]) {
+    for (const privateRoute of ["/dashboard", "/inbox", "/settings", "/knowledge-base"]) {
       expect(sitemap).not.toContain(`\`${"${siteUrl}"}${privateRoute}\``);
       expect(robots).toContain(`"${privateRoute}"`);
     }

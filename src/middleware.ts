@@ -133,7 +133,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/flows', '/ai-agent', '/agents', '/ai-chatbot', '/billing', '/whatsapp-api-pricing', '/settings', '/team', '/admin', '/admintops', '/article-preview']
+  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/flows', '/ai-agent', '/agents', '/knowledge-base', '/billing', '/whatsapp-api-pricing', '/settings', '/team', '/admin', '/admintops', '/article-preview']
   if (
     !user &&
     (
@@ -253,7 +253,7 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/api/team') ||
     request.nextUrl.pathname.startsWith('/api/contacts') ||
     request.nextUrl.pathname.startsWith('/api/pricing') ||
-    request.nextUrl.pathname.startsWith('/api/rag') ||
+    request.nextUrl.pathname.startsWith('/api/knowledge-base') ||
     (request.nextUrl.pathname.startsWith('/api/flows') && !isCronProtectedFlows) ||
     request.nextUrl.pathname.startsWith('/api/admin') ||
     request.nextUrl.pathname.startsWith('/api/auth/change-password')

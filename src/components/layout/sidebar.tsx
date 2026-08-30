@@ -18,6 +18,7 @@ import {
   Zap,
   Workflow,
   Bot,
+  BookOpenText,
   CreditCard,
   Calculator,
   Settings,
@@ -54,7 +55,7 @@ const navItems: Array<{
   { href: "/automations", label: "Automations", icon: Zap, permission: "view_automations" },
   { href: "/flows", label: "Flows", icon: Workflow, permission: "view_flows" },
   { href: "/agents", label: "AI Agent", icon: Bot, permission: "view_ai_agent" },
-  { href: "/ai-chatbot", label: "AI Chatbot", icon: Bot, permission: "view_rag_chatbot" },
+  { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpenText, permission: "view_knowledge_base" },
   { href: "/billing", label: "Billing", icon: CreditCard },
   {
     href: "/whatsapp-api-pricing",

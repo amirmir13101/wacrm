@@ -1,10 +1,8 @@
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { embedTexts } from '@/lib/ai/embeddings'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import { generateRagEmbedding } from './embeddings'
-import { DEFAULT_RAG_PROVIDER_CONFIG, resolveRagProviderConfig } from './provider'
 import { sanitizeProviderError } from './security'
-import { isRagProviderType } from './settings'
-import type { RagProviderType, RagResolvedProviderConfig } from './types'
+import type { RagProviderType } from './types'
 
 const RAG_EMBEDDING_DIMENSIONS = 1536
 const ZERO_EMBEDDING = Array.from({ length: RAG_EMBEDDING_DIMENSIONS }, () => 0)
@@ -13,7 +11,6 @@ export const RAG_EMBEDDING_BATCH_SIZE = 50
 export const RAG_EMBEDDING_MAX_BATCH_CHARACTERS = 20_000
 export const RAG_EMBEDDING_MAX_CHUNK_CHARACTERS = 8_000
 export const RAG_EMBEDDING_DB_ID_BATCH_SIZE = 75
-const FALLBACK_EMBEDDING_MODEL = 'embedding-not-configured'
 
 type EmbeddingRunStatus = 'ready' | 'partial' | 'failed' | 'not_configured' | 'skipped'
 export type RagEmbeddingErrorCategory =
@@ -27,11 +24,8 @@ export type RagEmbeddingErrorCategory =
   | 'embedding_model_error'
   | 'unknown_embedding_error'
 
-interface RagProviderSettingsRow {
-  readonly provider: string | null
-  readonly encrypted_api_key: string | null
-  readonly enabled: boolean | null
-  readonly backend_config?: Record<string, unknown> | null
+interface AiAgentEmbeddingSettingsRow {
+  readonly embeddings_api_key: string | null
 }
 
 interface RagKnowledgeSourceRow {
@@ -73,14 +67,6 @@ export interface RagEmbeddingSummary {
   readonly userMessage: string
   readonly provider: RagProviderType | null
   readonly embeddingModel: string | null
-}
-
-function fallbackProvider(provider: string | null | undefined): RagProviderType {
-  return isRagProviderType(provider ?? '') ? provider as RagProviderType : 'openai'
-}
-
-function fallbackEmbeddingModel(provider: RagProviderType): string {
-  return DEFAULT_RAG_PROVIDER_CONFIG[provider].embeddingModel || FALLBACK_EMBEDDING_MODEL
 }
 
 function safeBaseUrlHost(value: string | null | undefined): string | null {
@@ -265,55 +251,36 @@ function chunkArray<T>(values: ReadonlyArray<T>, size: number): ReadonlyArray<Re
   return chunks
 }
 
-function safeProviderConfig(row: RagProviderSettingsRow | null): {
-  readonly config: RagResolvedProviderConfig | null
+function safeProviderConfig(row: AiAgentEmbeddingSettingsRow | null): {
+  readonly config: { readonly apiKey: string } | null
   readonly provider: RagProviderType
   readonly embeddingModel: string
   readonly baseUrlHost: string | null
   readonly error: string | null
   readonly errorCategory: RagEmbeddingErrorCategory | null
 } {
-  const provider = fallbackProvider(row?.provider)
-  const embeddingModel = fallbackEmbeddingModel(provider)
-  const backend = row?.backend_config ?? {}
-  const configuredBaseUrl = typeof backend.baseUrl === 'string' ? backend.baseUrl : DEFAULT_RAG_PROVIDER_CONFIG[provider].baseUrl
+  const provider: RagProviderType = 'openai'
+  const embeddingModel = 'text-embedding-3-small'
+  const configuredBaseUrl = 'https://api.openai.com/v1'
 
-  if (!row?.encrypted_api_key || row.enabled !== true) {
+  if (!row?.embeddings_api_key) {
     return {
       config: null,
       provider,
       embeddingModel,
       baseUrlHost: safeBaseUrlHost(configuredBaseUrl),
-      error: 'AI provider is not configured. Add your API key before embeddings can be created.',
+      error: 'AI Agent embeddings are not configured. Add the embeddings key in AI Agent Setup before embeddings can be created.',
       errorCategory: 'provider_missing_key',
     }
   }
 
   try {
-    const apiKey = decrypt(row.encrypted_api_key)
-    const config = resolveRagProviderConfig({
-      provider,
-      apiKey,
-      baseUrl: typeof backend.baseUrl === 'string' ? backend.baseUrl : null,
-      chatModel: typeof backend.chatModel === 'string' ? backend.chatModel : null,
-      embeddingModel: typeof backend.embeddingModel === 'string' ? backend.embeddingModel : null,
-      embeddingDimensions: typeof backend.embeddingDimensions === 'number' ? backend.embeddingDimensions : null,
-    })
-    if (config.embeddingDimensions !== RAG_EMBEDDING_DIMENSIONS) {
-      return {
-        config: null,
-        provider,
-        embeddingModel: config.embeddingModel,
-        baseUrlHost: safeBaseUrlHost(config.baseUrl),
-        error: 'Embedding model dimension does not match the vector database configuration. Please use the supported embedding model.',
-        errorCategory: 'embedding_model_error',
-      }
-    }
+    const apiKey = decrypt(row.embeddings_api_key)
     return {
-      config,
+      config: { apiKey },
       provider,
-      embeddingModel: config.embeddingModel,
-      baseUrlHost: safeBaseUrlHost(config.baseUrl),
+      embeddingModel,
+      baseUrlHost: safeBaseUrlHost(configuredBaseUrl),
       error: null,
       errorCategory: null,
     }
@@ -348,15 +315,15 @@ async function getEmbeddableSource(
   return data as RagKnowledgeSourceRow | null
 }
 
-async function getProviderSettings(workspaceId: string): Promise<RagProviderSettingsRow | null> {
+async function getProviderSettings(workspaceId: string): Promise<AiAgentEmbeddingSettingsRow | null> {
   const { data, error } = await supabaseAdmin()
-    .from('rag_provider_settings')
-    .select('provider, encrypted_api_key, enabled, backend_config')
+    .from('ai_agent_configs')
+    .select('embeddings_api_key')
     .eq('workspace_id', workspaceId)
     .maybeSingle()
 
   if (error) throw new Error(error.message)
-  return data as RagProviderSettingsRow | null
+  return data as AiAgentEmbeddingSettingsRow | null
 }
 
 async function getSourceChunks(
@@ -594,11 +561,9 @@ export async function recordFailedRagEmbeddingSummary(args: {
     ])
     sourceMetadata = source?.metadata
     chunksProcessed = chunks.length
-    provider = fallbackProvider(providerSettings?.provider)
-    embeddingModel = fallbackEmbeddingModel(provider)
-    const backend = providerSettings?.backend_config ?? {}
-    if (typeof backend.embeddingModel === 'string' && backend.embeddingModel.trim()) {
-      embeddingModel = backend.embeddingModel.trim()
+    if (providerSettings?.embeddings_api_key) {
+      provider = 'openai'
+      embeddingModel = 'text-embedding-3-small'
     }
   } catch (countError) {
     console.warn('rag_embedding_failure_summary_count_failed', {
@@ -770,7 +735,7 @@ export async function embedRagManualKnowledgeSource(args: {
   failed = terminalFailedChunkIds.size
   const retriableFailedRowsReset = await resetRetriableFailedEmbeddings({
     workspaceId: args.workspaceId,
-    embeddingModel: providerConfig.config.embeddingModel,
+    embeddingModel: providerConfig.embeddingModel,
     existing,
   })
   const chunksNeedingEmbeddings = chunks.filter((chunk) => !readyChunkIds.has(chunk.id) && !terminalFailedChunkIds.has(chunk.id))
@@ -802,8 +767,8 @@ export async function embedRagManualKnowledgeSource(args: {
         status: 'partial',
         message: 'Getting your knowledge ready for the chatbot. We are preparing the saved content in safe batches.',
         embeddingErrorCategory: null,
-        provider: providerConfig.config.provider,
-        embeddingModel: providerConfig.config.embeddingModel,
+        provider: providerConfig.provider,
+        embeddingModel: providerConfig.embeddingModel,
       }),
     })
   }
@@ -815,9 +780,9 @@ export async function embedRagManualKnowledgeSource(args: {
     chunkState: sourceEmbeddingChunkState(source),
     totalSourceCharacters,
     ...chunkStats,
-    provider: providerConfig.config.provider,
+    provider: providerConfig.provider,
     baseUrlHost: providerConfig.baseUrlHost,
-    embeddingModel: providerConfig.config.embeddingModel,
+    embeddingModel: providerConfig.embeddingModel,
     chunkCount: chunks.length,
     chunksToProcess: chunksNeedingEmbeddings.length,
     batchSize: RAG_EMBEDDING_BATCH_SIZE,
@@ -838,7 +803,8 @@ export async function embedRagManualKnowledgeSource(args: {
       if (chunk.chunk_text.length > RAG_EMBEDDING_MAX_CHUNK_CHARACTERS) {
         throw new Error(`A single chunk is too large for safe embedding (${chunk.chunk_text.length.toLocaleString()} characters).`)
       }
-      const embedding = await generateRagEmbedding(chunk.chunk_text, providerConfig.config)
+      const [embedding] = await embedTexts(providerConfig.config.apiKey, [chunk.chunk_text])
+      if (!embedding) throw new Error('Embedding provider returned no vector.')
       lastEmbeddingDimension = embedding.length
       if (embedding.length !== RAG_EMBEDDING_DIMENSIONS) {
         throw new Error('Embedding provider returned the wrong dimensions.')
@@ -846,7 +812,7 @@ export async function embedRagManualKnowledgeSource(args: {
       await upsertEmbedding({
         workspaceId: args.workspaceId,
         chunkId: chunk.id,
-        embeddingModel: providerConfig.config.embeddingModel,
+        embeddingModel: providerConfig.embeddingModel,
         embedding,
         status: 'ready',
         errorMessage: null,
@@ -859,9 +825,9 @@ export async function embedRagManualKnowledgeSource(args: {
         workspaceId: args.workspaceId,
         sourceId: args.sourceId,
         chunkId: chunk.id,
-        provider: providerConfig.config.provider,
+        provider: providerConfig.provider,
         baseUrlHost: providerConfig.baseUrlHost,
-        embeddingModel: providerConfig.config.embeddingModel,
+        embeddingModel: providerConfig.embeddingModel,
         chunkCount: chunks.length,
         batchSize: RAG_EMBEDDING_BATCH_SIZE,
         batchChunkCount: batch.length,
@@ -874,7 +840,7 @@ export async function embedRagManualKnowledgeSource(args: {
       await upsertEmbedding({
         workspaceId: args.workspaceId,
         chunkId: chunk.id,
-        embeddingModel: providerConfig.config.embeddingModel,
+        embeddingModel: providerConfig.embeddingModel,
         embedding: ZERO_EMBEDDING,
         status: 'failed',
         errorMessage: sanitizeProviderError(error),
@@ -915,8 +881,8 @@ export async function embedRagManualKnowledgeSource(args: {
         ? `Prepared ${created.toLocaleString()} embeddings in this batch. ${remainingChunks.toLocaleString()} chunks remain.`
       : ragEmbeddingUserMessage(firstFailureCategory),
     embeddingErrorCategory: status === 'ready' ? null : firstFailureCategory,
-    provider: providerConfig.config.provider,
-    embeddingModel: providerConfig.config.embeddingModel,
+    provider: providerConfig.provider,
+    embeddingModel: providerConfig.embeddingModel,
   })
   console.info('rag_embedding_run_completed', {
     workspaceId: args.workspaceId,
@@ -925,9 +891,9 @@ export async function embedRagManualKnowledgeSource(args: {
     chunkState: sourceEmbeddingChunkState(source),
     totalSourceCharacters,
     ...chunkStats,
-    provider: providerConfig.config.provider,
+    provider: providerConfig.provider,
     baseUrlHost: providerConfig.baseUrlHost,
-    embeddingModel: providerConfig.config.embeddingModel,
+    embeddingModel: providerConfig.embeddingModel,
     chunkCount: chunks.length,
     batchSize: RAG_EMBEDDING_BATCH_SIZE,
     batchChunkCount: batch.length,

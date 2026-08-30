@@ -9,15 +9,15 @@ import {
 import { prepareRagKnowledgeSource, RAG_KNOWLEDGE_CHARACTER_LIMIT } from './knowledge'
 
 const page = readFileSync(
-  join(process.cwd(), 'src/app/(dashboard)/ai-chatbot/page.tsx'),
+  join(process.cwd(), 'src/app/(dashboard)/knowledge-base/page.tsx'),
   'utf8',
 )
 const websiteImportRoute = readFileSync(
-  join(process.cwd(), 'src/app/api/rag/website-import/route.ts'),
+  join(process.cwd(), 'src/app/api/knowledge-base/website-import/route.ts'),
   'utf8',
 )
 const websiteImportPublishRoute = readFileSync(
-  join(process.cwd(), 'src/app/api/rag/website-import/[id]/route.ts'),
+  join(process.cwd(), 'src/app/api/knowledge-base/website-import/[id]/route.ts'),
   'utf8',
 )
 const websiteImport = readFileSync(
@@ -759,7 +759,7 @@ describe('RAG Firecrawl website import', () => {
   })
 
   it('adds the website import API route with workspace permission and no key exposure', () => {
-    expect(websiteImportRoute).toContain("requireRagPermission('manage_rag_chatbot')")
+    expect(websiteImportRoute).toContain("requireKnowledgeBasePermission('manage_knowledge_base')")
     expect(websiteImportRoute).toContain('createRagWebsiteImportDraft')
     expect(websiteImportRoute).toContain('createRagWebsiteImportJob')
     expect(websiteImportRoute).toContain('createSkippedRagEmbeddingSummary')
@@ -834,7 +834,7 @@ describe('RAG Firecrawl website import', () => {
     expect(page).toContain('Checking website pages...')
     expect(page).toContain('Reading useful website content...')
     expect(page).toContain('Cleaning unnecessary website text...')
-    expect(page).toContain('Preparing chatbot knowledge...')
+    expect(page).toContain('Preparing knowledge for AI Agent...')
     expect(page).toContain('Creating searchable knowledge chunks...')
     expect(page).not.toContain('Removing duplicate/footer/widget junk')
     expect(page).not.toContain('Crawling current page')
@@ -849,11 +849,11 @@ describe('RAG Firecrawl website import', () => {
     expect(page).toContain('Estimated time: Up to 25 pages may take around 2–3 minutes')
     expect(page).toContain('Importing...')
     expect(page).toContain('Add your Firecrawl API key first.')
-    expect(page).toContain('/api/rag/website-import')
+    expect(page).toContain('/api/knowledge-base/website-import')
     expect(page).not.toContain('scrape depth')
     expect(page).not.toContain('crawler settings')
     expect(page).not.toContain('raw Firecrawl')
-    expect(webhookRoute).toContain('getRagAutoReplyRuntimeSettings')
-    expect(webhookRoute).toContain('if (!settings?.enabled) return')
+    expect(webhookRoute).not.toContain('getRagAutoReplyRuntimeSettings')
+    expect(webhookRoute).toContain('dispatchInboundToAiReply')
   })
 })

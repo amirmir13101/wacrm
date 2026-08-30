@@ -51,7 +51,7 @@ export default function PrivacyPolicyPage() {
       <InfoHero
         eyebrow="Privacy Policy"
         title="How Talk Wagon Handles Privacy and CRM Data"
-        description="This policy explains how Talk Wagon CRM, a Berankify LTD project, processes account, workspace, contact, conversation, AI chatbot, website import, and support information for the CRM features customers choose to use."
+        description="This policy explains how Talk Wagon CRM, a Berankify LTD project, processes account, workspace, contact, conversation, AI Agent, website import, and support information for the CRM features customers choose to use."
         badges={["Client-owned contacts", "No contact data selling", "CRM service processing", "WhatsApp policy responsibility"]}
         breadcrumbs={[
           { label: "Home", href: "/" },
@@ -95,9 +95,9 @@ export default function PrivacyPolicyPage() {
             WhatsApp-style message records, assignments, automation events, broadcast status, pipeline activity, and
             operational logs needed for CRM functionality.
           </InfoCard>
-          <InfoCard title="AI chatbot and knowledge base data">
+          <InfoCard title="AI Agent and knowledge base data">
             Business knowledge, chatbot instructions, imported website content, embeddings, test questions, and chatbot
-            logs may be processed when you enable AI chatbot features.
+            logs may be processed when you enable AI Agent features.
           </InfoCard>
           <InfoCard title="Website import and Firecrawl data">
             Website URLs, crawl results, page content, import drafts, structured facts, and provider status may be

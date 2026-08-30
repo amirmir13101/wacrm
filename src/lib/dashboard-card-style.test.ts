@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest'
 
 describe('dashboard card border styling', () => {
   const cardComponent = readFileSync(join(process.cwd(), 'src/components/ui/card.tsx'), 'utf8')
-  const aiChatbotPage = readFileSync(
-    join(process.cwd(), 'src/app/(dashboard)/ai-chatbot/page.tsx'),
+  const knowledgeBasePage = readFileSync(
+    join(process.cwd(), 'src/app/(dashboard)/knowledge-base/page.tsx'),
     'utf8',
   )
   const dashboardCardFiles = [
@@ -18,9 +18,9 @@ describe('dashboard card border styling', () => {
     'src/components/dashboard/skeleton.tsx',
   ].map((file) => readFileSync(join(process.cwd(), file), 'utf8'))
 
-  it('uses the AI Chatbot green border treatment in the shared Card component', () => {
-    expect(aiChatbotPage).toContain("border border-[#3ddf84]/60")
-    expect(aiChatbotPage).toContain("hover:border-[#3ddf84]/80")
+  it('uses the Knowledge Base green border treatment in the shared Card component', () => {
+    expect(knowledgeBasePage).toContain("border border-[#3ddf84]/60")
+    expect(knowledgeBasePage).toContain("hover:border-[#3ddf84]/80")
     expect(cardComponent).toContain("border border-[#3ddf84]/60")
     expect(cardComponent).toContain("hover:border-[#3ddf84]/80")
     expect(cardComponent).toContain("shadow-[0_18px_50px_rgba(0,0,0,0.22)]")

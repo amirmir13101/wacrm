@@ -15,15 +15,15 @@ import {
 } from './knowledge'
 
 const page = readFileSync(
-  join(process.cwd(), 'src/app/(dashboard)/ai-chatbot/page.tsx'),
+  join(process.cwd(), 'src/app/(dashboard)/knowledge-base/page.tsx'),
   'utf8',
 )
 const listRoute = readFileSync(
-  join(process.cwd(), 'src/app/api/rag/knowledge/route.ts'),
+  join(process.cwd(), 'src/app/api/knowledge-base/knowledge/route.ts'),
   'utf8',
 )
 const detailRoute = readFileSync(
-  join(process.cwd(), 'src/app/api/rag/knowledge/[id]/route.ts'),
+  join(process.cwd(), 'src/app/api/knowledge-base/knowledge/[id]/route.ts'),
   'utf8',
 )
 const knowledgeStore = readFileSync(
@@ -168,10 +168,10 @@ describe('RAG manual knowledge management', () => {
   })
 
   it('adds workspace-scoped CRUD routes with the right permissions', () => {
-    expect(listRoute).toContain("requireRagPermission('view_rag_chatbot')")
-    expect(listRoute).toContain("requireRagPermission('manage_rag_chatbot')")
-    expect(detailRoute).toContain("requireRagPermission('view_rag_chatbot')")
-    expect(detailRoute).toContain("requireRagPermission('manage_rag_chatbot')")
+    expect(listRoute).toContain("requireKnowledgeBasePermission('view_knowledge_base')")
+    expect(listRoute).toContain("requireKnowledgeBasePermission('manage_knowledge_base')")
+    expect(detailRoute).toContain("requireKnowledgeBasePermission('view_knowledge_base')")
+    expect(detailRoute).toContain("requireKnowledgeBasePermission('manage_knowledge_base')")
 
     expect(listRoute).toContain('createRagManualKnowledge')
     expect(listRoute).toContain('embedRagManualKnowledgeSource')
@@ -205,7 +205,7 @@ describe('RAG manual knowledge management', () => {
     expect(knowledgeStore).not.toContain('generateRagChunkEmbeddings')
   })
 
-  it('permanently deletes sources, chunks, and embeddings while keeping WhatsApp RAG guarded', () => {
+  it('permanently deletes sources, chunks, and embeddings without legacy Chatbot dispatch', () => {
     expect(knowledgeStore).toContain('deleteRagKnowledgeSource')
     expect(knowledgeStore).toContain("from('rag_embeddings')")
     expect(knowledgeStore).toContain("rag_knowledge_chunks!inner(source_id)")
@@ -221,8 +221,8 @@ describe('RAG manual knowledge management', () => {
     expect(page).toContain('Delete')
     expect(page).not.toContain('Archive')
     expect(page).toContain('Website Knowledge Import')
-    expect(webhookRoute).toContain('getRagAutoReplyRuntimeSettings')
-    expect(webhookRoute).toContain('if (!settings?.enabled) return')
+    expect(webhookRoute).not.toContain('getRagAutoReplyRuntimeSettings')
+    expect(webhookRoute).toContain('dispatchInboundToAiReply')
   })
 
   it('excludes archived and deleted knowledge from status counts', () => {

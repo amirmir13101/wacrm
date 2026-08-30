@@ -1,7 +1,5 @@
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { decrypt, encrypt } from '@/lib/whatsapp/encryption'
-import { resolveRagProviderConfig } from './provider'
-import { AI_PROVIDER_DEFAULTS } from './provider-config'
 import { getSecretLast4, maskSecret, sanitizeProviderError } from './security'
 import { RAG_PROVIDER_TYPES, type RagProviderType } from './types'
 
@@ -9,21 +7,6 @@ export type RagConnectionStatus = 'not_tested' | 'success' | 'failed'
 
 const FIRECRAWL_BASE_URL = 'https://api.firecrawl.dev/v2'
 const FIRECRAWL_REQUEST_TIMEOUT_MS = 30_000
-
-export interface RagProviderSettingsView {
-  readonly configured: boolean
-  readonly provider: RagProviderType
-  readonly keyLast4: string | null
-  readonly maskedKey: string | null
-  readonly enabled: boolean
-  readonly baseUrl: string | null
-  readonly chatModel: string | null
-  readonly embeddingModel: string | null
-  readonly embeddingDimensions: number | null
-  readonly lastTestedAt: string | null
-  readonly lastTestStatus: RagConnectionStatus | null
-  readonly lastTestError: string | null
-}
 
 export interface RagFirecrawlSettingsView {
   readonly configured: boolean
@@ -45,17 +28,6 @@ export interface RagFirecrawlCreditUsage {
   readonly lastUpdatedAt: string
 }
 
-interface RagProviderSettingsRow {
-  readonly provider?: string | null
-  readonly encrypted_api_key?: string | null
-  readonly api_key_last4?: string | null
-  readonly enabled?: boolean | null
-  readonly backend_config?: Record<string, unknown> | null
-  readonly last_tested_at?: string | null
-  readonly last_test_status?: string | null
-  readonly last_test_error?: string | null
-}
-
 interface RagFirecrawlSettingsRow {
   readonly encrypted_api_key?: string | null
   readonly api_key_last4?: string | null
@@ -74,31 +46,6 @@ function safeStatus(value: string | null | undefined): RagConnectionStatus | nul
   return null
 }
 
-function toProviderView(row: RagProviderSettingsRow | null): RagProviderSettingsView {
-  const provider = isRagProviderType(row?.provider ?? '') ? row!.provider as RagProviderType : 'openai'
-  const keyLast4 = row?.api_key_last4 ?? getSecretLast4(row?.encrypted_api_key)
-  const backend = row?.backend_config ?? {}
-  const baseUrl = typeof backend.baseUrl === 'string' ? backend.baseUrl : null
-  const chatModel = typeof backend.chatModel === 'string' ? backend.chatModel : null
-  const embeddingModel = typeof backend.embeddingModel === 'string' ? backend.embeddingModel : null
-  const embeddingDimensions = typeof backend.embeddingDimensions === 'number' ? backend.embeddingDimensions : null
-
-  return {
-    configured: Boolean(row?.encrypted_api_key),
-    provider,
-    keyLast4,
-    maskedKey: maskSecret(keyLast4),
-    enabled: row?.enabled === true,
-    baseUrl,
-    chatModel,
-    embeddingModel,
-    embeddingDimensions,
-    lastTestedAt: row?.last_tested_at ?? null,
-    lastTestStatus: safeStatus(row?.last_test_status),
-    lastTestError: row?.last_test_error ?? null,
-  }
-}
-
 function toFirecrawlView(row: RagFirecrawlSettingsRow | null): RagFirecrawlSettingsView {
   const keyLast4 = row?.api_key_last4 ?? getSecretLast4(row?.encrypted_api_key)
 
@@ -112,120 +59,6 @@ function toFirecrawlView(row: RagFirecrawlSettingsRow | null): RagFirecrawlSetti
     lastTestError: row?.last_test_error ?? null,
     creditUsage: null,
   }
-}
-
-export async function getRagProviderSettings(
-  workspaceId: string,
-): Promise<RagProviderSettingsView> {
-  const { data, error } = await supabaseAdmin()
-    .from('rag_provider_settings')
-    .select('provider, encrypted_api_key, api_key_last4, enabled, backend_config, last_tested_at, last_test_status, last_test_error')
-    .eq('workspace_id', workspaceId)
-    .maybeSingle()
-
-  if (error) throw new Error(error.message)
-  return toProviderView(data as RagProviderSettingsRow | null)
-}
-
-export async function saveRagProviderSettings(args: {
-  readonly workspaceId: string
-  readonly provider: RagProviderType
-  readonly apiKey: string
-  readonly baseUrl?: string | null
-  readonly chatModel?: string | null
-  readonly embeddingModel?: string | null
-  readonly embeddingDimensions?: number | null
-}): Promise<RagProviderSettingsView> {
-  const apiKey = args.apiKey.trim() || (args.provider === 'ollama' ? 'ollama-local' : '')
-  if (!apiKey) throw new Error('API key is required.')
-  const defaults = AI_PROVIDER_DEFAULTS[args.provider]
-
-  const resolved = resolveRagProviderConfig({
-    provider: args.provider,
-    apiKey,
-    baseUrl: args.provider === 'ollama' ? args.baseUrl || defaults.baseUrl : defaults.baseUrl,
-    chatModel: defaults.chatModel,
-    embeddingModel: defaults.embeddingModel,
-    embeddingDimensions: defaults.embeddingDimensions,
-  })
-
-  const { error } = await supabaseAdmin()
-    .from('rag_provider_settings')
-    .upsert(
-      {
-        workspace_id: args.workspaceId,
-        provider: args.provider,
-        encrypted_api_key: encrypt(apiKey),
-        api_key_last4: getSecretLast4(apiKey),
-        api_key_configured_at: new Date().toISOString(),
-        enabled: true,
-        last_test_status: 'not_tested',
-        last_test_error: null,
-        backend_config: {
-          baseUrl: resolved.baseUrl,
-          chatModel: resolved.chatModel,
-          embeddingModel: resolved.embeddingModel,
-          embeddingDimensions: resolved.embeddingDimensions,
-        },
-      },
-      { onConflict: 'workspace_id' },
-    )
-
-  if (error) throw new Error(error.message)
-  return getRagProviderSettings(args.workspaceId)
-}
-
-export async function testRagProviderSettings(
-  workspaceId: string,
-): Promise<RagProviderSettingsView> {
-  const admin = supabaseAdmin()
-  const { data, error } = await admin
-    .from('rag_provider_settings')
-    .select('provider, encrypted_api_key, backend_config')
-    .eq('workspace_id', workspaceId)
-    .maybeSingle()
-
-  if (error) throw new Error(error.message)
-  if (!data?.encrypted_api_key) {
-    await updateProviderTestStatus(workspaceId, 'failed', 'API key is not configured.')
-    return getRagProviderSettings(workspaceId)
-  }
-
-  try {
-    const provider = isRagProviderType(data.provider ?? '') ? data.provider : 'openai'
-    const apiKey = decrypt(data.encrypted_api_key)
-    const backend = (data as RagProviderSettingsRow).backend_config ?? {}
-    resolveRagProviderConfig({
-      provider,
-      apiKey,
-      baseUrl: typeof backend.baseUrl === 'string' ? backend.baseUrl : null,
-      chatModel: typeof backend.chatModel === 'string' ? backend.chatModel : null,
-      embeddingModel: typeof backend.embeddingModel === 'string' ? backend.embeddingModel : null,
-      embeddingDimensions: typeof backend.embeddingDimensions === 'number' ? backend.embeddingDimensions : null,
-    })
-    await updateProviderTestStatus(workspaceId, 'success', null)
-  } catch (error) {
-    await updateProviderTestStatus(workspaceId, 'failed', sanitizeProviderError(error))
-  }
-
-  return getRagProviderSettings(workspaceId)
-}
-
-async function updateProviderTestStatus(
-  workspaceId: string,
-  status: RagConnectionStatus,
-  error: string | null,
-): Promise<void> {
-  const { error: updateError } = await supabaseAdmin()
-    .from('rag_provider_settings')
-    .update({
-      last_tested_at: new Date().toISOString(),
-      last_test_status: status,
-      last_test_error: error,
-    })
-    .eq('workspace_id', workspaceId)
-
-  if (updateError) throw new Error(updateError.message)
 }
 
 export async function getRagFirecrawlSettings(

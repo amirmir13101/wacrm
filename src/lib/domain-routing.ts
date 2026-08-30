@@ -18,7 +18,7 @@ export const APP_DOMAIN_PATHS = [
   '/flows',
   '/ai-agent',
   '/agents',
-  '/ai-chatbot',
+  '/knowledge-base',
   '/billing',
   '/whatsapp-api-pricing',
   '/settings',

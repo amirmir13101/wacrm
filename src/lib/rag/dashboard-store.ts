@@ -2,24 +2,6 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { createRagWebsiteKnowledge } from './knowledge-store'
 import type { RagWebsiteImportDraft, RagWebsiteImportPage, RagWebsiteImportStats } from './website-import'
 
-export type RagChatbotTone = 'professional' | 'friendly' | 'concise' | 'helpful'
-
-export interface RagChatbotSettingsView {
-  readonly enabled: boolean
-  readonly tone: RagChatbotTone
-  readonly handoverEnabled: boolean
-  readonly fallbackMessage: string
-  readonly handoverMessage: string
-}
-
-interface RagChatbotSettingsRow {
-  readonly enabled?: boolean | null
-  readonly tone?: string | null
-  readonly handover_enabled?: boolean | null
-  readonly fallback_message?: string | null
-  readonly handover_message?: string | null
-}
-
 export interface RagWebsiteImportJobView {
   readonly id: string
   readonly websiteUrl: string
@@ -186,22 +168,6 @@ interface RagKnowledgeGapRow {
   readonly resolved_at: string | null
 }
 
-function toTone(value: string | null | undefined): RagChatbotTone {
-  if (value === 'friendly' || value === 'concise' || value === 'helpful') return value
-  return 'professional'
-}
-
-function toChatbotSettings(row: RagChatbotSettingsRow | null): RagChatbotSettingsView {
-  return {
-    enabled: row?.enabled !== false,
-    tone: toTone(row?.tone),
-    handoverEnabled: row?.handover_enabled !== false,
-    fallbackMessage:
-      row?.fallback_message || "I don't have that exact detail right now. Would you like me to connect you with a team member?",
-    handoverMessage: row?.handover_message || 'I can connect you with a team member if you want.',
-  }
-}
-
 function toStringArray(value: unknown): ReadonlyArray<string> {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
@@ -325,43 +291,6 @@ function toGap(row: RagKnowledgeGapRow): RagKnowledgeGapView {
     lastAskedAt: row.last_asked_at,
     resolvedAt: row.resolved_at,
   }
-}
-
-export async function getRagChatbotSettings(workspaceId: string): Promise<RagChatbotSettingsView> {
-  const { data, error } = await supabaseAdmin()
-    .from('rag_chatbot_settings')
-    .select('enabled, tone, handover_enabled, fallback_message, handover_message')
-    .eq('workspace_id', workspaceId)
-    .maybeSingle()
-
-  if (error) throw new Error(error.message)
-  return toChatbotSettings(data as RagChatbotSettingsRow | null)
-}
-
-export async function saveRagChatbotSettings(args: {
-  readonly workspaceId: string
-  readonly enabled: boolean
-  readonly tone: RagChatbotTone
-  readonly handoverEnabled: boolean
-  readonly fallbackMessage: string
-  readonly handoverMessage: string
-}): Promise<RagChatbotSettingsView> {
-  const { error } = await supabaseAdmin()
-    .from('rag_chatbot_settings')
-    .upsert(
-      {
-        workspace_id: args.workspaceId,
-        enabled: args.enabled,
-        tone: args.tone,
-        handover_enabled: args.handoverEnabled,
-        fallback_message: args.fallbackMessage.trim() || "I don't have that exact detail right now. Would you like me to connect you with a team member?",
-        handover_message: args.handoverMessage.trim() || 'I can connect you with a team member if you want.',
-      },
-      { onConflict: 'workspace_id' },
-    )
-
-  if (error) throw new Error(error.message)
-  return getRagChatbotSettings(args.workspaceId)
 }
 
 export async function createRagWebsiteImportJob(args: {
