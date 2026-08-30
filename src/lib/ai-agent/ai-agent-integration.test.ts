@@ -10,6 +10,13 @@ const parityMigration = readFileSync(
   join(process.cwd(), 'supabase/migrations/066_ai_agent_official_parity.sql'),
   'utf8',
 )
+const unlimitedLimitMigration = readFileSync(
+  join(
+    process.cwd(),
+    'supabase/migrations/069_allow_unlimited_ai_auto_replies.sql',
+  ),
+  'utf8',
+)
 const page = readFileSync(join(process.cwd(), 'src/app/(dashboard)/agents/page.tsx'), 'utf8')
 const officialConfig = readFileSync(join(process.cwd(), 'src/lib/ai/config.ts'), 'utf8')
 const officialKnowledge = readFileSync(join(process.cwd(), 'src/lib/ai/knowledge.ts'), 'utf8')
@@ -95,6 +102,13 @@ describe('AI Agent module', () => {
 
   it('stores an empty optional system prompt without violating the workspace schema', () => {
     expect(officialConfigRoute).toContain("system_prompt: systemPrompt ?? ''")
+  })
+
+  it('allows the explicit Unlimited reply-limit sentinel in the database', () => {
+    expect(unlimitedLimitMigration).toContain(
+      'auto_reply_max_per_conversation BETWEEN 0 AND 20',
+    )
+    expect(unlimitedLimitMigration).toContain('0 means Unlimited')
   })
 
   it('derives the client account role from the active workspace membership', () => {
