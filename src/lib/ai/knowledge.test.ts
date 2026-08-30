@@ -179,6 +179,20 @@ describe('retrieveKnowledge', () => {
       retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'unknown'),
     ).resolves.toEqual([])
   })
+
+  it('allows a bounded eight-excerpt context by default for multi-part questions', async () => {
+    const { db, state } = makeDb()
+    state.fts = Array.from({ length: 10 }, (_, index) => ({
+      id: `f${index}`,
+      content: `Fact ${index}`,
+      rank: 10 - index,
+    }))
+
+    const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'multi-part question')
+
+    expect(out).toHaveLength(8)
+    expect(out).toEqual(Array.from({ length: 8 }, (_, index) => `Fact ${index}`))
+  })
 })
 
 describe('ingestDocument', () => {

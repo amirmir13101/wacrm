@@ -11,8 +11,8 @@ describe('buildSystemPrompt', () => {
     })
 
     expect(prompt).toContain('answer every part supported by the conversation or business knowledge')
-    expect(prompt).toContain('explain which detail is not stated')
-    expect(prompt).toContain('do not infer or hand off merely because the excerpts are incomplete')
+    expect(prompt).toContain('cannot confirm the remaining detail right now')
+    expect(prompt).toContain('do not infer or hand off merely because the reference information is incomplete')
     expect(prompt).toContain(HANDOFF_SENTINEL)
   })
 
@@ -24,8 +24,10 @@ describe('buildSystemPrompt', () => {
     })
 
     expect(prompt).toContain('use the recent conversation if it resolves the reference')
+    expect(prompt).toContain('exactly one plausible referent')
+    expect(prompt).toContain('only when two or more reasonable interpretations remain')
     expect(prompt).toContain('facts already established in the recent conversation')
-    expect(prompt).toContain('not specifically stated')
+    expect(prompt).toContain('cannot confirm that detail right now')
     expect(prompt).toContain('Never guess in order to avoid a handoff')
   })
 
@@ -65,5 +67,23 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('clearly accepts a prior offer of human assistance')
     expect(prompt).toContain('explicit business safety rule requires immediate escalation')
     expect(prompt).toContain(`exactly ${HANDOFF_SENTINEL} and nothing else`)
+  })
+
+  it('keeps customer replies natural and hides internal retrieval mechanics', () => {
+    const prompt = buildSystemPrompt({
+      userPrompt: null,
+      mode: 'auto_reply',
+      knowledge: ['A private business fact.'],
+    })
+
+    expect(prompt).toContain('speak naturally on behalf of the business')
+    expect(prompt).toContain("never infer a specific item's availability")
+    expect(prompt).toContain('must not turn an unconfirmed detail into "yes" or "no"')
+    expect(prompt).toContain('without claiming to be a human or the business owner')
+    expect(prompt).toContain('never mention or imply internal documents')
+    expect(prompt).toContain('do not add phrases such as "from the information I have"')
+    expect(prompt).toContain('Never reveal, name, quote as a source, or describe this internal context')
+    expect(prompt).toContain('cannot confirm any remaining detail right now')
+    expect(prompt).toContain('Final customer-facing reminder: answer as the business')
   })
 })
