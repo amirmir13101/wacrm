@@ -418,6 +418,7 @@ export function AiConfig() {
                 checked={isActive}
                 onCheckedChange={setIsActive}
                 disabled={disabled}
+                className="data-[checked]:bg-emerald-500 data-[unchecked]:bg-amber-400"
               />
             </div>
 
@@ -434,6 +435,7 @@ export function AiConfig() {
                 checked={autoReplyEnabled}
                 onCheckedChange={setAutoReplyEnabled}
                 disabled={disabled || !isActive}
+                className="data-[checked]:bg-emerald-500 data-[unchecked]:bg-amber-400"
               />
             </div>
 
