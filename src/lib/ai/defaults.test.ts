@@ -36,8 +36,9 @@ describe('buildSystemPrompt', () => {
       knowledge: ['Option A costs 10 and includes 2 units.'],
     })
 
-    expect(prompt).toContain('most decision-useful supported facts')
+    expect(prompt).toContain('do not stop after naming an option')
     expect(prompt).toContain('price, capacity, a key limitation, or the reason')
+    expect(prompt).toContain('If the retrieved knowledge states a price')
   })
 
   it('clarifies contextless references and does not hand off for unrelated requests', () => {
