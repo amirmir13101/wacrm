@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { AiConfig } from './types'
+import { UNLIMITED_AUTO_REPLY_CLAIM_LIMIT } from './reply-limit'
 
 // Shared, hoisted mock state so the module mocks can close over it.
 const h = vi.hoisted(() => ({
@@ -176,6 +177,32 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     }
     await dispatchInboundToAiReply(ARGS)
     expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('continues replying when the per-conversation limit is Unlimited', async () => {
+    h.loadAiConfig.mockResolvedValue(
+      aiConfig({ autoReplyMaxPerConversation: 0 }),
+    )
+    h.state.conv = {
+      assigned_agent_id: null,
+      ai_autoreply_disabled: false,
+      ai_reply_count: 50_000,
+    }
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.state.rpcCalls).toEqual([
+      {
+        name: 'claim_ai_reply_slot',
+        args: {
+          conversation_id: 'conv-1',
+          max_replies: UNLIMITED_AUTO_REPLY_CLAIM_LIMIT,
+        },
+      },
+    ])
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'conv-1', text: 'Hello!' }),
+    )
   })
 
   it('skips when there is nothing to reply to', async () => {

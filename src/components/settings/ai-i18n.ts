@@ -34,6 +34,7 @@ const MESSAGES: Record<string, string> = {
   'Settings.aiConfig.autoReplyDesc': 'Let the AI Agent respond automatically within the configured limits.',
   'Settings.aiConfig.maxAutoReplies': 'Max auto replies',
   'Settings.aiConfig.maxAutoRepliesDesc': 'Limit how many times the AI Agent can reply in one conversation.',
+  'Settings.aiConfig.unlimited': 'Unlimited',
   'Settings.aiConfig.handoffTo': 'Handoff to',
   'Settings.aiConfig.handoffToDesc': 'Choose a team member or leave replies in the shared queue.',
   'Settings.aiConfig.handoffQueue': 'Shared queue',

@@ -31,6 +31,10 @@ import type { AiProvider } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import { useAiTranslations } from './ai-i18n';
+import {
+  MAX_AUTO_REPLY_LIMIT,
+  UNLIMITED_AUTO_REPLY_LIMIT,
+} from '@/lib/ai/reply-limit';
 
 const MASKED_KEY = '••••••••••••••••';
 
@@ -440,20 +444,36 @@ export function AiConfig() {
                   {t('maxAutoRepliesDesc')}
                 </p>
               </div>
-              <Input
-                id="ai-max"
-                type="number"
-                min={1}
-                max={20}
-                value={maxPerConversation}
-                onChange={(e) =>
+              <Select
+                value={
+                  maxPerConversation === UNLIMITED_AUTO_REPLY_LIMIT
+                    ? 'unlimited'
+                    : String(maxPerConversation)
+                }
+                onValueChange={(value) =>
                   setMaxPerConversation(
-                    Math.min(20, Math.max(1, Number(e.target.value) || 1)),
+                    value === 'unlimited'
+                      ? UNLIMITED_AUTO_REPLY_LIMIT
+                      : Number(value),
                   )
                 }
                 disabled={disabled || !autoReplyEnabled}
-                className="w-20"
-              />
+              >
+                <SelectTrigger id="ai-max" className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unlimited">{t('unlimited')}</SelectItem>
+                  {Array.from(
+                    { length: MAX_AUTO_REPLY_LIMIT },
+                    (_, index) => index + 1,
+                  ).map((limit) => (
+                    <SelectItem key={limit} value={String(limit)}>
+                      {limit}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

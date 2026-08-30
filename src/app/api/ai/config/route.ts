@@ -9,6 +9,7 @@ import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { embedTexts } from '@/lib/ai/embeddings'
 import { AiError, type AiProvider } from '@/lib/ai/types'
+import { normalizeAutoReplyLimit } from '@/lib/ai/reply-limit'
 
 function bad(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -91,9 +92,9 @@ export async function POST(request: Request) {
     const isActive = body.is_active === true
     const autoReplyEnabled = body.auto_reply_enabled === true
 
-    let maxPer = Number(body.auto_reply_max_per_conversation)
-    if (!Number.isFinite(maxPer)) maxPer = 3
-    maxPer = Math.min(20, Math.max(1, Math.floor(maxPer)))
+    const maxPer = normalizeAutoReplyLimit(
+      body.auto_reply_max_per_conversation,
+    )
 
     // Handoff routing target for auto-reply. A non-empty string must be a
     // member of this account (else the conversation would be assigned to a

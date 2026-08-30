@@ -9,6 +9,10 @@ import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import {
+  autoReplyClaimLimit,
+  hasReachedAutoReplyLimit,
+} from './reply-limit'
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -77,7 +81,12 @@ export async function dispatchInboundToAiReply(
     if (conv.ai_autoreply_disabled) return // handed off / turned off here
     // Cheap early-out; the authoritative cap check is the atomic claim
     // below (this read can race a concurrent inbound).
-    if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
+    if (
+      hasReachedAutoReplyLimit(
+        conv.ai_reply_count,
+        config.autoReplyMaxPerConversation,
+      )
+    ) return
 
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return
@@ -166,7 +175,9 @@ export async function dispatchInboundToAiReply(
       'claim_ai_reply_slot',
       {
         conversation_id: conversationId,
-        max_replies: config.autoReplyMaxPerConversation,
+        max_replies: autoReplyClaimLimit(
+          config.autoReplyMaxPerConversation,
+        ),
       },
     )
     if (claimErr) {
