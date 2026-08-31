@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   retrieveKnowledge: vi.fn(),
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
+  sendTypingIndicator: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -23,6 +24,9 @@ vi.mock('./context', () => ({ buildConversationContext: h.buildConversationConte
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
+vi.mock('@/lib/whatsapp/meta-api', () => ({
+  sendTypingIndicator: h.sendTypingIndicator,
+}))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
@@ -65,6 +69,9 @@ const ARGS = {
   conversationId: 'conv-1',
   contactId: 'contact-1',
   configOwnerUserId: 'user-1',
+  phoneNumberId: 'phone-1',
+  accessToken: 'token-1',
+  inboundMessageId: 'wamid.inbound',
 }
 
 function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
@@ -97,11 +104,17 @@ beforeEach(() => {
   h.retrieveKnowledge.mockResolvedValue([])
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
+  h.sendTypingIndicator.mockResolvedValue(undefined)
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
   it('claims a slot and sends on the happy path', async () => {
     await dispatchInboundToAiReply(ARGS)
+    expect(h.sendTypingIndicator).toHaveBeenCalledWith({
+      phoneNumberId: 'phone-1',
+      accessToken: 'token-1',
+      messageId: 'wamid.inbound',
+    })
     expect(h.state.rpcCalls).toEqual([
       {
         name: 'claim_ai_reply_slot',
@@ -176,7 +189,19 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
       ai_reply_count: 3,
     }
     await dispatchInboundToAiReply(ARGS)
+    expect(h.sendTypingIndicator).not.toHaveBeenCalled()
     expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('continues the AI reply when the typing indicator fails', async () => {
+    h.sendTypingIndicator.mockRejectedValueOnce(new Error('Meta unavailable'))
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.generateReply).toHaveBeenCalled()
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: 'conv-1', text: 'Hello!' }),
+    )
   })
 
   it('continues replying when the per-conversation limit is Unlimited', async () => {

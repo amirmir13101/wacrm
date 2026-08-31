@@ -243,6 +243,7 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           config.user_id,
           decryptedAccessToken,
           config.workspace_id ?? null,
+          phoneNumberId,
         )
       }
     }
@@ -512,7 +513,8 @@ async function processMessage(
   contact: { profile: { name: string }; wa_id: string },
   userId: string,
   accessToken: string,
-  workspaceId: string | null = null,
+  workspaceId: string | null,
+  phoneNumberId: string,
 ) {
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
@@ -700,6 +702,9 @@ async function processMessage(
       conversationId: conversation.id,
       contactId: contactRecord.id,
       configOwnerUserId: userId,
+      phoneNumberId,
+      accessToken,
+      inboundMessageId: message.id,
     })
   }
 

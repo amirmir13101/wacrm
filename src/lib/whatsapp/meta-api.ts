@@ -15,6 +15,15 @@ const META_API_VERSION = 'v21.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
 const META_VERIFY_TIMEOUT_MS = 8000
 
+function configuredMetaApiBase(): string {
+  const configuredVersion = process.env.META_GRAPH_API_VERSION?.trim()
+  const version =
+    configuredVersion && /^v\d+\.\d+$/.test(configuredVersion)
+      ? configuredVersion
+      : META_API_VERSION
+  return `https://graph.facebook.com/${version}`
+}
+
 export interface MetaSendResult {
   messageId: string
 }
@@ -84,6 +93,45 @@ export async function verifyPhoneNumber(
 // ============================================================
 // Sending
 // ============================================================
+
+export interface SendTypingIndicatorArgs {
+  phoneNumberId: string
+  accessToken: string
+  messageId: string
+}
+
+/**
+ * Mark an inbound WhatsApp message as read and show Meta's native typing
+ * indicator while an AI reply is being prepared.
+ */
+export async function sendTypingIndicator(
+  args: SendTypingIndicatorArgs,
+): Promise<void> {
+  const { phoneNumberId, accessToken, messageId } = args
+  const response = await fetch(
+    `${configuredMetaApiBase()}/${phoneNumberId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: messageId,
+        typing_indicator: { type: 'text' },
+      }),
+    },
+  )
+
+  if (!response.ok) {
+    await throwMetaError(
+      response,
+      `Meta typing indicator error: ${response.status}`,
+    )
+  }
+}
 
 export interface SendTextMessageArgs {
   phoneNumberId: string

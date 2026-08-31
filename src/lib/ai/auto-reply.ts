@@ -8,6 +8,7 @@ import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
+import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import {
   autoReplyClaimLimit,
@@ -22,6 +23,10 @@ interface DispatchArgs {
   /** The account's WhatsApp config owner, used for the outbound send's
    *  audit columns (mirrors how the flow runner passes it through). */
   configOwnerUserId: string
+  /** Meta delivery context used only for the best-effort typing signal. */
+  phoneNumberId: string
+  accessToken: string
+  inboundMessageId: string
 }
 
 /**
@@ -46,7 +51,15 @@ interface DispatchArgs {
 export async function dispatchInboundToAiReply(
   args: DispatchArgs,
 ): Promise<void> {
-  const { accountId, conversationId, contactId, configOwnerUserId } = args
+  const {
+    accountId,
+    conversationId,
+    contactId,
+    configOwnerUserId,
+    phoneNumberId,
+    accessToken,
+    inboundMessageId,
+  } = args
 
   try {
     const db = supabaseAdmin()
@@ -87,6 +100,22 @@ export async function dispatchInboundToAiReply(
         config.autoReplyMaxPerConversation,
       )
     ) return
+
+    // Meta clears this indicator when the reply is sent (or after its own
+    // timeout). It is deliberately best-effort: a transient Meta failure must
+    // never interrupt the existing retrieval or reply pipeline.
+    try {
+      await sendTypingIndicator({
+        phoneNumberId,
+        accessToken,
+        messageId: inboundMessageId,
+      })
+    } catch (error) {
+      console.warn(
+        '[ai auto-reply] typing indicator failed:',
+        error instanceof Error ? error.message : 'Unknown Meta API error',
+      )
+    }
 
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return
