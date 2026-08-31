@@ -95,6 +95,8 @@ interface RagChatLogItem {
   readonly fallbackReason: string | null
   readonly latencyMs: number | null
   readonly retrievedSourceCount: number
+  readonly retrievalConfidence: number | null
+  readonly conversationId: string | null
 }
 
 interface WebsiteImportStats {
@@ -191,6 +193,23 @@ interface RagKnowledgeGap {
   readonly count: number
   readonly suggestedAction: string | null
   readonly lastAskedAt: string
+  readonly firstAskedAt: string
+  readonly reviewStatus: 'new' | 'needs_knowledge' | 'needs_clarification' | 'retrieval_issue' | 'resolved' | 'ignored'
+  readonly priorityScore: number
+  readonly sourceLogId: string | null
+  readonly conversationId: string | null
+  readonly lastAnswer: string | null
+  readonly resolutionNote: string | null
+}
+
+interface RagKnowledgeGapSummary {
+  readonly open: number
+  readonly repeated: number
+  readonly needsKnowledge: number
+  readonly retrievalIssues: number
+  readonly systemErrors: number
+  readonly resolvedLast30Days: number
+  readonly resolutionRate: number
 }
 
 const knowledgeBaseCardBorderClass =
@@ -503,6 +522,7 @@ export default function KnowledgeBasePage() {
   const [logsMessage, setLogsMessage] = useState<string | null>(null)
   const [logFilter, setLogFilter] = useState('all')
   const [activityVisibleCount, setActivityVisibleCount] = useState(10)
+  const [activityView, setActivityView] = useState<'gaps' | 'activity'>('gaps')
   const [importHistory, setImportHistory] = useState<RagImportHistoryItem[]>([])
   const [importHistoryLoading, setImportHistoryLoading] = useState(false)
   const [importHistoryError, setImportHistoryError] = useState<string | null>(null)
@@ -519,7 +539,18 @@ export default function KnowledgeBasePage() {
   const [scheduleRefreshing, setScheduleRefreshing] = useState(false)
   const [scheduleMessage, setScheduleMessage] = useState<string | null>(null)
   const [knowledgeGaps, setKnowledgeGaps] = useState<RagKnowledgeGap[]>([])
+  const [knowledgeGapSummary, setKnowledgeGapSummary] = useState<RagKnowledgeGapSummary>({
+    open: 0,
+    repeated: 0,
+    needsKnowledge: 0,
+    retrievalIssues: 0,
+    systemErrors: 0,
+    resolvedLast30Days: 0,
+    resolutionRate: 0,
+  })
   const [gapsMessage, setGapsMessage] = useState<string | null>(null)
+  const [gapUpdatingId, setGapUpdatingId] = useState<string | null>(null)
+  const [gapBeingAnsweredId, setGapBeingAnsweredId] = useState<string | null>(null)
 
   const cards = useMemo(() => {
     const agentConfigured = status?.agent.configured === true
@@ -561,10 +592,12 @@ export default function KnowledgeBasePage() {
 
   const knowledgeCharacters = knowledgeText.length
   const knowledgeOverLimit = knowledgeCharacters > RAG_KNOWLEDGE_CHARACTER_LIMIT
+  const gapAnswerComplete = !gapBeingAnsweredId || /Approved business answer:\s*\S/i.test(knowledgeText)
   const firecrawlReady = status?.firecrawl.configured === true
   const activityItems = useMemo(() => {
     const logItems = logs.map((log) => ({
       id: `log:${log.id}`,
+      sourceId: log.id,
       kind: 'log' as const,
       channel: log.channel,
       status: log.status,
@@ -573,25 +606,37 @@ export default function KnowledgeBasePage() {
       reason: log.fallbackReason,
       count: null as number | null,
       date: log.createdAt,
-      meta: `${log.retrievedSourceCount} retrieved sources${typeof log.latencyMs === 'number' ? ` · ${log.latencyMs} ms` : ''}`,
+      meta: `${log.retrievedSourceCount} knowledge sources${typeof log.retrievalConfidence === 'number' ? ` · ${Math.round(log.retrievalConfidence * 100)}% relevance` : ''}${typeof log.latencyMs === 'number' ? ` · ${log.latencyMs} ms` : ''}`,
+      conversationId: log.conversationId,
+      reviewStatus: null,
+      priorityScore: null as number | null,
     }))
     const gapItems = knowledgeGaps.map((gap) => ({
       id: `gap:${gap.id}`,
+      sourceId: gap.id,
       kind: 'gap' as const,
       channel: gap.channel,
       status: 'unanswered' as const,
       question: gap.question,
-      answer: gap.suggestedAction,
+      answer: gap.lastAnswer ?? gap.suggestedAction,
       reason: gap.reason,
       count: gap.count,
       date: gap.lastAskedAt,
-      meta: 'Missing knowledge',
+      meta: gap.reason === 'weak_context'
+        ? 'No approved knowledge was used — review required'
+        : gap.reason === 'provider_error' || gap.reason === 'failed'
+          ? 'System failure — check configuration before adding knowledge'
+          : 'Approved business knowledge may be missing',
+      conversationId: gap.conversationId,
+      reviewStatus: gap.reviewStatus,
+      priorityScore: gap.priorityScore,
     }))
 
-    return [...logItems, ...gapItems].sort((first, second) =>
+    const selectedItems = activityView === 'gaps' ? gapItems : logItems
+    return selectedItems.sort((first, second) =>
       new Date(second.date).getTime() - new Date(first.date).getTime(),
     )
-  }, [logs, knowledgeGaps])
+  }, [logs, knowledgeGaps, activityView])
   const visibleActivityItems = activityItems.slice(0, activityVisibleCount)
   const hiddenSavedKnowledgeCount = Math.max(knowledgeSources.length - SAVED_KNOWLEDGE_PREVIEW_LIMIT, 0)
   const visibleSavedKnowledgeSources = showAllSavedKnowledge
@@ -807,6 +852,7 @@ export default function KnowledgeBasePage() {
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.error ?? 'Failed to load unanswered questions.')
       setKnowledgeGaps(payload.gaps ?? [])
+      if (payload.summary) setKnowledgeGapSummary(payload.summary)
     } catch (loadError) {
       setGapsMessage(loadError instanceof Error ? loadError.message : 'Unanswered questions will load after the dashboard migration is applied.')
     }
@@ -1034,6 +1080,64 @@ export default function KnowledgeBasePage() {
     }
   }
 
+  async function updateKnowledgeGapStatus(
+    id: string,
+    reviewStatus: RagKnowledgeGap['reviewStatus'],
+    resolutionNote?: string,
+  ) {
+    setGapUpdatingId(id)
+    setGapsMessage(null)
+    try {
+      const response = await fetch('/api/knowledge-base/gaps', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, reviewStatus, resolutionNote }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to update the knowledge gap.')
+      setGapsMessage(reviewStatus === 'ignored' ? 'Question ignored.' : reviewStatus === 'resolved' ? 'Knowledge gap resolved.' : 'Review status updated.')
+      await loadKnowledgeGaps()
+    } catch (updateError) {
+      setGapsMessage(updateError instanceof Error ? updateError.message : 'Failed to update the knowledge gap.')
+    } finally {
+      setGapUpdatingId(null)
+    }
+  }
+
+  async function flagActivityAsGap(sourceLogId: string) {
+    setGapUpdatingId(sourceLogId)
+    setGapsMessage(null)
+    try {
+      const response = await fetch('/api/knowledge-base/gaps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceLogId, reviewStatus: 'needs_knowledge' }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Failed to flag this answer.')
+      setGapsMessage('Answer flagged for Knowledge Base review.')
+      setActivityView('gaps')
+      setActivityVisibleCount(10)
+      await loadKnowledgeGaps()
+    } catch (flagError) {
+      setGapsMessage(flagError instanceof Error ? flagError.message : 'Failed to flag this answer.')
+    } finally {
+      setGapUpdatingId(null)
+    }
+  }
+
+  function startAnsweringKnowledgeGap(gap: RagKnowledgeGap) {
+    setGapBeingAnsweredId(gap.id)
+    setEditingKnowledgeId(null)
+    setKnowledgeSourceType('faq')
+    setKnowledgeTitle(`Answer: ${gap.question}`.slice(0, 160))
+    setKnowledgeText(`Customer question:\n${gap.question}\n\nApproved business answer:\n`)
+    setKnowledgeMessage('Complete the approved answer below. Saving it will create embeddings and resolve this knowledge gap.')
+    window.requestAnimationFrame(() => {
+      document.getElementById('manual-knowledge')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
   async function runKnowledgeEmbeddingBatches(
     sourceId: string,
     options: {
@@ -1075,6 +1179,11 @@ export default function KnowledgeBasePage() {
   }
 
   async function saveKnowledge() {
+    if (!gapAnswerComplete) {
+      setKnowledgeMessage('Add the approved business answer before resolving this knowledge gap.')
+      return
+    }
+    const resolvingGapId = gapBeingAnsweredId
     setKnowledgeSaving(true)
     setKnowledgeMessage(null)
     setManualKnowledgeProgress(createKnowledgeProgress('manual'))
@@ -1116,6 +1225,14 @@ export default function KnowledgeBasePage() {
       setKnowledgeMessage(message)
       await loadKnowledge()
       await refreshStatusCounts()
+      if (resolvingGapId) {
+        await updateKnowledgeGapStatus(
+          resolvingGapId,
+          'resolved',
+          `Approved Knowledge Base answer saved${payload.source?.id ? ` as source ${payload.source.id}` : ''}.`,
+        )
+        setGapBeingAnsweredId(null)
+      }
     } catch (saveError) {
       const message = cleanOperationMessage(
         saveError instanceof Error ? saveError.message : null,
@@ -1494,7 +1611,7 @@ export default function KnowledgeBasePage() {
         )}
       </section>
 
-      <section className="rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
+      <section id="manual-knowledge" className="scroll-mt-6 rounded-3xl border border-[#3ddf84]/60 transition hover:border-[#3ddf84]/80 bg-[#07130e]/85 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.2)]">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2">
@@ -1510,6 +1627,30 @@ export default function KnowledgeBasePage() {
             500,000 character limit
           </span>
         </div>
+
+        {gapBeingAnsweredId && (
+          <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-[#ffbd29]/45 bg-[#ffbd29]/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-[#ffe09a]">Resolving an unanswered customer question</p>
+              <p className="mt-1 text-xs leading-5 text-[#d8c68f]">
+                Add the approved business answer. After it is saved and prepared for retrieval, this gap will be marked resolved automatically.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setGapBeingAnsweredId(null)
+                setKnowledgeTitle('')
+                setKnowledgeText('')
+                setKnowledgeSourceType('manual')
+                setKnowledgeMessage(null)
+              }}
+              className="h-9 shrink-0 rounded-xl border border-[#d8c68f]/45 px-3 text-xs font-bold text-amber-100 transition hover:bg-amber-300/10"
+            >
+              Cancel gap answer
+            </button>
+          </div>
+        )}
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="space-y-4 rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
@@ -1574,6 +1715,7 @@ export default function KnowledgeBasePage() {
                     !canManageKnowledge ||
                     knowledgeSaving ||
                     knowledgeOverLimit ||
+                    !gapAnswerComplete ||
                     !knowledgeTitle.trim() ||
                     !knowledgeText.trim()
                   }
@@ -1995,29 +2137,67 @@ export default function KnowledgeBasePage() {
               </button>
               <button
                 type="button"
-                onClick={loadKnowledgeGaps}
+                onClick={() => {
+                  setActivityView('gaps')
+                  setActivityVisibleCount(10)
+                  loadKnowledgeGaps()
+                }}
                 className="h-9 rounded-xl border border-[#315846] px-3 text-xs font-bold text-[#d8fff1] hover:bg-[#123226]"
               >
-                Show Recent 20
+                Review knowledge gaps
               </button>
             </div>
           </div>
 
-          <div className="mb-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Answered</p>
-              <p className="mt-1 text-2xl font-black text-emerald-100">{logs.filter((log) => log.status === 'answered').length}</p>
-            </div>
-            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Fallback / Failed</p>
-              <p className="mt-1 text-2xl font-black text-amber-100">{logs.filter((log) => log.status !== 'answered').length}</p>
-            </div>
-            <div className="rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70 p-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-[#8bb4a5]">Unanswered</p>
-              <p className="mt-1 text-2xl font-black text-white">{knowledgeGaps.length}</p>
-            </div>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            {[
+              ['Open gaps', knowledgeGapSummary.open, 'text-white'],
+              ['Repeated', knowledgeGapSummary.repeated, 'text-[#ffe09a]'],
+              ['Needs knowledge', knowledgeGapSummary.needsKnowledge, 'text-emerald-100'],
+              ['Retrieval issues', knowledgeGapSummary.retrievalIssues, 'text-sky-100'],
+              ['System errors', knowledgeGapSummary.systemErrors, 'text-red-100'],
+              ['Resolved 30d', knowledgeGapSummary.resolvedLast30Days, 'text-emerald-100'],
+            ].map(([label, value, valueClass]) => (
+              <div key={String(label)} className="rounded-2xl border border-[#3ddf84]/40 bg-[#0d1b15]/70 p-4 transition hover:border-[#3ddf84]/60">
+                <p className="text-[11px] uppercase tracking-[0.12em] text-[#8bb4a5]">{label}</p>
+                <p className={cn('mt-1 text-2xl font-black', String(valueClass))}>{value}</p>
+              </div>
+            ))}
           </div>
 
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex rounded-xl border border-[#315846] bg-[#0d1b15] p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setActivityView('gaps')
+                  setActivityVisibleCount(10)
+                }}
+                className={cn(
+                  'rounded-lg px-3 py-1.5 text-xs font-bold transition',
+                  activityView === 'gaps' ? 'bg-[#3ddf84] text-[#07130e]' : 'text-[#a9c6bb] hover:bg-[#123226]',
+                )}
+              >
+                Unanswered & needs review
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActivityView('activity')
+                  setActivityVisibleCount(10)
+                }}
+                className={cn(
+                  'rounded-lg px-3 py-1.5 text-xs font-bold transition',
+                  activityView === 'activity' ? 'bg-[#3ddf84] text-[#07130e]' : 'text-[#a9c6bb] hover:bg-[#123226]',
+                )}
+              >
+                All AI activity
+              </button>
+            </div>
+            <p className="text-xs text-[#8bb4a5]">Resolution rate: {knowledgeGapSummary.resolutionRate}%</p>
+          </div>
+
+          {activityView === 'activity' && (
           <div className="mb-4 flex flex-wrap gap-2">
             {[
               ['all', 'All'],
@@ -2042,6 +2222,7 @@ export default function KnowledgeBasePage() {
               </button>
             ))}
           </div>
+          )}
 
           {(logsMessage || gapsMessage) && (
             <p className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
@@ -2052,7 +2233,9 @@ export default function KnowledgeBasePage() {
           <div className="divide-y divide-[#3ddf84]/25 overflow-hidden rounded-2xl border border-[#3ddf84]/40 transition hover:border-[#3ddf84]/60 bg-[#0d1b15]/70">
             {visibleActivityItems.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-[#8bb4a5]">
-                No knowledge activity or unanswered questions yet.
+                {activityView === 'gaps'
+                  ? 'No open knowledge gaps. New unanswered or weak-context questions will appear here automatically.'
+                  : 'No AI activity has been recorded yet.'}
               </div>
             ) : (
               visibleActivityItems.map((item) => (
@@ -2074,7 +2257,12 @@ export default function KnowledgeBasePage() {
                       </span>
                       {item.kind === 'gap' && (
                         <span className="rounded-full border border-[#ffbd29]/40 px-2.5 py-1 text-[11px] font-bold uppercase text-[#ffbd29]">
-                          Missing knowledge
+                          {item.reviewStatus?.replaceAll('_', ' ') ?? 'new'}
+                        </span>
+                      )}
+                      {typeof item.priorityScore === 'number' && (
+                        <span className="rounded-full border border-[#315846] px-2.5 py-1 text-[11px] font-bold uppercase text-[#a9c6bb]">
+                          Priority {item.priorityScore}
                         </span>
                       )}
                     </div>
@@ -2096,13 +2284,67 @@ export default function KnowledgeBasePage() {
                     <span>{item.meta}</span>
                     {typeof item.count === 'number' && <span>{item.count} asks</span>}
                     {item.reason && <span>Reason: {item.reason.replaceAll('_', ' ')}</span>}
-                    {item.kind === 'gap' && (
+                    {item.conversationId && (
+                      <Link
+                        href={`/inbox?c=${encodeURIComponent(item.conversationId)}`}
+                        className="rounded-lg border border-[#315846] px-2 py-1 font-bold text-[#d8fff1] transition hover:bg-[#123226]"
+                      >
+                        Open conversation
+                      </Link>
+                    )}
+                    {item.kind === 'gap' ? (
+                      <>
+                        <select
+                          aria-label="Knowledge gap review status"
+                          value={item.reviewStatus ?? 'new'}
+                          disabled={!canManageKnowledge || gapUpdatingId === item.sourceId}
+                          onChange={(event) => updateKnowledgeGapStatus(
+                            item.sourceId,
+                            event.target.value as RagKnowledgeGap['reviewStatus'],
+                          )}
+                          className="h-8 rounded-lg border border-[#315846] bg-[#07130e] px-2 text-xs font-bold text-[#d8fff1] outline-none focus:border-emerald-300 disabled:opacity-60"
+                        >
+                          <option value="new">New</option>
+                          <option value="needs_knowledge">Needs knowledge</option>
+                          <option value="needs_clarification">Needs clarification</option>
+                          <option value="retrieval_issue">Existing knowledge missed</option>
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!canManageKnowledge || gapUpdatingId === item.sourceId}
+                          onClick={() => {
+                            const gap = knowledgeGaps.find((candidate) => candidate.id === item.sourceId)
+                            if (gap) startAnsweringKnowledgeGap(gap)
+                          }}
+                          className="rounded-lg border border-[#3ddf84] bg-[#3ddf84] px-2 py-1 font-bold text-[#07130e] transition hover:bg-[#ffbd29] disabled:opacity-60"
+                        >
+                          Add approved answer
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!canManageKnowledge || gapUpdatingId === item.sourceId}
+                          onClick={() => updateKnowledgeGapStatus(item.sourceId, 'resolved', 'Resolved without adding new knowledge.')}
+                          className="rounded-lg border border-emerald-300/40 px-2 py-1 font-bold text-emerald-100 transition hover:bg-emerald-300/10 disabled:opacity-60"
+                        >
+                          Resolve
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!canManageKnowledge || gapUpdatingId === item.sourceId}
+                          onClick={() => updateKnowledgeGapStatus(item.sourceId, 'ignored', 'Marked irrelevant, duplicate, or not actionable.')}
+                          className="rounded-lg border border-[#315846] px-2 py-1 font-bold text-[#a9c6bb] transition hover:bg-[#123226] disabled:opacity-60"
+                        >
+                          Ignore
+                        </button>
+                      </>
+                    ) : (
                       <button
                         type="button"
-                        disabled
-                        className="rounded-lg border border-[#3ddf84]/30 bg-[#3ddf84]/20 px-2 py-1 text-xs font-bold text-[#d8fff1] opacity-80"
+                        disabled={!canManageKnowledge || gapUpdatingId === item.sourceId}
+                        onClick={() => flagActivityAsGap(item.sourceId)}
+                        className="rounded-lg border border-[#315846] px-2 py-1 font-bold text-[#d8fff1] transition hover:bg-[#123226] disabled:opacity-60"
                       >
-                        Add to Knowledge Base
+                        Flag for knowledge review
                       </button>
                     )}
                   </div>

@@ -11,6 +11,9 @@ const middleware = read('src/middleware.ts')
 const webhook = read('src/app/api/whatsapp/webhook/route.ts')
 const messageThread = read('src/components/inbox/message-thread.tsx')
 const retrieval = read('src/lib/ai/knowledge.ts')
+const autoReply = read('src/lib/ai/auto-reply.ts')
+const gapsRoute = read('src/app/api/knowledge-base/gaps/route.ts')
+const activityMigration = read('supabase/migrations/073_knowledge_gap_workflow.sql')
 const nonDestructiveMigration = read(
   'supabase/migrations/067_knowledge_base_and_ai_agent_retrieval.sql',
 )
@@ -44,6 +47,26 @@ describe('AI Chatbot removal and standalone Knowledge Base', () => {
     expect(page).not.toContain('Chatbot Instructions')
     expect(page).not.toContain('Live WhatsApp auto-reply')
     expect(page).not.toContain('/api/rag')
+  })
+
+  it('provides an actionable and workspace-scoped knowledge-gap workflow', () => {
+    expect(page).toContain('Unanswered & needs review')
+    expect(page).toContain('Add approved answer')
+    expect(page).toContain('Flag for knowledge review')
+    expect(page).toContain('Existing knowledge missed')
+    expect(gapsRoute).toContain("requireKnowledgeBasePermission('manage_knowledge_base')")
+    expect(gapsRoute).toContain('updateRagKnowledgeGap')
+    expect(gapsRoute).toContain('flagRagKnowledgeGap')
+    expect(activityMigration).toContain('record_knowledge_activity')
+    expect(activityMigration).toContain('flag_rag_knowledge_gap')
+    expect(activityMigration).toContain('workspace_id, normalized_question, channel')
+  })
+
+  it('records outcomes after the existing AI path without changing retrieval', () => {
+    expect(autoReply).toContain('recordKnowledgeActivity')
+    expect(autoReply.indexOf('retrieveKnowledge(')).toBeLessThan(autoReply.indexOf('recordKnowledgeActivity({'))
+    expect(activityMigration).not.toContain('match_knowledge_base')
+    expect(activityMigration).not.toContain('match_ai_agent_knowledge')
   })
 
   it('removes Chatbot-only webhook and inbox controls but preserves AI Agent controls', () => {

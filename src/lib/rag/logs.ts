@@ -13,6 +13,8 @@ export interface RagChatLogItem {
   readonly fallbackReason: string | null
   readonly latencyMs: number | null
   readonly retrievedSourceCount: number
+  readonly retrievalConfidence: number | null
+  readonly conversationId: string | null
 }
 
 interface RagChatLogRow {
@@ -25,6 +27,23 @@ interface RagChatLogRow {
   readonly fallback_reason: string | null
   readonly latency_ms: number | null
   readonly retrieved_chunk_ids: string[] | null
+  readonly retrieved_source_count: number | null
+  readonly retrieval_scores: unknown
+  readonly conversation_id: string | null
+}
+
+function retrievalConfidence(value: unknown): number | null {
+  if (!Array.isArray(value)) return null
+  const scores = value
+    .map((item) => {
+      if (typeof item === 'number') return item
+      if (!item || typeof item !== 'object') return null
+      const score = (item as { score?: unknown }).score
+      return typeof score === 'number' ? score : null
+    })
+    .filter((score): score is number => score !== null && Number.isFinite(score))
+  if (scores.length === 0) return null
+  return Math.max(...scores)
 }
 
 function safeChannel(value: string): RagChatLogItem['channel'] {
@@ -47,8 +66,10 @@ function toLogItem(row: RagChatLogRow): RagChatLogItem {
     fallbackReason: row.fallback_reason,
     latencyMs: row.latency_ms,
     retrievedSourceCount: Array.isArray(row.retrieved_chunk_ids)
-      ? row.retrieved_chunk_ids.length
-      : 0,
+      ? Math.max(row.retrieved_chunk_ids.length, row.retrieved_source_count ?? 0)
+      : row.retrieved_source_count ?? 0,
+    retrievalConfidence: retrievalConfidence(row.retrieval_scores),
+    conversationId: row.conversation_id,
   }
 }
 
@@ -61,7 +82,7 @@ export async function listRagChatLogs(args: {
   const limit = Math.max(1, Math.min(args.limit ?? 25, 100))
   let query = supabaseAdmin()
     .from('rag_chat_logs')
-    .select('id, created_at, channel, user_question, answer, status, fallback_reason, latency_ms, retrieved_chunk_ids')
+    .select('id, created_at, channel, user_question, answer, status, fallback_reason, latency_ms, retrieved_chunk_ids, retrieved_source_count, retrieval_scores, conversation_id')
     .eq('workspace_id', args.workspaceId)
     .order('created_at', { ascending: false })
     .limit(limit)

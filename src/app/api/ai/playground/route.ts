@@ -7,6 +7,7 @@ import { generateReply } from '@/lib/ai/generate'
 import { buildSystemPrompt } from '@/lib/ai/defaults'
 import { latestUserMessage } from '@/lib/ai/query'
 import { AiError, type ChatMessage } from '@/lib/ai/types'
+import { recordKnowledgeActivity } from '@/lib/rag/activity'
 
 // Keep the tested transcript bounded, mirroring the live context window.
 const MAX_TURNS = 20
@@ -22,6 +23,14 @@ const MAX_TURNS = 20
  * going live. Stateless: the client sends the running transcript each turn.
  */
 export async function POST(request: Request) {
+  const activityStartedAt = Date.now()
+  let failedActivity: {
+    readonly workspaceId: string
+    readonly question: string
+    readonly provider: string
+    readonly model: string
+    readonly retrievedSourceCount: number
+  } | null = null
   try {
     const { supabase, accountId, userId } = await requireRole('agent')
 
@@ -83,10 +92,46 @@ export async function POST(request: Request) {
       mode: 'auto_reply',
       knowledge,
     })
+    failedActivity = {
+      workspaceId: accountId,
+      question: latestUserMessage(messages),
+      provider: config.provider,
+      model: config.model,
+      retrievedSourceCount: knowledge.length,
+    }
 
     const { text, handoff } = await generateReply({ config, systemPrompt, messages })
+    await recordKnowledgeActivity({
+      workspaceId: accountId,
+      channel: 'dashboard',
+      question: latestUserMessage(messages),
+      answer: text,
+      status: handoff ? 'fallback' : text ? 'answered' : 'failed',
+      fallbackReason: handoff ? 'human_handoff' : text ? null : 'empty_answer',
+      provider: config.provider,
+      chatModel: config.model,
+      embeddingModel: null,
+      retrievedSourceCount: knowledge.length,
+      latencyMs: Date.now() - activityStartedAt,
+      handoff,
+    })
     return NextResponse.json({ reply: text, handoff })
   } catch (err) {
+    if (failedActivity) {
+      await recordKnowledgeActivity({
+        workspaceId: failedActivity.workspaceId,
+        channel: 'dashboard',
+        question: failedActivity.question,
+        status: 'provider_error',
+        fallbackReason: err instanceof Error ? err.message.slice(0, 240) : 'AI processing failed',
+        provider: failedActivity.provider,
+        chatModel: failedActivity.model,
+        embeddingModel: null,
+        retrievedSourceCount: failedActivity.retrievedSourceCount,
+        latencyMs: Date.now() - activityStartedAt,
+        handoff: false,
+      })
+    }
     if (err instanceof AiError) {
       return NextResponse.json(
         { error: err.message, code: err.code },

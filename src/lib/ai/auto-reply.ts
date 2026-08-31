@@ -7,6 +7,7 @@ import { buildSystemPrompt } from './defaults'
 import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
+import { recordKnowledgeActivity } from '@/lib/rag/activity'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
@@ -60,12 +61,19 @@ export async function dispatchInboundToAiReply(
     accessToken,
     inboundMessageId,
   } = args
+  const activityStartedAt = Date.now()
+  let activityQuestion = ''
+  let activityProvider: string | null = null
+  let activityModel: string | null = null
+  let activitySourceCount = 0
 
   try {
     const db = supabaseAdmin()
 
     const config = await loadAiConfig(db, accountId)
     if (!config || !config.autoReplyEnabled) return
+    activityProvider = config.provider
+    activityModel = config.model
 
     // Deterministic, user-configured responders win over the LLM — the
     // caller already excludes messages a Flow consumed. Message-level
@@ -110,6 +118,7 @@ export async function dispatchInboundToAiReply(
       conv.ai_resumed_at,
     )
     if (messages.length === 0) return
+    activityQuestion = latestUserMessage(messages)
 
     // Account-wide throttle on the shared BYO key. The per-conversation
     // cap bounds one thread; this bounds a burst across many threads (a
@@ -148,8 +157,9 @@ export async function dispatchInboundToAiReply(
       db,
       accountId,
       config,
-      latestUserMessage(messages),
+      activityQuestion,
     )
+    activitySourceCount = knowledge.length
 
     const systemPrompt = buildSystemPrompt({
       userPrompt: config.systemPrompt,
@@ -193,6 +203,22 @@ export async function dispatchInboundToAiReply(
     ) return
 
     if (handoff || !text) {
+      void recordKnowledgeActivity({
+        workspaceId: accountId,
+        conversationId,
+        channel: 'whatsapp',
+        question: activityQuestion,
+        answer: text,
+        status: handoff ? 'fallback' : 'failed',
+        fallbackReason: handoff ? 'human_handoff' : 'empty_answer',
+        provider: config.provider,
+        chatModel: config.model,
+        embeddingModel: null,
+        retrievedSourceCount: knowledge.length,
+        latencyMs: Date.now() - activityStartedAt,
+        handoff,
+      })
+
       // The model can't (or shouldn't) answer — stop auto-replying on
       // this thread and hand it to a human. We (a) pause the bot here
       // (sticky until re-enabled), (b) route the conversation to the
@@ -249,7 +275,38 @@ export async function dispatchInboundToAiReply(
       text,
       aiGenerated: true,
     })
+
+    void recordKnowledgeActivity({
+      workspaceId: accountId,
+      conversationId,
+      channel: 'whatsapp',
+      question: activityQuestion,
+      answer: text,
+      status: 'answered',
+      provider: config.provider,
+      chatModel: config.model,
+      embeddingModel: null,
+      retrievedSourceCount: knowledge.length,
+      latencyMs: Date.now() - activityStartedAt,
+      handoff: false,
+    })
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
+    if (activityQuestion) {
+      void recordKnowledgeActivity({
+        workspaceId: accountId,
+        conversationId,
+        channel: 'whatsapp',
+        question: activityQuestion,
+        status: 'provider_error',
+        fallbackReason: err instanceof Error ? err.message.slice(0, 240) : 'AI processing failed',
+        provider: activityProvider,
+        chatModel: activityModel,
+        embeddingModel: null,
+        retrievedSourceCount: activitySourceCount,
+        latencyMs: Date.now() - activityStartedAt,
+        handoff: false,
+      })
+    }
   }
 }

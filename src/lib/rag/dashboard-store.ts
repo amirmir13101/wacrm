@@ -144,6 +144,14 @@ interface RagScrapeScheduleRow {
   readonly created_at: string
 }
 
+export type RagKnowledgeGapReviewStatus =
+  | 'new'
+  | 'needs_knowledge'
+  | 'needs_clarification'
+  | 'retrieval_issue'
+  | 'resolved'
+  | 'ignored'
+
 export interface RagKnowledgeGapView {
   readonly id: string
   readonly question: string
@@ -154,6 +162,23 @@ export interface RagKnowledgeGapView {
   readonly languageName: string | null
   readonly lastAskedAt: string
   readonly resolvedAt: string | null
+  readonly reviewStatus: RagKnowledgeGapReviewStatus
+  readonly priorityScore: number
+  readonly firstAskedAt: string
+  readonly sourceLogId: string | null
+  readonly conversationId: string | null
+  readonly lastAnswer: string | null
+  readonly resolutionNote: string | null
+}
+
+export interface RagKnowledgeGapSummary {
+  readonly open: number
+  readonly repeated: number
+  readonly needsKnowledge: number
+  readonly retrievalIssues: number
+  readonly systemErrors: number
+  readonly resolvedLast30Days: number
+  readonly resolutionRate: number
 }
 
 interface RagKnowledgeGapRow {
@@ -166,6 +191,24 @@ interface RagKnowledgeGapRow {
   readonly language_name: string | null
   readonly last_asked_at: string
   readonly resolved_at: string | null
+  readonly review_status: string
+  readonly priority_score: number
+  readonly first_asked_at: string
+  readonly source_log_id: string | null
+  readonly conversation_id: string | null
+  readonly last_answer: string | null
+  readonly resolution_note: string | null
+}
+
+function safeGapReviewStatus(value: string): RagKnowledgeGapReviewStatus {
+  if (
+    value === 'needs_knowledge' ||
+    value === 'needs_clarification' ||
+    value === 'retrieval_issue' ||
+    value === 'resolved' ||
+    value === 'ignored'
+  ) return value
+  return 'new'
 }
 
 function toStringArray(value: unknown): ReadonlyArray<string> {
@@ -290,6 +333,13 @@ function toGap(row: RagKnowledgeGapRow): RagKnowledgeGapView {
     languageName: row.language_name,
     lastAskedAt: row.last_asked_at,
     resolvedAt: row.resolved_at,
+    reviewStatus: safeGapReviewStatus(row.review_status),
+    priorityScore: row.priority_score,
+    firstAskedAt: row.first_asked_at,
+    sourceLogId: row.source_log_id,
+    conversationId: row.conversation_id,
+    lastAnswer: row.last_answer,
+    resolutionNote: row.resolution_note,
   }
 }
 
@@ -609,12 +659,81 @@ export async function deleteRagScrapeSchedule(args: {
 export async function listRagKnowledgeGaps(workspaceId: string): Promise<ReadonlyArray<RagKnowledgeGapView>> {
   const { data, error } = await supabaseAdmin()
     .from('rag_knowledge_gaps')
-    .select('id, question, channel, reason, count, suggested_action, language_name, last_asked_at, resolved_at')
+    .select('id, question, channel, reason, count, suggested_action, language_name, last_asked_at, resolved_at, review_status, priority_score, first_asked_at, source_log_id, conversation_id, last_answer, resolution_note')
     .eq('workspace_id', workspaceId)
     .is('resolved_at', null)
+    .neq('review_status', 'ignored')
+    .order('priority_score', { ascending: false })
     .order('last_asked_at', { ascending: false })
-    .limit(50)
+    .limit(100)
 
   if (error) throw new Error(error.message)
   return ((data ?? []) as RagKnowledgeGapRow[]).map(toGap)
+}
+
+export async function getRagKnowledgeGapSummary(workspaceId: string): Promise<RagKnowledgeGapSummary> {
+  const { data, error } = await supabaseAdmin()
+    .from('rag_knowledge_gaps')
+    .select('review_status, count, reason, resolved_at')
+    .eq('workspace_id', workspaceId)
+    .limit(2000)
+
+  if (error) throw new Error(error.message)
+  const rows = (data ?? []) as Array<{
+    review_status: string
+    count: number
+    reason: string
+    resolved_at: string | null
+  }>
+  const resolvedCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+  const openRows = rows.filter((row) => !row.resolved_at && row.review_status !== 'ignored')
+  const completedRows = rows.filter((row) => row.review_status === 'resolved' || row.review_status === 'ignored')
+  const resolvedRows = rows.filter((row) => row.review_status === 'resolved')
+
+  return {
+    open: openRows.length,
+    repeated: openRows.filter((row) => row.count > 1).length,
+    needsKnowledge: openRows.filter((row) => row.review_status === 'needs_knowledge').length,
+    retrievalIssues: openRows.filter((row) => row.review_status === 'retrieval_issue').length,
+    systemErrors: openRows.filter((row) => row.reason === 'provider_error' || row.reason === 'failed').length,
+    resolvedLast30Days: resolvedRows.filter((row) => row.resolved_at && new Date(row.resolved_at).getTime() >= resolvedCutoff).length,
+    resolutionRate: rows.length === 0 ? 0 : Math.round((completedRows.length / rows.length) * 100),
+  }
+}
+
+export async function updateRagKnowledgeGap(args: {
+  readonly workspaceId: string
+  readonly id: string
+  readonly reviewStatus: RagKnowledgeGapReviewStatus
+  readonly resolutionNote?: string | null
+}): Promise<RagKnowledgeGapView> {
+  const isClosed = args.reviewStatus === 'resolved' || args.reviewStatus === 'ignored'
+  const { data, error } = await supabaseAdmin()
+    .from('rag_knowledge_gaps')
+    .update({
+      review_status: args.reviewStatus,
+      resolution_note: args.resolutionNote?.trim() || null,
+      resolved_at: isClosed ? new Date().toISOString() : null,
+    })
+    .eq('workspace_id', args.workspaceId)
+    .eq('id', args.id)
+    .select('id, question, channel, reason, count, suggested_action, language_name, last_asked_at, resolved_at, review_status, priority_score, first_asked_at, source_log_id, conversation_id, last_answer, resolution_note')
+    .single()
+
+  if (error) throw new Error(error.message)
+  return toGap(data as RagKnowledgeGapRow)
+}
+
+export async function flagRagKnowledgeGap(args: {
+  readonly workspaceId: string
+  readonly sourceLogId: string
+  readonly reviewStatus?: RagKnowledgeGapReviewStatus
+}): Promise<string> {
+  const { data, error } = await supabaseAdmin().rpc('flag_rag_knowledge_gap', {
+    p_workspace_id: args.workspaceId,
+    p_source_log_id: args.sourceLogId,
+    p_review_status: args.reviewStatus ?? 'needs_knowledge',
+  })
+  if (error) throw new Error(error.message)
+  return String(data)
 }
