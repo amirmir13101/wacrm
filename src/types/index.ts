@@ -114,7 +114,7 @@ export interface Conversation {
   workspace_id?: string | null;
   contact_id: string;
   status: ConversationStatus;
-  assigned_agent_id?: string;
+  assigned_agent_id?: string | null;
   last_message_text?: string;
   last_message_at?: string;
   unread_count: number;
@@ -127,9 +127,28 @@ export interface Conversation {
   ai_reply_count?: number;
   /** Internal context left when the separate AI Agent hands off. */
   ai_handoff_summary?: string | null;
+  /** Context boundary recorded when an agent manually resumes AI. */
+  ai_resumed_at?: string | null;
 }
 
 export type SenderType = 'customer' | 'agent' | 'bot';
+
+export type NotificationType = 'conversation_assigned';
+
+export interface Notification {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  type: NotificationType;
+  conversation_id: string | null;
+  contact_id: string | null;
+  actor_user_id: string | null;
+  title: string;
+  body: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
 export type ContentType =
   | 'text'
   | 'image'

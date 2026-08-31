@@ -23,6 +23,16 @@ describe('dashboard sidebar navigation organization', () => {
     expect(sidebar).toContain('anyPermissions: ["view_pricing", "use_cost_calculator"]')
   })
 
+  it('adds AI Handoff as a separate navigation item directly after Inbox', () => {
+    const inboxIndex = sidebar.indexOf('href: "/inbox", label: "Inbox"')
+    const handoffIndex = sidebar.indexOf('href: "/inbox/ai-handoff", label: "AI Handoff"')
+
+    expect(inboxIndex).toBeGreaterThan(-1)
+    expect(handoffIndex).toBeGreaterThan(inboxIndex)
+    expect(sidebar.slice(inboxIndex, handoffIndex)).not.toContain('href: "/contacts"')
+    expect(sidebar).toContain('permission: "view_inbox"')
+  })
+
   it('removes WhatsApp API Pricing from Settings tabs', () => {
     expect(settingsPage).not.toContain("value: 'pricing'")
     expect(settingsPage).not.toContain('<WhatsAppPricingManager />')

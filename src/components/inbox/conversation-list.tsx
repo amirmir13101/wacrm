@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useWorkspacePermissions } from "@/hooks/use-workspace-permissions";
 import { cn } from "@/lib/utils";
+import {
+  filterConversationsByView,
+  type InboxView,
+} from "@/lib/inbox/conversation-filters";
 import type { Conversation, ConversationStatus } from "@/types";
 import { Search, ChevronDown } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -22,6 +26,7 @@ interface ConversationListProps {
   onSelect: (conversation: Conversation) => void;
   conversations: Conversation[];
   onConversationsLoaded: (conversations: Conversation[]) => void;
+  view?: InboxView;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -52,6 +57,7 @@ export function ConversationList({
   onSelect,
   conversations,
   onConversationsLoaded,
+  view = "inbox",
 }: ConversationListProps) {
   const { user } = useAuth();
   const workspace = useWorkspacePermissions();
@@ -110,25 +116,31 @@ export function ConversationList({
   }, []);
 
   const visibleFilterOptions = TEAM_FILTER_OPTIONS.filter((option) => {
-    if (option.value === "all") return workspace.has("view_all_conversations");
+    // "All" means every conversation already authorized by database RLS.
+    // Keeping it available ensures an unassigned AI handoff remains visible
+    // in the normal Inbox instead of disappearing behind the "Mine" filter.
+    if (option.value === "all") return true;
     if (option.value === "mine") return workspace.has("view_assigned_conversations");
     if (option.value === "unassigned") return workspace.has("view_unassigned_conversations");
     return true;
   });
   const activeFilter = visibleFilterOptions.find((o) => o.value === filter) ?? visibleFilterOptions[0];
   const effectiveFilter = activeFilter?.value ?? "mine";
-
   const filtered = (() => {
-    let result = conversations;
+    let result = filterConversationsByView(conversations, view);
 
-    if (effectiveFilter === "mine") {
-      result = result.filter((c) => c.assigned_agent_id === user?.id);
-    } else if (effectiveFilter === "unassigned") {
-      result = result.filter((c) => !c.assigned_agent_id);
-    } else if (effectiveFilter === "assigned") {
-      result = result.filter((c) => !!c.assigned_agent_id);
-    } else if (effectiveFilter !== "all") {
-      result = result.filter((c) => c.status === effectiveFilter);
+    // The AI Handoff tab is already a dedicated active-state filter. The
+    // normal team/status dropdown remains unchanged for the main Inbox.
+    if (view === "inbox") {
+      if (effectiveFilter === "mine") {
+        result = result.filter((c) => c.assigned_agent_id === user?.id);
+      } else if (effectiveFilter === "unassigned") {
+        result = result.filter((c) => !c.assigned_agent_id);
+      } else if (effectiveFilter === "assigned") {
+        result = result.filter((c) => !!c.assigned_agent_id);
+      } else if (effectiveFilter !== "all") {
+        result = result.filter((c) => c.status === effectiveFilter);
+      }
     }
 
     if (search.trim()) {
@@ -175,7 +187,7 @@ export function ConversationList({
           />
         </div>
 
-        <DropdownMenu>
+        {view === "inbox" && <DropdownMenu>
           <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-slate-400 hover:text-white rounded-md hover:bg-slate-800">
               {activeFilter?.label ?? "All"}
               <ChevronDown className="h-3 w-3" />
@@ -199,7 +211,7 @@ export function ConversationList({
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
       </div>
 
       {/* Conversation Items */}
@@ -210,7 +222,11 @@ export function ConversationList({
           </div>
         ) : filtered.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <p className="text-sm text-slate-500">No conversations found</p>
+            <p className="text-sm text-slate-500">
+              {view === "ai_handoff"
+                ? "No conversations need human attention"
+                : "No conversations found"}
+            </p>
           </div>
         ) : (
           <div className="flex flex-col">

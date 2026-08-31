@@ -86,7 +86,9 @@ export async function dispatchInboundToAiReply(
 
     const { data: conv, error: convErr } = await db
       .from('conversations')
-      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count')
+      .select(
+        'assigned_agent_id, ai_autoreply_disabled, ai_reply_count, ai_resumed_at',
+      )
       .eq('id', conversationId)
       .maybeSingle()
     if (convErr || !conv) return
@@ -101,23 +103,12 @@ export async function dispatchInboundToAiReply(
       )
     ) return
 
-    // Meta clears this indicator when the reply is sent (or after its own
-    // timeout). It is deliberately best-effort: a transient Meta failure must
-    // never interrupt the existing retrieval or reply pipeline.
-    try {
-      await sendTypingIndicator({
-        phoneNumberId,
-        accessToken,
-        messageId: inboundMessageId,
-      })
-    } catch (error) {
-      console.warn(
-        '[ai auto-reply] typing indicator failed:',
-        error instanceof Error ? error.message : 'Unknown Meta API error',
-      )
-    }
-
-    const messages = await buildConversationContext(db, conversationId)
+    const messages = await buildConversationContext(
+      db,
+      conversationId,
+      undefined,
+      conv.ai_resumed_at,
+    )
     if (messages.length === 0) return
 
     // Account-wide throttle on the shared BYO key. The per-conversation
@@ -134,6 +125,22 @@ export async function dispatchInboundToAiReply(
         `[ai auto-reply] account ${accountId} hit the per-account rate limit — skipping this inbound.`,
       )
       return
+    }
+
+    // Meta clears this indicator when the reply is sent (or after its own
+    // timeout). It starts only after every no-op gate has passed. A transient
+    // Meta failure must never interrupt the existing retrieval or reply path.
+    try {
+      await sendTypingIndicator({
+        phoneNumberId,
+        accessToken,
+        messageId: inboundMessageId,
+      })
+    } catch (error) {
+      console.warn(
+        '[ai auto-reply] typing indicator failed:',
+        error instanceof Error ? error.message : 'Unknown Meta API error',
+      )
     }
 
     // Ground the reply in the account's knowledge base (best-effort).
@@ -169,6 +176,21 @@ export async function dispatchInboundToAiReply(
       model: config.model,
       usage,
     })
+
+    // An agent can take over while retrieval/provider work is in flight.
+    // Re-check ownership before writing handoff state or sending a message so
+    // an in-flight AI request can never override a newer human decision.
+    const { data: currentConv, error: currentConvErr } = await db
+      .from('conversations')
+      .select('assigned_agent_id, ai_autoreply_disabled')
+      .eq('id', conversationId)
+      .maybeSingle()
+    if (
+      currentConvErr ||
+      !currentConv ||
+      currentConv.assigned_agent_id ||
+      currentConv.ai_autoreply_disabled
+    ) return
 
     if (handoff || !text) {
       // The model can't (or shouldn't) answer — stop auto-replying on

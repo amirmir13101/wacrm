@@ -10,8 +10,17 @@ import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { InboxView } from "@/lib/inbox/conversation-filters";
 
-export default function InboxPage() {
+interface InboxWorkspacePageProps {
+  view?: InboxView;
+  basePath?: "/inbox" | "/inbox/ai-handoff";
+}
+
+export function InboxWorkspacePage({
+  view = "inbox",
+  basePath = "/inbox",
+}: InboxWorkspacePageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   /**
@@ -193,9 +202,9 @@ export default function InboxPage() {
       // Reflect the selection in the URL so a refresh lands the user
       // back in the same thread, and so copy-paste links work. Use
       // replace() to avoid polluting browser history with every click.
-      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+      router.replace(`${basePath}?c=${conv.id}`, { scroll: false });
     },
-    [activeConversation?.id, router]
+    [activeConversation?.id, basePath, router]
   );
 
   // Mobile "back" — deselect the conversation so the list pane comes
@@ -208,8 +217,8 @@ export default function InboxPage() {
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
-    router.replace("/inbox", { scroll: false });
-  }, [router]);
+    router.replace(basePath, { scroll: false });
+  }, [basePath, router]);
 
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
@@ -264,6 +273,24 @@ export default function InboxPage() {
     [activeConversation]
   );
 
+  const handleAiStateChange = useCallback(
+    (conversationId: string, patch: Partial<Conversation>) => {
+      setConversations((prev) =>
+        prev.map((conversation) =>
+          conversation.id === conversationId
+            ? { ...conversation, ...patch }
+            : conversation,
+        ),
+      );
+      if (activeConversation?.id === conversationId) {
+        setActiveConversation((prev) =>
+          prev ? { ...prev, ...patch } : prev,
+        );
+      }
+    },
+    [activeConversation?.id],
+  );
+
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
   // conversation slides the thread in; the thread's back button pops
@@ -312,6 +339,7 @@ export default function InboxPage() {
             onSelect={handleSelectConversation}
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
+            view={view}
           />
         </div>
 
@@ -334,6 +362,7 @@ export default function InboxPage() {
             onUpdateMessage={handleUpdateMessage}
             onStatusChange={handleStatusChange}
             onAssignChange={handleAssignChange}
+            onAiStateChange={handleAiStateChange}
             onBack={handleCloseConversation}
           />
         </div>
@@ -345,4 +374,8 @@ export default function InboxPage() {
       </div>
     </div>
   );
+}
+
+export default function InboxPage() {
+  return <InboxWorkspacePage />;
 }

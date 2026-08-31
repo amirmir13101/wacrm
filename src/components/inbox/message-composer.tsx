@@ -22,6 +22,8 @@ interface MessageComposerProps {
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
+  onTypingActivity?: () => void;
+  onTypingIdle?: () => void;
 }
 
 export function MessageComposer({
@@ -32,6 +34,8 @@ export function MessageComposer({
   onOpenTemplates,
   replyTo,
   onClearReply,
+  onTypingActivity,
+  onTypingIdle,
 }: MessageComposerProps) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -52,6 +56,7 @@ export function MessageComposer({
 
     setSending(true);
     try {
+      onTypingIdle?.();
       onSend(trimmed, replyTo?.id);
       setText("");
       if (textareaRef.current) {
@@ -60,7 +65,7 @@ export function MessageComposer({
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, canReply, onSend, replyTo?.id]);
+  }, [text, sending, sessionExpired, canReply, onSend, onTypingIdle, replyTo?.id]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -76,8 +81,10 @@ export function MessageComposer({
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setText(e.target.value);
       adjustHeight();
+      if (e.target.value.trim()) onTypingActivity?.();
+      else onTypingIdle?.();
     },
-    [adjustHeight]
+    [adjustHeight, onTypingActivity, onTypingIdle]
   );
 
   // Ask the separate AI Agent for a suggested reply. This only fills the
@@ -191,6 +198,7 @@ export function MessageComposer({
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onBlur={onTypingIdle}
           placeholder={
             !canReply
               ? "Reply permission is not enabled"

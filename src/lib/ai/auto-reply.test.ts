@@ -94,6 +94,7 @@ beforeEach(() => {
     assigned_agent_id: null,
     ai_autoreply_disabled: false,
     ai_reply_count: 0,
+    ai_resumed_at: null,
   }
   h.state.autoResponders = []
   h.state.claim = true
@@ -169,6 +170,8 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
       ai_reply_count: 0,
     }
     await dispatchInboundToAiReply(ARGS)
+    expect(h.sendTypingIndicator).not.toHaveBeenCalled()
+    expect(h.retrieveKnowledge).not.toHaveBeenCalled()
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
@@ -179,6 +182,8 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
       ai_reply_count: 0,
     }
     await dispatchInboundToAiReply(ARGS)
+    expect(h.sendTypingIndicator).not.toHaveBeenCalled()
+    expect(h.retrieveKnowledge).not.toHaveBeenCalled()
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
@@ -193,6 +198,24 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
+  it('uses only messages after the latest manual Resume AI boundary', async () => {
+    h.state.conv = {
+      assigned_agent_id: null,
+      ai_autoreply_disabled: false,
+      ai_reply_count: 0,
+      ai_resumed_at: '2026-08-31T12:00:00.000Z',
+    }
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.buildConversationContext).toHaveBeenCalledWith(
+      expect.anything(),
+      'conv-1',
+      undefined,
+      '2026-08-31T12:00:00.000Z',
+    )
+  })
+
   it('continues the AI reply when the typing indicator fails', async () => {
     h.sendTypingIndicator.mockRejectedValueOnce(new Error('Meta unavailable'))
 
@@ -202,6 +225,23 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.engineSendText).toHaveBeenCalledWith(
       expect.objectContaining({ conversationId: 'conv-1', text: 'Hello!' }),
     )
+  })
+
+  it('does not send when a human takes over during AI processing', async () => {
+    h.generateReply.mockImplementationOnce(async () => {
+      h.state.conv = {
+        assigned_agent_id: 'agent-9',
+        ai_autoreply_disabled: true,
+        ai_reply_count: 0,
+        ai_resumed_at: null,
+      }
+      return { text: 'This must not be sent', handoff: false }
+    })
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.state.rpcCalls).toHaveLength(0)
   })
 
   it('continues replying when the per-conversation limit is Unlimited', async () => {
@@ -233,6 +273,8 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
   it('skips when there is nothing to reply to', async () => {
     h.buildConversationContext.mockResolvedValue([])
     await dispatchInboundToAiReply(ARGS)
+    expect(h.sendTypingIndicator).not.toHaveBeenCalled()
+    expect(h.retrieveKnowledge).not.toHaveBeenCalled()
     expect(h.generateReply).not.toHaveBeenCalled()
     expect(h.engineSendText).not.toHaveBeenCalled()
   })

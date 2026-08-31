@@ -4,11 +4,15 @@ import { buildConversationContext } from './context'
 
 /** Minimal fake matching the query chain in buildConversationContext:
  *  from().select().eq().eq().order().limit() → { data, error }. */
-function fakeDb(rows: unknown[]): SupabaseClient {
+function fakeDb(rows: unknown[], filters: string[] = []): SupabaseClient {
   const chain = {
     from: () => chain,
     select: () => chain,
     eq: () => chain,
+    gt: (column: string, value: string) => {
+      filters.push(`${column}>${value}`)
+      return chain
+    },
     order: () => chain,
     limit: () => Promise.resolve({ data: rows, error: null }),
   }
@@ -49,5 +53,18 @@ describe('buildConversationContext', () => {
       'conv-1',
     )
     expect(out).toEqual([{ role: 'user', content: 'real' }])
+  })
+
+  it('limits AI context to messages created after a manual resume', async () => {
+    const filters: string[] = []
+    const out = await buildConversationContext(
+      fakeDb([{ sender_type: 'customer', content_text: 'Hello' }], filters),
+      'conv-1',
+      20,
+      '2026-08-31T12:00:00.000Z',
+    )
+
+    expect(filters).toEqual(['created_at>2026-08-31T12:00:00.000Z'])
+    expect(out).toEqual([{ role: 'user', content: 'Hello' }])
   })
 })

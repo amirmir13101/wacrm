@@ -117,6 +117,9 @@ export const RATE_LIMITS = {
   /** Individual message send. 60/min per user = one per second
    *  sustained, comfortable for a live human typing. */
   send: { limit: 60, windowMs: 60_000 },
+  /** Human composer typing signals. The client already throttles these;
+   *  this server cap prevents a modified client from spamming Meta. */
+  humanTyping: { limit: 10, windowMs: 60_000 },
   /** Broadcast dispatch. 5/min per user — even a 1 000-recipient
    *  broadcast is one call; this caps the rate at which a single user
    *  can launch campaigns, not the messages inside one. */

@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
+import { useAiHandoffCount } from "@/hooks/use-ai-handoff-count";
 import { useWorkspacePermissions } from "@/hooks/use-workspace-permissions";
 import type { WorkspacePermission } from "@/lib/team/permissions";
 import {
@@ -25,6 +26,7 @@ import {
   LogOut,
   User,
   UserCheck,
+  BellRing,
   X,
 } from "lucide-react";
 import {
@@ -49,6 +51,7 @@ const navItems: Array<{
 }> = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "view_dashboard" },
   { href: "/inbox", label: "Inbox", icon: MessageSquare, permission: "view_inbox" },
+  { href: "/inbox/ai-handoff", label: "AI Handoff", icon: BellRing, permission: "view_inbox" },
   { href: "/contacts", label: "Contacts", icon: Users, permission: "view_contacts" },
   { href: "/pipelines", label: "Pipelines", icon: GitBranch, permission: "view_pipeline" },
   { href: "/broadcasts", label: "Broadcasts", icon: Radio, permission: "view_broadcasts" },
@@ -82,6 +85,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const { profile, signOut } = useAuth();
   const workspace = useWorkspacePermissions();
   const totalUnread = useTotalUnread();
+  const aiHandoffCount = useAiHandoffCount();
   const visibleNavItems = navItems.filter((item) => {
     if (item.href === "/team") {
       return workspace.has("view_team") || workspace.has("manage_team_members");
@@ -207,10 +211,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             {visibleNavItems.map((item) => {
               const isActive =
                 pathname === item.href ||
-                (item.href !== "/dashboard" && pathname.startsWith(item.href));
+                (item.href !== "/dashboard" &&
+                  item.href !== "/inbox" &&
+                  pathname.startsWith(item.href));
 
               const showUnreadDot =
                 item.href === "/inbox" && totalUnread > 0 && !isActive;
+              const showAiHandoffCount =
+                item.href === "/inbox/ai-handoff" && aiHandoffCount > 0;
 
               return (
                 <li key={item.href}>
@@ -233,6 +241,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                       >
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#ffbd29] opacity-75" />
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-[#ffbd29]" />
+                      </span>
+                    )}
+                    {showAiHandoffCount && (
+                      <span
+                        aria-label={`${aiHandoffCount} conversation${aiHandoffCount === 1 ? "" : "s"} requiring human attention`}
+                        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#ffbd29] px-1.5 text-[10px] font-bold text-[#07130e]"
+                      >
+                        {aiHandoffCount > 99 ? "99+" : aiHandoffCount}
                       </span>
                     )}
                   </Link>

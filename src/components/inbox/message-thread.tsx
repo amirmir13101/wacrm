@@ -38,6 +38,10 @@ import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
+import {
+  HUMAN_TYPING_IDLE_MS,
+  shouldSendHumanTypingSignal,
+} from "@/lib/inbox/human-typing";
 
 interface ReplyDraft {
   id: string;
@@ -71,6 +75,10 @@ interface MessageThreadProps {
   onAssignChange: (
     conversationId: string,
     assignedAgentId: string | null,
+  ) => void;
+  onAiStateChange: (
+    conversationId: string,
+    patch: Partial<Conversation>,
   ) => void;
   /**
    * On mobile, the thread is shown full-screen with the conversation list
@@ -120,6 +128,7 @@ export function MessageThread({
   onUpdateMessage,
   onStatusChange,
   onAssignChange,
+  onAiStateChange,
   onBack,
 }: MessageThreadProps) {
   const { user } = useAuth();
@@ -131,6 +140,9 @@ export function MessageThread({
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistoryRow[]>([]);
+  const humanTypingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const humanTypingActiveRef = useRef(false);
+  const lastHumanTypingSignalAtRef = useRef(0);
   const conversationId = conversation?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
 
@@ -446,6 +458,56 @@ export function MessageThread({
     },
     [conversation, onStatusChange]
   );
+
+  const stopHumanTypingActivity = useCallback(() => {
+    humanTypingActiveRef.current = false;
+    if (humanTypingIdleTimerRef.current) {
+      clearTimeout(humanTypingIdleTimerRef.current);
+      humanTypingIdleTimerRef.current = null;
+    }
+  }, []);
+
+  const handleHumanTypingActivity = useCallback(() => {
+    if (!conversation?.id || conversation.ai_autoreply_disabled !== true) {
+      stopHumanTypingActivity();
+      return;
+    }
+
+    const now = Date.now();
+    humanTypingActiveRef.current = true;
+    if (humanTypingIdleTimerRef.current) {
+      clearTimeout(humanTypingIdleTimerRef.current);
+    }
+    humanTypingIdleTimerRef.current = setTimeout(() => {
+      humanTypingActiveRef.current = false;
+      humanTypingIdleTimerRef.current = null;
+    }, HUMAN_TYPING_IDLE_MS);
+
+    if (
+      !shouldSendHumanTypingSignal({
+        handoffActive: true,
+        lastSignalAt: lastHumanTypingSignalAtRef.current,
+        now,
+      })
+    ) {
+      return;
+    }
+
+    lastHumanTypingSignalAtRef.current = now;
+    void fetch("/api/whatsapp/typing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: conversation.id }),
+    }).catch(() => {
+      // Typing is best-effort; a failed signal must never block the composer.
+    });
+  }, [conversation?.ai_autoreply_disabled, conversation?.id, stopHumanTypingActivity]);
+
+  useEffect(() => {
+    lastHumanTypingSignalAtRef.current = 0;
+    stopHumanTypingActivity();
+    return stopHumanTypingActivity;
+  }, [conversationId, conversation?.ai_autoreply_disabled, stopHumanTypingActivity]);
 
   const handleOpenTemplates = useCallback(() => {
     setTemplateModalOpen(true);
@@ -809,9 +871,7 @@ export function MessageThread({
         assignedAgentId={assignedAgentId}
         currentUserId={user?.id}
         onChange={(patch) => {
-          if ("assigned_agent_id" in patch) {
-            onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
-          }
+          onAiStateChange(conversation.id, patch);
         }}
       />
 
@@ -907,6 +967,8 @@ export function MessageThread({
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
+        onTypingActivity={handleHumanTypingActivity}
+        onTypingIdle={stopHumanTypingActivity}
       />
 
       <TemplatePicker

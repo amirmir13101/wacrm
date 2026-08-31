@@ -20,6 +20,7 @@ import {
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/inbox": "Inbox",
+  "/inbox/ai-handoff": "AI Handoff",
   "/contacts": "Contacts",
   "/pipelines": "Pipelines",
   "/broadcasts": "Broadcasts",

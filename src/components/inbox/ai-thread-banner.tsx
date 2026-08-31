@@ -42,6 +42,8 @@ interface AiThreadBannerProps {
   onChange?: (patch: {
     ai_autoreply_disabled: boolean;
     assigned_agent_id?: string | null;
+    ai_handoff_summary?: string | null;
+    ai_reply_count?: number;
   }) => void;
 }
 
@@ -95,6 +97,9 @@ export function AiThreadBanner({
               ? { assigned_agent_id: currentUserId }
               : {}
             : { assigned_agent_id: null }),
+          ...(!nextPaused
+            ? { ai_handoff_summary: null, ai_reply_count: 0 }
+            : {}),
         });
         toast.success(nextPaused ? "You took over this conversation." : "AI Agent resumed.");
       } catch {
