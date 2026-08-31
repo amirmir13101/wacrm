@@ -10,6 +10,10 @@ const route = readFileSync(
   join(process.cwd(), 'src/app/api/contacts/route.ts'),
   'utf8',
 )
+const visibility = readFileSync(
+  join(process.cwd(), 'src/lib/contacts/visibility.ts'),
+  'utf8',
+)
 
 describe('normal CRM contacts pagination and bulk delete', () => {
   it('uses 50 contacts per page by default with 100 and 200 as options', () => {
@@ -59,15 +63,16 @@ describe('normal CRM contacts pagination and bulk delete', () => {
 
   it('preserves assigned-only contact visibility for agents', () => {
     expect(route).toContain('visibleContactIds')
-    expect(route).toContain("workspace.contactVisibility === 'all'")
-    expect(route).toContain("hasWorkspacePermission(workspace, 'view_all_contacts')")
-    expect(route).toContain("hasWorkspacePermission(workspace, 'view_assigned_contacts')")
-    expect(route).toContain(".eq('assigned_agent_id', workspace.userId)")
+    expect(visibility).toContain("workspace.contactVisibility === 'all'")
+    expect(visibility).toContain("hasWorkspacePermission(workspace, 'view_all_contacts')")
+    expect(visibility).toContain("hasWorkspacePermission(workspace, 'view_assigned_contacts')")
+    expect(visibility).toContain(".eq('assigned_agent_id', workspace.userId)")
   })
 
   it('keeps imports refreshing the paginated list', () => {
-    expect(page).toContain('onImported={() => {')
-    expect(page).toContain('updateUrl({ page: 1 })')
-    expect(page).toContain('void fetchContacts()')
+    expect(page).toContain('onImported={handleImported}')
+    expect(page).toContain('setPage(1)')
+    expect(page).toContain('void fetchContactLists()')
+    expect(page).toContain('router.push(`/contacts?list=${encodeURIComponent(contactListId)}`)')
   })
 })

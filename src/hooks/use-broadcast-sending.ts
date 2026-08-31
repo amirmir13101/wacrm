@@ -12,7 +12,9 @@ export interface CustomFieldFilter {
 }
 
 export interface AudienceConfig {
-  type: 'all' | 'tags' | 'custom_field' | 'csv';
+  type: 'all' | 'contact_list' | 'tags' | 'custom_field' | 'csv';
+  contactListId?: string;
+  contactListName?: string;
   tagIds?: string[];
   customField?: CustomFieldFilter;
   csvContacts?: { phone: string; name?: string }[];

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import type { Contact, Tag, ContactTag } from '@/types';
+import type { Contact, ContactList, Tag, ContactTag } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -41,6 +41,8 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
+  ArrowLeft,
+  ListChecks,
 } from 'lucide-react';
 import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
@@ -59,6 +61,11 @@ interface ContactsResponse {
   total: number;
   page: number;
   pageSize: number;
+  error?: string;
+}
+
+interface ContactListsResponse {
+  contact_lists: ContactList[];
   error?: string;
 }
 
@@ -100,9 +107,12 @@ export default function ContactsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
+  const selectedListId = searchParams.get('list');
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
+  const [contactLists, setContactLists] = useState<ContactList[]>([]);
+  const [listsLoading, setListsLoading] = useState(true);
   const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [page, setPage] = useState(parsePageParam(searchParams.get('page')));
   const [pageSize, setPageSize] = useState(parsePageSizeParam(searchParams.get('pageSize')));
@@ -121,6 +131,7 @@ export default function ContactsPage() {
   const [deleting, setDeleting] = useState(false);
 
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const selectedContactList = contactLists.find((list) => list.id === selectedListId) ?? null;
 
   const updateUrl = useCallback((next: { page?: number; pageSize?: number; search?: string }) => {
     const nextPage = next.page ?? page;
@@ -131,18 +142,41 @@ export default function ContactsPage() {
     if (nextPage > 1) params.set('page', String(nextPage));
     if (nextPageSize !== DEFAULT_PAGE_SIZE) params.set('pageSize', String(nextPageSize));
     if (nextSearch.trim()) params.set('search', nextSearch.trim());
+    if (selectedListId) params.set('list', selectedListId);
 
     const query = params.toString();
     router.replace(query ? `/contacts?${query}` : '/contacts', { scroll: false });
-  }, [page, pageSize, router, search]);
+  }, [page, pageSize, router, search, selectedListId]);
+
+  const fetchContactLists = useCallback(async () => {
+    setListsLoading(true);
+    try {
+      const response = await fetch('/api/contact-lists', { cache: 'no-store' });
+      const payload = (await response.json().catch(() => ({}))) as ContactListsResponse;
+      if (!response.ok) throw new Error(payload.error || 'Failed to load contact lists');
+      setContactLists(payload.contact_lists ?? []);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load contact lists');
+      setContactLists([]);
+    } finally {
+      setListsLoading(false);
+    }
+  }, []);
 
   const fetchContacts = useCallback(async () => {
+    if (!selectedListId) {
+      setContacts([]);
+      setTotalCount(0);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
 
     const params = new URLSearchParams({
       page: String(page),
       pageSize: String(pageSize),
     });
+    params.set('contactListId', selectedListId);
     if (search.trim()) params.set('search', search.trim());
 
     try {
@@ -160,7 +194,7 @@ export default function ContactsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search]);
+  }, [page, pageSize, search, selectedListId]);
 
   useEffect(() => {
     const nextPage = parsePageParam(searchParams.get('page'));
@@ -172,6 +206,10 @@ export default function ContactsPage() {
     setSearch(nextSearch);
     setSelectedIds(new Set());
   }, [searchParams]);
+
+  useEffect(() => {
+    void fetchContactLists();
+  }, [fetchContactLists]);
 
   useEffect(() => {
     fetchContacts();
@@ -187,6 +225,22 @@ export default function ContactsPage() {
     setEditContact(null);
     setEditContactTags([]);
     setFormOpen(true);
+  }
+
+  function openContactList(contactListId: string) {
+    router.push(`/contacts?list=${encodeURIComponent(contactListId)}`);
+  }
+
+  function returnToLists() {
+    setSelectedIds(new Set());
+    router.push('/contacts');
+  }
+
+  function handleImported(contactListId: string) {
+    setPage(1);
+    setSelectedIds(new Set());
+    void fetchContactLists();
+    router.push(`/contacts?list=${encodeURIComponent(contactListId)}`);
   }
 
   async function openEditForm(contact: Contact) {
@@ -273,6 +327,7 @@ export default function ContactsPage() {
       setContacts((current) => current.filter((contact) => !deletedIds.has(contact.id)));
       setTotalCount((current) => Math.max(0, current - (payload.deleted_count ?? deletedOnPage)));
       setSelectedIds(new Set());
+      void fetchContactLists();
       toast.success(
         deleteMode === 'bulk'
           ? `${payload.deleted_count ?? deletedOnPage} selected contacts deleted`
@@ -306,13 +361,124 @@ export default function ContactsPage() {
       ? `Delete ${deleteTargets.length} selected contacts? This action cannot be undone.`
       : `Are you sure you want to delete ${deleteTargets[0]?.name || deleteTargets[0]?.phone}? This action cannot be undone.`;
 
+  if (!selectedListId) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Contacts</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              Choose a contact list to view and manage its contacts.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setImportOpen(true)}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+            >
+              <Upload className="size-4" />
+              Import Contacts
+            </Button>
+            <Button
+              onClick={openAddForm}
+              className="bg-violet-600 text-white hover:bg-violet-700"
+            >
+              <Plus className="size-4" />
+              Add Contact
+            </Button>
+          </div>
+        </div>
+
+        {listsLoading ? (
+          <div className="flex min-h-56 items-center justify-center rounded-xl border border-[#3ddf84]/40 bg-slate-900/40">
+            <Loader2 className="size-6 animate-spin text-violet-500" />
+          </div>
+        ) : contactLists.length === 0 ? (
+          <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-xl border border-[#3ddf84]/40 bg-slate-900/40 p-6 text-center">
+            <ListChecks className="size-9 text-slate-600" />
+            <div>
+              <p className="font-medium text-white">No contact lists yet</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Import a CSV and give it a Contact List Name to get started.
+              </p>
+            </div>
+            <Button onClick={() => setImportOpen(true)} className="bg-violet-600 text-white hover:bg-violet-700">
+              <Upload className="size-4" />
+              Import Contacts
+            </Button>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {contactLists.map((list) => (
+              <button
+                key={list.id}
+                type="button"
+                onClick={() => openContactList(list.id)}
+                className="group rounded-xl border border-[#3ddf84]/50 bg-[#051b13]/80 p-5 text-left transition-all hover:-translate-y-0.5 hover:border-[#3ddf84] hover:bg-[#082419]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-[#0b3324] text-[#8cffbd]">
+                    <ListChecks className="size-5" />
+                  </div>
+                  {list.is_system_default && (
+                    <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-200">
+                      Default
+                    </span>
+                  )}
+                </div>
+                <h2 className="mt-4 truncate text-base font-semibold text-white group-hover:text-[#8cffbd]">
+                  {list.name}
+                </h2>
+                <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+                  <span>{(list.contact_count ?? 0).toLocaleString()} contacts</span>
+                  <span>
+                    {new Date(list.created_at).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <ImportModal
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          onImported={handleImported}
+        />
+        <ContactForm
+          open={formOpen}
+          onOpenChange={setFormOpen}
+          contact={null}
+          contactListId={null}
+          onSaved={() => {
+            setFormOpen(false);
+            void fetchContactLists();
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Contacts</h1>
+          <button
+            type="button"
+            onClick={returnToLists}
+            className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-white"
+          >
+            <ArrowLeft className="size-3.5" />
+            All Contact Lists
+          </button>
+          <h1 className="text-2xl font-bold text-white">{selectedContactList?.name ?? 'Contact List'}</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Manage your contact list. {totalCount > 0 && `${totalCount} total contacts.`}
+            Manage contacts in this list. {totalCount > 0 && `${totalCount} total contacts.`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -584,7 +750,11 @@ export default function ContactsPage() {
         onOpenChange={setFormOpen}
         contact={editContact}
         contactTags={editContactTags}
-        onSaved={fetchContacts}
+        contactListId={selectedListId}
+        onSaved={() => {
+          void fetchContacts();
+          void fetchContactLists();
+        }}
       />
 
       <ContactDetailView
@@ -597,12 +767,7 @@ export default function ContactsPage() {
       <ImportModal
         open={importOpen}
         onOpenChange={setImportOpen}
-        onImported={() => {
-          setPage(1);
-          setSelectedIds(new Set());
-          updateUrl({ page: 1 });
-          void fetchContacts();
-        }}
+        onImported={handleImported}
       />
 
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>

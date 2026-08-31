@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
-import { CustomField, Tag } from '@/types';
+import { ContactList, CustomField, Tag } from '@/types';
 import { Button } from '@/components/ui/button';
 import {
   Users,
@@ -14,9 +14,10 @@ import {
   ArrowRight,
   ArrowLeft,
   X,
+  ListChecks,
 } from 'lucide-react';
 
-type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv';
+type AudienceType = 'all' | 'contact_list' | 'tags' | 'custom_field' | 'csv';
 type CustomFieldOperator = 'is' | 'is_not' | 'contains';
 
 interface CustomFieldFilter {
@@ -27,6 +28,8 @@ interface CustomFieldFilter {
 
 interface AudienceConfig {
   type: AudienceType;
+  contactListId?: string;
+  contactListName?: string;
   tagIds?: string[];
   customField?: CustomFieldFilter;
   csvContacts?: { phone: string; name?: string }[];
@@ -51,6 +54,12 @@ const audienceOptions: {
     label: 'All Contacts',
     description: 'Send to every contact in your database',
     icon: Users,
+  },
+  {
+    type: 'contact_list',
+    label: 'Contact List',
+    description: 'Send to contacts in one saved list',
+    icon: ListChecks,
   },
   {
     type: 'tags',
@@ -86,10 +95,28 @@ export function Step2SelectAudience({
 }: Step2Props) {
   const [tags, setTags] = useState<Tag[]>([]);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [contactLists, setContactLists] = useState<ContactList[]>([]);
+  const [loadingLists, setLoadingLists] = useState(false);
   const [loadingTags, setLoadingTags] = useState(false);
   const [loadingFields, setLoadingFields] = useState(false);
   const [estimatedCount, setEstimatedCount] = useState<number | null>(null);
   const [loadingCount, setLoadingCount] = useState(false);
+
+  useEffect(() => {
+    async function fetchContactLists() {
+      setLoadingLists(true);
+      try {
+        const response = await fetch('/api/contact-lists', { cache: 'no-store' });
+        const payload = (await response.json().catch(() => ({}))) as {
+          contact_lists?: ContactList[];
+        };
+        setContactLists(response.ok ? payload.contact_lists ?? [] : []);
+      } finally {
+        setLoadingLists(false);
+      }
+    }
+    void fetchContactLists();
+  }, []);
 
   // Tags are used both by the primary "Filter by Tags" audience type
   // AND by the exclude-list below — so always load once on mount.
@@ -136,6 +163,12 @@ export function Step2SelectAudience({
 
       if (audience.type === 'all') {
         // Handled below — full-table count adjusted by excludes.
+      } else if (audience.type === 'contact_list' && audience.contactListId) {
+        const { data } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('contact_list_id', audience.contactListId);
+        baseIds = new Set((data ?? []).map((row) => row.id));
       } else if (
         audience.type === 'tags' &&
         audience.tagIds &&
@@ -202,6 +235,7 @@ export function Step2SelectAudience({
     }
   }, [
     audience.type,
+    audience.contactListId,
     audience.tagIds,
     audience.customField,
     audience.csvContacts,
@@ -239,6 +273,7 @@ export function Step2SelectAudience({
 
   const isValid =
     audience.type === 'all' ||
+    (audience.type === 'contact_list' && Boolean(audience.contactListId)) ||
     (audience.type === 'tags' && audience.tagIds && audience.tagIds.length > 0) ||
     (audience.type === 'custom_field' &&
       !!audience.customField?.fieldId &&
@@ -270,6 +305,10 @@ export function Step2SelectAudience({
                   // Wipe shape fields from other types to avoid stale
                   // config leaking across selections.
                   tagIds: option.type === 'tags' ? audience.tagIds : undefined,
+                  contactListId:
+                    option.type === 'contact_list' ? audience.contactListId : undefined,
+                  contactListName:
+                    option.type === 'contact_list' ? audience.contactListName : undefined,
                   customField:
                     option.type === 'custom_field'
                       ? audience.customField
@@ -317,6 +356,42 @@ export function Step2SelectAudience({
           );
         })}
       </div>
+
+      {audience.type === 'contact_list' && (
+        <div className="rounded-xl border border-[#3ddf84]/60 bg-[#051b13]/80 p-4 transition-colors hover:border-[#3ddf84]/80">
+          <label htmlFor="broadcast-contact-list" className="mb-2 block text-sm font-medium text-white">
+            Which Contact List do you want to send this campaign to?
+          </label>
+          {loadingLists ? (
+            <Loader2 className="h-5 w-5 animate-spin text-[#3ddf84]" />
+          ) : contactLists.length === 0 ? (
+            <p className="text-xs text-slate-400">
+              No contact lists are available. Import contacts from the Contacts page first.
+            </p>
+          ) : (
+            <select
+              id="broadcast-contact-list"
+              value={audience.contactListId ?? ''}
+              onChange={(event) => {
+                const selected = contactLists.find((list) => list.id === event.target.value);
+                onUpdate({
+                  ...audience,
+                  contactListId: selected?.id,
+                  contactListName: selected?.name,
+                });
+              }}
+              className="w-full rounded-lg border border-[#0f5f43] bg-[#082419] px-3 py-2.5 text-sm text-white outline-none focus:border-[#3ddf84]"
+            >
+              <option value="">Select a contact list</option>
+              {contactLists.map((list) => (
+                <option key={list.id} value={list.id}>
+                  {list.name} ({list.contact_count ?? 0} contacts)
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
 
       {audience.type === 'tags' && (
         <div className="rounded-xl border border-[#3ddf84]/60 bg-[#051b13]/80 p-4 transition-colors hover:border-[#3ddf84]/80">

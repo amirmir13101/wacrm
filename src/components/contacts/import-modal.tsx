@@ -12,6 +12,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Upload, FileText, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import {
   isDuplicatePhoneError,
@@ -23,7 +25,7 @@ import { parseCsvConsent } from '@/lib/contacts/consent';
 interface ImportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onImported: () => void;
+  onImported: (contactListId: string) => void;
 }
 
 interface ParsedRow {
@@ -135,12 +137,14 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
+  const [contactListName, setContactListName] = useState('');
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
 
   function reset() {
     setFile(null);
+    setContactListName('');
     setParsedRows([]);
     setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -171,6 +175,11 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
   }
 
   async function handleImport() {
+    const normalizedListName = contactListName.trim().replace(/\s+/g, ' ');
+    if (!normalizedListName) {
+      toast.error('Contact List Name is required');
+      return;
+    }
     if (parsedRows.length === 0) return;
     setImporting(true);
 
@@ -180,6 +189,20 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
       } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) throw new Error('Not authenticated');
+
+      const listResponse = await fetch('/api/contact-lists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: normalizedListName }),
+      });
+      const listPayload = (await listResponse.json().catch(() => ({}))) as {
+        contact_list?: { id: string; name: string };
+        error?: string;
+      };
+      if (!listResponse.ok || !listPayload.contact_list?.id) {
+        throw new Error(listPayload.error || 'Failed to create contact list');
+      }
+      const contactListId = listPayload.contact_list.id;
 
       let imported = 0;
       let failed = 0;
@@ -236,6 +259,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
         const rows = chunk.map((row) => ({
           ...parseCsvConsent(row),
           user_id: user.id,
+          contact_list_id: contactListId,
           phone: row.phone,
           name: row.name || null,
           email: row.email || null,
@@ -279,7 +303,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
         invalidDetails,
       });
       void recordAdminImportAudit({
-        campaignName: file?.name || 'Contact import',
+        campaignName: normalizedListName,
         rows: parsedRows,
         imported,
         failed,
@@ -287,7 +311,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
       });
       if (imported > 0) {
         toast.success(`${imported} contact${imported !== 1 ? 's' : ''} imported`);
-        onImported();
+        onImported(contactListId);
       }
       if (skippedDuplicates > 0) {
         toast.info(`${skippedDuplicates} duplicate row${skippedDuplicates !== 1 ? 's' : ''} skipped`);
@@ -372,6 +396,24 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
         </DialogHeader>
 
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="contact-list-name" className="text-slate-300">
+              Contact List Name <span className="text-red-400">*</span>
+            </Label>
+            <Input
+              id="contact-list-name"
+              value={contactListName}
+              onChange={(event) => setContactListName(event.target.value)}
+              maxLength={120}
+              placeholder="e.g. Saudi Leads August 2026"
+              disabled={importing || Boolean(result)}
+              className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500"
+            />
+            <p className="text-xs text-slate-500">
+              All successfully imported contacts will be saved in this list.
+            </p>
+          </div>
+
           {/* Upload area */}
           <div
             onClick={() => fileInputRef.current?.click()}
@@ -509,7 +551,7 @@ export function ImportModal({ open, onOpenChange, onImported }: ImportModalProps
           {!result && (
             <Button
               type="button"
-              disabled={parsedRows.length === 0 || importing}
+              disabled={!contactListName.trim() || parsedRows.length === 0 || importing}
               onClick={handleImport}
               className="bg-violet-600 hover:bg-violet-700 text-white"
             >

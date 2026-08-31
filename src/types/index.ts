@@ -47,6 +47,7 @@ export interface Contact {
   id: string;
   user_id: string;
   workspace_id?: string | null;
+  contact_list_id?: string | null;
   phone: string;
   name?: string;
   email?: string;
@@ -64,6 +65,17 @@ export interface Contact {
   opt_out_reason?: string | null;
   last_consent_updated_at?: string | null;
   consent_notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactList {
+  id: string;
+  workspace_id: string;
+  created_by_user_id?: string | null;
+  name: string;
+  is_system_default: boolean;
+  contact_count?: number;
   created_at: string;
   updated_at: string;
 }

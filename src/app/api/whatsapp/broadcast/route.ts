@@ -31,7 +31,9 @@ interface IncomingRecipient {
 }
 
 type AudienceConfig = {
-  type: 'all' | 'tags' | 'custom_field' | 'csv' | 'api'
+  type: 'all' | 'contact_list' | 'tags' | 'custom_field' | 'csv' | 'api'
+  contactListId?: string
+  contactListName?: string
   tagIds?: string[]
   customField?: {
     fieldId: string
@@ -264,6 +266,26 @@ async function resolveAudience(args: {
       .eq('workspace_id', args.workspaceId)
     if (error) throw new Error(`Failed to fetch contacts: ${error.message}`)
     contacts = (data ?? []) as Contact[]
+  } else if (args.audience.type === 'contact_list' && args.audience.contactListId) {
+    const { data: list, error: listError } = await args.supabase
+      .from('contact_lists')
+      .select('id, name')
+      .eq('workspace_id', args.workspaceId)
+      .eq('id', args.audience.contactListId)
+      .maybeSingle()
+    if (listError) throw new Error(`Failed to verify contact list: ${listError.message}`)
+    if (!list) throw new Error('Selected contact list was not found in this workspace.')
+    args.audience.contactListName = list.name
+
+    const { data, error } = await args.supabase
+      .from('contacts')
+      .select('*')
+      .eq('workspace_id', args.workspaceId)
+      .eq('contact_list_id', args.audience.contactListId)
+    if (error) throw new Error(`Failed to fetch contact list recipients: ${error.message}`)
+    contacts = (data ?? []) as Contact[]
+  } else if (args.audience.type === 'contact_list') {
+    throw new Error('Choose a contact list before continuing.')
   } else if (args.audience.type === 'tags' && args.audience.tagIds?.length) {
     const { data, error } = await args.supabase
       .from('contact_tags')

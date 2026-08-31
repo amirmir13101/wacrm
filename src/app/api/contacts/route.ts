@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { visibleContactIds } from '@/lib/contacts/visibility'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
-import { requireCurrentWorkspace, type CurrentWorkspace } from '@/lib/team/server'
+import { requireCurrentWorkspace } from '@/lib/team/server'
 
 const ALLOWED_PAGE_SIZES = [50, 100, 200] as const
 const DEFAULT_PAGE_SIZE = 50
@@ -49,6 +50,7 @@ export async function GET(request: Request) {
   const page = positiveInt(url.searchParams.get('page'), 1)
   const pageSize = parsePageSize(url.searchParams.get('pageSize'))
   const search = (url.searchParams.get('search') ?? '').trim()
+  const contactListId = (url.searchParams.get('contactListId') ?? '').trim()
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
@@ -61,6 +63,10 @@ export async function GET(request: Request) {
     .eq('workspace_id', workspaceResult.workspace.workspaceId)
     .order('created_at', { ascending: false })
     .range(from, to)
+
+  if (contactListId) {
+    query = query.eq('contact_list_id', contactListId)
+  }
 
   if (visibility.kind === 'ids') {
     if (visibility.ids.length === 0) {
@@ -215,59 +221,4 @@ async function listTagsByContact(contactIds: string[]) {
   }
 
   return tagsByContact
-}
-
-async function visibleContactIds(
-  workspace: CurrentWorkspace,
-): Promise<{ kind: 'all' } | { kind: 'ids'; ids: string[] }> {
-  if (
-    workspace.contactVisibility === 'all' ||
-    hasWorkspacePermission(workspace, 'view_all_contacts')
-  ) {
-    return { kind: 'all' }
-  }
-
-  if (
-    workspace.contactVisibility === 'none' ||
-    !hasWorkspacePermission(workspace, 'view_assigned_contacts')
-  ) {
-    return { kind: 'ids', ids: [] }
-  }
-
-  const admin = supabaseAdmin()
-  const [conversationResult, profileResult] = await Promise.all([
-    admin
-      .from('conversations')
-      .select('contact_id')
-      .eq('workspace_id', workspace.workspaceId)
-      .eq('assigned_agent_id', workspace.userId)
-      .not('contact_id', 'is', null),
-    admin
-      .from('profiles')
-      .select('id')
-      .eq('user_id', workspace.userId)
-      .maybeSingle(),
-  ])
-
-  const contactIds = new Set<string>(
-    ((conversationResult.data ?? []) as Array<{ contact_id: string | null }>)
-      .map((row) => row.contact_id)
-      .filter((id): id is string => Boolean(id)),
-  )
-
-  const profileId = (profileResult.data as { id?: string } | null)?.id
-  if (profileId) {
-    const { data: deals } = await admin
-      .from('deals')
-      .select('contact_id')
-      .eq('workspace_id', workspace.workspaceId)
-      .eq('assigned_to', profileId)
-      .not('contact_id', 'is', null)
-
-    for (const row of (deals ?? []) as Array<{ contact_id: string | null }>) {
-      if (row.contact_id) contactIds.add(row.contact_id)
-    }
-  }
-
-  return { kind: 'ids', ids: Array.from(contactIds) }
 }

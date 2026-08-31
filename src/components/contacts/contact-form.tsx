@@ -29,6 +29,7 @@ interface ContactFormProps {
   onOpenChange: (open: boolean) => void;
   contact?: Contact | null;
   contactTags?: ContactTag[];
+  contactListId?: string | null;
   onSaved: () => void;
 }
 
@@ -37,6 +38,7 @@ export function ContactForm({
   onOpenChange,
   contact,
   contactTags = [],
+  contactListId,
   onSaved,
 }: ContactFormProps) {
   const supabase = createClient();
@@ -156,6 +158,7 @@ export function ContactForm({
           .from('contacts')
           .insert({
             user_id: user.id,
+            contact_list_id: contactListId ?? undefined,
             name: name.trim() || null,
             phone: normalizedPhone,
             email: email.trim() || null,
