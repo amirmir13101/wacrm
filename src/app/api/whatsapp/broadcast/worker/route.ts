@@ -18,6 +18,10 @@ import {
   releaseWorkspaceBroadcastUsage,
   reserveWorkspaceBroadcastUsage,
 } from '@/lib/billing/trial'
+import {
+  recordSentBroadcastMessage,
+  renderTemplatePreview,
+} from '@/lib/inbox/outbound-message'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -284,7 +288,7 @@ async function processQueue(request: Request) {
   )
 
   const configByWorkspace = new Map<string, { phone_number_id: string; access_token: string; status: string }>()
-  const approvedTemplateCache = new Map<string, boolean>()
+  const approvedTemplateCache = new Map<string, { body_text: string } | null>()
   const touchedBroadcasts = new Set<string>()
 
   for (const row of rows) {
@@ -356,16 +360,20 @@ async function processQueue(request: Request) {
     if (!approvedTemplateCache.has(templateKey)) {
       const { data: approved } = await admin
         .from('message_templates')
-        .select('id')
+        .select('body_text')
         .eq('workspace_id', workspaceId)
         .eq('name', row.broadcast.template_name)
         .eq('language', row.broadcast.template_language)
         .in('status', [...APPROVED_TEMPLATE_STATUSES])
         .maybeSingle()
-      approvedTemplateCache.set(templateKey, Boolean(approved))
+      approvedTemplateCache.set(
+        templateKey,
+        approved ? { body_text: approved.body_text ?? '' } : null,
+      )
     }
 
-    if (!approvedTemplateCache.get(templateKey)) {
+    const approvedTemplate = approvedTemplateCache.get(templateKey)
+    if (!approvedTemplate) {
       await admin
         .from('broadcast_recipients')
         .update({
@@ -472,6 +480,31 @@ async function processQueue(request: Request) {
           locked_by: null,
         })
         .eq('id', row.id)
+
+      try {
+        await recordSentBroadcastMessage({
+          admin,
+          workspaceId,
+          userId: row.broadcast.user_id,
+          contactId: row.contact!.id,
+          whatsappMessageId: result.whatsapp_message_id!,
+          templateName: row.broadcast.template_name,
+          contentText: renderTemplatePreview(
+            approvedTemplate.body_text,
+            result.resolved_params ?? [],
+          ),
+          sentAt: now,
+        })
+      } catch (error) {
+        // Meta has already accepted the message, so never mark the recipient
+        // failed or retry the external send merely because Inbox mirroring
+        // failed. The database RPC is idempotent and this error is surfaced
+        // for operational repair without risking a duplicate WhatsApp send.
+        console.error(
+          '[broadcast-worker] sent message could not be mirrored to Inbox:',
+          error instanceof Error ? error.message : error,
+        )
+      }
       sent++
     } else {
       await releaseWorkspaceBroadcastUsage({

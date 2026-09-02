@@ -132,7 +132,7 @@ export function MessageComposer({
   }, [adjustHeight, canReply, conversationId, drafting]);
 
   return (
-    <div className="border-t border-slate-800 bg-slate-900 p-3">
+    <div className="shrink-0 border-t border-slate-800 bg-slate-900 p-2.5 pb-[calc(env(safe-area-inset-bottom)+0.625rem)] sm:p-3">
       {replyTo && (
         <div className="mb-2">
           <ReplyQuote
@@ -143,7 +143,7 @@ export function MessageComposer({
         </div>
       )}
       {sessionExpired && (
-        <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
+        <div className="mb-2 flex flex-col gap-2 rounded-lg bg-amber-500/10 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-amber-400">
             24-hour session expired. Use a template to re-engage.
           </p>
@@ -166,11 +166,11 @@ export function MessageComposer({
         </div>
       )}
 
-      <div className="flex items-end gap-2">
+      <div className="flex items-end gap-1.5 sm:gap-2">
         <Button
           variant="ghost"
           size="sm"
-          className="h-9 w-9 shrink-0 p-0 text-slate-400 hover:text-white"
+          className="h-10 w-10 shrink-0 p-0 text-slate-400 hover:text-white sm:h-9 sm:w-9"
           onClick={onOpenTemplates}
           title="Send template"
         >
@@ -180,7 +180,7 @@ export function MessageComposer({
         <Button
           variant="ghost"
           size="sm"
-          className="h-9 w-9 shrink-0 p-0 text-slate-400 hover:text-emerald-300"
+          className="h-10 w-10 shrink-0 p-0 text-slate-400 hover:text-emerald-300 sm:h-9 sm:w-9"
           disabled={!canReply || drafting}
           onClick={handleDraft}
           title={canReply ? "Draft with AI Agent" : undefined}
@@ -204,19 +204,19 @@ export function MessageComposer({
               ? "Reply permission is not enabled"
               : sessionExpired
               ? "Session expired - use a template"
-              : "Type a message... (Shift+Enter for new line)"
+              : "Type a message..."
           }
           disabled={sessionExpired || !canReply}
           rows={1}
           className={cn(
-            "flex-1 resize-none rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition-colors focus:border-violet-500/50",
+            "min-h-10 flex-1 resize-none rounded-2xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition-colors focus:border-violet-500/50 sm:rounded-xl sm:px-4",
             (sessionExpired || !canReply) && "cursor-not-allowed opacity-50"
           )}
         />
 
         <Button
           size="sm"
-          className="h-9 w-9 shrink-0 bg-violet-600 p-0 hover:bg-violet-500 disabled:opacity-40"
+          className="h-10 w-10 shrink-0 bg-violet-600 p-0 hover:bg-violet-500 disabled:opacity-40 sm:h-9 sm:w-9"
           disabled={!text.trim() || sessionExpired || !canReply || sending}
           onClick={handleSend}
         >
@@ -227,7 +227,7 @@ export function MessageComposer({
       {/* Hint sits outside the flex row so its height doesn't push
           `items-end` buttons below the textarea. Indented to line up
           under the textarea left edge (w-9 button + gap-2 = 44px). */}
-      <p className="mt-1 pl-11 text-[10px] text-slate-600">
+      <p className="mt-1 hidden pl-11 text-[10px] text-slate-600 sm:block">
         Type &apos;/&apos; for quick replies
       </p>
     </div>

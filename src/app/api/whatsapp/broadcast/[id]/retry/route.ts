@@ -23,6 +23,11 @@ import type { Broadcast, BroadcastRecipient, Contact, VariableMapping } from '@/
 import { requireWorkspacePermission } from '@/lib/team/server'
 import { findWorkspaceWhatsAppConfig } from '@/lib/team/workspace-whatsapp-config'
 import { APPROVED_TEMPLATE_STATUSES } from '@/lib/whatsapp/template-status-normalize'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
+import {
+  recordSentBroadcastMessage,
+  renderTemplatePreview,
+} from '@/lib/inbox/outbound-message'
 
 const RETRY_BATCH_SIZE = 10
 const RETRY_BATCH_DELAY_MS = 1000
@@ -104,6 +109,7 @@ export async function POST(_request: Request, context: RouteContext) {
   try {
     const { id: broadcastId } = await context.params
     const supabase = await createClient()
+    const admin = supabaseAdmin()
 
     const workspaceResult = await requireWorkspacePermission('queue_broadcasts')
     if (!workspaceResult.ok) {
@@ -154,7 +160,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
     const { data: approvedTemplate, error: templateError } = await supabase
       .from('message_templates')
-      .select('id')
+      .select('id, body_text')
       .eq('workspace_id', workspaceId)
       .eq('name', typedBroadcast.template_name)
       .eq('language', language)
@@ -235,17 +241,18 @@ export async function POST(_request: Request, context: RouteContext) {
 
         retried++
         try {
+          const resolvedParams = resolveBroadcastVariables(
+            typedBroadcast.template_variables as Record<string, VariableMapping>,
+            contact,
+            customValueIndex.get(contact.id),
+          )
           const result = await sendWithVariants({
             phoneNumberId: config.phone_number_id,
             accessToken,
             to: contact.phone,
             templateName: typedBroadcast.template_name,
             language,
-            params: resolveBroadcastVariables(
-              typedBroadcast.template_variables as Record<string, VariableMapping>,
-              contact,
-              customValueIndex.get(contact.id),
-            ),
+            params: resolvedParams,
           })
 
           const { error: updateError } = await supabase
@@ -267,6 +274,27 @@ export async function POST(_request: Request, context: RouteContext) {
             .eq('status', 'failed')
 
           if (updateError) throw updateError
+
+          try {
+            await recordSentBroadcastMessage({
+              admin,
+              workspaceId,
+              userId: typedBroadcast.user_id,
+              contactId: contact.id,
+              whatsappMessageId: result.messageId,
+              templateName: typedBroadcast.template_name,
+              contentText: renderTemplatePreview(
+                approvedTemplate.body_text ?? '',
+                resolvedParams,
+              ),
+              sentAt: now,
+            })
+          } catch (inboxError) {
+            console.error(
+              '[broadcast-retry] sent message could not be mirrored to Inbox:',
+              inboxError instanceof Error ? inboxError.message : inboxError,
+            )
+          }
           success++
         } catch (error) {
           failedAgain++

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { CornerUpLeft, Copy, SmilePlus } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { CornerUpLeft, Copy, SmilePlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -19,6 +19,7 @@ interface MessageActionsProps {
   message: Message;
   onReply: () => void;
   onReact: (emoji: string) => void;
+  onDelete: () => void;
   children: ReactNode;
 }
 
@@ -31,6 +32,7 @@ export function MessageActions({
   message,
   onReply,
   onReact,
+  onDelete,
   children,
 }: MessageActionsProps) {
   // Touch devices have no hover. Long-press fires `contextmenu`; we capture
@@ -38,6 +40,7 @@ export function MessageActions({
   // interacts elsewhere.
   const [touchOpen, setTouchOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isAgent =
     message.sender_type === "agent" || message.sender_type === "bot";
@@ -45,6 +48,30 @@ export function MessageActions({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     setTouchOpen(true);
+  };
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => clearLongPressTimer, []);
+
+  const handlePointerDown = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    clearLongPressTimer();
+    longPressTimerRef.current = setTimeout(() => {
+      setTouchOpen(true);
+      longPressTimerRef.current = null;
+    }, 450);
+  };
+
+  const handleDelete = () => {
+    onDelete();
+    setPickerOpen(false);
+    setTouchOpen(false);
   };
 
   const handleCopy = async () => {
@@ -79,10 +106,15 @@ export function MessageActions({
   return (
     <div
       className={cn(
-        "flex min-w-0 max-w-full w-full",
+        "flex min-w-0 max-w-full w-full rounded-xl transition-colors data-[selected=true]:bg-slate-800/45",
         isAgent ? "justify-end" : "justify-start",
       )}
+      data-selected={touchOpen || pickerOpen ? "true" : undefined}
       onContextMenu={handleContextMenu}
+      onPointerDown={handlePointerDown}
+      onPointerMove={clearLongPressTimer}
+      onPointerUp={clearLongPressTimer}
+      onPointerCancel={clearLongPressTimer}
       onBlur={() => setTouchOpen(false)}
     >
       <div className="group/actions relative min-w-0 max-w-[85%] sm:max-w-[75%]">
@@ -135,6 +167,14 @@ export function MessageActions({
           aria-label="Copy"
         >
           <Copy className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          className="flex h-5 w-5 items-center justify-center rounded-full text-red-300 hover:bg-red-500/20 hover:text-red-200"
+          aria-label="Delete message"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
       </div>

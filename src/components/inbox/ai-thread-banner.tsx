@@ -158,7 +158,7 @@ function Banner({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 border-b px-3 py-2 text-xs sm:px-4",
+        "flex shrink-0 flex-col items-stretch gap-2 border-b px-3 py-2 text-xs sm:flex-row sm:items-center sm:gap-3 sm:px-4",
         tone === "primary"
           ? "border-emerald-500/25 bg-emerald-500/5"
           : "border-slate-800 bg-slate-900/70",
@@ -185,7 +185,7 @@ function BannerButton({
       type="button"
       onClick={onClick}
       disabled={busy}
-      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-500/30 bg-slate-900 px-2.5 py-1 font-medium text-slate-100 transition-colors hover:border-emerald-400/60 hover:bg-slate-800 disabled:opacity-60"
+      className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-emerald-500/30 bg-slate-900 px-2.5 py-1 font-medium text-slate-100 transition-colors hover:border-emerald-400/60 hover:bg-slate-800 disabled:opacity-60 sm:justify-start"
     >
       {busy ? (
         <Loader2 className="h-3 w-3 animate-spin" />

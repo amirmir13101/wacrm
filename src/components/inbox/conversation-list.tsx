@@ -10,7 +10,8 @@ import {
   type InboxView,
 } from "@/lib/inbox/conversation-filters";
 import type { Conversation, ConversationStatus } from "@/types";
-import { Search, ChevronDown } from "lucide-react";
+import { Search, ChevronDown, Loader2, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,12 +21,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ConversationListProps {
   activeConversationId: string | null;
   onSelect: (conversation: Conversation) => void;
   conversations: Conversation[];
   onConversationsLoaded: (conversations: Conversation[]) => void;
+  onConversationDeleted: (conversationId: string) => void;
   view?: InboxView;
 }
 
@@ -57,6 +68,7 @@ export function ConversationList({
   onSelect,
   conversations,
   onConversationsLoaded,
+  onConversationDeleted,
   view = "inbox",
 }: ConversationListProps) {
   const { user } = useAuth();
@@ -64,6 +76,9 @@ export function ConversationList({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [loading, setLoading] = useState(true);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingConversation, setDeletingConversation] = useState(false);
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -170,11 +185,41 @@ export function ConversationList({
     [onSelect]
   );
 
+  const handleSelectForDeletion = useCallback((conversation: Conversation) => {
+    setSelectedConversation(conversation);
+  }, []);
+
+  const handleDeleteConversation = useCallback(async () => {
+    if (!selectedConversation || deletingConversation) return;
+    setDeletingConversation(true);
+    try {
+      const response = await fetch(
+        `/api/whatsapp/conversations/${selectedConversation.id}`,
+        { method: "DELETE" },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to delete conversation");
+      }
+
+      onConversationDeleted(selectedConversation.id);
+      setDeleteDialogOpen(false);
+      setSelectedConversation(null);
+      toast.success("Conversation deleted from CRM Inbox");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete conversation",
+      );
+    } finally {
+      setDeletingConversation(false);
+    }
+  }, [deletingConversation, onConversationDeleted, selectedConversation]);
+
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
-    <div className="flex h-full w-full flex-col border-r border-slate-800 bg-slate-900 lg:w-80">
+    <div className="flex h-full min-h-0 w-full flex-col border-r border-slate-800 bg-slate-900 lg:w-80">
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-slate-800 p-3">
         <div className="relative">
@@ -187,7 +232,31 @@ export function ConversationList({
           />
         </div>
 
-        {view === "inbox" && <DropdownMenu>
+        {selectedConversation ? (
+          <div className="flex min-h-7 items-center justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1">
+            <span className="min-w-0 truncate text-xs font-medium text-red-100">
+              1 conversation selected
+            </span>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setDeleteDialogOpen(true)}
+                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-semibold text-red-200 hover:bg-red-500/20"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedConversation(null)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-300 hover:bg-slate-700 hover:text-white"
+                aria-label="Cancel conversation selection"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : view === "inbox" && <DropdownMenu>
           <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-slate-400 hover:text-white rounded-md hover:bg-slate-800">
               {activeFilter?.label ?? "All"}
               <ChevronDown className="h-3 w-3" />
@@ -215,7 +284,7 @@ export function ConversationList({
       </div>
 
       {/* Conversation Items */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
@@ -236,11 +305,67 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                onSelectForDeletion={handleSelectForDeletion}
+                isSelectedForDeletion={conv.id === selectedConversation?.id}
               />
             ))}
           </div>
         )}
       </ScrollArea>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open && !deletingConversation) setSelectedConversation(null);
+        }}
+      >
+        <DialogContent className="border-slate-700 bg-slate-900 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Trash2 className="h-5 w-5 text-red-400" />
+              Delete conversation
+            </DialogTitle>
+            <DialogDescription className="space-y-2 text-slate-400">
+              <span className="block">
+                Are you sure you want to permanently delete this conversation and its message history from the CRM Inbox?
+              </span>
+              <span className="block">
+                The contact will remain available in Contacts. This does not recall messages already delivered through WhatsApp.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <p className="truncate rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
+            {selectedConversation?.contact?.name ||
+              selectedConversation?.contact?.phone ||
+              "Unknown contact"}
+          </p>
+          <DialogFooter className="border-slate-700 bg-slate-900">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deletingConversation}
+              className="border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteConversation}
+              disabled={deletingConversation}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {deletingConversation ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete conversation"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -249,20 +374,55 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  onSelectForDeletion: (conversation: Conversation) => void;
+  isSelectedForDeletion: boolean;
 }
 
 function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  onSelectForDeletion,
+  isSelectedForDeletion,
 }: ConversationItemProps) {
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || "Unknown";
   const initials = displayName.charAt(0).toUpperCase();
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
+
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearLongPressTimer, [clearLongPressTimer]);
 
   const handleClick = useCallback(() => {
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
     onSelect(conversation);
   }, [onSelect, conversation]);
+
+  const handleContextMenu = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    onSelectForDeletion(conversation);
+  }, [conversation, onSelectForDeletion]);
+
+  const handlePointerDown = useCallback((event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    clearLongPressTimer();
+    longPressTriggeredRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      onSelectForDeletion(conversation);
+      longPressTimerRef.current = null;
+    }, 450);
+  }, [clearLongPressTimer, conversation, onSelectForDeletion]);
 
   const timeAgo = conversation.last_message_at
     ? formatDistanceToNow(new Date(conversation.last_message_at), {
@@ -273,9 +433,16 @@ function ConversationItem({
   return (
     <button
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      onPointerDown={handlePointerDown}
+      onPointerMove={clearLongPressTimer}
+      onPointerUp={clearLongPressTimer}
+      onPointerCancel={clearLongPressTimer}
+      data-conversation-id={conversation.id}
       className={cn(
         "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-slate-800/50",
-        isActive && "border-l-2 border-violet-500 bg-slate-800/70"
+        isActive && "border-l-2 border-violet-500 bg-slate-800/70",
+        isSelectedForDeletion && "bg-red-500/15 ring-1 ring-inset ring-red-500/40",
       )}
     >
       {/* Avatar */}

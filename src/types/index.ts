@@ -127,8 +127,8 @@ export interface Conversation {
   contact_id: string;
   status: ConversationStatus;
   assigned_agent_id?: string | null;
-  last_message_text?: string;
-  last_message_at?: string;
+  last_message_text?: string | null;
+  last_message_at?: string | null;
   unread_count: number;
   created_at: string;
   updated_at: string;

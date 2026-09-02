@@ -21,6 +21,8 @@ import {
   Check,
   Clock,
   ArrowLeft,
+  Loader2,
+  Trash2,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +40,15 @@ import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   HUMAN_TYPING_IDLE_MS,
   shouldSendHumanTypingSignal,
@@ -71,6 +82,10 @@ interface MessageThreadProps {
   onMessagesLoaded: (messages: Message[]) => void;
   onNewMessage: (message: Message) => void;
   onUpdateMessage: (id: string, updates: Partial<Message>) => void;
+  onMessageDeleted: (
+    id: string,
+    conversationPatch: Partial<Conversation>,
+  ) => void;
   onStatusChange: (conversationId: string, status: ConversationStatus) => void;
   onAssignChange: (
     conversationId: string,
@@ -126,6 +141,7 @@ export function MessageThread({
   onMessagesLoaded,
   onNewMessage,
   onUpdateMessage,
+  onMessageDeleted,
   onStatusChange,
   onAssignChange,
   onAiStateChange,
@@ -140,6 +156,8 @@ export function MessageThread({
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistoryRow[]>([]);
+  const [messagePendingDelete, setMessagePendingDelete] = useState<Message | null>(null);
+  const [deletingMessage, setDeletingMessage] = useState(false);
   const humanTypingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const humanTypingActiveRef = useRef(false);
   const lastHumanTypingSignalAtRef = useRef(0);
@@ -356,6 +374,7 @@ export function MessageThread({
   // a quote pulled from conversation A shouldn't bleed into conversation B.
   useEffect(() => {
     setReplyTo(null);
+    setMessagePendingDelete(null);
   }, [conversationId]);
 
   // Reset the server-side unread_count to 0 whenever an unread count
@@ -458,6 +477,41 @@ export function MessageThread({
     },
     [conversation, onStatusChange]
   );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!messagePendingDelete || deletingMessage) return;
+
+    setDeletingMessage(true);
+    try {
+      const response = await fetch(
+        `/api/whatsapp/messages/${messagePendingDelete.id}`,
+        { method: "DELETE" },
+      );
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+
+      onMessageDeleted(messagePendingDelete.id, {
+        last_message_text: payload.conversation?.last_message_text ?? null,
+        last_message_at: payload.conversation?.last_message_at ?? null,
+        updated_at: new Date().toISOString(),
+      });
+      setReactions((current) =>
+        current.filter((reaction) => reaction.message_id !== messagePendingDelete.id),
+      );
+      setReplyTo((current) =>
+        current?.id === messagePendingDelete.id ? null : current,
+      );
+      setMessagePendingDelete(null);
+      toast.success("Message deleted from CRM Inbox");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete message");
+    } finally {
+      setDeletingMessage(false);
+    }
+  }, [deletingMessage, messagePendingDelete, onMessageDeleted]);
 
   const stopHumanTypingActivity = useCallback(() => {
     humanTypingActiveRef.current = false;
@@ -744,10 +798,10 @@ export function MessageThread({
     : "Assign";
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-slate-950">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-950">
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-3 py-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <div className="flex shrink-0 flex-col items-stretch gap-2 border-b border-slate-800 bg-slate-900 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
           {onBack && (
@@ -781,7 +835,7 @@ export function MessageThread({
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
           {/* Status dropdown */}
           {canCloseConversation && <DropdownMenu>
             <DropdownMenuTrigger className={cn(
@@ -876,7 +930,7 @@ export function MessageThread({
       />
 
       {assignmentHistory.length > 0 && (
-        <div className="border-b border-slate-800 bg-slate-900/70 px-4 py-2 text-[11px] text-slate-400">
+        <div className="shrink-0 border-b border-slate-800 bg-slate-900/70 px-3 py-2 text-[11px] text-slate-400 sm:px-4">
           Last assignment: {format(new Date(assignmentHistory[0].created_at), "MMM d, h:mm a")}
           {assignmentHistory[0].reason ? ` (${assignmentHistory[0].reason})` : ""}
         </div>
@@ -885,7 +939,7 @@ export function MessageThread({
       {/* Messages Area */}
       <div
         ref={scrollRef}
-        className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4"
+        className="min-h-0 min-w-0 flex-1 touch-pan-y overscroll-contain overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4"
       >
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -940,6 +994,7 @@ export function MessageThread({
                         onReact={(emoji) => {
                           if (emoji) void postReaction(msg.id, emoji);
                         }}
+                        onDelete={() => setMessagePendingDelete(msg)}
                       >
                         <MessageBubble
                           message={msg}
@@ -976,6 +1031,58 @@ export function MessageThread({
         onOpenChange={setTemplateModalOpen}
         onSelect={handleSendTemplate}
       />
+
+      <Dialog
+        open={Boolean(messagePendingDelete)}
+        onOpenChange={(open) => {
+          if (!open && !deletingMessage) setMessagePendingDelete(null);
+        }}
+      >
+        <DialogContent className="border-slate-700 bg-slate-900 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Trash2 className="h-5 w-5 text-red-400" />
+              Delete message
+            </DialogTitle>
+            <DialogDescription className="space-y-2 text-slate-400">
+              <span className="block">Are you sure you want to delete this message?</span>
+              <span className="block">
+                It will be permanently removed from the CRM conversation. This does not recall an
+                already delivered message from the customer&apos;s WhatsApp.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          {messagePendingDelete?.content_text && (
+            <p className="max-h-28 overflow-y-auto rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
+              {messagePendingDelete.content_text}
+            </p>
+          )}
+          <DialogFooter className="border-slate-700 bg-slate-900">
+            <Button
+              variant="outline"
+              onClick={() => setMessagePendingDelete(null)}
+              disabled={deletingMessage}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmDelete}
+              disabled={deletingMessage}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {deletingMessage ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete message"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -26,6 +26,7 @@ export interface QueueEligibilityResult {
 export interface QueueSendResult {
   status: 'sent' | 'failed'
   whatsapp_message_id?: string
+  resolved_params?: string[]
   error?: string
   failure_type?: BroadcastFailureType
   next_retry_at?: string | null
@@ -97,6 +98,7 @@ export async function sendQueuedTemplateRecipient(args: {
       return {
         status: 'sent',
         whatsapp_message_id: result.messageId,
+        resolved_params: params,
       }
     } catch (error) {
       lastError = error instanceof Error ? error.message : 'Unknown error'

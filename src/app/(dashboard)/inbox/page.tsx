@@ -11,10 +11,19 @@ import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { InboxView } from "@/lib/inbox/conversation-filters";
+import { createClient } from "@/lib/supabase/client";
 
 interface InboxWorkspacePageProps {
   view?: InboxView;
   basePath?: "/inbox" | "/inbox/ai-handoff";
+}
+
+function sortConversationsByLatest(conversations: Conversation[]): Conversation[] {
+  return [...conversations].sort((left, right) => {
+    const leftTime = left.last_message_at ? new Date(left.last_message_at).getTime() : 0;
+    const rightTime = right.last_message_at ? new Date(right.last_message_at).getTime() : 0;
+    return rightTime - leftTime;
+  });
 }
 
 export function InboxWorkspacePage({
@@ -64,6 +73,14 @@ export function InboxWorkspacePage({
     (event: { eventType: string; new: Message; old: Partial<Message> }) => {
       const newMsg = event.new;
 
+      if (event.eventType === "DELETE") {
+        const deletedId = event.old.id;
+        if (deletedId) {
+          setMessages((prev) => prev.filter((message) => message.id !== deletedId));
+        }
+        return;
+      }
+
       if (event.eventType === "INSERT") {
         // Add to messages if it belongs to active conversation
         if (
@@ -83,19 +100,21 @@ export function InboxWorkspacePage({
 
         // Update conversation list preview
         setConversations((prev) =>
-          prev.map((c) =>
+          sortConversationsByLatest(prev.map((c) =>
             c.id === newMsg.conversation_id
               ? {
                   ...c,
                   last_message_text: newMsg.content_text ?? "",
                   last_message_at: newMsg.created_at,
                   unread_count:
-                    activeConversation?.id === newMsg.conversation_id
-                      ? 0
-                      : c.unread_count + 1,
+                    newMsg.sender_type !== "customer"
+                      ? c.unread_count
+                      : activeConversation?.id === newMsg.conversation_id
+                        ? 0
+                        : c.unread_count + 1,
                 }
               : c
-          )
+          ))
         );
       }
 
@@ -118,13 +137,44 @@ export function InboxWorkspacePage({
     }) => {
       const conv = event.new;
 
+      if (event.eventType === "DELETE") {
+        const deletedId = event.old.id;
+        if (deletedId) {
+          setConversations((prev) => prev.filter((item) => item.id !== deletedId));
+          if (activeConversation?.id === deletedId) {
+            setActiveConversation(null);
+            setActiveContact(null);
+            setMessages([]);
+            autoSelectedForDeepLinkRef.current = null;
+            router.replace(basePath, { scroll: false });
+          }
+        }
+        return;
+      }
+
       if (event.eventType === "INSERT") {
-        setConversations((prev) => [conv, ...prev]);
+        const supabase = createClient();
+        void supabase
+          .from("conversations")
+          .select("*, contact:contacts(*)")
+          .eq("id", conv.id)
+          .maybeSingle()
+          .then(({ data }) => {
+            const hydrated = (data as Conversation | null) ?? conv;
+            setConversations((prev) =>
+              sortConversationsByLatest([
+                hydrated,
+                ...prev.filter((conversation) => conversation.id !== hydrated.id),
+              ]),
+            );
+          });
       }
 
       if (event.eventType === "UPDATE") {
         setConversations((prev) =>
-          prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c))
+          sortConversationsByLatest(
+            prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c)),
+          )
         );
 
         // Update active conversation if it changed
@@ -135,7 +185,7 @@ export function InboxWorkspacePage({
         }
       }
     },
-    [activeConversation]
+    [activeConversation, basePath, router]
   );
 
   // Subscribe to realtime
@@ -273,6 +323,43 @@ export function InboxWorkspacePage({
     [activeConversation]
   );
 
+  const handleMessageDeleted = useCallback(
+    (id: string, conversationPatch: Partial<Conversation>) => {
+      setMessages((prev) => prev.filter((message) => message.id !== id));
+      setConversations((prev) =>
+        sortConversationsByLatest(
+          prev.map((conversation) =>
+            conversation.id === activeConversation?.id
+              ? { ...conversation, ...conversationPatch }
+              : conversation,
+          ),
+        ),
+      );
+      if (activeConversation) {
+        setActiveConversation((prev) =>
+          prev ? { ...prev, ...conversationPatch } : prev,
+        );
+      }
+    },
+    [activeConversation],
+  );
+
+  const handleConversationDeleted = useCallback(
+    (conversationId: string) => {
+      setConversations((prev) =>
+        prev.filter((conversation) => conversation.id !== conversationId),
+      );
+      if (activeConversation?.id === conversationId) {
+        setActiveConversation(null);
+        setActiveContact(null);
+        setMessages([]);
+      }
+      autoSelectedForDeepLinkRef.current = null;
+      router.replace(basePath, { scroll: false });
+    },
+    [activeConversation?.id, basePath, router],
+  );
+
   const handleAiStateChange = useCallback(
     (conversationId: string, patch: Partial<Conversation>) => {
       setConversations((prev) =>
@@ -302,7 +389,7 @@ export function InboxWorkspacePage({
     !whatsappConnectionMessage.toLowerCase().includes("ask the owner");
 
   return (
-    <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
+    <div className="-m-4 flex h-[calc(100%+2rem)] min-h-0 flex-col overflow-hidden sm:-m-6 sm:h-[calc(100%+3rem)]">
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
       {whatsappConnected === false && (
@@ -324,13 +411,13 @@ export function InboxWorkspacePage({
         </div>
       )}
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left panel: Conversation list.
             Hidden on mobile when a conversation is selected so the
             thread can occupy the full width. Always visible on lg+. */}
         <div
           className={cn(
-            "flex h-full flex-1 lg:flex-none",
+            "flex h-full min-h-0 flex-1 lg:flex-none",
             hasActiveConv ? "hidden lg:flex" : "flex",
           )}
         >
@@ -339,6 +426,7 @@ export function InboxWorkspacePage({
             onSelect={handleSelectConversation}
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
+            onConversationDeleted={handleConversationDeleted}
             view={view}
           />
         </div>
@@ -349,7 +437,7 @@ export function InboxWorkspacePage({
             (shows its own empty-state if no thread is picked yet). */}
         <div
           className={cn(
-            "flex h-full min-w-0 flex-1 lg:flex",
+            "flex h-full min-h-0 min-w-0 flex-1 lg:flex",
             hasActiveConv ? "flex" : "hidden lg:flex",
           )}
         >
@@ -360,6 +448,7 @@ export function InboxWorkspacePage({
             onMessagesLoaded={handleMessagesLoaded}
             onNewMessage={handleNewMessage}
             onUpdateMessage={handleUpdateMessage}
+            onMessageDeleted={handleMessageDeleted}
             onStatusChange={handleStatusChange}
             onAssignChange={handleAssignChange}
             onAiStateChange={handleAiStateChange}

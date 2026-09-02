@@ -27,7 +27,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#07130e]">
+      <div className="flex h-screen h-dvh items-center justify-center bg-[#07130e]">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#3ddf84] border-t-transparent" />
           <p className="text-sm text-[#b8cfc7]">Loading...</p>
@@ -39,12 +39,12 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="dashboard-theme flex h-screen overflow-hidden bg-[#07130e]">
+    <div className="dashboard-theme flex h-screen h-dvh overflow-hidden bg-[#07130e]">
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
         {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
-        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-[radial-gradient(circle_at_50%_0%,rgba(61,223,132,0.13),transparent_34%),linear-gradient(180deg,#0d1b15_0%,#07130e_46%,#05100c_100%)] p-4 sm:p-6">{children}</main>
+        <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-[radial-gradient(circle_at_50%_0%,rgba(61,223,132,0.13),transparent_34%),linear-gradient(180deg,#0d1b15_0%,#07130e_46%,#05100c_100%)] p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );
