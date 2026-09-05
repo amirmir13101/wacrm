@@ -106,7 +106,7 @@ export function MessageActions({
   return (
     <div
       className={cn(
-        "flex min-w-0 max-w-full w-full rounded-xl transition-colors data-[selected=true]:bg-slate-800/45",
+        "flex min-w-0 max-w-full w-full touch-pan-y select-none rounded-xl transition-colors [-webkit-touch-callout:none] data-[selected=true]:bg-slate-800/45",
         isAgent ? "justify-end" : "justify-start",
       )}
       data-selected={touchOpen || pickerOpen ? "true" : undefined}
@@ -122,18 +122,20 @@ export function MessageActions({
       <div
         data-touch-open={touchOpen || pickerOpen ? "true" : undefined}
         className={cn(
-          "absolute -top-3 z-10 flex h-7 items-center gap-0.5 rounded-full border border-slate-700 bg-slate-900/95 px-1 shadow-md backdrop-blur-sm transition-opacity",
-          "opacity-0 group-hover/actions:opacity-100 group-focus-within/actions:opacity-100",
-          "data-[touch-open=true]:opacity-100",
-          isAgent ? "right-3" : "left-3",
+          "fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-50 flex min-h-14 max-w-[calc(100vw-1.5rem)] items-center justify-evenly gap-1 rounded-xl border border-slate-700 bg-slate-900/95 p-1.5 shadow-xl backdrop-blur-sm transition-opacity",
+          "pointer-events-none opacity-0 data-[touch-open=true]:pointer-events-auto data-[touch-open=true]:opacity-100",
+          "sm:absolute sm:inset-x-auto sm:bottom-auto sm:-top-3 sm:z-10 sm:h-7 sm:min-h-0 sm:max-w-none sm:justify-start sm:gap-0.5 sm:rounded-full sm:px-1 sm:py-0 sm:shadow-md",
+          "sm:group-hover/actions:pointer-events-auto sm:group-hover/actions:opacity-100 sm:group-focus-within/actions:pointer-events-auto sm:group-focus-within/actions:opacity-100",
+          isAgent ? "sm:right-3" : "sm:left-3",
         )}
       >
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
           <PopoverTrigger
-            className="flex h-5 w-5 items-center justify-center rounded-full text-slate-300 hover:bg-slate-700 hover:text-white"
+            className="flex h-11 min-w-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white sm:h-5 sm:w-5 sm:min-w-0 sm:flex-none sm:rounded-full"
             aria-label="React"
           >
             <SmilePlus className="h-3.5 w-3.5" />
+            <span className="text-[10px] leading-none sm:sr-only">React</span>
           </PopoverTrigger>
           <PopoverContent
             className="flex w-auto flex-row gap-1 p-1.5"
@@ -155,26 +157,29 @@ export function MessageActions({
         <button
           type="button"
           onClick={handleReply}
-          className="flex h-5 w-5 items-center justify-center rounded-full text-slate-300 hover:bg-slate-700 hover:text-white"
+          className="flex h-11 min-w-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white sm:h-5 sm:w-5 sm:min-w-0 sm:flex-none sm:rounded-full"
           aria-label="Reply"
         >
           <CornerUpLeft className="h-3.5 w-3.5" />
+          <span className="text-[10px] leading-none sm:sr-only">Reply</span>
         </button>
         <button
           type="button"
           onClick={handleCopy}
-          className="flex h-5 w-5 items-center justify-center rounded-full text-slate-300 hover:bg-slate-700 hover:text-white"
+          className="flex h-11 min-w-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white sm:h-5 sm:w-5 sm:min-w-0 sm:flex-none sm:rounded-full"
           aria-label="Copy"
         >
           <Copy className="h-3.5 w-3.5" />
+          <span className="text-[10px] leading-none sm:sr-only">Copy</span>
         </button>
         <button
           type="button"
           onClick={handleDelete}
-          className="flex h-5 w-5 items-center justify-center rounded-full text-red-300 hover:bg-red-500/20 hover:text-red-200"
+          className="flex h-11 min-w-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg text-red-300 hover:bg-red-500/20 hover:text-red-200 sm:h-5 sm:w-5 sm:min-w-0 sm:flex-none sm:rounded-full"
           aria-label="Delete message"
         >
           <Trash2 className="h-3.5 w-3.5" />
+          <span className="text-[10px] leading-none sm:sr-only">Delete</span>
         </button>
       </div>
       </div>

@@ -233,7 +233,7 @@ export function ConversationList({
         </div>
 
         {selectedConversation ? (
-          <div className="flex min-h-7 items-center justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1">
+          <div className="flex min-h-7 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1">
             <span className="min-w-0 truncate text-xs font-medium text-red-100">
               1 conversation selected
             </span>
@@ -440,7 +440,7 @@ function ConversationItem({
       onPointerCancel={clearLongPressTimer}
       data-conversation-id={conversation.id}
       className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-slate-800/50",
+        "flex w-full touch-pan-y select-none items-start gap-3 px-3 py-3 text-left transition-colors [-webkit-touch-callout:none] hover:bg-slate-800/50",
         isActive && "border-l-2 border-violet-500 bg-slate-800/70",
         isSelectedForDeletion && "bg-red-500/15 ring-1 ring-inset ring-red-500/40",
       )}

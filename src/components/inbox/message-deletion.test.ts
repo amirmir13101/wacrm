@@ -12,6 +12,11 @@ describe('Inbox message deletion', () => {
     expect(actions).toContain('onContextMenu={handleContextMenu}')
     expect(actions).toContain('aria-label="Delete message"')
     expect(actions).toContain('data-selected=')
+    expect(actions).toContain('bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]')
+    expect(actions).toContain('max-w-[calc(100vw-1.5rem)]')
+    expect(actions).toContain('>Delete</span>')
+    expect(actions).toContain('select-none')
+    expect(actions).toContain('[-webkit-touch-callout:none]')
   })
 
   it('requires confirmation and clearly limits deletion to CRM history', () => {

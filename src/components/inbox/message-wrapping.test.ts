@@ -33,9 +33,11 @@ describe("Inbox message wrapping", () => {
     const list = readSource("src/components/inbox/conversation-list.tsx");
     const thread = readSource("src/components/inbox/message-thread.tsx");
 
-    expect(shell).toContain('className="min-h-0 min-w-0 flex-1');
     expect(shell).toContain("flex h-screen h-dvh overflow-hidden");
-    expect(inboxPage).toContain('h-[calc(100%+2rem)] min-h-0');
+    expect(shell).toContain('pathname === "/inbox" || pathname.startsWith("/inbox/")');
+    expect(shell).toContain('"overflow-y-hidden p-0"');
+    expect(shell).toContain('"overflow-y-auto p-4 sm:p-6"');
+    expect(inboxPage).toContain('flex h-full min-h-0 flex-col overflow-hidden');
     expect(inboxPage).toContain('flex min-h-0 flex-1 overflow-hidden');
     expect(list).toContain('min-h-0 flex-1');
     expect(thread).toContain('min-h-0 min-w-0 flex-1 touch-pan-y');
