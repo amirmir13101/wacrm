@@ -219,7 +219,7 @@ export function ConversationList({
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
-    <div className="flex h-full min-h-0 w-full flex-col border-r border-slate-800 bg-slate-900 lg:w-80">
+    <div className="flex h-full min-h-0 min-w-0 w-full max-w-full flex-col overflow-hidden border-r border-slate-800 bg-slate-900 lg:w-80 lg:max-w-80">
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-slate-800 p-3">
         <div className="relative">
@@ -284,7 +284,7 @@ export function ConversationList({
       </div>
 
       {/* Conversation Items */}
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />

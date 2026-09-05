@@ -39,7 +39,9 @@ describe("Inbox message wrapping", () => {
     expect(shell).toContain('"overflow-y-auto p-4 sm:p-6"');
     expect(inboxPage).toContain('flex h-full min-h-0 flex-col overflow-hidden');
     expect(inboxPage).toContain('flex min-h-0 flex-1 overflow-hidden');
-    expect(list).toContain('min-h-0 flex-1');
+    expect(inboxPage).toContain('min-h-0 min-w-0 w-full max-w-full flex-1 overflow-hidden');
+    expect(list).toContain('min-h-0 min-w-0 w-full max-w-full flex-col overflow-hidden');
+    expect(list).toContain('min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden');
     expect(thread).toContain('min-h-0 min-w-0 flex-1 touch-pan-y');
   });
 
