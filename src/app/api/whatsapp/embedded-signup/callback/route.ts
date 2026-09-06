@@ -6,7 +6,7 @@ import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { encrypt } from '@/lib/whatsapp/encryption'
 import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api'
 
-const DEFAULT_GRAPH_API_VERSION = 'v21.0'
+const DEFAULT_GRAPH_API_VERSION = 'v24.0'
 
 interface ExchangeResponse {
   access_token?: string
@@ -78,6 +78,34 @@ async function subscribeAppToWaba(args: {
   }
 }
 
+async function registerPhoneNumber(args: {
+  phoneNumberId: string
+  accessToken: string
+  graphApiVersion: string
+  pin: string
+}) {
+  const response = await fetch(
+    `https://graph.facebook.com/${args.graphApiVersion}/${args.phoneNumberId}/register`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        pin: args.pin,
+      }),
+    },
+  )
+  const payload = (await response.json().catch(() => ({}))) as MetaMutationResponse
+
+  if (!response.ok || payload.success === false) {
+    const message = payload.error?.message || `Meta phone registration failed: ${response.status}`
+    throw new Error(message)
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const workspaceResult = await requireCurrentWorkspace()
@@ -114,15 +142,17 @@ export async function POST(request: Request) {
       code?: unknown
       phone_number_id?: unknown
       waba_id?: unknown
+      pin?: unknown
     }
     const code = typeof body.code === 'string' ? body.code.trim() : ''
     const phoneNumberId =
       typeof body.phone_number_id === 'string' ? body.phone_number_id.trim() : ''
     const wabaId = typeof body.waba_id === 'string' ? body.waba_id.trim() : ''
+    const pin = typeof body.pin === 'string' ? body.pin.trim() : ''
 
-    if (!code || !phoneNumberId || !wabaId) {
+    if (!code || !phoneNumberId || !wabaId || !/^\d{6}$/.test(pin)) {
       return NextResponse.json(
-        { error: 'Meta signup did not return a code, phone number ID, and WABA ID.' },
+        { error: 'Meta signup requires a code, phone number ID, WABA ID, and a six-digit PIN.' },
         { status: 400 },
       )
     }
@@ -143,6 +173,13 @@ export async function POST(request: Request) {
       wabaId,
       accessToken,
       graphApiVersion: serverConfig.graphApiVersion,
+    })
+
+    await registerPhoneNumber({
+      phoneNumberId,
+      accessToken,
+      graphApiVersion: serverConfig.graphApiVersion,
+      pin,
     })
 
     const encryptedAccessToken = encrypt(accessToken)

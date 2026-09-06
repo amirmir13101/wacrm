@@ -42,6 +42,9 @@ type EmbeddedSignupConfig = {
   appId?: string;
   configId?: string;
   graphApiVersion: string;
+  embeddedSignupVersion?: string;
+  hostedSignupUrl?: string;
+  hostedSignupEnabled?: boolean;
   missing?: string[];
   message?: string;
 };
@@ -108,6 +111,7 @@ export function WhatsAppConfig() {
     useState<EmbeddedSignupConfig | null>(null);
   const [connectingWithMeta, setConnectingWithMeta] = useState(false);
   const [embeddedSignupError, setEmbeddedSignupError] = useState('');
+  const [registrationPin, setRegistrationPin] = useState('');
   const [embeddedSignupIds, setEmbeddedSignupIds] = useState<{
     phone_number_id?: string;
     waba_id?: string;
@@ -517,6 +521,7 @@ export function WhatsAppConfig() {
           code,
           phone_number_id: phoneNumberId,
           waba_id: embeddedWabaId,
+          pin: registrationPin,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -532,6 +537,7 @@ export function WhatsAppConfig() {
           ? `Connected to ${data.phone_info.verified_name}`
           : 'WhatsApp connected successfully',
       );
+      setRegistrationPin('');
       await fetchConfig();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to finish WhatsApp connection.';
@@ -544,6 +550,12 @@ export function WhatsAppConfig() {
 
   async function handleConnectWithWhatsApp() {
     setEmbeddedSignupError('');
+    if (!/^\d{6}$/.test(registrationPin)) {
+      const message = 'Enter a six-digit WhatsApp two-step verification PIN.';
+      setEmbeddedSignupError(message);
+      toast.error(message);
+      return;
+    }
     setConnectingWithMeta(true);
 
     try {
@@ -575,8 +587,7 @@ export function WhatsAppConfig() {
           response_type: 'code',
           override_default_response_type: true,
           extras: {
-            setup: {},
-            feature: 'whatsapp_embedded_signup',
+            version: metaConfig.embeddedSignupVersion || 'v4',
             sessionInfoVersion: '3',
           },
         },
@@ -741,7 +752,7 @@ export function WhatsAppConfig() {
                   <div>
                     <p className="font-semibold text-white">Secure official setup</p>
                     <p className="mt-1 text-sm leading-6 text-slate-300">
-                      Talk Wagon starts Meta&apos;s official Embedded Signup popup. The temporary
+                      Talk Wagon starts Meta&apos;s official Embedded Signup flow. The temporary
                       authorization code is exchanged on the server, and tokens are encrypted before
                       storage. App secrets and access tokens are never exposed in the browser.
                     </p>
@@ -782,6 +793,30 @@ export function WhatsAppConfig() {
                 </div>
               ) : null}
 
+              <div className="max-w-sm space-y-2">
+                <Label htmlFor="embedded-signup-pin" className="text-slate-300">
+                  WhatsApp two-step verification PIN
+                </Label>
+                <Input
+                  id="embedded-signup-pin"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  placeholder="6-digit PIN"
+                  value={registrationPin}
+                  onChange={(event) =>
+                    setRegistrationPin(event.target.value.replace(/\D/g, '').slice(0, 6))
+                  }
+                  className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                />
+                <p className="text-xs leading-5 text-slate-400">
+                  Meta requires this PIN to register the selected phone number. Remember it for
+                  future WhatsApp account changes; Talk Wagon does not store it.
+                </p>
+              </div>
+
               <div className="flex flex-wrap gap-3">
                 <Button
                   type="button"
@@ -801,6 +836,25 @@ export function WhatsAppConfig() {
                     </>
                   )}
                 </Button>
+                {embeddedSignupConfig?.hostedSignupUrl ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!embeddedSignupConfig.hostedSignupEnabled}
+                    onClick={() => {
+                      if (!embeddedSignupConfig.hostedSignupEnabled) return;
+                      window.open(
+                        embeddedSignupConfig.hostedSignupUrl,
+                        '_blank',
+                        'noopener,noreferrer',
+                      );
+                    }}
+                    className="border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10 hover:text-emerald-100"
+                  >
+                    <ExternalLink className="size-4" />
+                    Meta-hosted Signup
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="outline"
@@ -810,6 +864,14 @@ export function WhatsAppConfig() {
                   Use Manual Setup
                 </Button>
               </div>
+              {embeddedSignupConfig?.hostedSignupUrl &&
+              !embeddedSignupConfig.hostedSignupEnabled ? (
+                <p className="text-xs leading-5 text-amber-300/90">
+                  Meta-hosted Signup becomes available after Meta App Review, Access Verification,
+                  the account-update webhook, and the platform system token are ready. Use the
+                  secure in-app connection above during testing.
+                </p>
+              ) : null}
             </CardContent>
           </Card>
         ) : (

@@ -55,8 +55,15 @@ describe('WhatsApp Embedded Signup settings UI', () => {
   })
 
   it('requests versioned Embedded Signup session info so Meta returns phone and WABA IDs', () => {
-    expect(whatsappConfigUi).toContain("feature: 'whatsapp_embedded_signup'")
+    expect(whatsappConfigUi).toContain("embeddedSignupVersion || 'v4'")
     expect(whatsappConfigUi).toContain("sessionInfoVersion: '3'")
+  })
+
+  it('keeps Meta-hosted signup gated until its server-side production prerequisites exist', () => {
+    expect(embeddedSignupConfigRoute).toContain('META_HOSTED_EMBEDDED_SIGNUP_ENABLED')
+    expect(embeddedSignupConfigRoute).toContain('META_SYSTEM_USER_ACCESS_TOKEN')
+    expect(whatsappConfigUi).toContain('Meta-hosted Signup')
+    expect(whatsappConfigUi).toContain('account-update webhook')
   })
 
   it('handles Embedded Signup IDs from supported Meta payload shapes', () => {
@@ -102,6 +109,17 @@ describe('WhatsApp Embedded Signup API security', () => {
     expect(embeddedSignupCallbackRoute).toContain('subscribed_apps')
     expect(embeddedSignupCallbackRoute).toContain("subscribed_fields: 'messages'")
     expect(embeddedSignupCallbackRoute.indexOf('await subscribeAppToWaba')).toBeLessThan(
+      embeddedSignupCallbackRoute.indexOf("from('whatsapp_config')"),
+    )
+  })
+
+  it('registers the customer phone number with a validated six-digit PIN before saving', () => {
+    expect(whatsappConfigUi).toContain('WhatsApp two-step verification PIN')
+    expect(whatsappConfigUi).toContain("!/^\\d{6}$/.test(registrationPin)")
+    expect(embeddedSignupCallbackRoute).toContain("!/^\\d{6}$/.test(pin)")
+    expect(embeddedSignupCallbackRoute).toContain('/register`')
+    expect(embeddedSignupCallbackRoute).toContain("messaging_product: 'whatsapp'")
+    expect(embeddedSignupCallbackRoute.indexOf('await registerPhoneNumber')).toBeLessThan(
       embeddedSignupCallbackRoute.indexOf("from('whatsapp_config')"),
     )
   })
