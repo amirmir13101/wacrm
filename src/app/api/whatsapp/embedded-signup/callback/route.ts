@@ -6,7 +6,7 @@ import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { encrypt } from '@/lib/whatsapp/encryption'
 import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api'
 
-const DEFAULT_GRAPH_API_VERSION = 'v24.0'
+const DEFAULT_GRAPH_API_VERSION = 'v26.0'
 
 interface ExchangeResponse {
   access_token?: string

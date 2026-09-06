@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 
-const DEFAULT_GRAPH_API_VERSION = 'v24.0'
+const DEFAULT_GRAPH_API_VERSION = 'v26.0'
 const EMBEDDED_SIGNUP_VERSION = 'v4'
 
 function buildHostedSignupUrl(appId: string, configId: string) {
