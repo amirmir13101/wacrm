@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { createClient } from '@/lib/supabase/server'
 import type { ApprovalStatus, UserRole } from '@/lib/auth/approval'
 import { ensureApprovedUserOwnWorkspace } from '@/lib/team/server'
+import { decrypt } from '@/lib/whatsapp/encryption'
 
 const allowedStatuses: ApprovalStatus[] = [
   'pending',
@@ -33,6 +34,78 @@ async function requireAdmin() {
   }
 
   return { user, profile }
+}
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const adminCheck = await requireAdmin()
+  if ('error' in adminCheck) {
+    return NextResponse.json(
+      { error: adminCheck.error },
+      { status: adminCheck.status },
+    )
+  }
+
+  const { id } = await params
+  const admin = supabaseAdmin()
+  const { data: target, error: targetError } = await admin
+    .from('profiles')
+    .select('user_id')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (targetError) {
+    return NextResponse.json({ error: 'Failed to load user' }, { status: 500 })
+  }
+  if (!target) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 })
+  }
+
+  const { data: config, error: configError } = await admin
+    .from('whatsapp_config')
+    .select('two_step_pin_encrypted')
+    .eq('user_id', target.user_id)
+    .not('two_step_pin_encrypted', 'is', null)
+    .limit(1)
+    .maybeSingle()
+
+  if (configError) {
+    return NextResponse.json(
+      { error: 'Failed to load WhatsApp PIN' },
+      { status: 500 },
+    )
+  }
+  if (!config?.two_step_pin_encrypted) {
+    return NextResponse.json(
+      { error: 'No generated WhatsApp PIN is available for this user' },
+      { status: 404 },
+    )
+  }
+
+  try {
+    const pin = decrypt(config.two_step_pin_encrypted)
+    if (!/^\d{6}$/.test(pin)) {
+      throw new Error('Invalid WhatsApp PIN format')
+    }
+
+    return NextResponse.json(
+      { pin },
+      {
+        headers: {
+          'Cache-Control': 'private, no-store, max-age=0',
+          Pragma: 'no-cache',
+        },
+      },
+    )
+  } catch {
+    console.error('[admin users] failed to decrypt generated WhatsApp PIN')
+    return NextResponse.json(
+      { error: 'The generated WhatsApp PIN could not be read' },
+      { status: 500 },
+    )
+  }
 }
 
 export async function PATCH(

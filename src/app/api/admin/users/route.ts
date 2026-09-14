@@ -7,6 +7,7 @@ type AdminUserAccountType = 'platform_admin' | 'workspace_owner' | 'pending_sign
 type AdminUserWithType = ProfileRow & {
   account_type: AdminUserAccountType
   owned_workspaces_count: number
+  has_whatsapp_pin: boolean
 }
 
 interface ProfileRow {
@@ -115,6 +116,7 @@ async function filterPlatformAdminUsers(profiles: ProfileRow[]) {
     memberResult,
     invitedEmailResult,
     acceptedInviteResult,
+    whatsappConfigResult,
   ] = await Promise.all([
     userIds.length
       ? admin.from('workspaces').select('owner_user_id').in('owner_user_id', userIds)
@@ -136,13 +138,20 @@ async function filterPlatformAdminUsers(profiles: ProfileRow[]) {
           .in('accepted_by_user_id', userIds)
           .is('deleted_at', null)
       : Promise.resolve({ data: [], error: null }),
+    userIds.length
+      ? admin
+          .from('whatsapp_config')
+          .select('user_id, two_step_pin_encrypted')
+          .in('user_id', userIds)
+      : Promise.resolve({ data: [], error: null }),
   ])
 
   const lookupError =
     ownedWorkspaceResult.error ??
     memberResult.error ??
     invitedEmailResult.error ??
-    acceptedInviteResult.error
+    acceptedInviteResult.error ??
+    whatsappConfigResult.error
 
   if (lookupError) {
     throw new Error(`Failed to classify admin users: ${lookupError.message}`)
@@ -177,11 +186,21 @@ async function filterPlatformAdminUsers(profiles: ProfileRow[]) {
       .map((row) => row.accepted_by_user_id)
       .filter((userId): userId is string => Boolean(userId)),
   )
+  const usersWithWhatsAppPin = new Set(
+    ((whatsappConfigResult.data ?? []) as Array<{
+      user_id: string | null
+      two_step_pin_encrypted: string | null
+    }>)
+      .filter((row) => Boolean(row.two_step_pin_encrypted))
+      .map((row) => row.user_id)
+      .filter((userId): userId is string => Boolean(userId)),
+  )
 
   return profiles
     .map((profile) => ({
       ...profile,
       owned_workspaces_count: ownedWorkspaceCountByUserId.get(profile.user_id) ?? 0,
+      has_whatsapp_pin: usersWithWhatsAppPin.has(profile.user_id),
       account_type: classifyAdminUser(profile, {
         workspaceOwnerUserIds,
         teamMemberOnlyUserIds,

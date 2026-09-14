@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
+  Eye,
+  EyeOff,
   Loader2,
   ShieldOff,
   UserCog,
@@ -38,6 +40,7 @@ interface AdminUser {
   approval_status: ApprovalStatus;
   account_type?: "platform_admin" | "workspace_owner" | "pending_signup" | "platform_user";
   owned_workspaces_count?: number;
+  has_whatsapp_pin?: boolean;
   approved_at: string | null;
   approved_by: string | null;
   created_at: string;
@@ -71,6 +74,8 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [pinLoadingId, setPinLoadingId] = useState<string | null>(null);
+  const [revealedPins, setRevealedPins] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState<UserFilter>("active");
   const [deleteTarget, setDeleteTarget] = useState<{
     user: AdminUser;
@@ -111,6 +116,31 @@ export default function AdminUsersPage() {
     if (filter === "active") return user.approval_status !== "deleted";
     return user.approval_status === filter;
   }
+
+  const toggleWhatsAppPin = async (user: AdminUser) => {
+    if (revealedPins[user.id]) {
+      setRevealedPins((current) => {
+        const next = { ...current };
+        delete next[user.id];
+        return next;
+      });
+      return;
+    }
+
+    setPinLoadingId(user.id);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        cache: "no-store",
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Failed to load WhatsApp PIN");
+      setRevealedPins((current) => ({ ...current, [user.id]: body.pin }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load WhatsApp PIN");
+    } finally {
+      setPinLoadingId(null);
+    }
+  };
 
   const updateUser = async (
     userId: string,
@@ -242,6 +272,7 @@ export default function AdminUsersPage() {
                   <TableHead className="text-slate-300">Status</TableHead>
                   <TableHead className="text-slate-300">Role</TableHead>
                   <TableHead className="text-slate-300">Workspaces</TableHead>
+                  <TableHead className="text-slate-300">WhatsApp PIN</TableHead>
                   <TableHead className="text-slate-300">Created</TableHead>
                   <TableHead className="text-right text-slate-300">Actions</TableHead>
                 </TableRow>
@@ -290,6 +321,30 @@ export default function AdminUsersPage() {
                     </TableCell>
                     <TableCell className="text-sm text-slate-400">
                       {user.owned_workspaces_count ?? 0}
+                    </TableCell>
+                    <TableCell>
+                      {!user.has_whatsapp_pin ? (
+                        <span className="text-xs text-slate-500">Not generated</span>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={pinLoadingId === user.id}
+                          onClick={() => void toggleWhatsAppPin(user)}
+                          className="min-w-28 border-slate-700 font-mono text-slate-200 hover:bg-slate-800 hover:text-white"
+                          aria-label={revealedPins[user.id] ? "Hide WhatsApp PIN" : "Reveal WhatsApp PIN"}
+                        >
+                          {pinLoadingId === user.id ? (
+                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          ) : revealedPins[user.id] ? (
+                            <EyeOff className="mr-2 h-3.5 w-3.5" />
+                          ) : (
+                            <Eye className="mr-2 h-3.5 w-3.5" />
+                          )}
+                          {revealedPins[user.id] ?? "Reveal PIN"}
+                        </Button>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-slate-400">
                       {new Date(user.created_at).toLocaleDateString()}

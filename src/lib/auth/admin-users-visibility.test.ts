@@ -12,6 +12,10 @@ const adminUsersPage = readFileSync(
   'utf8',
 )
 const teamServer = readFileSync(join(process.cwd(), 'src/lib/team/server.ts'), 'utf8')
+const adminUserDetailRoute = readFileSync(
+  join(process.cwd(), 'src/app/api/admin/users/[id]/route.ts'),
+  'utf8',
+)
 
 describe('platform admin users visibility', () => {
   it('classifies admin users separately from workspace team members', () => {
@@ -45,6 +49,23 @@ describe('platform admin users visibility', () => {
     expect(adminUsersPage).toContain('Workspace Owner')
     expect(adminUsersPage).toContain('Pending Signup')
     expect(adminUsersPage).toContain('accountTypeLabel')
+  })
+
+  it('shows generated WhatsApp PIN availability without exposing it in the user list', () => {
+    expect(adminUsersRoute).toContain(".from('whatsapp_config')")
+    expect(adminUsersRoute).toContain('two_step_pin_encrypted')
+    expect(adminUsersRoute).toContain('has_whatsapp_pin')
+    expect(adminUsersPage).toContain('WhatsApp PIN')
+    expect(adminUsersPage).toContain('Reveal PIN')
+    expect(adminUsersPage).toContain('has_whatsapp_pin?')
+  })
+
+  it('reveals a PIN only through the approved-admin detail route', () => {
+    expect(adminUserDetailRoute).toContain('export async function GET')
+    expect(adminUserDetailRoute).toContain('const adminCheck = await requireAdmin()')
+    expect(adminUserDetailRoute).toContain('decrypt(config.two_step_pin_encrypted)')
+    expect(adminUserDetailRoute).toContain("'Cache-Control': 'private, no-store, max-age=0'")
+    expect(adminUsersPage).toContain('cache: "no-store"')
   })
 
   it('leaves team member listing under the workspace team page path', () => {
