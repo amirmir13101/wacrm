@@ -54,9 +54,14 @@ describe('WhatsApp Embedded Signup settings UI', () => {
     expect(whatsappConfigUi).toContain('response.error_message')
   })
 
-  it('requests versioned Embedded Signup session info so Meta returns phone and WABA IDs', () => {
-    expect(whatsappConfigUi).toContain("embeddedSignupVersion || 'v4'")
-    expect(whatsappConfigUi).toContain("sessionInfoVersion: '3'")
+  it('launches the current Meta Embedded Signup flow with the required setup object', () => {
+    expect(whatsappConfigUi).toContain('setup: {}')
+    expect(whatsappConfigUi).not.toContain('sessionInfoVersion')
+  })
+
+  it('clears cached Embedded Signup asset IDs before each connection attempt', () => {
+    expect(whatsappConfigUi).toContain('embeddedSignupIdsRef.current = {}')
+    expect(whatsappConfigUi).toContain('setEmbeddedSignupIds({})')
   })
 
   it('keeps optional Meta-hosted signup gated server-side without exposing it in the UI', () => {

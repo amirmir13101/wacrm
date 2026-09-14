@@ -548,6 +548,8 @@ export function WhatsAppConfig() {
   async function handleConnectWithWhatsApp() {
     setEmbeddedSignupError('');
     setConnectingWithMeta(true);
+    embeddedSignupIdsRef.current = {};
+    setEmbeddedSignupIds({});
 
     try {
       const metaConfig = embeddedSignupConfig ?? (await loadEmbeddedSignupConfig());
@@ -578,8 +580,7 @@ export function WhatsAppConfig() {
           response_type: 'code',
           override_default_response_type: true,
           extras: {
-            version: metaConfig.embeddedSignupVersion || 'v4',
-            sessionInfoVersion: '3',
+            setup: {},
           },
         },
       );
