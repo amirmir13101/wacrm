@@ -836,25 +836,6 @@ export function WhatsAppConfig() {
                     </>
                   )}
                 </Button>
-                {embeddedSignupConfig?.hostedSignupUrl ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={!embeddedSignupConfig.hostedSignupEnabled}
-                    onClick={() => {
-                      if (!embeddedSignupConfig.hostedSignupEnabled) return;
-                      window.open(
-                        embeddedSignupConfig.hostedSignupUrl,
-                        '_blank',
-                        'noopener,noreferrer',
-                      );
-                    }}
-                    className="border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10 hover:text-emerald-100"
-                  >
-                    <ExternalLink className="size-4" />
-                    Meta-hosted Signup
-                  </Button>
-                ) : null}
                 <Button
                   type="button"
                   variant="outline"
@@ -864,14 +845,6 @@ export function WhatsAppConfig() {
                   Use Manual Setup
                 </Button>
               </div>
-              {embeddedSignupConfig?.hostedSignupUrl &&
-              !embeddedSignupConfig.hostedSignupEnabled ? (
-                <p className="text-xs leading-5 text-amber-300/90">
-                  Meta-hosted Signup becomes available after Meta App Review, Access Verification,
-                  the account-update webhook, and the platform system token are ready. Use the
-                  secure in-app connection above during testing.
-                </p>
-              ) : null}
             </CardContent>
           </Card>
         ) : (

@@ -59,11 +59,11 @@ describe('WhatsApp Embedded Signup settings UI', () => {
     expect(whatsappConfigUi).toContain("sessionInfoVersion: '3'")
   })
 
-  it('keeps Meta-hosted signup gated until its server-side production prerequisites exist', () => {
+  it('keeps optional Meta-hosted signup gated server-side without exposing it in the UI', () => {
     expect(embeddedSignupConfigRoute).toContain('META_HOSTED_EMBEDDED_SIGNUP_ENABLED')
     expect(embeddedSignupConfigRoute).toContain('META_SYSTEM_USER_ACCESS_TOKEN')
-    expect(whatsappConfigUi).toContain('Meta-hosted Signup')
-    expect(whatsappConfigUi).toContain('account-update webhook')
+    expect(whatsappConfigUi).not.toContain('Meta-hosted Signup')
+    expect(whatsappConfigUi).not.toContain('account-update webhook')
   })
 
   it('handles Embedded Signup IDs from supported Meta payload shapes', () => {
