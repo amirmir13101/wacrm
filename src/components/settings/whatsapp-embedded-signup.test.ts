@@ -107,9 +107,16 @@ describe('WhatsApp Embedded Signup API security', () => {
   it('requires the WABA ID and subscribes it to WhatsApp webhook events before saving as connected', () => {
     expect(embeddedSignupCallbackRoute).toContain('!wabaId')
     expect(embeddedSignupCallbackRoute).toContain('subscribed_apps')
-    expect(embeddedSignupCallbackRoute).toContain("subscribed_fields: 'messages'")
+    expect(embeddedSignupCallbackRoute).not.toContain('subscribed_fields')
     expect(embeddedSignupCallbackRoute.indexOf('await subscribeAppToWaba')).toBeLessThan(
       embeddedSignupCallbackRoute.indexOf("from('whatsapp_config')"),
+    )
+  })
+
+  it('does not let optional phone metadata prevent a completed signup from being saved', () => {
+    expect(embeddedSignupCallbackRoute).toContain('optional phone metadata unavailable')
+    expect(embeddedSignupCallbackRoute.indexOf('await registerPhoneNumber')).toBeLessThan(
+      embeddedSignupCallbackRoute.indexOf('await verifyPhoneNumber'),
     )
   })
 

@@ -67,7 +67,7 @@ export async function verifyPhoneNumber(
   args: VerifyPhoneNumberArgs
 ): Promise<MetaPhoneInfo> {
   const { phoneNumberId, accessToken } = args
-  const url = `${META_API_BASE}/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`
+  const url = `${configuredMetaApiBase()}/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), META_VERIFY_TIMEOUT_MS)
   let response: Response

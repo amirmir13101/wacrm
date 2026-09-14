@@ -1,5 +1,40 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { sendTemplateMessage, sendTypingIndicator } from './meta-api'
+import { sendTemplateMessage, sendTypingIndicator, verifyPhoneNumber } from './meta-api'
+
+describe('verifyPhoneNumber', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    delete process.env.META_GRAPH_API_VERSION
+  })
+
+  it('uses the configured Graph API version for phone metadata', async () => {
+    process.env.META_GRAPH_API_VERSION = 'v26.0'
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          id: 'phone-id',
+          display_phone_number: '+15551234567',
+          verified_name: 'Example Business',
+          quality_rating: 'GREEN',
+        }),
+        { status: 200 },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await verifyPhoneNumber({
+      phoneNumberId: 'phone-id',
+      accessToken: 'token',
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://graph.facebook.com/v26.0/phone-id?fields=id,display_phone_number,verified_name,quality_rating',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer token' },
+      }),
+    )
+  })
+})
 
 describe('sendTemplateMessage', () => {
   afterEach(() => {

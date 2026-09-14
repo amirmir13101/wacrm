@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireCurrentWorkspace } from '@/lib/team/server'
 import { hasWorkspacePermission } from '@/lib/team/permissions'
 import { encrypt } from '@/lib/whatsapp/encryption'
-import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api'
+import { verifyPhoneNumber, type MetaPhoneInfo } from '@/lib/whatsapp/meta-api'
 
 const DEFAULT_GRAPH_API_VERSION = 'v26.0'
 
@@ -70,9 +70,7 @@ async function subscribeAppToWaba(args: {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${args.accessToken}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({ subscribed_fields: 'messages' }),
     },
   )
   const payload = (await response.json().catch(() => ({}))) as MetaMutationResponse
@@ -169,11 +167,6 @@ export async function POST(request: Request) {
       graphApiVersion: serverConfig.graphApiVersion,
     })
 
-    const phoneInfo = await verifyPhoneNumber({
-      phoneNumberId,
-      accessToken,
-    })
-
     await subscribeAppToWaba({
       wabaId,
       accessToken,
@@ -186,6 +179,20 @@ export async function POST(request: Request) {
       graphApiVersion: serverConfig.graphApiVersion,
       pin: registrationPin,
     })
+
+    let phoneInfo: MetaPhoneInfo = {
+      id: phoneNumberId,
+      display_phone_number: '',
+    }
+    try {
+      phoneInfo = await verifyPhoneNumber({
+        phoneNumberId,
+        accessToken,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown Meta phone metadata error'
+      console.warn('[whatsapp embedded signup] optional phone metadata unavailable:', message)
+    }
 
     const encryptedAccessToken = encrypt(accessToken)
     const encryptedRegistrationPin = encrypt(registrationPin)
