@@ -120,6 +120,12 @@ describe('WhatsApp Embedded Signup API security', () => {
     )
   })
 
+  it('keeps the failing Meta stage in safe error messages without logging credentials', () => {
+    expect(embeddedSignupCallbackRoute).toContain('Meta authorization code exchange failed:')
+    expect(embeddedSignupCallbackRoute).toContain('Meta WABA webhook subscription failed:')
+    expect(embeddedSignupCallbackRoute).toContain('Meta phone registration failed:')
+  })
+
   it('generates and encrypts the registration PIN server-side without exposing it in the UI', () => {
     expect(whatsappConfigUi).not.toContain('WhatsApp two-step verification PIN')
     expect(whatsappConfigUi).not.toContain('registrationPin')

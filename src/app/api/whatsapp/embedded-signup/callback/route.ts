@@ -52,8 +52,8 @@ async function exchangeCodeForToken(args: {
   const payload = (await response.json().catch(() => ({}))) as ExchangeResponse
 
   if (!response.ok || !payload.access_token) {
-    const message = payload.error?.message || `Meta code exchange failed: ${response.status}`
-    throw new Error(message)
+    const detail = payload.error?.message || `HTTP ${response.status}`
+    throw new Error(`Meta authorization code exchange failed: ${detail}`)
   }
 
   return payload.access_token
@@ -76,8 +76,8 @@ async function subscribeAppToWaba(args: {
   const payload = (await response.json().catch(() => ({}))) as MetaMutationResponse
 
   if (!response.ok || payload.success === false) {
-    const message = payload.error?.message || `Meta webhook subscription failed: ${response.status}`
-    throw new Error(message)
+    const detail = payload.error?.message || `HTTP ${response.status}`
+    throw new Error(`Meta WABA webhook subscription failed: ${detail}`)
   }
 }
 
@@ -104,8 +104,8 @@ async function registerPhoneNumber(args: {
   const payload = (await response.json().catch(() => ({}))) as MetaMutationResponse
 
   if (!response.ok || payload.success === false) {
-    const message = payload.error?.message || `Meta phone registration failed: ${response.status}`
-    throw new Error(message)
+    const detail = payload.error?.message || `HTTP ${response.status}`
+    throw new Error(`Meta phone registration failed: ${detail}`)
   }
 }
 
