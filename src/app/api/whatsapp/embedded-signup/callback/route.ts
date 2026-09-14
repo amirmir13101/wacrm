@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { randomInt } from 'node:crypto'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { requireCurrentWorkspace } from '@/lib/team/server'
@@ -18,6 +19,10 @@ interface ExchangeResponse {
 interface MetaMutationResponse {
   success?: boolean
   error?: { message?: string; code?: number; type?: string }
+}
+
+function generateRegistrationPin(): string {
+  return randomInt(100000, 1000000).toString()
 }
 
 function getServerConfig() {
@@ -142,20 +147,20 @@ export async function POST(request: Request) {
       code?: unknown
       phone_number_id?: unknown
       waba_id?: unknown
-      pin?: unknown
     }
     const code = typeof body.code === 'string' ? body.code.trim() : ''
     const phoneNumberId =
       typeof body.phone_number_id === 'string' ? body.phone_number_id.trim() : ''
     const wabaId = typeof body.waba_id === 'string' ? body.waba_id.trim() : ''
-    const pin = typeof body.pin === 'string' ? body.pin.trim() : ''
 
-    if (!code || !phoneNumberId || !wabaId || !/^\d{6}$/.test(pin)) {
+    if (!code || !phoneNumberId || !wabaId) {
       return NextResponse.json(
-        { error: 'Meta signup requires a code, phone number ID, WABA ID, and a six-digit PIN.' },
+        { error: 'Meta signup requires a code, phone number ID, and WABA ID.' },
         { status: 400 },
       )
     }
+
+    const registrationPin = generateRegistrationPin()
 
     const accessToken = await exchangeCodeForToken({
       code,
@@ -179,10 +184,11 @@ export async function POST(request: Request) {
       phoneNumberId,
       accessToken,
       graphApiVersion: serverConfig.graphApiVersion,
-      pin,
+      pin: registrationPin,
     })
 
     const encryptedAccessToken = encrypt(accessToken)
+    const encryptedRegistrationPin = encrypt(registrationPin)
     const admin = supabaseAdmin()
 
     const { data: existing } = await admin
@@ -201,6 +207,7 @@ export async function POST(request: Request) {
           phone_number_id: phoneNumberId,
           waba_id: wabaId || null,
           access_token: encryptedAccessToken,
+          two_step_pin_encrypted: encryptedRegistrationPin,
           status: 'connected',
           connected_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -218,6 +225,7 @@ export async function POST(request: Request) {
         phone_number_id: phoneNumberId,
         waba_id: wabaId || null,
         access_token: encryptedAccessToken,
+        two_step_pin_encrypted: encryptedRegistrationPin,
         verify_token: null,
         status: 'connected',
         connected_at: new Date().toISOString(),

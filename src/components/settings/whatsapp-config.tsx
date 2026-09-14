@@ -111,7 +111,6 @@ export function WhatsAppConfig() {
     useState<EmbeddedSignupConfig | null>(null);
   const [connectingWithMeta, setConnectingWithMeta] = useState(false);
   const [embeddedSignupError, setEmbeddedSignupError] = useState('');
-  const [registrationPin, setRegistrationPin] = useState('');
   const [embeddedSignupIds, setEmbeddedSignupIds] = useState<{
     phone_number_id?: string;
     waba_id?: string;
@@ -521,7 +520,6 @@ export function WhatsAppConfig() {
           code,
           phone_number_id: phoneNumberId,
           waba_id: embeddedWabaId,
-          pin: registrationPin,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -537,7 +535,6 @@ export function WhatsAppConfig() {
           ? `Connected to ${data.phone_info.verified_name}`
           : 'WhatsApp connected successfully',
       );
-      setRegistrationPin('');
       await fetchConfig();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to finish WhatsApp connection.';
@@ -550,12 +547,6 @@ export function WhatsAppConfig() {
 
   async function handleConnectWithWhatsApp() {
     setEmbeddedSignupError('');
-    if (!/^\d{6}$/.test(registrationPin)) {
-      const message = 'Enter a six-digit WhatsApp two-step verification PIN.';
-      setEmbeddedSignupError(message);
-      toast.error(message);
-      return;
-    }
     setConnectingWithMeta(true);
 
     try {
@@ -746,20 +737,6 @@ export function WhatsAppConfig() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/5 p-4">
-                <div className="flex items-start gap-3">
-                  <ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-300" />
-                  <div>
-                    <p className="font-semibold text-white">Secure official setup</p>
-                    <p className="mt-1 text-sm leading-6 text-slate-300">
-                      Talk Wagon starts Meta&apos;s official Embedded Signup flow. The temporary
-                      authorization code is exchanged on the server, and tokens are encrypted before
-                      storage. App secrets and access tokens are never exposed in the browser.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
               {!embeddedSignupConfig?.configured && embeddedSignupConfig?.missing?.length ? (
                 <Alert className="border-amber-600/40 bg-amber-950/40">
                   <AlertTriangle className="size-4 text-amber-400" />
@@ -792,30 +769,6 @@ export function WhatsAppConfig() {
                   exchanged server-side.
                 </div>
               ) : null}
-
-              <div className="max-w-sm space-y-2">
-                <Label htmlFor="embedded-signup-pin" className="text-slate-300">
-                  WhatsApp two-step verification PIN
-                </Label>
-                <Input
-                  id="embedded-signup-pin"
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="new-password"
-                  maxLength={6}
-                  pattern="[0-9]{6}"
-                  placeholder="6-digit PIN"
-                  value={registrationPin}
-                  onChange={(event) =>
-                    setRegistrationPin(event.target.value.replace(/\D/g, '').slice(0, 6))
-                  }
-                  className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
-                />
-                <p className="text-xs leading-5 text-slate-400">
-                  Meta requires this PIN to register the selected phone number. Remember it for
-                  future WhatsApp account changes; Talk Wagon does not store it.
-                </p>
-              </div>
 
               <div className="flex flex-wrap gap-3">
                 <Button

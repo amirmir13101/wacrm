@@ -113,15 +113,22 @@ describe('WhatsApp Embedded Signup API security', () => {
     )
   })
 
-  it('registers the customer phone number with a validated six-digit PIN before saving', () => {
-    expect(whatsappConfigUi).toContain('WhatsApp two-step verification PIN')
-    expect(whatsappConfigUi).toContain("!/^\\d{6}$/.test(registrationPin)")
-    expect(embeddedSignupCallbackRoute).toContain("!/^\\d{6}$/.test(pin)")
+  it('generates and encrypts the registration PIN server-side without exposing it in the UI', () => {
+    expect(whatsappConfigUi).not.toContain('WhatsApp two-step verification PIN')
+    expect(whatsappConfigUi).not.toContain('registrationPin')
+    expect(embeddedSignupCallbackRoute).toContain('randomInt(100000, 1000000)')
+    expect(embeddedSignupCallbackRoute).toContain('encrypt(registrationPin)')
+    expect(embeddedSignupCallbackRoute).toContain('two_step_pin_encrypted')
     expect(embeddedSignupCallbackRoute).toContain('/register`')
     expect(embeddedSignupCallbackRoute).toContain("messaging_product: 'whatsapp'")
     expect(embeddedSignupCallbackRoute.indexOf('await registerPhoneNumber')).toBeLessThan(
       embeddedSignupCallbackRoute.indexOf("from('whatsapp_config')"),
     )
+  })
+
+  it('does not expose internal setup security copy in the customer connection UI', () => {
+    expect(whatsappConfigUi).not.toContain('Secure official setup')
+    expect(whatsappConfigUi).not.toContain('App secrets and access tokens are never exposed')
   })
 
   it('only accepts Embedded Signup postMessage events from real facebook.com origins', () => {
