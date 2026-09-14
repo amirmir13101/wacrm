@@ -577,6 +577,7 @@ export function WhatsAppConfig() {
         },
         {
           config_id: metaConfig.configId,
+          auth_type: 'rerequest',
           response_type: 'code',
           override_default_response_type: true,
           extras: {

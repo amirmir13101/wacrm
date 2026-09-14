@@ -56,6 +56,7 @@ describe('WhatsApp Embedded Signup settings UI', () => {
 
   it('launches the current Meta Embedded Signup flow with the required setup object', () => {
     expect(whatsappConfigUi).toContain('setup: {}')
+    expect(whatsappConfigUi).toContain("auth_type: 'rerequest'")
     expect(whatsappConfigUi).not.toContain('sessionInfoVersion')
   })
 
