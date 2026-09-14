@@ -21,6 +21,30 @@ interface MetaMutationResponse {
   error?: { message?: string; code?: number; type?: string }
 }
 
+interface MetaDebugTokenResponse {
+  data?: {
+    app_id?: string
+    is_valid?: boolean
+    scopes?: string[]
+    granular_scopes?: Array<{
+      scope?: string
+      target_ids?: string[]
+    }>
+  }
+  error?: { message?: string; code?: number; type?: string }
+}
+
+interface MetaPhoneNumbersResponse {
+  data?: Array<{ id?: string }>
+  error?: { message?: string; code?: number; type?: string }
+}
+
+interface MetaTokenGrant {
+  hasManagementPermission: boolean
+  hasMessagingPermission: boolean
+  managementTargetIds: string[]
+}
+
 function generateRegistrationPin(): string {
   return randomInt(100000, 1000000).toString()
 }
@@ -57,6 +81,115 @@ async function exchangeCodeForToken(args: {
   }
 
   return payload.access_token
+}
+
+async function inspectBusinessTokenGrant(args: {
+  accessToken: string
+  appId: string
+  appSecret: string
+  graphApiVersion: string
+}): Promise<MetaTokenGrant> {
+  const params = new URLSearchParams({ input_token: args.accessToken })
+  const response = await fetch(
+    `https://graph.facebook.com/${args.graphApiVersion}/debug_token?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${args.appId}|${args.appSecret}`,
+      },
+    },
+  )
+  const payload = (await response.json().catch(() => ({}))) as MetaDebugTokenResponse
+
+  if (!response.ok || !payload.data) {
+    const detail = payload.error?.message || `HTTP ${response.status}`
+    throw new Error(`Meta token permission check failed: ${detail}`)
+  }
+
+  if (payload.data.is_valid !== true || payload.data.app_id !== args.appId) {
+    throw new Error('Meta returned an invalid business token for this app. Please reconnect WhatsApp.')
+  }
+
+  const scopes = new Set(payload.data.scopes || [])
+  const granularScopes = payload.data.granular_scopes || []
+  const managementScope = granularScopes.find(
+    (item) => item.scope === 'whatsapp_business_management',
+  )
+
+  return {
+    hasManagementPermission:
+      scopes.has('whatsapp_business_management') || Boolean(managementScope),
+    hasMessagingPermission:
+      scopes.has('whatsapp_business_messaging') ||
+      granularScopes.some((item) => item.scope === 'whatsapp_business_messaging'),
+    managementTargetIds: Array.from(
+      new Set(
+        (managementScope?.target_ids || []).filter(
+          (targetId): targetId is string => typeof targetId === 'string' && targetId.length > 0,
+        ),
+      ),
+    ),
+  }
+}
+
+async function wabaContainsPhoneNumber(args: {
+  wabaId: string
+  phoneNumberId: string
+  accessToken: string
+  graphApiVersion: string
+}): Promise<boolean> {
+  const params = new URLSearchParams({ fields: 'id', limit: '100' })
+  const response = await fetch(
+    `https://graph.facebook.com/${args.graphApiVersion}/${args.wabaId}/phone_numbers?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+    },
+  )
+  const payload = (await response.json().catch(() => ({}))) as MetaPhoneNumbersResponse
+
+  if (!response.ok || !Array.isArray(payload.data)) {
+    return false
+  }
+
+  return payload.data.some((phoneNumber) => phoneNumber.id === args.phoneNumberId)
+}
+
+async function resolveAuthorizedWabaId(args: {
+  returnedWabaId: string
+  phoneNumberId: string
+  accessToken: string
+  graphApiVersion: string
+  tokenGrant: MetaTokenGrant
+}): Promise<string> {
+  const candidateWabaIds = Array.from(
+    new Set([args.returnedWabaId, ...args.tokenGrant.managementTargetIds]),
+  )
+
+  for (const candidateWabaId of candidateWabaIds) {
+    if (
+      await wabaContainsPhoneNumber({
+        wabaId: candidateWabaId,
+        phoneNumberId: args.phoneNumberId,
+        accessToken: args.accessToken,
+        graphApiVersion: args.graphApiVersion,
+      })
+    ) {
+      return candidateWabaId
+    }
+  }
+
+  if (!args.tokenGrant.hasManagementPermission) {
+    throw new Error(
+      'Meta did not grant WhatsApp Business Management access. Please reconnect and approve all requested WhatsApp permissions.',
+    )
+  }
+
+  throw new Error(
+    'Meta did not grant this app access to the selected WhatsApp Business Account. Please reconnect and select the same business portfolio, WhatsApp account, and phone number.',
+  )
 }
 
 async function subscribeAppToWaba(args: {
@@ -167,8 +300,29 @@ export async function POST(request: Request) {
       graphApiVersion: serverConfig.graphApiVersion,
     })
 
+    const tokenGrant = await inspectBusinessTokenGrant({
+      accessToken,
+      appId: serverConfig.appId,
+      appSecret: serverConfig.appSecret,
+      graphApiVersion: serverConfig.graphApiVersion,
+    })
+
+    if (!tokenGrant.hasMessagingPermission) {
+      throw new Error(
+        'Meta did not grant WhatsApp Business Messaging access. Please reconnect and approve all requested WhatsApp permissions.',
+      )
+    }
+
+    const authorizedWabaId = await resolveAuthorizedWabaId({
+      returnedWabaId: wabaId,
+      phoneNumberId,
+      accessToken,
+      graphApiVersion: serverConfig.graphApiVersion,
+      tokenGrant,
+    })
+
     await subscribeAppToWaba({
-      wabaId,
+      wabaId: authorizedWabaId,
       accessToken,
       graphApiVersion: serverConfig.graphApiVersion,
     })
@@ -212,7 +366,7 @@ export async function POST(request: Request) {
         .from('whatsapp_config')
         .update({
           phone_number_id: phoneNumberId,
-          waba_id: wabaId || null,
+          waba_id: authorizedWabaId,
           access_token: encryptedAccessToken,
           two_step_pin_encrypted: encryptedRegistrationPin,
           status: 'connected',
@@ -230,7 +384,7 @@ export async function POST(request: Request) {
         user_id: workspace.userId,
         workspace_id: workspace.workspaceId,
         phone_number_id: phoneNumberId,
-        waba_id: wabaId || null,
+        waba_id: authorizedWabaId,
         access_token: encryptedAccessToken,
         two_step_pin_encrypted: encryptedRegistrationPin,
         verify_token: null,

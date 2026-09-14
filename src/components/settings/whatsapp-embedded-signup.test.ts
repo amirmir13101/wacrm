@@ -118,6 +118,21 @@ describe('WhatsApp Embedded Signup API security', () => {
     )
   })
 
+  it('validates the exchanged token permissions and resolves the WABA that owns the selected phone', () => {
+    expect(embeddedSignupCallbackRoute).toContain('/debug_token?')
+    expect(embeddedSignupCallbackRoute).toContain("scope === 'whatsapp_business_management'")
+    expect(embeddedSignupCallbackRoute).toContain("scope === 'whatsapp_business_messaging'")
+    expect(embeddedSignupCallbackRoute).toContain('managementTargetIds')
+    expect(embeddedSignupCallbackRoute).toContain('/phone_numbers?')
+    expect(embeddedSignupCallbackRoute).toContain('authorizedWabaId')
+    expect(embeddedSignupCallbackRoute).toContain('waba_id: authorizedWabaId')
+  })
+
+  it('keeps Meta credentials and exchanged tokens out of diagnostic logging', () => {
+    expect(embeddedSignupCallbackRoute).not.toMatch(/console\.(?:log|info|warn|error)\([^\n]*(?:accessToken|appSecret)/)
+    expect(embeddedSignupCallbackRoute).not.toContain('access_token: accessToken')
+  })
+
   it('does not let optional phone metadata prevent a completed signup from being saved', () => {
     expect(embeddedSignupCallbackRoute).toContain('optional phone metadata unavailable')
     expect(embeddedSignupCallbackRoute.indexOf('await registerPhoneNumber')).toBeLessThan(
